@@ -203,7 +203,7 @@ public:
             {
                 for (auto& nodeInfo : containedNodes)
                 {
-                    if (auto* comp = nodeInfo.component)
+                    if (auto* comp = nodeInfo.component.getComponent())
                     {
                         // Calculate target position based on comment box position + stored offset
                         int targetX = newBounds.getX() + nodeInfo.originalOffset.getX();
@@ -377,7 +377,7 @@ public:
 private:
     struct ContainedNode
     {
-        Component* component { nullptr };
+        juce::Component::SafePointer<juce::Component> component;
         Point<int> originalOffset;
     };
 
