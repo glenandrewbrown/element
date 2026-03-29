@@ -412,7 +412,19 @@ void clearGlobals (sol::state_view& view)
 //==============================================================================
 void initializeState (sol::state_view& view)
 {
-    view.open_libraries();
+    view.open_libraries (
+        sol::lib::base,
+        sol::lib::string,
+        sol::lib::table,
+        sol::lib::math,
+        sol::lib::coroutine,
+        sol::lib::utf8,
+        sol::lib::package
+    );
+
+    // Remove dangerous functions from base library
+    view["dofile"] = sol::lua_nil;
+    view["loadfile"] = sol::lua_nil;
 
     auto package = view["package"];
     auto newSearchers = view.create_table();
