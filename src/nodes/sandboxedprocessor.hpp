@@ -236,7 +236,9 @@ inline void SandboxedProcessorNode::prepareToRender (double sampleRate, int maxB
                                 numInputChannels, numOutputChannels);
     }
 
-    setLatencySamples (sandbox ? sandbox->getLatencySamples() : 0);
+    // Report total latency: plugin's own latency + 1 buffer for IPC round-trip
+    int pluginLatency = sandbox ? sandbox->getLatencySamples() : 0;
+    setLatencySamples (pluginLatency + maxBufferSize);
 }
 
 inline void SandboxedProcessorNode::releaseResources()
@@ -378,7 +380,8 @@ inline void SandboxedProcessorNode::sandboxRestarted (SandboxHost*)
 
 inline void SandboxedProcessorNode::sandboxLatencyChanged (SandboxHost*, int newLatency)
 {
-    setLatencySamples (newLatency);
+    // Add 1 buffer of IPC round-trip latency to the plugin's reported latency
+    setLatencySamples (newLatency + currentBlockSize);
     // Note: setLatencySamples should trigger graph rebuild via Processor mechanism
 }
 
