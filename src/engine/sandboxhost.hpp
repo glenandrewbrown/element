@@ -1,0 +1,643 @@
+// Copyright 2025 Kushview, LLC <info@kushview.net>
+// SPDX-License-Identifier: GPL3-or-later
+
+#pragma once
+
+#include <element/juce.hpp>
+#include <element/signals.hpp>
+
+#include "sandboxipc.hpp"
+
+#include <condition_variable>
+#include <mutex>
+#include <memory>
+
+namespace element {
+
+class PluginManager;
+
+//==============================================================================
+/**
+ * Coordinates a sandboxed plugin host running in a separate process.
+ *
+ * This class manages:
+ * - Worker process lifecycle (launch, monitor, restart)
+ * - IPC for plugin loading/unloading
+ * - Shared memory audio buffer exchange
+ * - Crash detection and recovery
+ *
+ * The host side runs in the main audio application, while the worker
+ * runs the actual plugin in an isolated process.
+ */
+class SandboxHost : public juce::ChildProcessCoordinator,
+                    private juce::Timer
+{
+public:
+    //==========================================================================
+    /** Listener interface for sandbox events. */
+    struct Listener
+    {
+        virtual ~Listener() = default;
+
+        /** Called when plugin is successfully loaded in sandbox. */
+        virtual void sandboxPluginLoaded (SandboxHost*) {}
+
+        /** Called when plugin loading fails. */
+        virtual void sandboxPluginLoadFailed (SandboxHost*, const juce::String& error) {}
+
+        /** Called when sandbox worker crashes. */
+        virtual void sandboxCrashed (SandboxHost*) {}
+
+        /** Called when sandbox is successfully restarted after crash. */
+        virtual void sandboxRestarted (SandboxHost*) {}
+
+        /** Called when plugin latency changes. */
+        virtual void sandboxLatencyChanged (SandboxHost*, int newLatency) {}
+    };
+
+    //==========================================================================
+    /** Sandbox operational state. */
+    enum class State
+    {
+        Idle,           // No worker process
+        Starting,       // Worker process launching
+        Ready,          // Worker ready, no plugin loaded
+        Loading,        // Plugin loading in progress
+        Active,         // Plugin loaded and processing
+        Error,          // Error state (recoverable)
+        Crashed         // Worker crashed (needs restart)
+    };
+
+    //==========================================================================
+    explicit SandboxHost (PluginManager& pm);
+    ~SandboxHost() override;
+
+    //==========================================================================
+    /** Launch the worker process. Returns true if successful. */
+    bool launch();
+
+    /** Shutdown the worker process gracefully. */
+    void shutdown();
+
+    /** Check if the sandbox is in a healthy state. */
+    bool isHealthy() const;
+
+    /** Get the current state. */
+    State getState() const { return state.load(); }
+
+    //==========================================================================
+    /** Load a plugin in the sandboxed worker. Async - listen for callback. */
+    void loadPlugin (const juce::PluginDescription& desc);
+
+    /** Unload the current plugin. */
+    void unloadPlugin();
+
+    /** Check if a plugin is currently loaded. */
+    bool isPluginLoaded() const { return pluginLoaded.load(); }
+
+    /** Get the loaded plugin description. */
+    const juce::PluginDescription& getPluginDescription() const { return loadedPlugin; }
+
+    //==========================================================================
+    /** Prepare the sandbox for audio processing. */
+    void prepareToPlay (double sampleRate, int maxBlockSize,
+                        int numInputChannels, int numOutputChannels);
+
+    /** Process audio through the sandboxed plugin. */
+    void processBlock (juce::AudioSampleBuffer& buffer, juce::MidiBuffer& midi);
+
+    /** Release audio processing resources. */
+    void releaseResources();
+
+    //==========================================================================
+    /** Set a parameter value. */
+    void setParameter (int index, float value);
+
+    /** Set bypass state. */
+    void setBypass (bool shouldBypass);
+
+    /** Get the current latency in samples. */
+    int getLatencySamples() const { return latencySamples.load(); }
+
+    //==========================================================================
+    /** Save plugin state. Blocking call. */
+    juce::MemoryBlock getPluginState();
+
+    /** Restore plugin state. */
+    void setPluginState (const juce::MemoryBlock& state);
+
+    //==========================================================================
+    /** Add a listener for sandbox events. */
+    void addListener (Listener* l) { listeners.add (l); }
+
+    /** Remove a listener. */
+    void removeListener (Listener* l) { listeners.remove (l); }
+
+    //==========================================================================
+    /** Signal emitted when latency changes. */
+    Signal<void (int)> latencyChanged;
+
+    /** Signal emitted on crash. */
+    Signal<void()> crashed;
+
+protected:
+    //==========================================================================
+    /** Handle messages from the worker process. */
+    void handleMessageFromWorker (const juce::MemoryBlock& mb) override;
+
+    /** Handle worker process connection lost. */
+    void handleConnectionLost() override;
+
+private:
+    //==========================================================================
+    void timerCallback() override;
+
+    bool launchWorkerProcess();
+    void handleWorkerMessage (const SandboxMessageHeader& header, const void* payload);
+    void sendMessage (SandboxMessageType type, const void* payload = nullptr,
+                      uint32_t payloadSize = 0);
+
+    bool waitForResponse (SandboxMessageType expectedType, uint32_t timeoutMs = 5000);
+
+    void attemptRestart();
+
+    //==========================================================================
+    PluginManager& pluginManager;
+    juce::ListenerList<Listener> listeners;
+
+    std::atomic<State> state { State::Idle };
+    std::atomic<bool> pluginLoaded { false };
+    std::atomic<int> latencySamples { 0 };
+    std::atomic<bool> bypassed { false };
+
+    juce::PluginDescription loadedPlugin;
+    std::unique_ptr<juce::XmlElement> lastKnownState;
+
+    // Audio processing
+    SharedAudioBuffer audioBuffer;
+    double currentSampleRate { 0.0 };
+    int currentBlockSize { 0 };
+    int numInputChannels { 0 };
+    int numOutputChannels { 0 };
+
+    // IPC synchronization
+    std::mutex responseMutex;
+    std::condition_variable responseCondition;
+    SandboxMessageType lastResponseType { SandboxMessageType::None };
+    juce::MemoryBlock lastResponsePayload;
+    bool responseReceived { false };
+
+    // Heartbeat monitoring
+    SandboxHeartbeat heartbeat;
+    int restartAttempts { 0 };
+    static constexpr int maxRestartAttempts { 3 };
+
+    // Message sequencing
+    std::atomic<uint32_t> messageSequence { 0 };
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SandboxHost)
+};
+
+//==============================================================================
+// Implementation
+
+inline SandboxHost::SandboxHost (PluginManager& pm)
+    : pluginManager (pm)
+{
+}
+
+inline SandboxHost::~SandboxHost()
+{
+    stopTimer();
+    shutdown();
+}
+
+inline bool SandboxHost::launch()
+{
+    if (state.load() != State::Idle)
+        return false;
+
+    state.store (State::Starting);
+
+    if (! launchWorkerProcess())
+    {
+        state.store (State::Idle);
+        return false;
+    }
+
+    // Start heartbeat monitoring
+    heartbeat.reset();
+    startTimer (EL_SANDBOX_HEARTBEAT_MS);
+
+    state.store (State::Ready);
+    return true;
+}
+
+inline void SandboxHost::shutdown()
+{
+    stopTimer();
+
+    if (state.load() == State::Idle)
+        return;
+
+    // Send graceful shutdown request
+    sendMessage (SandboxMessageType::Shutdown);
+
+    // Give worker time to clean up
+    juce::Thread::sleep (100);
+
+    // Force kill if still running
+    killWorkerProcess();
+
+    state.store (State::Idle);
+    pluginLoaded.store (false);
+}
+
+inline bool SandboxHost::isHealthy() const
+{
+    const auto s = state.load();
+    return (s == State::Ready || s == State::Active) && heartbeat.isAlive();
+}
+
+inline void SandboxHost::loadPlugin (const juce::PluginDescription& desc)
+{
+    if (state.load() != State::Ready && state.load() != State::Active)
+        return;
+
+    state.store (State::Loading);
+
+    // Serialize plugin description to XML
+    auto xml = desc.createXml();
+    if (xml == nullptr)
+    {
+        state.store (State::Error);
+        listeners.call (&Listener::sandboxPluginLoadFailed, this, "Failed to serialize plugin description");
+        return;
+    }
+
+    auto xmlString = xml->toString();
+    sendMessage (SandboxMessageType::LoadPlugin,
+                 xmlString.toRawUTF8(),
+                 static_cast<uint32_t> (xmlString.getNumBytesAsUTF8()));
+
+    loadedPlugin = desc;
+}
+
+inline void SandboxHost::unloadPlugin()
+{
+    if (! pluginLoaded.load())
+        return;
+
+    sendMessage (SandboxMessageType::UnloadPlugin);
+    pluginLoaded.store (false);
+    state.store (State::Ready);
+}
+
+inline void SandboxHost::prepareToPlay (double sampleRate, int maxBlockSize,
+                                         int inputChannels, int outputChannels)
+{
+    currentSampleRate = sampleRate;
+    currentBlockSize = maxBlockSize;
+    numInputChannels = inputChannels;
+    numOutputChannels = outputChannels;
+
+    // Allocate shared audio buffer
+    const int maxChannels = std::max (inputChannels, outputChannels);
+    audioBuffer.allocate (maxChannels, maxBlockSize);
+
+    if (auto* header = audioBuffer.getHeader())
+    {
+        header->sampleRate = sampleRate;
+    }
+
+    // Send prepare message to worker
+    PreparePayload payload;
+    payload.sampleRate = sampleRate;
+    payload.maxBlockSize = maxBlockSize;
+    payload.numInputChannels = inputChannels;
+    payload.numOutputChannels = outputChannels;
+
+    sendMessage (SandboxMessageType::PrepareToPlay, &payload, sizeof (payload));
+}
+
+inline void SandboxHost::processBlock (juce::AudioSampleBuffer& buffer,
+                                        juce::MidiBuffer& midi)
+{
+    // Check health - output silence if sandbox is unhealthy
+    if (! isHealthy() || ! pluginLoaded.load() || bypassed.load())
+    {
+        // Pass through or silence depending on state
+        if (state.load() == State::Crashed)
+        {
+            buffer.clear();
+            midi.clear();
+        }
+        return;
+    }
+
+    const int numSamples = buffer.getNumSamples();
+
+    // Write input audio to shared buffer
+    audioBuffer.writeInputAudio (buffer, numSamples);
+
+    // Serialize MIDI input
+    auto* midiIn = audioBuffer.getMidiInputBuffer();
+    uint32_t midiSize = serializeMidiBuffer (midi, midiIn, audioBuffer.getMidiBufferSize());
+    if (auto* header = audioBuffer.getHeader())
+        header->midiInputSize.store (midiSize);
+
+    // Swap buffers to make data available to worker
+    audioBuffer.swapBuffers();
+
+    // Signal worker to process (non-blocking)
+    sendMessage (SandboxMessageType::ProcessBlock);
+
+    // For now, use simple blocking wait for response
+    // TODO: Implement proper async processing with ring buffers
+    if (waitForResponse (SandboxMessageType::ProcessComplete, 50))
+    {
+        // Read processed audio from shared buffer
+        audioBuffer.readOutputAudio (buffer, numSamples);
+
+        // Deserialize MIDI output
+        if (auto* header = audioBuffer.getHeader())
+        {
+            auto* midiOut = audioBuffer.getMidiOutputBuffer();
+            uint32_t midiOutSize = header->midiOutputSize.load();
+            if (midiOutSize > 0)
+            {
+                midi.clear();
+                deserializeMidiBuffer (midiOut, midiOutSize, midi);
+            }
+        }
+    }
+    else
+    {
+        // Timeout - output silence
+        buffer.clear();
+    }
+}
+
+inline void SandboxHost::releaseResources()
+{
+    // Worker will release on PrepareToPlay with 0 values or explicit message
+}
+
+inline void SandboxHost::setParameter (int index, float value)
+{
+    ParameterChangePayload payload;
+    payload.parameterIndex = static_cast<uint32_t> (index);
+    payload.value = value;
+    sendMessage (SandboxMessageType::SetParameter, &payload, sizeof (payload));
+}
+
+inline void SandboxHost::setBypass (bool shouldBypass)
+{
+    bypassed.store (shouldBypass);
+    uint8_t bypassValue = shouldBypass ? 1 : 0;
+    sendMessage (SandboxMessageType::SetBypass, &bypassValue, 1);
+}
+
+inline juce::MemoryBlock SandboxHost::getPluginState()
+{
+    sendMessage (SandboxMessageType::GetState);
+
+    if (waitForResponse (SandboxMessageType::StateData, 2000))
+        return lastResponsePayload;
+
+    return {};
+}
+
+inline void SandboxHost::setPluginState (const juce::MemoryBlock& stateData)
+{
+    sendMessage (SandboxMessageType::SetState,
+                 stateData.getData(),
+                 static_cast<uint32_t> (stateData.getSize()));
+
+    // Cache for crash recovery
+    lastKnownState = juce::parseXML (stateData.toString());
+}
+
+inline void SandboxHost::handleMessageFromWorker (const juce::MemoryBlock& mb)
+{
+    SandboxMessageHeader header;
+    const void* payload = nullptr;
+
+    if (! parseSandboxMessage (mb, header, payload))
+        return;
+
+    handleWorkerMessage (header, payload);
+}
+
+inline void SandboxHost::handleConnectionLost()
+{
+    juce::Logger::writeToLog ("Sandbox worker connection lost");
+
+    state.store (State::Crashed);
+    pluginLoaded.store (false);
+
+    listeners.call (&Listener::sandboxCrashed, this);
+    crashed();
+
+    // Attempt restart
+    attemptRestart();
+}
+
+inline void SandboxHost::timerCallback()
+{
+    // Check heartbeat
+    if (state.load() != State::Idle && ! heartbeat.isAlive())
+    {
+        juce::Logger::writeToLog ("Sandbox worker heartbeat timeout");
+        handleConnectionLost();
+    }
+}
+
+inline bool SandboxHost::launchWorkerProcess()
+{
+    auto exe = juce::File::getSpecialLocation (juce::File::currentExecutableFile);
+
+    if (! exe.existsAsFile())
+    {
+        juce::Logger::writeToLog ("Failed to find executable for sandbox worker");
+        return false;
+    }
+
+    juce::Logger::writeToLog ("Launching sandbox worker: " + exe.getFullPathName());
+
+    return ChildProcessCoordinator::launchWorkerProcess (exe,
+                                                          EL_PLUGIN_HOST_PROCESS_ID,
+                                                          EL_SANDBOX_TIMEOUT_MS,
+                                                          0);
+}
+
+inline void SandboxHost::handleWorkerMessage (const SandboxMessageHeader& header,
+                                               const void* payload)
+{
+    switch (header.type)
+    {
+        case SandboxMessageType::Heartbeat:
+            heartbeat.beat();
+            break;
+
+        case SandboxMessageType::PluginLoaded:
+            pluginLoaded.store (true);
+            state.store (State::Active);
+            listeners.call (&Listener::sandboxPluginLoaded, this);
+            break;
+
+        case SandboxMessageType::PluginLoadFailed:
+        {
+            juce::String error = payload ? juce::String::fromUTF8 (
+                static_cast<const char*> (payload),
+                static_cast<int> (header.payloadSize)) : "Unknown error";
+            state.store (State::Ready);
+            listeners.call (&Listener::sandboxPluginLoadFailed, this, error);
+            break;
+        }
+
+        case SandboxMessageType::PluginUnloaded:
+            pluginLoaded.store (false);
+            state.store (State::Ready);
+            break;
+
+        case SandboxMessageType::Prepared:
+            // PrepareToPlay completed
+            break;
+
+        case SandboxMessageType::ProcessComplete:
+            // Audio processing done - signal waiting thread
+            {
+                std::lock_guard<std::mutex> lock (responseMutex);
+                lastResponseType = header.type;
+                responseReceived = true;
+            }
+            responseCondition.notify_one();
+            break;
+
+        case SandboxMessageType::ParameterChanged:
+            if (payload && header.payloadSize >= sizeof (ParameterChangePayload))
+            {
+                // Forward parameter change to listeners if needed
+            }
+            break;
+
+        case SandboxMessageType::StateData:
+            {
+                std::lock_guard<std::mutex> lock (responseMutex);
+                lastResponseType = header.type;
+                if (payload && header.payloadSize > 0)
+                    lastResponsePayload = juce::MemoryBlock (payload, header.payloadSize);
+                else
+                    lastResponsePayload = {};
+                responseReceived = true;
+            }
+            responseCondition.notify_one();
+            break;
+
+        case SandboxMessageType::LatencyChanged:
+            if (payload && header.payloadSize >= sizeof (LatencyPayload))
+            {
+                auto* lat = static_cast<const LatencyPayload*> (payload);
+                int newLatency = lat->latencySamples;
+                latencySamples.store (newLatency);
+                listeners.call (&Listener::sandboxLatencyChanged, this, newLatency);
+                latencyChanged (newLatency);
+            }
+            break;
+
+        case SandboxMessageType::Error:
+        {
+            juce::String error = payload ? juce::String::fromUTF8 (
+                static_cast<const char*> (payload),
+                static_cast<int> (header.payloadSize)) : "Unknown error";
+            juce::Logger::writeToLog ("Sandbox error: " + error);
+            break;
+        }
+
+        default:
+            break;
+    }
+}
+
+inline void SandboxHost::sendMessage (SandboxMessageType type,
+                                       const void* payload,
+                                       uint32_t payloadSize)
+{
+    auto msg = createSandboxMessage (type, payload, payloadSize,
+                                      messageSequence.fetch_add (1));
+    sendMessageToWorker (msg);
+}
+
+inline bool SandboxHost::waitForResponse (SandboxMessageType expectedType,
+                                           uint32_t timeoutMs)
+{
+    std::unique_lock<std::mutex> lock (responseMutex);
+    responseReceived = false;
+
+    auto deadline = std::chrono::steady_clock::now() +
+                    std::chrono::milliseconds (timeoutMs);
+
+    while (! responseReceived)
+    {
+        if (responseCondition.wait_until (lock, deadline) == std::cv_status::timeout)
+            return false;
+    }
+
+    return lastResponseType == expectedType;
+}
+
+inline void SandboxHost::attemptRestart()
+{
+    if (restartAttempts >= maxRestartAttempts)
+    {
+        juce::Logger::writeToLog ("Max sandbox restart attempts reached");
+        state.store (State::Error);
+        return;
+    }
+
+    restartAttempts++;
+    juce::Logger::writeToLog ("Attempting sandbox restart " +
+                               juce::String (restartAttempts) + "/" +
+                               juce::String (maxRestartAttempts));
+
+    // Kill existing process
+    killWorkerProcess();
+    juce::Thread::sleep (100);
+
+    // Relaunch
+    if (launchWorkerProcess())
+    {
+        state.store (State::Ready);
+        heartbeat.reset();
+
+        // Reload plugin if we had one
+        if (loadedPlugin.name.isNotEmpty())
+        {
+            loadPlugin (loadedPlugin);
+
+            // Restore state if available
+            if (lastKnownState)
+            {
+                setPluginState (juce::MemoryBlock (lastKnownState->toString().toRawUTF8(),
+                                                    lastKnownState->toString().getNumBytesAsUTF8()));
+            }
+
+            // Re-prepare if we were processing
+            if (currentSampleRate > 0 && currentBlockSize > 0)
+            {
+                prepareToPlay (currentSampleRate, currentBlockSize,
+                              numInputChannels, numOutputChannels);
+            }
+        }
+
+        listeners.call (&Listener::sandboxRestarted, this);
+        restartAttempts = 0;
+    }
+    else
+    {
+        state.store (State::Error);
+    }
+}
+
+} // namespace element

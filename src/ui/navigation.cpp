@@ -192,6 +192,16 @@ void NavigationConcertinaPanel::saveState (PropertiesFile* props)
         state.addChild (item, -1, 0);
     }
 
+    // Save hidden panels
+    ValueTree hidden ("hiddenPanels");
+    for (const auto& name : namesHidden)
+    {
+        ValueTree h ("panel");
+        h.setProperty ("name", name, nullptr);
+        hidden.addChild (h, -1, nullptr);
+    }
+    state.addChild (hidden, -1, nullptr);
+
     if (auto xml = state.createXml())
         props->setValue ("ccNavPanel", xml.get());
 }
@@ -201,10 +211,28 @@ void NavigationConcertinaPanel::restoreState (PropertiesFile* props)
     if (auto xml = props->getXmlValue ("ccNavPanel"))
     {
         ValueTree state = ValueTree::fromXml (*xml);
+
+        // Restore hidden panels first
+        ValueTree hidden = state.getChildWithName ("hiddenPanels");
+        namesHidden.clear();
+        for (int i = 0; i < hidden.getNumChildren(); ++i)
+        {
+            auto h = hidden.getChild (i);
+            String name = h.getProperty ("name").toString();
+            if (name.isNotEmpty())
+                namesHidden.add (name);
+        }
+
+        // Rebuild content with hidden panels applied
+        updateContent();
+
         std::vector<ValueTree> withSize;
         for (int i = 0; i < state.getNumChildren(); ++i)
         {
             auto item (state.getChild (i));
+            if (! item.hasType ("item"))
+                continue;
+
             const auto h = std::max (0, (int) item["h"]);
             if (auto* c = findPanelByName (item["name"].toString().trim()))
             {
@@ -249,6 +277,43 @@ void NavigationConcertinaPanel::hidePanel (const juce::String& name)
 {
     namesHidden.addIfNotAlreadyThere (name);
     updateContent();
+}
+
+void NavigationConcertinaPanel::togglePanelVisibility (const juce::String& name)
+{
+    if (namesHidden.contains (name))
+        showPanel (name);
+    else
+        hidePanel (name);
+}
+
+bool NavigationConcertinaPanel::isPanelVisible (const juce::String& name) const
+{
+    return ! namesHidden.contains (name);
+}
+
+void NavigationConcertinaPanel::showPanelConfigurationMenu()
+{
+    // List of all available panels
+    StringArray allPanels = { "Session", "Graph", "Node", "Editor", "Plugins", "Data Path" };
+
+    PopupMenu menu;
+    menu.addSectionHeader ("Visible Panels");
+
+    int id = 1;
+    for (const auto& panelName : allPanels)
+    {
+        menu.addItem (id++, panelName, true, isPanelVisible (panelName));
+    }
+
+    menu.showMenuAsync (PopupMenu::Options(),
+                        [this, allPanels] (int result)
+                        {
+                            if (result > 0 && result <= allPanels.size())
+                            {
+                                togglePanelVisibility (allPanels[result - 1]);
+                            }
+                        });
 }
 
 void NavigationConcertinaPanel::setPanelName (const String& panel, const String& newName)
@@ -356,6 +421,16 @@ void NavigationConcertinaPanel::addPanelInternal (const int index,
 void NavigationConcertinaPanel::paint (juce::Graphics& g)
 {
     g.fillAll (element::Colors::backgroundColor);
+}
+
+void NavigationConcertinaPanel::mouseDown (const juce::MouseEvent& e)
+{
+    if (e.mods.isPopupMenu())
+    {
+        showPanelConfigurationMenu();
+        return;
+    }
+    ConcertinaPanel::mouseDown (e);
 }
 
 } // namespace element

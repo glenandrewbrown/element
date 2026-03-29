@@ -4,8 +4,10 @@
 #include <element/ui/standard.hpp>
 #include <element/ui/style.hpp>
 #include <element/ui/commands.hpp>
+#include <element/ui.hpp>
 
 #include "ui/guicommon.hpp"
+#include "ui/windowmanager.hpp"
 #include "ui/pluginwindow.hpp"
 #include "ui/grapheditorview.hpp"
 
@@ -415,6 +417,28 @@ void PluginEditor::resized()
     processor.setEditorBounds (bounds);
     if (content)
         content->setBounds (bounds);
+}
+
+void PluginEditor::visibilityChanged()
+{
+    // When the plugin editor visibility changes (e.g., when the host hides the plugin),
+    // update all child plugin windows accordingly
+    if (auto* app = processor.getServices())
+    {
+        if (auto* gui = app->find<GuiService>())
+        {
+            const bool visible = isVisible() && isShowing();
+
+            // Show or hide all plugin windows based on the editor visibility
+            for (int i = 0; i < gui->getNumPluginWindows(); ++i)
+            {
+                if (auto* win = gui->getPluginWindow (i))
+                {
+                    win->setVisible (visible);
+                }
+            }
+        }
+    }
 }
 
 bool PluginEditor::keyPressed (const KeyPress& key)

@@ -9,7 +9,9 @@
 #include <element/settings.hpp>
 
 #include "engine/clapprovider.hpp"
+#include "engine/sandboxhost.hpp"
 #include "nodes/nodetypes.hpp"
+#include "nodes/sandboxedprocessor.hpp"
 #include "engine/ionode.hpp"
 #include "datapath.hpp"
 #include "utils.hpp"
@@ -23,7 +25,7 @@
 #define EL_PLUGIN_SCANNER_START_ID "start"
 #define EL_PLUGIN_SCANNER_FINISHED_ID "finished"
 
-#define EL_PLUGIN_SCANNER_DEFAULT_TIMEOUT 24000 // 24 Seconds
+#define EL_PLUGIN_SCANNER_DEFAULT_TIMEOUT 60000 // 60 Seconds (increased for heavy plugins)
 
 #include <errno.h>
 extern char* program_invocation_name;
@@ -391,6 +393,20 @@ bool PluginScanner::retrieveDescriptions (const String& formatName,
 
 File PluginScanner::scannerExeFile() const noexcept { return _scannerExe; }
 
+// Helper to check if a plugin identifier should be skipped during scanning
+static bool shouldSkipPluginScan (const String& ID)
+{
+    // Skip Element's own plugins to prevent recursive loading issues
+    if (ID.containsIgnoreCase ("KshV") || ID.containsIgnoreCase ("Kushview"))
+        return true;
+    if (ID.containsIgnoreCase ("KV-Element") || ID.containsIgnoreCase ("Element.component"))
+        return true;
+    if (ID.containsIgnoreCase ("Element.vst3") || ID.containsIgnoreCase ("Element.clap"))
+        return true;
+
+    return false;
+}
+
 void PluginScanner::scanAudioFormat (const String& formatName)
 {
     detail::applyBlacklistingsFromDeadMansPedal (list);
@@ -424,6 +440,13 @@ void PluginScanner::scanAudioFormat (const String& formatName)
     {
         if (cancelFlag.get() != 0)
             return;
+
+        // Skip Element's own plugins
+        if (shouldSkipPluginScan (ID))
+        {
+            step += 1.f;
+            continue;
+        }
 
         listeners.call (&Listener::audioPluginScanStarted, pluginName (ID));
 
@@ -877,6 +900,40 @@ Processor* PluginManager::createGraphNode (const PluginDescription& desc, String
     errorMsg = desc.name;
     errorMsg << " not found.";
     return nullptr;
+}
+
+Processor* PluginManager::createSandboxedGraphNode (const PluginDescription& desc, String& errorMsg)
+{
+    errorMsg.clear();
+
+    // Only create sandboxed nodes for external plugins (not internal nodes)
+    if (desc.pluginFormatName == "Internal")
+    {
+        errorMsg = "Internal nodes cannot be sandboxed";
+        return nullptr;
+    }
+
+    // Check if the plugin format is supported
+    if (! isAudioPluginFormatSupported (desc.pluginFormatName))
+    {
+        errorMsg = desc.name;
+        errorMsg << ": invalid format: " << desc.pluginFormatName;
+        return nullptr;
+    }
+
+    // Create the sandboxed processor node
+    auto* node = new SandboxedProcessorNode (desc, *this);
+
+    // Check if sandbox launched successfully
+    if (node->getSandboxState() == SandboxHost::State::Error ||
+        node->getSandboxState() == SandboxHost::State::Idle)
+    {
+        errorMsg = "Failed to create sandboxed node for: " + desc.name;
+        delete node;
+        return nullptr;
+    }
+
+    return node;
 }
 
 AudioPluginFormatManager& PluginManager::getAudioPluginFormats()

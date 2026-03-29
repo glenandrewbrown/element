@@ -707,6 +707,14 @@ void PluginListComponent::optionsMenuCallback (int result)
             saveSettings (this);
             break;
 
+        case 5: {
+            // Clear the blacklist
+            list.clearBlacklistedFiles();
+            updateList();
+            saveSettings (this);
+            break;
+        }
+
         case 99:
             editPluginPath ("CLAP");
             saveSettings (this, true);
@@ -779,6 +787,7 @@ void PluginListComponent::buttonClicked (Button* button)
         menu.addItem (2, TRANS ("Remove selected plug-in from list"), table.getNumSelectedRows() > 0);
         menu.addItem (3, TRANS ("Show folder containing selected plug-in"), canShowSelectedFolder());
         menu.addItem (4, TRANS ("Remove any plug-ins whose files no longer exist"));
+        menu.addItem (5, TRANS ("Clear blacklist (re-enable all failed plugins)"), list.getBlacklistedFiles().size() > 0);
         menu.addSeparator();
         menu.addItem (8, "Scan for new or updated CLAP plugins");
         for (int i = 0; i < formatManager.getNumFormats(); ++i)

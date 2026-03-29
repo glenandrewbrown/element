@@ -10,6 +10,7 @@
 #include "ui/guicommon.hpp"
 #include "presetmanager.hpp"
 #include "ui/block.hpp"
+#include "ui/moleculemanager.hpp"
 #include "./utils.hpp"
 
 namespace element {
@@ -30,14 +31,39 @@ public:
     bool isPluginResultCode (const int resultCode)
     {
         // clang-format off
-        return (plugins->getKnownPlugins().getIndexChosenByMenu (available, resultCode) >= 0) || 
-               (isPositiveAndBelow (int (resultCode - 20000), unverified.size()));
+        return (plugins->getKnownPlugins().getIndexChosenByMenu (available, resultCode) >= 0) ||
+               (isPositiveAndBelow (int (resultCode - 20000), unverified.size())) ||
+               (resultCode >= favoritesBaseId && resultCode < favoritesBaseId + 1000) ||
+               (resultCode >= recentBaseId && resultCode < recentBaseId + 1000);
         // clang-format on
     }
 
     PluginDescription getPluginDescription (int resultCode, bool& verified)
     {
         jassert (plugins != nullptr);
+
+        // Check favorites range
+        if (resultCode >= favoritesBaseId && resultCode < favoritesBaseId + 1000)
+        {
+            int index = resultCode - favoritesBaseId;
+            if (isPositiveAndBelow (index, favoriteDescriptions.size()))
+            {
+                verified = true;
+                return favoriteDescriptions[index];
+            }
+        }
+
+        // Check recently used range
+        if (resultCode >= recentBaseId && resultCode < recentBaseId + 1000)
+        {
+            int index = resultCode - recentBaseId;
+            if (isPositiveAndBelow (index, recentDescriptions.size()))
+            {
+                verified = true;
+                return recentDescriptions[index];
+            }
+        }
+
         int index = plugins->getKnownPlugins().getIndexChosenByMenu (available, resultCode);
         if (isPositiveAndBelow (index, available.size()))
         {
@@ -52,11 +78,37 @@ public:
                    : PluginDescription();
     }
 
+    /** Check if result is a toggle favorite action */
+    bool isToggleFavoriteResult (int resultCode) const
+    {
+        return resultCode >= toggleFavoriteBaseId && resultCode < toggleFavoriteBaseId + 1000;
+    }
+
+    /** Get plugin description for toggle favorite */
+    PluginDescription getToggleFavoriteDescription (int resultCode) const
+    {
+        int index = resultCode - toggleFavoriteBaseId;
+        if (isPositiveAndBelow (index, available.size()))
+            return available[index];
+        return {};
+    }
+
     void addPluginItems()
     {
         if (hasAddedPlugins)
             return;
         hasAddedPlugins = true;
+
+        // Add favorites section
+        addFavoritesSection();
+
+        // Add recently used section
+        addRecentlyUsedSection();
+
+        // Add separator before main plugin list
+        if (favoriteDescriptions.size() > 0 || recentDescriptions.size() > 0)
+            addSeparator();
+
         plugins->getKnownPlugins().addToMenu (*this, available, KnownPluginList::sortByManufacturer);
 
         PopupMenu unvMenu;
@@ -88,11 +140,81 @@ public:
         }
     }
 
+    /** Get the plugin usage tracker */
+    PluginUsageTracker& getUsageTracker() { return usageTracker; }
+
 private:
     Array<PluginDescription> available;
     OwnedArray<PluginDescription> unverified;
     PluginManager* plugins { nullptr };
     bool hasAddedPlugins = false;
+
+    // Favorites and recently used
+    PluginUsageTracker usageTracker;
+    Array<PluginDescription> favoriteDescriptions;
+    Array<PluginDescription> recentDescriptions;
+
+    static constexpr int favoritesBaseId = 50000;
+    static constexpr int recentBaseId = 51000;
+    static constexpr int toggleFavoriteBaseId = 52000;
+
+    void addFavoritesSection()
+    {
+        favoriteDescriptions.clear();
+
+        // Build list of favorite plugins from available plugins
+        for (const auto& desc : available)
+        {
+            if (usageTracker.isFavorite (desc))
+                favoriteDescriptions.add (desc);
+        }
+
+        if (favoriteDescriptions.isEmpty())
+            return;
+
+        PopupMenu favMenu;
+        for (int i = 0; i < favoriteDescriptions.size(); ++i)
+        {
+            const auto& desc = favoriteDescriptions[i];
+            favMenu.addItem (favoritesBaseId + i, desc.name + " (" + desc.pluginFormatName + ")");
+        }
+
+        addSubMenu ("★ Favorites", favMenu);
+    }
+
+    void addRecentlyUsedSection()
+    {
+        recentDescriptions.clear();
+
+        // Get recently used plugin identifiers
+        StringArray recentIdentifiers = usageTracker.getRecentlyUsedIdentifiers (10);
+
+        // Match identifiers with available plugins
+        for (const auto& identifier : recentIdentifiers)
+        {
+            for (const auto& desc : available)
+            {
+                if (desc.createIdentifierString() == identifier)
+                {
+                    recentDescriptions.add (desc);
+                    break;
+                }
+            }
+        }
+
+        // If no recent plugins, skip this section
+        if (recentDescriptions.isEmpty())
+            return;
+
+        PopupMenu recentMenu;
+        for (int i = 0; i < recentDescriptions.size(); ++i)
+        {
+            const auto& desc = recentDescriptions[i];
+            recentMenu.addItem (recentBaseId + i, desc.name + " (" + desc.pluginFormatName + ")");
+        }
+
+        addSubMenu ("Recently Used", recentMenu);
+    }
 };
 
 //==============================================================================

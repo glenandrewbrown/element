@@ -41,6 +41,7 @@ const char* Settings::updateKeyTypeKey = "updateKeyType";
 const char* Settings::updateKeyKey = "updateKey";
 const char* Settings::updateKeyUserKey = "updateKeyUserKey";
 const char* Settings::transportStartStopContinue = "transportStartStopContinueKey";
+const char* Settings::pluginSandboxModeKey = "pluginSandboxMode";
 
 //=============================================================================
 enum OptionsMenuItemId
@@ -527,6 +528,59 @@ bool Settings::transportRespondToStartStopContinue() const
 {
     if (auto* p = getProps())
         return p->getBoolValue (transportStartStopContinue, false);
+    return false;
+}
+
+//=============================================================================
+int Settings::getPluginSandboxMode() const
+{
+    if (auto* p = getProps())
+        return p->getIntValue (pluginSandboxModeKey, 0);
+    return 0;
+}
+
+void Settings::setPluginSandboxMode (int mode)
+{
+    mode = jlimit (0, 2, mode);
+    if (mode == getPluginSandboxMode())
+        return;
+    if (auto* p = getProps())
+        p->setValue (pluginSandboxModeKey, mode);
+}
+
+bool Settings::shouldSandboxPlugin (const juce::PluginDescription& desc) const
+{
+    const int mode = getPluginSandboxMode();
+
+    // Mode 0: Sandboxing disabled
+    if (mode == 0)
+        return false;
+
+    // Mode 1: Sandbox all external plugins
+    if (mode == 1)
+    {
+        // Don't sandbox internal/Element plugins
+        if (desc.pluginFormatName == "Internal" ||
+            desc.pluginFormatName == "Element")
+            return false;
+        return true;
+    }
+
+    // Mode 2: Only sandbox problematic plugins
+    // TODO: Implement a blacklist of known problematic plugins
+    // For now, we could check for plugins that have crashed before
+    // This would require tracking crash history in settings
+    if (mode == 2)
+    {
+        // Check if this plugin is in the problematic plugins list
+        if (auto* p = getProps())
+        {
+            const String problematicList = p->getValue ("problematicPlugins", "");
+            const String pluginId = desc.createIdentifierString();
+            return problematicList.contains (pluginId);
+        }
+    }
+
     return false;
 }
 

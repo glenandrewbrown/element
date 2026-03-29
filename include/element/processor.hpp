@@ -288,6 +288,39 @@ public:
     void setOutputRMS (int chan, float val);
     float getOutputRMS (int chan) const { return (chan < outRMS.size()) ? outRMS.getUnchecked (chan)->get() : 0.0f; }
 
+    /** Set MIDI activity for input/output.
+        Uses frame counter to persist activity across multiple audio callbacks,
+        allowing the UI thread (running at lower rate) to reliably detect activity.
+        Activity persists for ~3 audio buffers before decaying. */
+    void setMidiInputActivity (bool active)
+    {
+        if (active)
+            midiInputActiveFrames.set (3); // Persist for 3 audio buffers
+    }
+    void setMidiOutputActivity (bool active)
+    {
+        if (active)
+            midiOutputActiveFrames.set (3); // Persist for 3 audio buffers
+    }
+
+    /** Check MIDI activity for input/output */
+    bool hasMidiInputActivity() const { return midiInputActiveFrames.get() > 0; }
+    bool hasMidiOutputActivity() const { return midiOutputActiveFrames.get() > 0; }
+
+    /** Decay MIDI activity counters (call at start of each audio buffer) */
+    void decayMidiActivity()
+    {
+        int inFrames = midiInputActiveFrames.get();
+        int outFrames = midiOutputActiveFrames.get();
+        if (inFrames > 0)
+            midiInputActiveFrames.set (inFrames - 1);
+        if (outFrames > 0)
+            midiOutputActiveFrames.set (outFrames - 1);
+    }
+
+    /** Clear MIDI activity immediately (rarely needed) */
+    void clearMidiActivity() { midiInputActiveFrames.set (0); midiOutputActiveFrames.set (0); }
+
     //=========================================================================
     /** Connect this node's output audio to another node's input audio */
     void connectAudioTo (const Processor* other);
@@ -515,6 +548,8 @@ private:
 
     Atomic<float> gain, lastGain, inputGain, lastInputGain;
     OwnedArray<AtomicValue<float>> inRMS, outRMS;
+    Atomic<int> midiInputActiveFrames { 0 };  // Frame counter for MIDI input activity
+    Atomic<int> midiOutputActiveFrames { 0 }; // Frame counter for MIDI output activity
 
     Atomic<int> keyRangeLow { 0 };
     Atomic<int> keyRangeHigh { 127 };

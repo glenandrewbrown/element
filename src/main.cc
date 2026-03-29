@@ -15,6 +15,7 @@
 
 #include "engine/internalformat.hpp"
 #include "engine/midiengine.hpp"
+#include "engine/sandboxworker.hpp"
 #include "scripting.hpp"
 #include "datapath.hpp"
 #include "services/sessionservice.hpp"
@@ -236,6 +237,10 @@ public:
 
     void initialise (const String& commandLine) override
     {
+        // Check for sandbox worker mode first (no Context needed)
+        if (maybeLaunchSandboxWorker (commandLine))
+            return;
+
         world = std::make_unique<Context> (RunMode::Standalone, commandLine);
         if (maybeLaunchScannerWorker (commandLine))
             return;
@@ -259,6 +264,9 @@ public:
 
     void shutdown() override
     {
+        // Clean up sandbox worker if running
+        sandboxWorker.reset();
+
         if (! world)
             return;
 
@@ -390,6 +398,7 @@ private:
     std::unique_ptr<Context> world;
     std::unique_ptr<Startup> startup;
     OwnedArray<juce::ChildProcessWorker> workers;
+    std::unique_ptr<SandboxWorker> sandboxWorker;
 
     void printCopyNotice()
     {
@@ -419,6 +428,22 @@ private:
             }
         }
 
+        return false;
+    }
+
+    /** Try to launch as a sandbox host worker process.
+     *  Returns true if this instance is a sandbox worker.
+     */
+    bool maybeLaunchSandboxWorker (const String& commandLine)
+    {
+        sandboxWorker = std::make_unique<SandboxWorker>();
+        if (sandboxWorker->initialise (commandLine))
+        {
+            Logger::writeToLog ("[element] Running as sandbox worker process");
+            return true;
+        }
+
+        sandboxWorker.reset();
         return false;
     }
 
