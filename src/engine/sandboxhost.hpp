@@ -7,6 +7,7 @@
 #include <element/signals.hpp>
 
 #include "sandboxipc.hpp"
+#include "sandboxsemaphore.hpp"
 
 #include <condition_variable>
 #include <mutex>
@@ -179,6 +180,14 @@ private:
     int currentBlockSize { 0 };
     int numInputChannels { 0 };
     int numOutputChannels { 0 };
+
+    // Lock-free audio IPC signaling
+    SandboxSemaphore triggerSemaphore;   ///< Host signals worker to process
+    SandboxSemaphore doneSemaphore;      ///< Worker signals host that processing is complete
+    uint32_t expectedWorkerSequence { 0 }; ///< Tracks expected response sequence
+
+    static constexpr int spinIterations = 10000;       ///< ~390us on x86 before falling back to semaphore
+    static constexpr uint32_t maxConsecutiveXruns = 10; ///< Xrun threshold before bypass/recovery
 
     // IPC synchronization
     std::mutex responseMutex;
