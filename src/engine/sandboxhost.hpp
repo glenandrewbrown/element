@@ -34,6 +34,16 @@ class PluginManager;
  * The host side runs in the main audio application, while the worker
  * runs the actual plugin in an isolated process.
  */
+/** SandboxHost manages an out-of-process plugin via shared memory + IPC.
+
+    Audio path (RT-safe): shared memory buffers + semaphore signaling.
+    The audio thread never acquires a mutex or writes to pipes.
+    See processBlock().
+
+    Control path (message thread): JUCE ChildProcessCoordinator pipes.
+    Used for loadPlugin, setPluginState, getPluginState, etc.
+    Can block -- only called from the message thread.
+*/
 class SandboxHost : public juce::ChildProcessCoordinator,
                     private juce::Timer
 {
@@ -554,13 +564,8 @@ inline void SandboxHost::handleWorkerMessage (const SandboxMessageHeader& header
             break;
 
         case SandboxMessageType::ProcessComplete:
-            // Audio processing done - signal waiting thread
-            {
-                std::lock_guard<std::mutex> lock (responseMutex);
-                lastResponseType = header.type;
-                responseReceived = true;
-            }
-            responseCondition.notify_one();
+            // Audio completion now handled by semaphore signaling.
+            // This pipe response is for backward compatibility only.
             break;
 
         case SandboxMessageType::ParameterChanged:
