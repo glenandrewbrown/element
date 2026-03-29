@@ -3,8 +3,6 @@
 
 #pragma once
 
-#include <atomic>
-#include <chrono>
 #include <element/node.hpp>
 #include "./buttons.hpp"
 
@@ -382,9 +380,6 @@ private:
     bool showPerformanceIndicators { true };
     int cachedLatencySamples { 0 };
     float cachedActivityLevel { 0.0f }; // Signal activity level (RMS-based, not CPU)
-    std::chrono::steady_clock::time_point lastProcessStart;
-    std::atomic<float> processingTimeMs { 0.0f };
-
     void changeListenerCallback (ChangeBroadcaster*) override;
     void timerCallback() override;
 
