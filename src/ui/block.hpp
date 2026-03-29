@@ -8,6 +8,7 @@
 
 namespace element {
 
+class LambdaChangeListener;
 class Services;
 class GraphEditorComponent;
 
@@ -317,6 +318,7 @@ private:
 
     DropShadowEffect shadow;
     std::unique_ptr<Component> embedded;
+    std::unique_ptr<LambdaChangeListener> colorChangeListener;
 
     Value nodeObject;
 

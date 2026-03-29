@@ -606,7 +606,7 @@ void BlockComponent::buttonClicked (Button* b)
         // Use a weak reference pattern to safely update the block
         auto weakThis = juce::Component::SafePointer<BlockComponent> (this);
 
-        selector->addChangeListener (new LambdaChangeListener ([weakThis] (ChangeBroadcaster* src) {
+        colorChangeListener = std::make_unique<LambdaChangeListener> ([weakThis] (ChangeBroadcaster* src) {
             if (auto* block = weakThis.getComponent())
             {
                 auto* sel = dynamic_cast<ColourSelector*> (src);
@@ -631,7 +631,8 @@ void BlockComponent::buttonClicked (Button* b)
 
                 block->repaint();
             }
-        }));
+        });
+        selector->addChangeListener (colorChangeListener.get());
 
         CallOutBox::launchAsynchronously (
             std::unique_ptr<Component> (selector),
