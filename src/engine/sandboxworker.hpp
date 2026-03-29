@@ -421,12 +421,16 @@ inline void SandboxWorker::handleProcessBlock()
         return;
     }
 
-    const int numSamples = static_cast<int> (header->numSamples.load());
-    const int inChannels = static_cast<int> (header->numInputChannels.load());
+    const int numSamples = std::min (
+        static_cast<int> (header->numSamples.load()),
+        processBuffer.getNumSamples());
+    const int inChannels = std::min (
+        static_cast<int> (header->numInputChannels.load()),
+        processBuffer.getNumChannels());
 
     // Read input audio from shared buffer
     const uint32_t readBuffer = header->activeBuffer.load (std::memory_order_acquire);
-    for (int ch = 0; ch < inChannels && ch < processBuffer.getNumChannels(); ++ch)
+    for (int ch = 0; ch < inChannels; ++ch)
     {
         const float* src = audioBuffer.getInputBuffer (ch, readBuffer);
         std::memcpy (processBuffer.getWritePointer (ch), src,
@@ -449,7 +453,9 @@ inline void SandboxWorker::handleProcessBlock()
 
     // Write output audio to shared buffer (write to inactive buffer)
     const uint32_t writeBuffer = 1 - readBuffer;
-    const int outChannels = std::min (numOutputChannels, processBuffer.getNumChannels());
+    const int outChannels = std::min (
+        static_cast<int> (header->numOutputChannels.load()),
+        processBuffer.getNumChannels());
     for (int ch = 0; ch < outChannels; ++ch)
     {
         float* dest = audioBuffer.getOutputBuffer (ch, writeBuffer);

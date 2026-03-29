@@ -218,6 +218,7 @@ public:
         if (header == nullptr)
             return;
 
+        numSamples = std::min (numSamples, maxSamples);
         const uint32_t writeBuffer = 1 - header->activeBuffer.load (std::memory_order_acquire);
         const int numChannels = std::min (source.getNumChannels(), maxChannels);
 
@@ -238,6 +239,7 @@ public:
         if (header == nullptr)
             return;
 
+        numSamples = std::min (numSamples, maxSamples);
         const uint32_t readBuffer = header->activeBuffer.load (std::memory_order_acquire);
         const int numChannels = std::min (dest.getNumChannels(), maxChannels);
 
