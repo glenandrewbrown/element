@@ -2024,8 +2024,12 @@ void GraphEditorComponent::renameSelectedNodes()
     aw->addButton ("Cancel", 0, KeyPress (KeyPress::escapeKey));
     aw->addButton ("Rename", 1, KeyPress (KeyPress::returnKey));
 
-    aw->enterModalState (true, ModalCallbackFunction::create ([this] (int result)
+    juce::Component::SafePointer<GraphEditorComponent> safeThis (this);
+    aw->enterModalState (true, ModalCallbackFunction::create ([safeThis] (int result)
     {
+        if (safeThis == nullptr)
+            return;
+
         if (result != 1)
             return;
 
@@ -2039,20 +2043,20 @@ void GraphEditorComponent::renameSelectedNodes()
 
         // Apply the new name to all selected nodes
         int index = 0;
-        for (const auto& nodeId : selectedNodes)
+        for (const auto& nodeId : safeThis->selectedNodes)
         {
-            Node node = graph.getNodeById (nodeId);
+            Node node = safeThis->graph.getNodeById (nodeId);
             if (node.isValid())
             {
                 // If multiple nodes, append index to keep names unique
-                if (selectedNodes.getNumSelected() > 1)
+                if (safeThis->selectedNodes.getNumSelected() > 1)
                     node.setProperty (tags::name, newName + " " + String (++index));
                 else
                     node.setProperty (tags::name, newName);
             }
         }
 
-        updateBlockComponents (false);
+        safeThis->updateBlockComponents (false);
     }), true);
 }
 
@@ -2571,8 +2575,12 @@ void GraphEditorComponent::saveSelectionAsMolecule()
     aw->addButton ("Cancel", 0, KeyPress (KeyPress::escapeKey));
     aw->addButton ("Save", 1, KeyPress (KeyPress::returnKey));
 
-    aw->enterModalState (true, ModalCallbackFunction::create ([this, nodeIds] (int result)
+    juce::Component::SafePointer<GraphEditorComponent> safeThis (this);
+    aw->enterModalState (true, ModalCallbackFunction::create ([safeThis, nodeIds] (int result)
     {
+        if (safeThis == nullptr)
+            return;
+
         if (result != 1)
             return;
 
@@ -2592,7 +2600,7 @@ void GraphEditorComponent::saveSelectionAsMolecule()
         }
 
         // Create the molecule
-        auto molecule = Molecule::createFromSelection (graph, nodeIds, name);
+        auto molecule = Molecule::createFromSelection (safeThis->graph, nodeIds, name);
         if (! molecule.isValid())
         {
             AlertWindow::showMessageBoxAsync (MessageBoxIconType::WarningIcon,
@@ -2605,7 +2613,7 @@ void GraphEditorComponent::saveSelectionAsMolecule()
             molecule.setDescription (description);
 
         // Save to library
-        if (moleculeLibrary.addMolecule (molecule))
+        if (safeThis->moleculeLibrary.addMolecule (molecule))
         {
             AlertWindow::showMessageBoxAsync (MessageBoxIconType::InfoIcon,
                                               "Molecule Saved",
