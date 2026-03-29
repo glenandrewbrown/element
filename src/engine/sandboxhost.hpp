@@ -9,6 +9,10 @@
 #include "sandboxipc.hpp"
 #include "sandboxsemaphore.hpp"
 
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
+  #include <immintrin.h>
+#endif
+
 #include <condition_variable>
 #include <mutex>
 #include <memory>
@@ -158,6 +162,10 @@ private:
     void sendMessage (SandboxMessageType type, const void* payload = nullptr,
                       uint32_t payloadSize = 0);
 
+    /** Wait for response from worker. Uses mutex+condvar.
+        WARNING: NEVER call from the audio thread. Use only for control messages
+        (loadPlugin, getPluginState, etc.) from the message thread.
+    */
     bool waitForResponse (SandboxMessageType expectedType, uint32_t timeoutMs = 5000);
 
     void attemptRestart();
@@ -332,10 +340,9 @@ inline void SandboxHost::prepareToPlay (double sampleRate, int maxBlockSize,
 inline void SandboxHost::processBlock (juce::AudioSampleBuffer& buffer,
                                         juce::MidiBuffer& midi)
 {
-    // Check health - output silence if sandbox is unhealthy
+    // Health/bypass checks
     if (! isHealthy() || ! pluginLoaded.load() || bypassed.load())
     {
-        // Pass through or silence depending on state
         if (state.load() == State::Crashed)
         {
             buffer.clear();
@@ -344,35 +351,59 @@ inline void SandboxHost::processBlock (juce::AudioSampleBuffer& buffer,
         return;
     }
 
-    const int numSamples = buffer.getNumSamples();
+    // 1. Write input audio to shared buffer
+    audioBuffer.writeInputAudio (buffer, buffer.getNumSamples());
 
-    // Write input audio to shared buffer
-    audioBuffer.writeInputAudio (buffer, numSamples);
-
-    // Serialize MIDI input
-    auto* midiIn = audioBuffer.getMidiInputBuffer();
-    uint32_t midiSize = serializeMidiBuffer (midi, midiIn, audioBuffer.getMidiBufferSize());
+    // 2. Write MIDI input to shared buffer
     if (auto* header = audioBuffer.getHeader())
-        header->midiInputSize.store (midiSize);
-
-    // Swap buffers to make data available to worker
-    audioBuffer.swapBuffers();
-
-    // Signal worker to process (non-blocking)
-    sendMessage (SandboxMessageType::ProcessBlock);
-
-    // For now, use simple blocking wait for response
-    // TODO: Implement proper async processing with ring buffers
-    if (waitForResponse (SandboxMessageType::ProcessComplete, 50))
     {
-        // Read processed audio from shared buffer
-        audioBuffer.readOutputAudio (buffer, numSamples);
+        auto* midiIn = audioBuffer.getMidiInputBuffer();
+        uint32_t midiSize = serializeMidiBuffer (midi, midiIn, audioBuffer.getMidiBufferSize());
+        header->midiInputSize.store (midiSize, std::memory_order_release);
+    }
 
-        // Deserialize MIDI output
+    // 3. Signal data is ready (atomic sequence + buffer swap + semaphore)
+    audioBuffer.swapBuffers();
+    audioBuffer.signalHostReady();
+    expectedWorkerSequence++;
+    triggerSemaphore.post();
+
+    // 4. Spin-wait phase: fast path for responsive plugins
+    bool workerDone = false;
+    for (int i = 0; i < spinIterations; ++i)
+    {
+        if (audioBuffer.isWorkerDone (expectedWorkerSequence))
+        {
+            workerDone = true;
+            break;
+        }
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
+        _mm_pause();
+#elif defined(__aarch64__) || defined(__arm__)
+        asm volatile("yield");
+#endif
+    }
+
+    // 5. Semaphore wait phase: bounded blocking fallback
+    if (! workerDone)
+    {
+        // Timeout = 80% of buffer period in microseconds
+        const double bufferPeriodUs = (static_cast<double> (buffer.getNumSamples()) / currentSampleRate) * 1000000.0;
+        const uint64_t timeoutUs = static_cast<uint64_t> (bufferPeriodUs * 0.8);
+        doneSemaphore.timedWait (std::max (timeoutUs, uint64_t (1000)));
+        workerDone = audioBuffer.isWorkerDone (expectedWorkerSequence);
+    }
+
+    // 6. Handle result
+    if (workerDone)
+    {
+        audioBuffer.clearConsecutiveXruns();
+        audioBuffer.readOutputAudio (buffer, buffer.getNumSamples());
+
         if (auto* header = audioBuffer.getHeader())
         {
             auto* midiOut = audioBuffer.getMidiOutputBuffer();
-            uint32_t midiOutSize = header->midiOutputSize.load();
+            uint32_t midiOutSize = header->midiOutputSize.load (std::memory_order_acquire);
             if (midiOutSize > 0)
             {
                 midi.clear();
@@ -382,8 +413,16 @@ inline void SandboxHost::processBlock (juce::AudioSampleBuffer& buffer,
     }
     else
     {
-        // Timeout - output silence
+        // Xrun: output silence
         buffer.clear();
+        midi.clear();
+        audioBuffer.recordXrun();
+
+        if (audioBuffer.getConsecutiveXruns() >= maxConsecutiveXruns)
+        {
+            juce::Logger::writeToLog ("[sandbox] " + juce::String (maxConsecutiveXruns)
+                                      + " consecutive xruns - worker may be hung");
+        }
     }
 }
 
