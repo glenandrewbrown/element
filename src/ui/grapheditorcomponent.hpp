@@ -26,6 +26,7 @@ class GraphEditorComponent : public Component,
                              public DragAndDropTarget,
                              public FileDragAndDropTarget,
                              private ValueTree::Listener,
+                             private juce::Timer,
                              public ViewHelperMixin,
                              public LassoSource<uint32>
 {
@@ -257,6 +258,8 @@ private:
 
     void updateSelection();
     void ensureSize();
+
+    void timerCallback() override;
 
     void valueTreePropertyChanged (ValueTree& treeWhosePropertyHasChanged, const Identifier& property) override {}
     void valueTreeChildAdded (ValueTree& parentTree, ValueTree& childWhichHasBeenAdded) override;

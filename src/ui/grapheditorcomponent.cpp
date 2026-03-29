@@ -150,20 +150,16 @@ private:
 //=============================================================================
 class ConnectorComponent : public Component,
                            public SettableTooltipClient,
-                           public DragAndDropTarget,
-                           private juce::Timer
+                           public DragAndDropTarget
 {
 public:
     ConnectorComponent (const Node& g)
         : sourceFilterID (0), destFilterID (0), sourceFilterChannel (0), destFilterChannel (0), graph (g), lastInputX (0), lastInputY (0), lastOutputX (0), lastOutputY (0)
     {
-        // Start timer for signal activity visualization (30 fps)
-        startTimerHz (30);
     }
 
     ~ConnectorComponent()
     {
-        stopTimer();
     }
 
     bool isDragging() const { return dragging; }
@@ -647,12 +643,7 @@ private:
         distanceFromEnd = juce_hypot (x - (x2 - getX()), y - (y2 - getY()));
     }
 
-    /** Timer callback for updating signal activity visualization */
-    void timerCallback() override
-    {
-        updateSignalActivity();
-    }
-
+public:
     /** Update signal activity from the source node's processor */
     void updateSignalActivity()
     {
@@ -966,10 +957,12 @@ GraphEditorComponent::GraphEditorComponent()
     setOpaque (true);
     data.addListener (this);
     setSize (640, 360);
+    startTimerHz (30);
 }
 
 GraphEditorComponent::~GraphEditorComponent()
 {
+    stopTimer();
     if (graph.isValid())
         graph.setProperty (tags::vertical, verticalLayout);
     data.removeListener (this);
@@ -979,6 +972,15 @@ GraphEditorComponent::~GraphEditorComponent()
     deleteAllChildren();
 
     factory.reset();
+}
+
+void GraphEditorComponent::timerCallback()
+{
+    for (int i = getNumChildComponents(); --i >= 0;)
+    {
+        if (auto* connector = dynamic_cast<ConnectorComponent*> (getChildComponent (i)))
+            connector->updateSignalActivity();
+    }
 }
 
 void GraphEditorComponent::setNode (const Node& n)
