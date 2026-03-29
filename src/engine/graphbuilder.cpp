@@ -281,6 +281,23 @@ public:
         for (int i = numAudioIns; --i >= 0;)
             node->setInputRMS (i, buffer.getRMSLevel (i, 0, numSamples));
 
+        // Decay MIDI activity counters - allows UI thread time to detect activity
+        // before it fully decays (frame counter persists for ~3 audio buffers)
+        node->decayMidiActivity();
+
+        // Track MIDI input activity
+        bool hasMidiInput = false;
+        for (int i = 0; i < midiPipe.getNumBuffers(); ++i)
+        {
+            if (midiPipe.getWriteBuffer (i)->getNumEvents() > 0)
+            {
+                hasMidiInput = true;
+                break;
+            }
+        }
+        if (hasMidiInput)
+            node->setMidiInputActivity (true);
+
         // Begin MIDI filters
         {
             jassert (tempMidi.getNumEvents() == 0);
@@ -416,6 +433,19 @@ public:
         {
             pluginProcessBlock (buffer, midiPipe, node->isSuspended());
         }
+
+        // Track MIDI output activity
+        bool hasMidiOutput = false;
+        for (int i = 0; i < midiPipe.getNumBuffers(); ++i)
+        {
+            if (midiPipe.getWriteBuffer (i)->getNumEvents() > 0)
+            {
+                hasMidiOutput = true;
+                break;
+            }
+        }
+        if (hasMidiOutput)
+            node->setMidiOutputActivity (true);
 
         if (muted && ! muteInput)
         {

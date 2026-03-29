@@ -14,6 +14,7 @@
 // #include "nodes/MidiSequencerNode.h"
 #include "nodes/oscreceiver.hpp"
 #include "nodes/oscsender.hpp"
+#include "nodes/reroutenode.hpp"
 #include "nodes/scriptnode.hpp"
 #include "engine/graphnode.hpp"
 
@@ -113,6 +114,9 @@ NodeFactory::NodeFactory()
     add (new SingleNodeProvider<OSCSenderNode> (EL_NODE_ID_OSC_SENDER));
     add (new SingleNodeProvider<OSCReceiverNode> (EL_NODE_ID_OSC_RECEIVER));
     add (new SingleNodeProvider<ScriptNode> (EL_NODE_ID_SCRIPT));
+    add (new SingleNodeProvider<RerouteNode> (EL_NODE_ID_REROUTE));
+    add (new SingleNodeProvider<AudioRerouteNode> (EL_NODE_ID_AUDIO_REROUTE));
+    add (new SingleNodeProvider<MidiRerouteNode> (EL_NODE_ID_MIDI_REROUTE));
     add (new SingleNodeProvider<MackieControlUniversal> ("el.MCU"));
 #if ! JUCE_DEBUG
     hideType ("el.MCU");

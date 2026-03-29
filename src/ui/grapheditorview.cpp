@@ -25,8 +25,17 @@ void GraphEditorView::init()
 {
     setName (EL_VIEW_GRAPH_EDITOR);
     addAndMakeVisible (_editor);
+    addAndMakeVisible (_minimap);
+    addChildComponent (_search); // Initially hidden
     setSize (640, 360);
     setWantsKeyboardFocus (true);
+
+    // Setup minimap connections
+    _minimap.setGraphEditor (&_editor.graphEditorComponent());
+    _minimap.setViewport (&_editor.viewport());
+
+    // Setup search component
+    _search.setGraphEditor (&_editor.graphEditorComponent());
 }
 
 GraphEditorView::~GraphEditorView()
@@ -51,6 +60,47 @@ bool GraphEditorView::keyPressed (const KeyPress& key)
     if (key.getKeyCode() == KeyPress::backspaceKey || key.getKeyCode() == KeyPress::deleteKey)
     {
         _editor.deleteSelectedNodes();
+        _editor.deleteSelectedCommentBoxes();
+        return true;
+    }
+
+    // Cmd+D duplicates selected nodes
+    if ((key.getKeyCode() == 'd' || key.getKeyCode() == 'D') && key.getModifiers().isCommandDown())
+    {
+        _editor.graphEditorComponent().duplicateSelectedNodes();
+        return true;
+    }
+
+    // Cmd+T or Cmd+R renames selected node(s)
+    if (((key.getKeyCode() == 't' || key.getKeyCode() == 'T') ||
+         (key.getKeyCode() == 'r' || key.getKeyCode() == 'R')) &&
+        key.getModifiers().isCommandDown())
+    {
+        _editor.graphEditorComponent().renameSelectedNodes();
+        return true;
+    }
+
+    // Ctrl+F (Cmd+F on Mac) opens node search
+    if (key.getKeyCode() == 'f' || key.getKeyCode() == 'F')
+    {
+        if (key.getModifiers().isCommandDown())
+        {
+            showNodeSearch();
+            return true;
+        }
+    }
+
+    // 'C' key creates a comment box around selected nodes (like Unreal Engine)
+    if (key.getKeyCode() == 'c' || key.getKeyCode() == 'C')
+    {
+        _editor.createCommentBox();
+        return true;
+    }
+
+    // 'M' key toggles minimap visibility
+    if (key.getKeyCode() == 'm' || key.getKeyCode() == 'M')
+    {
+        setMinimapVisible (! isMinimapVisible());
         return true;
     }
 
@@ -120,6 +170,9 @@ void GraphEditorView::graphDisplayResized (const Rectangle<int>& area)
 {
     auto r = area;
     _editor.setBounds (r);
+
+    updateMinimapBounds();
+    updateSearchBounds();
 
     auto s = settings();
     if (s.isValid())
@@ -227,5 +280,61 @@ void GraphEditorView::saveSettings()
 }
 
 void GraphEditorView::selectAllNodes() { _editor.selectAllNodes(); }
+
+void GraphEditorView::setMinimapVisible (bool visible)
+{
+    minimapVisible = visible;
+    _minimap.setVisible (visible);
+    updateMinimapBounds();
+}
+
+void GraphEditorView::updateMinimapBounds()
+{
+    if (! minimapVisible)
+        return;
+
+    // Position minimap in bottom-right corner
+    const int minimapWidth = 150;
+    const int minimapHeight = 100;
+    const int margin = 10;
+
+    auto editorBounds = _editor.getBounds();
+    _minimap.setBounds (
+        editorBounds.getRight() - minimapWidth - margin,
+        editorBounds.getBottom() - minimapHeight - margin,
+        minimapWidth,
+        minimapHeight
+    );
+
+    _minimap.toFront (false);
+}
+
+void GraphEditorView::showNodeSearch()
+{
+    updateSearchBounds();
+    _search.show();
+    _search.toFront (true);
+}
+
+void GraphEditorView::hideNodeSearch()
+{
+    _search.hide();
+}
+
+void GraphEditorView::updateSearchBounds()
+{
+    // Position search popup in top-center of the editor
+    const int searchWidth = 300;
+    const int searchHeight = 200;
+    const int topMargin = 40;
+
+    auto editorBounds = _editor.getBounds();
+    _search.setBounds (
+        editorBounds.getX() + (editorBounds.getWidth() - searchWidth) / 2,
+        editorBounds.getY() + topMargin,
+        searchWidth,
+        searchHeight
+    );
+}
 
 } /* namespace element */

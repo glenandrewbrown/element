@@ -28,6 +28,15 @@ public:
     void hidePanel (const juce::String& name);
     void setPanelName (const juce::String& panel, const juce::String& newName);
 
+    /** Show a popup menu to configure visible panels */
+    void showPanelConfigurationMenu();
+
+    /** Toggle a panel's visibility */
+    void togglePanelVisibility (const juce::String& name);
+
+    /** Check if a panel is visible */
+    bool isPanelVisible (const juce::String& name) const;
+
     template <class T>
     inline T* findPanel()
     {
@@ -47,6 +56,7 @@ public:
     void setHeaderHeight (const int newHeight);
 
     void paint (juce::Graphics& g) override;
+    void mouseDown (const juce::MouseEvent& e) override;
 
 private:
     Context& globals;

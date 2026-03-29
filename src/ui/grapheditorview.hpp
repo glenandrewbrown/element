@@ -8,6 +8,8 @@
 #include "ui/nodepropertypanel.hpp"
 #include "ui/graphdisplayview.hpp"
 #include "ui/grapheditorcomponent.hpp"
+#include "ui/minimapcomponent.hpp"
+#include "ui/nodesearchcomponent.hpp"
 
 #define EL_VIEW_GRAPH_EDITOR "GraphEditorView"
 
@@ -24,6 +26,15 @@ public:
     GraphEditor& editor() { return _editor; }
 
     void selectAllNodes();
+
+    /** Show/hide the minimap */
+    void setMinimapVisible (bool visible);
+    bool isMinimapVisible() const { return minimapVisible; }
+
+    /** Show/hide the node search popup */
+    void showNodeSearch();
+    void hideNodeSearch();
+    bool isNodeSearchVisible() const { return _search.isVisible(); }
 
     void didBecomeActive() override;
     void stabilizeContent() override;
@@ -46,6 +57,9 @@ protected:
 private:
     Node node;
     GraphEditor _editor;
+    MinimapComponent _minimap;
+    NodeSearchComponent _search;
+    bool minimapVisible { true };
 
     SignalConnection nodeSelectedConnection,
         nodeRemovedConnection,
@@ -54,6 +68,8 @@ private:
     void onNodeRemoved (const Node&);
     void onSessionLoaded();
     void updateSizeInternal (const bool force = true);
+    void updateMinimapBounds();
+    void updateSearchBounds();
     void init();
 };
 

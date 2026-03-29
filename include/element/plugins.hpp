@@ -16,6 +16,7 @@ class NodeFactory;
 class NodeProvider;
 class PluginScannerCoordinator;
 class PluginScanner;
+class SandboxedProcessorNode;
 
 class PluginManager : public juce::ChangeBroadcaster {
 public:
@@ -99,6 +100,12 @@ public:
 
     juce::AudioPluginInstance* createAudioPlugin (const juce::PluginDescription& desc, juce::String& errorMsg);
     Processor* createGraphNode (const juce::PluginDescription& desc, juce::String& errorMsg);
+
+    /** Create a sandboxed graph node that runs the plugin in an isolated process.
+     *  This provides crash isolation - if the plugin crashes, only the sandbox
+     *  process is affected, not the main host application.
+     */
+    Processor* createSandboxedGraphNode (const juce::PluginDescription& desc, juce::String& errorMsg);
 
     /** Set the play config used when instantiating plugins */
     void setPlayConfig (double sampleRate, int blockSize);
