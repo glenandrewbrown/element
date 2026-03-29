@@ -7,8 +7,11 @@
 #include <element/plugins.hpp>
 
 #include "sandboxipc.hpp"
+#include "sandboxsemaphore.hpp"
 
+#include <atomic>
 #include <memory>
+#include <thread>
 
 namespace element {
 
@@ -67,6 +70,11 @@ private:
     void handleSetBypass (const void* payload, uint32_t payloadSize);
     void handleShutdown();
 
+    // RT processing thread
+    void processAudioBlock();
+    void rtProcessingLoop();
+    void stopRTThread();
+
     //==========================================================================
     // Plugin hosting
     juce::AudioPluginFormatManager formatManager;
@@ -94,6 +102,12 @@ private:
     // Logger for crash diagnostics
     std::unique_ptr<juce::FileLogger> logger;
 
+    // RT processing thread
+    SandboxSemaphore triggerSemaphore;   // host signals new audio data available
+    SandboxSemaphore doneSemaphore;      // worker signals processing complete
+    std::atomic<bool> rtThreadRunning { false };
+    std::unique_ptr<std::thread> rtThread;
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SandboxWorker)
 };
 
@@ -119,6 +133,7 @@ inline SandboxWorker::SandboxWorker()
 inline SandboxWorker::~SandboxWorker()
 {
     stopTimer();
+    stopRTThread();
 
     // Clean up plugin
     if (plugin)
@@ -347,6 +362,8 @@ inline void SandboxWorker::handleLoadPlugin (const void* payload, uint32_t paylo
 
 inline void SandboxWorker::handleUnloadPlugin()
 {
+    stopRTThread();
+
     if (plugin)
     {
         juce::Logger::writeToLog ("Unloading plugin: " + loadedDescription.name);
@@ -403,23 +420,24 @@ inline void SandboxWorker::handlePrepareToPlay (const void* payload, uint32_t pa
         lastReportedLatency = plugin->getLatencySamples();
     }
 
+    // Start RT processing thread if not already running
+    if (! rtThread)
+    {
+        rtThreadRunning.store (true, std::memory_order_release);
+        rtThread = std::make_unique<std::thread> ([this] { rtProcessingLoop(); });
+    }
+
     sendResponse (SandboxMessageType::Prepared);
 }
 
-inline void SandboxWorker::handleProcessBlock()
+inline void SandboxWorker::processAudioBlock()
 {
     if (! plugin || ! isPrepared)
-    {
-        sendResponse (SandboxMessageType::ProcessComplete);
         return;
-    }
 
     auto* header = audioBuffer.getHeader();
     if (header == nullptr)
-    {
-        sendResponse (SandboxMessageType::ProcessComplete);
         return;
-    }
 
     const int numSamples = std::min (
         static_cast<int> (header->numSamples.load()),
@@ -473,7 +491,52 @@ inline void SandboxWorker::handleProcessBlock()
     header->activeBuffer.store (writeBuffer, std::memory_order_release);
     audioBuffer.markProcessed();
 
-    sendResponse (SandboxMessageType::ProcessComplete);
+    // Signal worker done via shared buffer sequence counter
+    audioBuffer.signalWorkerDone();
+}
+
+inline void SandboxWorker::handleProcessBlock()
+{
+    if (! plugin || ! isPrepared)
+    {
+        sendResponse (SandboxMessageType::ProcessComplete);
+        return;
+    }
+
+    // Pipe-based trigger: forward to semaphore-based RT thread
+    triggerSemaphore.post();
+
+    // Wait for RT thread to complete, then send pipe response for backward compat
+    if (doneSemaphore.timedWait (100000))  // 100ms timeout
+        sendResponse (SandboxMessageType::ProcessComplete);
+}
+
+inline void SandboxWorker::rtProcessingLoop()
+{
+    while (rtThreadRunning.load (std::memory_order_acquire))
+    {
+        // Block until host signals new data (500ms timeout for shutdown check)
+        if (! triggerSemaphore.timedWait (500000))
+            continue;  // timeout -- check if we should exit
+
+        if (! rtThreadRunning.load (std::memory_order_acquire))
+            break;
+
+        // Process the audio block
+        processAudioBlock();
+
+        // Signal host that output is ready
+        doneSemaphore.post();
+    }
+}
+
+inline void SandboxWorker::stopRTThread()
+{
+    rtThreadRunning.store (false, std::memory_order_release);
+    triggerSemaphore.post();  // wake thread so it can exit
+    if (rtThread && rtThread->joinable())
+        rtThread->join();
+    rtThread.reset();
 }
 
 inline void SandboxWorker::handleSetParameter (const void* payload, uint32_t payloadSize)
@@ -532,6 +595,7 @@ inline void SandboxWorker::handleShutdown()
     juce::Logger::writeToLog ("Received shutdown request");
 
     stopTimer();
+    stopRTThread();
 
     if (plugin)
     {
