@@ -13,6 +13,16 @@
 #include <memory>
 #include <thread>
 
+#if JUCE_MAC
+ #include <mach/mach_init.h>
+ #include <mach/thread_policy.h>
+ #include <mach/thread_act.h>
+ #include <pthread.h>
+#elif JUCE_LINUX || JUCE_BSD
+ #include <pthread.h>
+ #include <sched.h>
+#endif
+
 namespace element {
 
 //==============================================================================
@@ -513,6 +523,34 @@ inline void SandboxWorker::handleProcessBlock()
 
 inline void SandboxWorker::rtProcessingLoop()
 {
+    // Promote to real-time thread priority for audio processing
+    {
+        bool prioritySet = false;
+       #if JUCE_MAC
+        const int bs = blockSize > 0 ? blockSize : 512;
+        const double sr = sampleRate > 0 ? sampleRate : 44100.0;
+        const double periodSec = static_cast<double> (bs) / sr;
+        thread_time_constraint_policy_data_t policy;
+        policy.period      = static_cast<uint32_t> (juce::Time::secondsToHighResolutionTicks (periodSec));
+        policy.computation = static_cast<uint32_t> (juce::Time::secondsToHighResolutionTicks (periodSec * 0.9));
+        policy.constraint  = static_cast<uint32_t> (juce::Time::secondsToHighResolutionTicks (periodSec));
+        policy.preemptible = true;
+        prioritySet = thread_policy_set (pthread_mach_thread_np (pthread_self()),
+                                         THREAD_TIME_CONSTRAINT_POLICY,
+                                         reinterpret_cast<thread_policy_t> (&policy),
+                                         THREAD_TIME_CONSTRAINT_POLICY_COUNT) == KERN_SUCCESS;
+       #elif JUCE_LINUX || JUCE_BSD
+        struct sched_param param;
+        param.sched_priority = sched_get_priority_max (SCHED_FIFO);
+        prioritySet = pthread_setschedparam (pthread_self(), SCHED_FIFO, &param) == 0;
+       #elif JUCE_WINDOWS
+        prioritySet = SetThreadPriority (GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL) != 0;
+       #endif
+        if (! prioritySet)
+            if (logger)
+                logger->logMessage ("[sandbox-worker] Warning: could not set RT thread priority");
+    }
+
     while (rtThreadRunning.load (std::memory_order_acquire))
     {
         // Block until host signals new data (500ms timeout for shutdown check)
