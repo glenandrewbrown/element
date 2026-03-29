@@ -138,7 +138,7 @@ public:
         else
             g.fillAll (Colour (0xFF252525));
 
-        auto* block = searchResults[rowNumber];
+        auto* block = searchResults[rowNumber].getComponent();
         if (block == nullptr)
             return;
 
@@ -171,7 +171,7 @@ private:
     GraphEditorComponent* graphEditor { nullptr };
     TextEditor searchBox;
     ListBox resultsList { "searchResults", this };
-    Array<BlockComponent*> searchResults;
+    juce::Array<juce::Component::SafePointer<BlockComponent>> searchResults;
 
     void timerCallback() override
     {
@@ -223,7 +223,10 @@ private:
 
         // Sort alphabetically
         std::sort (searchResults.begin(), searchResults.end(),
-                   [] (const BlockComponent* a, const BlockComponent* b) {
+                   [] (const juce::Component::SafePointer<BlockComponent>& a,
+                       const juce::Component::SafePointer<BlockComponent>& b) {
+                       if (a == nullptr || b == nullptr)
+                           return a != nullptr;
                        return a->getNode().getDisplayName().compareIgnoreCase (
                            b->getNode().getDisplayName()) < 0;
                    });
@@ -249,7 +252,7 @@ private:
         if (index < 0 || index >= searchResults.size())
             return;
 
-        auto* block = searchResults[index];
+        auto* block = searchResults[index].getComponent();
         if (block == nullptr || graphEditor == nullptr)
             return;
 

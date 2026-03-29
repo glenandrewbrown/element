@@ -133,8 +133,8 @@ public:
     }
 
 private:
-    GraphEditorComponent* graphEditor { nullptr };
-    Viewport* viewport { nullptr };
+    juce::Component::SafePointer<GraphEditorComponent> graphEditor;
+    juce::Component::SafePointer<juce::Viewport> viewport;
     float scale { 1.0f };
     float offsetX { 0.0f };
     float offsetY { 0.0f };
