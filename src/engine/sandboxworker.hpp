@@ -113,7 +113,7 @@ inline SandboxWorker::SandboxWorker()
     juce::Logger::setCurrentLogger (logger.get());
 
     // Initialize plugin formats
-    formatManager.addDefaultFormats();
+    juce::addDefaultFormatsToManager (formatManager);
 }
 
 inline SandboxWorker::~SandboxWorker()
