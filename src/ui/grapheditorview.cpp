@@ -90,15 +90,15 @@ bool GraphEditorView::keyPressed (const KeyPress& key)
         }
     }
 
-    // 'C' key creates a comment box around selected nodes (like Unreal Engine)
-    if (key.getKeyCode() == 'c' || key.getKeyCode() == 'C')
+    // Shift+C creates a comment box around selected nodes (like Unreal Engine)
+    if ((key.getKeyCode() == 'c' || key.getKeyCode() == 'C') && key.getModifiers().isShiftDown())
     {
         _editor.createCommentBox();
         return true;
     }
 
-    // 'M' key toggles minimap visibility
-    if (key.getKeyCode() == 'm' || key.getKeyCode() == 'M')
+    // Shift+M toggles minimap visibility
+    if ((key.getKeyCode() == 'm' || key.getKeyCode() == 'M') && key.getModifiers().isShiftDown())
     {
         setMinimapVisible (! isMinimapVisible());
         return true;
