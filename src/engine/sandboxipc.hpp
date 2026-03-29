@@ -168,6 +168,10 @@ public:
         std::atomic<uint32_t> workerSequence { 0 };
         double sampleRate { 0.0 };
 
+        // Xrun tracking
+        std::atomic<uint32_t> xrunCount { 0 };
+        std::atomic<uint32_t> consecutiveXruns { 0 };
+
         // MIDI buffer sizes
         std::atomic<uint32_t> midiInputSize { 0 };
         std::atomic<uint32_t> midiOutputSize { 0 };
@@ -278,6 +282,63 @@ public:
 
         lastProcessedSequence = header->coordinatorSequence.load (std::memory_order_acquire);
         header->workerSequence.fetch_add (1, std::memory_order_release);
+    }
+
+    //==========================================================================
+    // Lock-free sequence helpers
+
+    /** Increment coordinator sequence with release ordering (host side). */
+    void signalHostReady()
+    {
+        if (header != nullptr)
+            header->coordinatorSequence.fetch_add (1, std::memory_order_release);
+    }
+
+    /** Increment worker sequence with release ordering (worker side). */
+    void signalWorkerDone()
+    {
+        if (header != nullptr)
+            header->workerSequence.fetch_add (1, std::memory_order_release);
+    }
+
+    /** Check if the worker has completed processing for the expected sequence. */
+    bool isWorkerDone (uint32_t expectedSeq) const
+    {
+        if (header == nullptr)
+            return false;
+        return header->workerSequence.load (std::memory_order_acquire) >= expectedSeq;
+    }
+
+    /** Record an xrun by incrementing both total and consecutive counters. */
+    void recordXrun()
+    {
+        if (header == nullptr)
+            return;
+        header->xrunCount.fetch_add (1, std::memory_order_relaxed);
+        header->consecutiveXruns.fetch_add (1, std::memory_order_relaxed);
+    }
+
+    /** Reset the consecutive xrun counter to zero. */
+    void clearConsecutiveXruns()
+    {
+        if (header != nullptr)
+            header->consecutiveXruns.store (0, std::memory_order_relaxed);
+    }
+
+    /** Get the current consecutive xrun count. */
+    uint32_t getConsecutiveXruns() const
+    {
+        if (header == nullptr)
+            return 0;
+        return header->consecutiveXruns.load (std::memory_order_relaxed);
+    }
+
+    /** Get the current host (coordinator) sequence number. */
+    uint32_t getHostSequence() const
+    {
+        if (header == nullptr)
+            return 0;
+        return header->coordinatorSequence.load (std::memory_order_acquire);
     }
 
 private:
