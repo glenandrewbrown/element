@@ -1,5 +1,5 @@
 // Copyright 2023 Kushview, LLC <info@kushview.net>
-// SPDX-License-Identifier: GPL3-or-later
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include <element/juce/audio_basics.hpp>
 #include <element/juce/audio_devices.hpp>
@@ -20,6 +20,11 @@ using juce::XmlElement;
 //==============================================================================
 void MidiEngine::applySettings (Settings& settings)
 {
+    // Refresh MIDI device list before applying settings
+    const auto midiInputs = MidiInput::getAvailableDevices();
+    const auto midiOutputs = MidiOutput::getAvailableDevices();
+    juce::ignoreUnused (midiOutputs);
+
     midiInsFromXml.clear();
 
     if (auto xml = std::unique_ptr<XmlElement> (settings.getUserSettings()->getXmlValue (Settings::midiEngineKey)))
@@ -39,7 +44,7 @@ void MidiEngine::applySettings (Settings& settings)
             }
         }
 
-        for (auto& m : MidiInput::getAvailableDevices())
+        for (auto& m : midiInputs)
             setMidiInputEnabled (m, midiInsFromXml.contains (m.identifier));
 
         MidiDeviceInfo info;

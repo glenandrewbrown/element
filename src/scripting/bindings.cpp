@@ -1,5 +1,5 @@
 // Copyright 2023 Kushview, LLC <info@kushview.net>
-// SPDX-License-Identifier: GPL3-or-later
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include <memory>
 
@@ -17,7 +17,7 @@
 #include "ui/systemtray.hpp"
 #include "scripting/scriptmanager.hpp"
 #include "presetmanager.hpp"
-#include "datapath.hpp"
+#include <element/datapath.hpp>
 #include "sol/sol.hpp"
 #include "el/sol_helpers.hpp"
 
@@ -65,7 +65,7 @@ namespace element {
 namespace Lua {
 
 //==============================================================================
-#if defined(EL_APPIMAGE)
+#if defined(ELEMENT_APPIMAGE)
 static File getAppImageLuaPath()
 {
     return File::getSpecialLocation (File::currentExecutableFile)
@@ -112,7 +112,7 @@ static String getApplicationLuaDir()
 static File getSystemLuaDir()
 {
     File dir;
-#if defined(EL_APPIMAGE)
+#if defined(ELEMENT_APPIMAGE)
     dir = getAppImageLuaPath().getFullPathName();
 
 #elif defined(EL_LUADIR)

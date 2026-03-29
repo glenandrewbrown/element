@@ -1,5 +1,5 @@
 // Copyright 2023 Kushview, LLC <info@kushview.net>
-// SPDX-License-Identifier: GPL3-or-later
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
 
@@ -28,9 +28,9 @@ public:
     /** Returns the version string with git hash appended */
     inline static std::string withGitHash()
     {
-        std::string result (EL_VERSION_STRING);
-        if (strlen (EL_GIT_SHORT_HASH) > 0)
-            result += std::string ("-") + std::string (EL_GIT_SHORT_HASH);
+        std::string result (ELEMENT_VERSION_STRING);
+        if (strlen (ELEMENT_GIT_SHORT_HASH) > 0)
+            result += std::string ("-") + std::string (ELEMENT_GIT_SHORT_HASH);
         return result;
     }
 

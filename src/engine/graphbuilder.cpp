@@ -1,5 +1,5 @@
 // Copyright 2023 Kushview, LLC <info@kushview.net>
-// SPDX-License-Identifier: GPL3-or-later
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include <element/processor.hpp>
 #include "engine/miditranspose.hpp"
@@ -495,7 +495,6 @@ private:
     MidiBuffer tempMidi;
 
     AudioSampleBuffer dummyCV;
-    AtomBuffer dummyAtom;
 
     std::unique_ptr<float*> osChans;
     int osChanSize = 0;
@@ -710,10 +709,13 @@ void GraphBuilder::createRenderingOpsForNode (Processor* const node,
                 bufIndex = newFreeBuffer;
             }
 
-            const int nodeDelay = getNodeDelay (srcNode);
+            if (portType.isAudio())
+            {
+                const int nodeDelay = getNodeDelay (srcNode);
 
-            if (nodeDelay < maxLatency)
-                renderingOps.add (new DelayChannelOp (bufIndex, maxLatency - nodeDelay));
+                if (nodeDelay < maxLatency)
+                    renderingOps.add (new DelayChannelOp (bufIndex, maxLatency - nodeDelay));
+            }
         }
         else
         {

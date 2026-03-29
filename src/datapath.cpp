@@ -1,14 +1,16 @@
 // Copyright 2023 Kushview, LLC <info@kushview.net>
-// SPDX-License-Identifier: GPL3-or-later
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include <element/node.hpp>
 
 #include "appinfo.hpp"
-#include "datapath.hpp"
+#include <element/datapath.hpp>
 
 #ifndef EL_INSTALL_DIR_AWARE
 #define EL_INSTALL_DIR_AWARE 1
 #endif
+
+using namespace juce;
 
 namespace element {
 namespace detail {

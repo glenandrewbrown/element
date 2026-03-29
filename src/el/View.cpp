@@ -1,5 +1,5 @@
 // Copyright 2023 Kushview, LLC <info@kushview.net>
-// SPDX-License-Identifier: GPL3-or-later
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 /// An Element View.
 // Is a @{el.Widget}
@@ -12,6 +12,8 @@
 #include "widget.hpp"
 
 #define EL_TYPE_NAME_VIEW "View"
+
+using namespace juce;
 
 namespace element {
 namespace lua {

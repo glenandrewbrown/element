@@ -1,5 +1,5 @@
 // Copyright 2023 Kushview, LLC <info@kushview.net>
-// SPDX-License-Identifier: GPL3-or-later
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include <element/transport.hpp>
 #include "tempo.hpp"
@@ -93,7 +93,7 @@ void Transport::preProcess (int nframes)
     }
 }
 
-void Transport::postProcess (int nframes)
+void Transport::applyTempo() noexcept
 {
     if (getTempo() != nextTempo.get())
     {
@@ -101,6 +101,11 @@ void Transport::postProcess (int nframes)
         nextTempo.set (getTempo());
         monitor->tempo.set (nextTempo.get());
     }
+}
+
+void Transport::postProcess (int nframes)
+{
+    applyTempo();
 
     monitor->playing.set (playing);
     monitor->recording.set (recording);

@@ -1,3 +1,4 @@
+# SPDX-FileCopyrightText: 2026 Kushview, LLC
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 file(GLOB_RECURSE TEST_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
@@ -8,23 +9,29 @@ target_link_libraries(test_element PRIVATE kv::element)
 target_include_directories(test_element 
     PRIVATE 
         "${CMAKE_CURRENT_SOURCE_DIR}"
+        ${GENERATED_INCLUDE_DIR}
         ${Boost_INCLUDE_DIRS})
 target_compile_definitions(test_element
     PRIVATE
         EL_TEST_SOURCE_ROOT="${CMAKE_SOURCE_DIR}")
 
 # Register all test suites with CTest
-add_test(NAME "AtomTests" COMMAND test_element --run_test=AtomTests)
+add_test(NAME "AtomicValueTests" COMMAND test_element --run_test=AtomicValueTests)
+add_test(NAME "AtomicLockTests" COMMAND test_element --run_test=AtomicLockTests)
 add_test(NAME "AudioRoutingTests" COMMAND test_element --run_test=AudioRoutingTests)
 add_test(NAME "BytesTest" COMMAND test_element --run_test=BytesTest)
+add_test(NAME "JuceIntegrationTests" COMMAND test_element --run_test=JuceIntegrationTests)
 add_test(NAME "DataPathTests" COMMAND test_element --run_test=DataPathTests)
 add_test(NAME "DSPScriptTest" COMMAND test_element --run_test=DSPScriptTest)
 add_test(NAME "Element" COMMAND test_element --run_test=Element)
 add_test(NAME "GraphNodeTests" COMMAND test_element --run_test=GraphNodeTests)
+add_test(NAME "GzipTests" COMMAND test_element --run_test=GzipTests)
 add_test(NAME "IONodeTests" COMMAND test_element --run_test=IONodeTests)
 add_test(NAME "LinearFadeTest" COMMAND test_element --run_test=LinearFadeTest)
 add_test(NAME "MidiChannelMapTest" COMMAND test_element --run_test=MidiChannelMapTest)
+add_test(NAME "MidiClockTest" COMMAND test_element --run_test=MidiClockTest)
 add_test(NAME "MidiProgramMapTests" COMMAND test_element --run_test=MidiProgramMapTests)
+add_test(NAME "MidiScriptTests" COMMAND test_element --run_test=MidiScriptTests)
 add_test(NAME "NodeFactoryTests" COMMAND test_element --run_test=NodeFactoryTests)
 add_test(NAME "NodeObjectTests" COMMAND test_element --run_test=NodeObjectTests)
 add_test(NAME "NodeTests" COMMAND test_element --run_test=NodeTests)

@@ -1,5 +1,5 @@
 // Copyright 2023 Kushview, LLC <info@kushview.net>
-// SPDX-License-Identifier: GPL3-or-later
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "el/factories.hpp"
 #include <element/midipipe.hpp>
@@ -14,7 +14,7 @@ namespace element {
 //==============================================================================
 
 /// Time information for DSP Scripts.
-// An object of this type is passed to to a DSP Script's process function
+// An object of this type is passed to a DSP Script's process function
 // conveying timing information.
 // @classmod el.DSPScriptPosition
 // @pragma nostrip

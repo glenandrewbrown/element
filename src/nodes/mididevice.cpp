@@ -1,5 +1,5 @@
 // Copyright 2023 Kushview, LLC <info@kushview.net>
-// SPDX-License-Identifier: GPL3-or-later
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "nodes/mididevice.hpp"
 #include "engine/midiengine.hpp"
@@ -391,8 +391,8 @@ void MidiDeviceProcessor::handlePartialSysexMessage (MidiInput* source, const ui
 
 Array<MidiDeviceInfo> MidiDeviceProcessor::getAvailableDevices() const noexcept
 {
-    const auto devlist = input ? MidiInput::getAvailableDevices()
-                               : MidiOutput::getAvailableDevices();
+    const auto devlist = isInputDevice() ? MidiInput::getAvailableDevices()
+                                         : MidiOutput::getAvailableDevices();
     return devlist;
 }
 
@@ -409,7 +409,7 @@ bool MidiDeviceProcessor::deviceIsAvailable (const String& name)
 bool MidiDeviceProcessor::deviceIsAvailable (const MidiDeviceInfo& dev)
 {
     for (const auto& info : getAvailableDevices())
-        if (info == dev)
+        if (info.identifier == dev.identifier)
             return true;
     return true;
 }

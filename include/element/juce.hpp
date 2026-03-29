@@ -1,5 +1,5 @@
 // Copyright 2023 Kushview, LLC <info@kushview.net>
-// SPDX-License-Identifier: GPL3-or-later
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
 
@@ -21,6 +21,6 @@
 #include <juce_gui_extra/juce_gui_extra.h>
 #include <juce_osc/juce_osc.h>
 
-using namespace juce; // FIXME:
+using namespace juce; // FIXME: namespace juce
 namespace element {
 }

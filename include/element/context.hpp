@@ -1,5 +1,5 @@
 // Copyright 2023 Kushview, LLC <info@kushview.net>
-// SPDX-License-Identifier: GPL3-or-later
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
 
@@ -20,7 +20,6 @@ class Log;
 class PluginManager;
 class PresetManager;
 class Settings;
-class SymbolMap;
 
 class Context {
 public:
@@ -40,13 +39,6 @@ public:
     SessionPtr session();
 
     Settings& settings();
-    SymbolMap& symbols();
-
-    //=========================================================================
-    void openModule (const std::string& path);
-    void loadModules();
-    void addModulePath (const std::string& path);
-    void discoverModules();
 
 private:
     friend class Application;

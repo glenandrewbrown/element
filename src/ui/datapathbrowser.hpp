@@ -1,14 +1,14 @@
 // Copyright 2023 Kushview, LLC <info@kushview.net>
-// SPDX-License-Identifier: GPL3-or-later
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
 
 #include <element/juce/gui_basics.hpp>
 #include <element/ui/content.hpp>
+#include <element/datapath.hpp>
 
 #include "ui/filetreeview.hpp"
 #include "ui/viewhelpers.hpp"
-#include "datapath.hpp"
 #include "filesystemwatcher.hpp"
 #include "messages.hpp"
 

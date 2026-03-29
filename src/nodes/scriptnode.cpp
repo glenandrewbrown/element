@@ -1,12 +1,10 @@
 // Copyright 2023 Kushview, LLC <info@kushview.net>
-// SPDX-License-Identifier: GPL3-or-later
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include <math.h>
 
 #include <element/midipipe.hpp>
 #include <element/parameter.hpp>
-
-#include "ElementApp.h"
 
 #include "luascripts.hpp"
 
@@ -123,6 +121,8 @@ Result ScriptNode::loadScript (const String& newCode)
     if (result.failed())
         return result;
 
+    ScopedLock sl (lock); // Lock EVERYTHING
+
     ScriptLoader loader (lua);
     loader.load (newCode);
     if (loader.hasError())
@@ -133,18 +133,14 @@ Result ScriptNode::loadScript (const String& newCode)
         return Result::fail ("Could not instantiate script");
 
     auto newScript = std::make_unique<DSPScript> (dsp);
+    newScript->setPlayHead (getPlayHead());
+    if (prepared)
+        newScript->prepare (sampleRate, blockSize);
+    triggerPortReset();
 
-    if (true)
-    {
-        newScript->setPlayHead (getPlayHead());
-        if (prepared)
-            newScript->prepare (sampleRate, blockSize);
-        triggerPortReset();
-        ScopedLock sl (lock);
-        if (script != nullptr)
-            newScript->copyParameterValues (*script);
-        script.swap (newScript);
-    }
+    if (script != nullptr)
+        newScript->copyParameterValues (*script);
+    script.swap (newScript);
 
     if (newScript != nullptr)
     {
@@ -258,6 +254,12 @@ const String ScriptNode::getProgramName (int index) const
         case 1:
             return "Channelizer";
             break;
+        case 2:
+            return "Spoton Scale Chooser";
+            break;
+        case 3:
+            return "MIDI Timecode (MTC) Generator";
+            break;
     }
 
     String name = TRANS ("Program");
@@ -283,6 +285,13 @@ void ScriptNode::setCurrentProgram (int index)
             newDspCode = String::fromUTF8 (scripts::channelize_lua, scripts::channelize_luaSize);
             newUiCode.clear();
             break;
+        case 2:
+            newDspCode = String::fromUTF8 (scripts::spontonchordchooser_lua, scripts::spontonchordchooser_luaSize);
+            newUiCode.clear();
+            break;
+        case 3:
+            newDspCode = String::fromUTF8 (scripts::mtc_generator_lua, scripts::mtc_generator_luaSize);
+            newUiCode.clear();
     }
 
     dspCode.replaceAllContent (newDspCode);

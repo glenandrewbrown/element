@@ -1,5 +1,5 @@
 // Copyright 2023 Kushview, LLC <info@kushview.net>
-// SPDX-License-Identifier: GPL3-or-later
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
 
@@ -23,7 +23,7 @@ public:
                              .withOutput ("Main", _stereo ? AudioChannelSet::stereo() : AudioChannelSet::mono(), true)),
           stereo (_stereo)
     {
-        addLegacyParameter (volume = new AudioParameterFloat (tags::volume.toString(),
+        addLegacyParameter (volume = new AudioParameterFloat (juce::ParameterID (tags::volume.toString(), 1),
                                                               "Volume",
                                                               minDb,
                                                               maxDb,

@@ -1,7 +1,9 @@
+// SPDX-FileCopyrightText: Copyright (C) Kushview, LLC.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 #pragma once
 
 #include <element/processor.hpp>
-#include <element/atombuffer.hpp>
 
 namespace element {
 

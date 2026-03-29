@@ -1,5 +1,5 @@
 // Copyright 2023 Kushview, LLC <info@kushview.net>
-// SPDX-License-Identifier: GPL3-or-later
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
 
@@ -45,7 +45,7 @@ public:
     void setPlayHead (juce::AudioPlayHead*) override;
 
     //==========================================================================
-    int getNumPrograms() const override { return 2; }
+    int getNumPrograms() const override { return 4; }
     int getCurrentProgram() const override { return _program; }
     const String getProgramName (int index) const override;
     void setCurrentProgram (int index) override;

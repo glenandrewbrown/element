@@ -1,5 +1,5 @@
 // Copyright 2023 Kushview, LLC <info@kushview.net>
-// SPDX-License-Identifier: GPL3-or-later
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "nodes/audioprocessor.hpp"
 #include "nodes/baseprocessor.hpp"
@@ -7,6 +7,8 @@
 #include "engine/graphnode.hpp"
 
 #include "scopedflag.hpp"
+
+using namespace juce;
 
 namespace element {
 
@@ -95,7 +97,7 @@ void AudioProcessorNode::EnablementUpdater::handleAsyncUpdate()
 AudioProcessorNode::AudioProcessorNode (AudioProcessor* processor)
     : AudioProcessorNode (0, processor) {}
 
-AudioProcessorNode::AudioProcessorNode (uint32 nodeId, AudioProcessor* processor)
+AudioProcessorNode::AudioProcessorNode (uint32_t nodeId, AudioProcessor* processor)
     : Processor (nodeId),
       enablement (*this)
 {

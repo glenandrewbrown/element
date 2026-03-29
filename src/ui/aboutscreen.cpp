@@ -1,13 +1,12 @@
 // Copyright 2023 Kushview, LLC <info@kushview.net>
-// SPDX-License-Identifier: GPL3-or-later
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include <element/version.hpp>
 
-#include "ui/aboutscreen.hpp"
 #include "appinfo.hpp"
+#include "ui/aboutscreen.hpp"
 
-// resources
-#include "ui/res.hpp"
+#include "binarydata.hpp"
 
 #define EL_LICENSE_TEXT                                                        \
     "Copyright (C) 2014-@0@  Kushview, LLC.  All rights reserved.\r\n\r\n"     \
@@ -254,7 +253,7 @@ AboutScreen::AboutScreen()
     i.copyright << "Copyright " << String (CharPointer_UTF8 ("\xc2\xa9")) << " XXX Kushview, LLC.";
     i.copyright = i.copyright.replace ("XXX", String (buildDate.getYear()));
     i.version = ("Version: ") + Version::withGitHash();
-    i.version << " (build " << EL_BUILD_NUMBER << ")";
+    i.version << " (build " << ELEMENT_BUILD_NUMBER << ")";
     setAboutInfo (i);
 }
 

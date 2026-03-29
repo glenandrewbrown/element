@@ -1,34 +1,32 @@
 // Copyright 2023 Kushview, LLC <info@kushview.net>
-// SPDX-License-Identifier: GPL3-or-later
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include <element/audioengine.hpp>
 #include <element/devices.hpp>
 #include <element/engine.hpp>
 #include <element/services.hpp>
+#include <element/settings.hpp>
 #include <element/version.hpp>
 
 #include <element/ui.hpp>
-#include <element/ui/content.hpp>
-#include <element/ui/updater.hpp>
 #include <element/ui/commands.hpp>
-#include <element/ui/standard.hpp>
-#include <element/ui/style.hpp>
+#include <element/ui/content.hpp>
 #include <element/ui/mainwindow.hpp>
 #include <element/ui/preferences.hpp>
-
-#include "engine/midipanic.hpp"
+#include <element/ui/standard.hpp>
+#include <element/ui/style.hpp>
+#include <element/ui/updater.hpp>
 
 #include "appinfo.hpp"
+#include "engine/midipanic.hpp"
+#include "messages.hpp"
 #include "services/sessionservice.hpp"
-#include "ui/virtualkeyboardview.hpp"
 #include "ui/aboutscreen.hpp"
-#include "ui/guicommon.hpp"
+#include "ui/capslock.hpp"
 #include "ui/pluginwindow.hpp"
 #include "ui/systemtray.hpp"
+#include "ui/virtualkeyboardview.hpp"
 #include "ui/windowmanager.hpp"
-
-#include "ui/capslock.hpp"
-#include "ui/res.hpp"
 
 #ifndef EL_USE_SYSTEM_TRAY
 #define EL_USE_SYSTEM_TRAY 1
@@ -163,71 +161,28 @@ class GuiService::UpdateManager
 {
 public:
     UpdateManager()
+        : updater (Updater::create())
     {
+        jassert (updater != nullptr);
         setupUpdater();
     }
 
-    ~UpdateManager()
-    {
-        _conn.disconnect();
-    }
+    ~UpdateManager() {}
 
-    bool launchRequested() const noexcept { return launchUpdaterOnExit; }
-    void launchDetached()
-    {
-        updater.launch();
-    }
-
-    void check() { updater.check (true); }
+    void check() { updater->check (true); }
 
 private:
     friend class GuiService;
+
     void setupUpdater()
     {
-        juce::String ver (EL_VERSION_STRING);
-        ver << "-" << EL_BUILD_NUMBER;
-        // ver = "0.20.0.0";
-        updater.setInfo ("net.kushview.element", ver.toStdString());
-        updater.setRepository (EL_UPDATE_REPOSITORY_URL);
-
-        _conn.disconnect();
-        _conn = updater.sigUpdatesAvailable.connect ([this]() {
-            if (updater.available().size() > 0)
-            {
-                auto res = AlertWindow::showYesNoCancelBox (
-                    AlertWindow::InfoIcon,
-                    TRANS ("Updates Ready"),
-                    String ("There are updates ready.  Would you like to quit XXX and launch the Updater?").replace ("XXX", EL_APP_NAME));
-                if (res == 1)
-                {
-                    if (! updater.exists())
-                    {
-                        AlertWindow::showMessageBoxAsync (
-                            AlertWindow::WarningIcon,
-                            "Updates",
-                            "Could not find the updater program on your system.");
-                    }
-                    else
-                    {
-                        launchUpdaterOnExit = true;
-                        juce::JUCEApplication::getInstance()->quit();
-                    }
-                }
-            }
-            else
-            {
-                if (showAlertWhenNoUpdatesReady)
-                    AlertWindow::showMessageBoxAsync (AlertWindow::InfoIcon,
-                                                      TRANS ("Updates"),
-                                                      String ("You're up to date with the latest XXX").replace ("XXX", EL_APP_NAME));
-            }
-        });
+        // TODO: Setup updater with settings.  Not needed until supported access
+        // is implemented
     }
 
     bool launchUpdaterOnExit { false };
     bool showAlertWhenNoUpdatesReady = false;
-    ui::Updater updater;
-    boost::signals2::connection _conn;
+    std::unique_ptr<element::Updater> updater;
 };
 
 //=============================================================================
@@ -436,26 +391,10 @@ void GuiService::closeAllWindows()
 
 Commands& GuiService::commands() { return impl->commands; }
 
-void GuiService::setUpdaterPackage (const std::string_view package, std::string_view version)
+void GuiService::checkUpdates (bool background)
 {
-#if EL_UPDATER
-    auto& upd = updates->updater;
-    upd.setInfo (package.data(), version.data());
-#endif
-}
-
-void GuiService::checkUpdates()
-{
-#if EL_UPDATER
-    updates->check();
-#endif
-}
-
-void GuiService::launchUpdater()
-{
-#if EL_UPDATER
-    updates->launchUpdaterOnExit = true;
-    JUCEApplication::getInstance()->systemRequestedQuit();
+#if ELEMENT_UPDATER
+    updates->updater->check (background);
 #endif
 }
 
@@ -1045,7 +984,7 @@ bool GuiService::perform (const InvocationInfo& info)
         //======================================================================
         case Commands::checkNewerVersion:
             updates->showAlertWhenNoUpdatesReady = true;
-            checkUpdates();
+            checkUpdates (false);
             break;
         //======================================================================
         case Commands::recentsClear: {
@@ -1115,6 +1054,7 @@ MainWindow* GuiService::getMainWindow() const noexcept { return mainWindow.get()
 
 void GuiService::refreshMainMenu()
 {
+    commands().commandStatusChanged();
     if (auto* win = mainWindow.get())
         win->refreshMenu();
 }
@@ -1196,8 +1136,7 @@ GuiService::RecentFiles& GuiService::recentFiles() { return impl->recents; }
 
 void GuiService::shutdown()
 {
-    if (updates->launchRequested())
-        updates->launchDetached();
+    // No longer launching external updater
 }
 
 void GuiService::saveSettings()

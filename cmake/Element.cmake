@@ -1,3 +1,4 @@
+# SPDX-FileCopyrightText: 2026 Kushview, LLC
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 option(ELEMENT_BUILD_PLUGINS "Build the plugin versions of Element" OFF)
@@ -5,6 +6,9 @@ option(ELEMENT_BUILD_TESTS "Build the unit tests" ON)
 option(ELEMENT_ENABLE_ASIO "Build with ASIO support" OFF)
 option(ELEMENT_ENABLE_VST2 "Build with VST2 support" OFF)
 option(ELEMENT_ENABLE_LTO "Build with Link Time Optimization" OFF)
+option(ELEMENT_ENABLE_UPDATER "Build with updater support" OFF)
+
+set(ELEMENT_APP_PLIST_TO_MERGE "")
 
 if(APPLE)
     enable_language(OBJC)
@@ -27,3 +31,101 @@ else()
 endif()
 
 message(STATUS "User Home Directory: ${USER_HOME_DIRECTORY}")
+
+# Enable ccache if available
+find_program(CCACHE_PROGRAM ccache)
+if(CCACHE_PROGRAM)
+    message(STATUS "Found ccache: ${CCACHE_PROGRAM}")
+    set(CMAKE_C_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
+    set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
+else()
+    message(STATUS "ccache not found")
+endif()
+
+include(GNUInstallDirs)
+include(FetchContent)
+
+# Fetch ASIO
+if(WIN32 AND ELEMENT_ENABLE_ASIO)
+    FetchContent_Declare(ASIOSDK
+        GIT_REPOSITORY https://github.com/audiosdk/asio.git
+        GIT_TAG 496a0765b8bb9c26f764f22f9a9712a937177db2)
+    FetchContent_MakeAvailable(ASIOSDK)
+endif()
+
+# JUCE VST2 SDK path setup
+if(ELEMENT_ENABLE_VST2)
+    set(ELEMENT_VST2_SDK_PATH "${USER_HOME_DIRECTORY}/SDKs/vstsdk2.4")
+    # set(JUCE_GLOBAL_VST2_SDK_PATH "${ELEMENT_VST2_SDK_PATH}")
+    message(STATUS "VST2 SDK Path: ${ELEMENT_VST2_SDK_PATH}")
+endif()
+
+# Setup a plugin by target name
+function(element_setup_plugin tgt)
+    # Hide symbols in plugin to prevent collision with host
+    set_target_properties(${tgt} PROPERTIES
+        CXX_VISIBILITY_PRESET hidden
+        C_VISIBILITY_PRESET hidden
+        VISIBILITY_INLINES_HIDDEN ON
+    )
+
+    # On macOS, add linker flag to strip hidden symbols
+    if(APPLE)
+        if(TARGET ${tgt}_AU)
+            get_target_property(outname ${tgt} JUCE_PRODUCT_NAME)
+            string(REPLACE "-" "_" outsym ${outname})
+            target_link_options(${tgt}_AU PRIVATE "LINKER:-exported_symbol,_${outsym}AUFactory")
+            unset(outname)
+            unset(outsym)
+        endif()
+        if(TARGET ${tgt}_CLAP)
+            target_link_options(${tgt}_CLAP PRIVATE "LINKER:-exported_symbol,_clap_entry")
+        endif()
+        if(TARGET ${tgt}_VST3)
+            target_link_options(${tgt}_VST3 PRIVATE "LINKER:-exported_symbol,_GetPluginFactory")
+            target_link_options(${tgt}_VST3 PRIVATE "LINKER:-exported_symbol,_bundleEntry")
+            target_link_options(${tgt}_VST3 PRIVATE "LINKER:-exported_symbol,_bundleExit")
+        endif()
+        if(TARGET ${tgt}_LV2)
+            target_link_options(${tgt}_LV2 PRIVATE "LINKER:-exported_symbol,_lv2_descriptor")
+            target_link_options(${tgt}_LV2 PRIVATE "LINKER:-exported_symbol,_lv2ui_descriptor")
+        endif()
+        if(TARGET ${tgt}_VST)
+            target_link_options(${tgt}_VST PRIVATE "LINKER:-exported_symbol,_VSTPluginMain")
+        endif()
+    endif()
+endfunction()
+
+# Install a plugin by target name
+function(element_install_plugin tgt)
+    if(LINUX)
+        install(TARGETS ${tgt}_CLAP DESTINATION "lib/clap")
+        install(DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/${tgt}_artefacts/$<CONFIG>/LV2/"
+            DESTINATION "lib/lv2")
+        install(DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/${tgt}_artefacts/$<CONFIG>/VST3/"
+            DESTINATION "lib/vst3")
+    elseif(WIN32)
+        install(TARGETS ${tgt}_CLAP DESTINATION "CLAP")
+        install(DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/${tgt}_artefacts/$<CONFIG>/LV2/"
+            DESTINATION "LV2")
+        install(DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/${tgt}_artefacts/$<CONFIG>/VST3/"
+            DESTINATION "VST3")
+    elseif(APPLE)
+        install(TARGETS "${tgt}_AU"   LIBRARY DESTINATION "Library/Audio/Plug-Ins/Components")
+        install(TARGETS "${tgt}_CLAP" LIBRARY DESTINATION "Library/Audio/Plug-Ins/CLAP")
+        install(TARGETS "${tgt}_VST3" LIBRARY DESTINATION "Library/Audio/Plug-Ins/VST3")
+        # LV2 on macOS isn't a real library bundle.
+        install(DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/${tgt}_artefacts/$<CONFIG>/LV2/"
+            DESTINATION "Library/Audio/Plug-Ins/LV2")
+    endif()
+
+    if(ELEMENT_ENABLE_VST2)
+        if(LINUX)
+            install(TARGETS ${tgt}_VST DESTINATION "lib/vst")
+        elseif(WIN32)
+            install(TARGETS ${tgt}_VST DESTINATION "VST")
+        elseif(APPLE)
+            install(TARGETS "${tgt}_VST" LIBRARY DESTINATION "Library/Audio/Plug-Ins/VST")
+        endif()
+    endif()
+endfunction()

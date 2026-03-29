@@ -1,16 +1,15 @@
 // Copyright 2023 Kushview, LLC <info@kushview.net>
-// SPDX-License-Identifier: GPL3-or-later
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
 
 #include <element/juce.hpp>
-using namespace juce; // FIXME;
 
 namespace element {
 
-class MidiBlinker : public Component,
-                    public SettableTooltipClient,
-                    private Timer
+class MidiBlinker : public juce::Component,
+                    public juce::SettableTooltipClient,
+                    private juce::Timer
 {
 public:
     enum ColourIds
@@ -27,7 +26,7 @@ public:
 
     void setInputOutputVisibility (bool in, bool out);
 
-    void paint (Graphics&) override;
+    void paint (juce::Graphics&) override;
     void resized() override;
 
 private:
@@ -36,7 +35,7 @@ private:
     bool haveOutput = false;
     bool showInput = true;
     bool showOutput = true;
-    friend class Timer;
+    friend class juce::Timer;
     void timerCallback() override;
 };
 

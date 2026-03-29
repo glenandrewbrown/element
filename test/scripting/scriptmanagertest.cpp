@@ -1,5 +1,5 @@
 // Copyright 2023 Kushview, LLC <info@kushview.net>
-// SPDX-License-Identifier: GPL3-or-later
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include <boost/test/unit_test.hpp>
 #include "scripting/scriptmanager.hpp"
@@ -17,7 +17,7 @@ BOOST_AUTO_TEST_CASE (ScanDirectory)
     element::ScriptManager scripts;
     auto d = et::sourceRoot().getChildFile ("scripts");
     scripts.scanDirectory (d);
-    BOOST_REQUIRE_EQUAL (scripts.getNumScripts(), 7);
+    BOOST_REQUIRE_EQUAL (scripts.getNumScripts(), 9);
 }
 
 BOOST_AUTO_TEST_SUITE_END()
