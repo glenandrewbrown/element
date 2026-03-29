@@ -1,13 +1,13 @@
 // Copyright 2023 Kushview, LLC <info@kushview.net>
-// SPDX-License-Identifier: GPL3-or-later
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
 
+#include <element/juce.hpp> // FIXME: namespace juce
 #include <element/juce/core.hpp>
 #include <element/juce/audio_basics.hpp>
 #include <element/juce/audio_processors.hpp>
 
-#include <element/atombuffer.hpp>
 #include <element/atomic.hpp>
 #include <element/midipipe.hpp>
 #include <element/oversampler.hpp>
@@ -18,14 +18,11 @@
 
 namespace element {
 
-using namespace juce;
-
 /* So render tasks can be friends of graph node */
 namespace GraphRender {
 class ProcessBufferOp;
 }
 
-class AtomBuffer;
 class Editor;
 class GraphNode;
 class ProcessBufferOp;
@@ -34,24 +31,8 @@ struct RenderContext {
     juce::AudioSampleBuffer audio;
     juce::AudioSampleBuffer cv;
     MidiPipe midi;
-    AtomPipe atom;
 
     // clang-format off
-    RenderContext (float* const *audioData, 
-                   int numAudio,
-                   float* const *cvData, 
-                   int numCV,
-                   const juce::OwnedArray<juce::MidiBuffer>& sharedMidi,
-                   const juce::Array<int>& midiIndexes,
-                   const juce::OwnedArray<AtomBuffer>& sharedAtom,
-                   const juce::Array<int>& atomIndexes,
-                   int numSamples)
-        : audio (audioData, numAudio, numSamples),
-          cv (cvData, numCV, numSamples),
-          midi (sharedMidi, midiIndexes),
-          atom (sharedAtom, atomIndexes)
-    {}
-
     RenderContext (float* const *audioData, 
                    int numAudio,
                    float* const *cvData, 
@@ -64,21 +45,18 @@ struct RenderContext {
           midi (sharedMidi, midiIndexes)
     {}
 
-    RenderContext (AudioSampleBuffer& audioRef,
-                   AudioSampleBuffer& cvRef,
-                   MidiBuffer& midiRef,
-                   AtomBuffer& atomRef,
+    RenderContext (juce::AudioSampleBuffer& audioRef,
+                   juce::AudioSampleBuffer& cvRef,
+                   juce::MidiBuffer& midiRef,
                    int numSamples)
         : audio (audioRef.getArrayOfWritePointers(), audioRef.getNumChannels(), numSamples), 
           cv (cvRef.getArrayOfWritePointers(), cvRef.getNumChannels(), numSamples),
-          midi (midiRef),
-          atom (atomRef)
-    {
-    }
+          midi (midiRef)
+    {}
     // clang-format on
 };
 
-class Processor : public ReferenceCountedObject {
+class Processor : public juce::ReferenceCountedObject {
 public:
     /** Special parameter indexes when mapping universal node settings */
     enum SpecialParameter {
@@ -120,7 +98,7 @@ public:
 
     //=========================================================================
     /** Returns an audio processor if available */
-    virtual AudioProcessor* getAudioProcessor() const noexcept { return nullptr; }
+    virtual juce::AudioProcessor* getAudioProcessor() const noexcept { return nullptr; }
 
     /** The actual processor object dynamic_cast'd to T */
     template <class T>
@@ -130,11 +108,11 @@ public:
     }
 
     /** Returns the processor as an Audio Plugin Instance */
-    AudioPluginInstance* getAudioPluginInstance() const noexcept { return processor<AudioPluginInstance>(); }
+    juce::AudioPluginInstance* getAudioPluginInstance() const noexcept { return processor<juce::AudioPluginInstance>(); }
 
     /** Set the audio play head */
-    virtual void setPlayHead (AudioPlayHead* playhead) { _playhead = playhead; }
-    AudioPlayHead* getPlayHead() const noexcept { return _playhead; }
+    virtual void setPlayHead (juce::AudioPlayHead* playhead) { _playhead = playhead; }
+    juce::AudioPlayHead* getPlayHead() const noexcept { return _playhead; }
 
     //==========================================================================
     virtual void prepareToRender (double sampleRate, int maxBufferSize) = 0;
@@ -240,7 +218,7 @@ public:
     bool containsParameter (const int index) const;
 
     /** Fill the details... */
-    virtual void getPluginDescription (PluginDescription& desc) const;
+    virtual void getPluginDescription (juce::PluginDescription& desc) const;
 
     /** Returns true if the processor is suspended */
     bool isSuspended() const;
@@ -270,7 +248,7 @@ public:
             lastInputGain = inputGain;
     }
 
-    ValueTree createPortsData() const;
+    juce::ValueTree createPortsData() const;
 
     bool isAudioIONode() const;
     bool isAudioInputNode() const;
@@ -336,15 +314,15 @@ public:
     inline void setKeyRange (const int low, const int high)
     {
         jassert (low <= high);
-        jassert (isPositiveAndBelow (low, 128));
-        jassert (isPositiveAndBelow (high, 128));
+        jassert (juce::isPositiveAndBelow (low, 128));
+        jassert (juce::isPositiveAndBelow (high, 128));
         keyRangeLow.set (low);
         keyRangeHigh.set (high);
     }
 
-    inline void setKeyRange (const Range<int>& range) { setKeyRange (range.getStart(), range.getEnd()); }
+    inline void setKeyRange (const juce::Range<int>& range) { setKeyRange (range.getStart(), range.getEnd()); }
 
-    inline Range<int> getKeyRange() const { return Range<int> { keyRangeLow.get(), keyRangeHigh.get() }; }
+    inline juce::Range<int> getKeyRange() const { return juce::Range<int> { keyRangeLow.get(), keyRangeHigh.get() }; }
 
     //=========================================================================
     inline void setTransposeOffset (const int value)
@@ -355,11 +333,11 @@ public:
 
     inline int getTransposeOffset() const { return transposeOffset.get(); }
 
-    const CriticalSection& getPropertyLock() const { return propertyLock; }
+    const juce::CriticalSection& getPropertyLock() const { return propertyLock; }
 
     //=========================================================================
     /** Returns the file used for the current global MIDI Program */
-    File getMidiProgramFile (int program = -1) const;
+    juce::File getMidiProgramFile (int program = -1) const;
 
     /** Returns true if this node should use global MIDI programs */
     inline bool useGlobalMidiPrograms() const { return globalMidiPrograms.get() == 1; }
@@ -384,7 +362,7 @@ public:
     void setMidiProgramName (const int program, const String& name);
 
     /** Gets the MIDI program's name */
-    String getMidiProgramName (const int program) const;
+    juce::String getMidiProgramName (const int program) const;
 
     /** Reloads the active MIDI program */
     void reloadMidiProgram();
@@ -396,19 +374,19 @@ public:
     void removeMidiProgram (int program, bool global);
 
     /** Get all MIDI program states stored directly on the node */
-    void getMidiProgramsState (String& state) const;
+    void getMidiProgramsState (juce::String& state) const;
 
     /** Load all MIDI program states to be stored on the node.
         
         @param state    The state to set. If this is empty, the midi programs
                         on the node will be cleared.
      */
-    void setMidiProgramsState (const String& state);
+    void setMidiProgramsState (const juce::String& state);
 
     //=========================================================================
-    inline void setMidiChannels (const BigInteger& ch)
+    inline void setMidiChannels (const juce::BigInteger& ch)
     {
-        ScopedLock sl (propertyLock);
+        juce::ScopedLock sl (propertyLock);
         midiChannels.setChannels (ch);
     }
 
@@ -429,7 +407,7 @@ public:
         return 0;
     }
 
-    inline virtual const String getProgramName (int index) const
+    inline virtual const juce::String getProgramName (int index) const
     {
         if (auto* const proc = getAudioProcessor())
             return proc->getProgramName (index);
@@ -449,7 +427,7 @@ public:
     bool isMutingInputs() const { return muteInput.get() == 1; }
 
     //==========================================================================
-    virtual void getState (MemoryBlock&) = 0;
+    virtual void getState (juce::MemoryBlock&) = 0;
     virtual void setState (const void*, int sizeInBytes) = 0;
 
     //==========================================================================
@@ -533,43 +511,43 @@ private:
     GraphNode* parent = nullptr;
     bool isPrepared = false;
 
-    Atomic<int> enabled { 1 };
-    Atomic<int> bypassed { 0 };
-    Atomic<int> mute { 0 };
-    Atomic<int> muteInput { 0 };
+    juce::Atomic<int> enabled { 1 };
+    juce::Atomic<int> bypassed { 0 };
+    juce::Atomic<int> mute { 0 };
+    juce::Atomic<int> muteInput { 0 };
 
     double sampleRate = 0.0;
     int blockSize = 0;
     int latencySamples = 0;
-    String name;
+    juce::String name;
 
     ParameterArray parameters, parametersOut;
     PatchParameterArray _patches;
 
-    Atomic<float> gain, lastGain, inputGain, lastInputGain;
-    OwnedArray<AtomicValue<float>> inRMS, outRMS;
-    Atomic<int> midiInputActiveFrames { 0 };  // Frame counter for MIDI input activity
-    Atomic<int> midiOutputActiveFrames { 0 }; // Frame counter for MIDI output activity
+    juce::Atomic<float> gain, lastGain, inputGain, lastInputGain;
+    juce::OwnedArray<AtomicValue<float>> inRMS, outRMS;
+    juce::Atomic<int> midiInputActiveFrames { 0 };  // Frame counter for MIDI input activity
+    juce::Atomic<int> midiOutputActiveFrames { 0 }; // Frame counter for MIDI output activity
 
-    Atomic<int> keyRangeLow { 0 };
-    Atomic<int> keyRangeHigh { 127 };
-    Atomic<int> transposeOffset { 0 };
+    juce::Atomic<int> keyRangeLow { 0 };
+    juce::Atomic<int> keyRangeHigh { 127 };
+    juce::Atomic<int> transposeOffset { 0 };
     MidiChannels midiChannels;
 
-    Atomic<int> midiProgram { 0 };
-    Atomic<int> lastMidiProgram { -1 };
-    Atomic<int> midiProgramsEnabled { 0 };
-    Atomic<int> globalMidiPrograms { 0 };
+    juce::Atomic<int> midiProgram { 0 };
+    juce::Atomic<int> lastMidiProgram { -1 };
+    juce::Atomic<int> midiProgramsEnabled { 0 };
+    juce::Atomic<int> globalMidiPrograms { 0 };
 
-    CriticalSection propertyLock;
-    struct EnablementUpdater : public AsyncUpdater {
+    juce::CriticalSection propertyLock;
+    struct EnablementUpdater : public juce::AsyncUpdater {
         EnablementUpdater (Processor& g) : graph (g) {}
         ~EnablementUpdater() {}
         void handleAsyncUpdate() override;
         Processor& graph;
     } enablement;
 
-    struct MidiProgramLoader : public AsyncUpdater {
+    struct MidiProgramLoader : public juce::AsyncUpdater {
         MidiProgramLoader (Processor& n) : node (n) {}
         ~MidiProgramLoader() { cancelPendingUpdate(); }
         void handleAsyncUpdate() override;
@@ -577,7 +555,7 @@ private:
     } midiProgramLoader;
 
     friend struct PortResetter;
-    struct PortResetter : public AsyncUpdater {
+    struct PortResetter : public juce::AsyncUpdater {
         PortResetter (Processor& n) : node (n) {}
         ~PortResetter() { cancelPendingUpdate(); }
         void handleAsyncUpdate() override;
@@ -586,10 +564,10 @@ private:
 
     struct MidiProgram {
         int program;
-        String name;
-        MemoryBlock state;
+        juce::String name;
+        juce::MemoryBlock state;
     };
-    mutable OwnedArray<MidiProgram> midiPrograms;
+    mutable juce::OwnedArray<MidiProgram> midiPrograms;
     MidiProgram* getMidiProgram (int) const;
 
     void setParentGraph (GraphNode*);
@@ -600,7 +578,7 @@ private:
     std::unique_ptr<Oversampler<float>> oversampler;
     int osPow = 0;
     float osLatency = 0.0f;
-    dsp::Oversampling<float>* getOversamplingProcessor();
+    juce::dsp::Oversampling<float>* getOversamplingProcessor();
 
     ParameterPtr getOrCreateParameter (const PortDescription&);
 
@@ -613,6 +591,6 @@ private:
 };
 
 /** A convenient typedef for referring to a pointer to a node object. */
-using ProcessorPtr = ReferenceCountedObjectPtr<Processor>;
+using ProcessorPtr = juce::ReferenceCountedObjectPtr<Processor>;
 
 } // namespace element

@@ -1,5 +1,5 @@
 // Copyright 2023 Kushview, LLC <info@kushview.net>
-// SPDX-License-Identifier: GPL3-or-later
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
 
@@ -114,8 +114,8 @@ public:
             addStereoTrack();
 
         setRateAndBufferSizeDetails (sampleRate, bufferSize);
-        addLegacyParameter (masterMute = new AudioParameterBool ("masterMute", "Master Mute", false));
-        addLegacyParameter (masterVolume = new AudioParameterFloat ("masterVolume", "Master Volume", -120.0f, 12.0f, 0.f));
+        addLegacyParameter (masterMute = new AudioParameterBool (juce::ParameterID ("masterMute", 1), "Master Mute", false));
+        addLegacyParameter (masterVolume = new AudioParameterFloat (juce::ParameterID ("masterVolume", 1), "Master Volume", -120.0f, 12.0f, 0.f));
         masterMonitor = new Monitor (-1, 2);
     }
 

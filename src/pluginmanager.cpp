@@ -1,19 +1,19 @@
 // Copyright 2014-2023 Kushview, LLC <info@kushview.net>
-// SPDX-License-Identifier: GPL3-or-later
+// SPDX-License-Identifier: GPL-3.0-or-later
 
-#include <boost/dll.hpp>
+#include <array>
 
-#include <element/nodefactory.hpp>
+#include <element/datapath.hpp>
 #include <element/node.hpp>
+#include <element/nodefactory.hpp>
 #include <element/plugins.hpp>
 #include <element/settings.hpp>
 
 #include "engine/clapprovider.hpp"
 #include "engine/sandboxhost.hpp"
+#include "engine/ionode.hpp"
 #include "nodes/nodetypes.hpp"
 #include "nodes/sandboxedprocessor.hpp"
-#include "engine/ionode.hpp"
-#include "datapath.hpp"
 #include "utils.hpp"
 
 #define EL_DEAD_AUDIO_PLUGINS_FILENAME "scanner/crashed.txt"
@@ -52,12 +52,12 @@ static File scannerExeFullPath()
 #if JUCE_LINUX
     if (! scannerExe.existsAsFile())
     {
-        char* path = (char*) malloc (PATH_MAX);
-        if (path != NULL)
+        std::array<char, PATH_MAX> path {};
+        const ssize_t len = readlink ("/proc/self/exe", path.data(), PATH_MAX - 1);
+        if (len > 0)
         {
-            if (readlink ("/proc/self/exe", path, PATH_MAX) > 0)
-                scannerExe = File (String (path));
-            std::free (path);
+            path[static_cast<size_t> (len)] = '\0';
+            scannerExe = File (String (path.data()));
         }
     }
 #endif
@@ -102,7 +102,14 @@ public:
     explicit PluginScannerCoordinator (PluginScanner& o)
         : owner (o)
     {
-        launchScanner (EL_PLUGIN_SCANNER_DEFAULT_TIMEOUT, 0);
+        if (! launchScanner (EL_PLUGIN_SCANNER_DEFAULT_TIMEOUT, 0))
+        {
+            o.listeners.call (&PluginScanner::Listener::audioPluginScanFinished);
+            juce::AlertWindow::showMessageBoxAsync (
+                juce::MessageBoxIconType::WarningIcon,
+                "Plugin Scanner",
+                "Could not launch plugin scanner.");
+        }
     }
 
     ~PluginScannerCoordinator() {}
@@ -754,36 +761,36 @@ void PluginManager::addDefaultFormats()
 
 #if JUCE_MAC && JUCE_PLUGINHOST_AU
         else if (fmt == "AudioUnit")
-            audioPlugs.addFormat (new AudioUnitPluginFormat());
+            audioPlugs.addFormat (std::make_unique<AudioUnitPluginFormat>());
 #endif
 
 #if JUCE_PLUGINHOST_VST
         else if (fmt == "VST")
-            audioPlugs.addFormat (new VSTPluginFormat());
+            audioPlugs.addFormat (std::make_unique<VSTPluginFormat>());
 #endif
 
 #if JUCE_PLUGINHOST_VST3
         else if (fmt == "VST3")
-            audioPlugs.addFormat (new VST3PluginFormat());
+            audioPlugs.addFormat (std::make_unique<VST3PluginFormat>());
 #endif
 
 #if JUCE_PLUGINHOST_LV2
         else if (fmt == "LV2")
-            audioPlugs.addFormat (new LV2PluginFormat());
+            audioPlugs.addFormat (std::make_unique<LV2PluginFormat>());
 #endif
 
 #if JUCE_PLUGINHOST_LADSPA
         else if (fmt == "LADSPA")
-            audioPlugs.addFormat (new LADSPAPluginFormat());
+            audioPlugs.addFormat (std::make_unique<LADSPAPluginFormat>());
 #endif
     }
 
     priv->hasAddedFormats = true;
 }
 
-void PluginManager::addFormat (AudioPluginFormat* fmt)
+void PluginManager::addFormat (std::unique_ptr<juce::AudioPluginFormat> fmt)
 {
-    getAudioPluginFormats().addFormat (fmt);
+    getAudioPluginFormats().addFormat (std::move (fmt));
 }
 
 NodeFactory& PluginManager::getNodeFactory() { return priv->nodes; }

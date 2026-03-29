@@ -1,5 +1,5 @@
 // Copyright 2023 Kushview, LLC <info@kushview.net>
-// SPDX-License-Identifier: GPL3-or-later
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include <element/audioengine.hpp>
 #include <element/context.hpp>
@@ -42,7 +42,7 @@ void MainMenu::setupMenu()
 #if JUCE_MAC
     macMenu.reset (new PopupMenu());
     macMenu->addCommandItem (&cmd, Commands::showAbout, Util::appName ("About "));
-#if EL_UPDATER
+#if ELEMENT_UPDATER
     macMenu->addCommandItem (&cmd, Commands::checkNewerVersion, "Check For Updates...");
 #endif
     macMenu->addSeparator();
@@ -108,25 +108,25 @@ void MainMenu::menuItemSelected (int index, int menu)
 
     if (index == 6000 && menu == Help)
     {
-        URL (EL_URL_MANUAL_HOME).launchInDefaultBrowser();
+        URL (ELEMENT_URL_MANUAL_HOME).launchInDefaultBrowser();
     }
     else if (index == 6001 && menu == Help)
     {
-#ifdef EL_URL_API_LUA_EL
-        URL (EL_URL_API_LUA_EL).launchInDefaultBrowser();
+#ifdef ELEMENT_URL_API_LUA_EL
+        URL (ELEMENT_URL_API_LUA_EL).launchInDefaultBrowser();
 #endif
     }
     else if (index == 6002 && menu == Help)
     {
-        URL (EL_URL_DISCUSSIONS).launchInDefaultBrowser();
+        URL (ELEMENT_URL_DISCUSSIONS).launchInDefaultBrowser();
     }
     else if (index == 7000 && menu == Help)
     {
-        URL (EL_URL_BUG_TRACKER).launchInDefaultBrowser();
+        URL (ELEMENT_URL_BUG_TRACKER).launchInDefaultBrowser();
     }
     else if (index == 7001)
     {
-        URL (EL_URL_DONATE).launchInDefaultBrowser();
+        URL (ELEMENT_URL_DONATE).launchInDefaultBrowser();
     }
     else if (index == 7002)
     {
@@ -137,7 +137,7 @@ void MainMenu::menuItemSelected (int index, int menu)
     }
     else if (index == 7003)
     {
-        URL (EL_URL_CHANGELOG).launchInDefaultBrowser();
+        URL (ELEMENT_URL_CHANGELOG).launchInDefaultBrowser();
     }
 
     else if (index == 2000 && menu == Window)
@@ -258,7 +258,7 @@ void MainMenu::buildFileMenu (PopupMenu& menu)
 
 #if ! JUCE_MAC
     menu.addSeparator();
-#if EL_UPDATER
+#if ELEMENT_UPDATER
     menu.addCommandItem (&cmd, Commands::checkNewerVersion, "Check For Updates..");
 #endif
     menu.addCommandItem (&cmd, Commands::showPreferences, "Preferences..");
@@ -328,7 +328,7 @@ void MainMenu::buildHelpMenu (PopupMenu& menu)
     menu.addItem (7002, TRANS ("Log files..."));
     menu.addItem (7000, TRANS ("Issue tracking..."));
     menu.addItem (7003, TRANS ("Change log..."));
-#if ! EL_UPDATER
+#if ! ELEMENT_UPDATER
     menu.addSeparator();
     menu.addItem (7001, TRANS ("Donate..."));
 #endif

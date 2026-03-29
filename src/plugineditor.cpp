@@ -1,5 +1,5 @@
 // Copyright 2023 Kushview, LLC <info@kushview.net>
-// SPDX-License-Identifier: GPL3-or-later
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include <element/ui/standard.hpp>
 #include <element/ui/style.hpp>
@@ -13,7 +13,6 @@
 
 #include "plugineditor.hpp"
 #include "pluginprocessor.hpp"
-#include "ElementApp.h"
 
 #define EL_PLUGIN_MIN_WIDTH 546
 #define EL_PLUGIN_MIN_HEIGHT 266

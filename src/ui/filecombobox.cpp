@@ -1,5 +1,5 @@
 // Copyright 2020 Raw Material Software Limited
-// SPDX-License-Identifier: GPL3-or-later
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Copied from JUCE
 
 #include "ui/filecombobox.hpp"
@@ -120,22 +120,22 @@ File FileComboBox::getLocationToBrowse()
 
 void FileComboBox::showChooser()
 {
-#if JUCE_MODAL_LOOPS_PERMITTED
-    FileChooser fc (isDir ? TRANS ("Choose a new directory")
-                          : TRANS ("Choose a new file"),
-                    getLocationToBrowse(),
-                    wildcard);
+    int flags = isDir
+                    ? FileBrowserComponent::openMode | FileBrowserComponent::canSelectDirectories
+                    : (isSaving
+                           ? FileBrowserComponent::saveMode | FileBrowserComponent::canSelectFiles
+                           : FileBrowserComponent::openMode | FileBrowserComponent::canSelectFiles);
 
-    if (isDir ? fc.browseForDirectory()
-              : (isSaving ? fc.browseForFileToSave (false)
-                          : fc.browseForFileToOpen()))
-    {
-        setCurrentFile (fc.getResult(), true);
-    }
-#else
-    ignoreUnused (isSaving);
-    jassertfalse; // needs rewriting to deal with non-modal environments
-#endif
+    chooser = std::make_unique<FileChooser> (
+        isDir ? TRANS ("Choose a new directory") : TRANS ("Choose a new file"),
+        getLocationToBrowse(),
+        wildcard);
+
+    auto safeThis = Component::SafePointer<FileComboBox> (this);
+    chooser->launchAsync (flags, [safeThis] (const FileChooser& fc) {
+        if (safeThis != nullptr && fc.getResults().size() > 0)
+            safeThis->setCurrentFile (fc.getResult(), true);
+    });
 }
 
 bool FileComboBox::isInterestedInFileDrag (const StringArray&)

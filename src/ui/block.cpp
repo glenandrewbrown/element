@@ -1,5 +1,5 @@
 // Copyright 2023 Kushview, LLC <info@kushview.net>
-// SPDX-License-Identifier: GPL3-or-later
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include <element/services.hpp>
 #include <element/ui.hpp>
@@ -14,7 +14,6 @@
 #include "ui/contextmenus.hpp"
 #include "ui/grapheditorcomponent.hpp"
 #include "ui/ioconfigurationwindow.hpp"
-#include "ui/nodeioconfiguration.hpp"
 #include "ui/nodeeditorfactory.hpp"
 #include "ui/viewhelpers.hpp"
 #include "ui/block.hpp"
@@ -25,6 +24,13 @@
 namespace element {
 
 namespace detail {
+inline static Context* context (juce::Component* comp)
+{
+    if (auto cc = ViewHelpers::findContentComponent (comp))
+        return &cc->context();
+    return nullptr;
+}
+
 static bool canResize (BlockComponent& block)
 {
     return block.getDisplayMode() == BlockComponent::Embed && block.getNode().getFormat() == EL_NODE_FORMAT_NAME;
@@ -569,10 +575,17 @@ void BlockComponent::buttonClicked (Button* b)
     }
     else if (proc != nullptr && b == &configButton && ! configButton.getToggleState())
     {
-        CallOutBox::launchAsynchronously (
-            std::make_unique<IOConfigurationWindow> (getNode(), *proc),
-            configButton.getScreenBounds(),
-            nullptr);
+        if (auto context = detail::context (this))
+        {
+            CallOutBox::launchAsynchronously (
+                std::make_unique<IOConfigurationWindow> (*context, getNode(), *proc),
+                configButton.getScreenBounds(),
+                nullptr);
+        }
+        else
+        {
+            jassertfalse;
+        }
     }
     else if (b == &powerButton)
     {

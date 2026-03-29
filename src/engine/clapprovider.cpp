@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: Copyright (C) Kushview, LLC.
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #if __APPLE__
 #include <CoreFoundation/CoreFoundation.h>
@@ -15,7 +17,7 @@
 #include <element/version.hpp>
 #include <element/ui/nodeeditor.hpp>
 
-#include "lv2/messages.hpp"
+#include <element/spinlock.hpp>
 
 #include "appinfo.hpp"
 #include "engine/clapprovider.hpp"
@@ -50,6 +52,8 @@ static void _fpreset()
 #else
 #define CLAP_LOG(a)
 #endif
+
+using namespace juce;
 
 namespace element {
 namespace detail {
@@ -188,7 +192,7 @@ class CLAPHost final : public CLAPBaseHost
 {
 public:
     CLAPHost()
-        : CLAPBaseHost (EL_APP_NAME, EL_APP_AUTHOR, EL_APP_URL, EL_VERSION_STRING)
+        : CLAPBaseHost (EL_APP_NAME, EL_APP_AUTHOR, EL_APP_URL, ELEMENT_VERSION_STRING)
     {
     }
     ~CLAPHost() {}
@@ -277,13 +281,23 @@ protected:
                 break;
         }
     }
-#if 0
-      // clap_host_params
-      virtual bool implementsParams() const noexcept { return false; }
-      virtual void paramsRescan(clap_param_rescan_flags flags) noexcept {}
-      virtual void paramsClear(clap_id paramId, clap_param_clear_flags flags) noexcept {}
-      virtual void paramsRequestFlush() noexcept {}
 
+    // clap_host_params
+    std::function<void()> onRescanParamValues;
+    bool implementsParams() const noexcept override { return true; }
+    void paramsRescan (clap_param_rescan_flags flags) noexcept override
+    {
+        if (flags & CLAP_PARAM_RESCAN_VALUES)
+            if (onRescanParamValues)
+                onRescanParamValues();
+    }
+
+    void paramsClear (clap_id paramId, clap_param_clear_flags flags) noexcept override
+    {
+        juce::ignoreUnused (paramId, flags);
+    }
+    void paramsRequestFlush() noexcept override {}
+#if 0
       // clap_host_posix_fd_support
       virtual bool implementsPosixFdSupport() const noexcept { return false; }
       virtual bool posixFdSupportRegisterFd(int fd, clap_posix_fd_flags_t flags) noexcept { return false; }
@@ -506,6 +520,42 @@ private:
 #endif
 
 //==============================================================================
+struct TryLockAndCall
+{
+    template <typename Fn>
+    void operator() (SpinLock& mutex, Fn&& fn)
+    {
+        if (mutex.tryLock())
+        {
+            fn();
+            mutex.unlock();
+        }
+    }
+};
+
+struct LockAndCall
+{
+    template <typename Fn>
+    void operator() (SpinLock& mutex, Fn&& fn)
+    {
+        mutex.lock();
+        fn();
+        mutex.unlock();
+    }
+};
+
+struct RealtimeReadTrait
+{
+    using Read = TryLockAndCall;
+    using Write = LockAndCall;
+};
+
+struct RealtimeWriteTrait
+{
+    using Read = LockAndCall;
+    using Write = TryLockAndCall;
+};
+
 template <typename Locks>
 class CLAPEventQueue final
 {
@@ -551,7 +601,7 @@ private:
     Write write;
 
     static constexpr auto initialSize = 8192;
-    lvtk::SpinLock mutex;
+    SpinLock mutex;
     std::vector<char> data;
 };
 
@@ -800,7 +850,7 @@ private:
 //==============================================================================
 class CLAPParameter : public Parameter
 {
-    using Queue = CLAPEventQueue<lvtk::RealtimeReadTrait>;
+    using Queue = CLAPEventQueue<RealtimeReadTrait>;
     Queue& _queue;
     const clap_plugin_t* _plugin;
     const clap_plugin_params_t* _params;
@@ -837,8 +887,8 @@ public:
         if (! _params->get_value (_plugin, _info.id, &value))
             return;
 
-        value = _range.convertFrom0to1 (value);
-        if (value != _value.load())
+        value = _range.convertTo0to1 (value);
+        if (! juce::exactlyEqual (value, (double) _value.load()))
         {
             _value.store (static_cast<float> (value));
             sendValueChangedMessageToListeners (value);
@@ -1200,6 +1250,8 @@ class CLAPProcessor : public Processor
 public:
     ~CLAPProcessor()
     {
+        _host.onRescanParamValues = nullptr;
+
         if (_plugin != nullptr)
         {
             _plugin->destroy (_plugin);
@@ -1533,8 +1585,8 @@ private:
     AudioBuffer<float> _tmpAudio;
 
     clap::helpers::EventList _eventIn, _eventOut;
-    CLAPEventQueue<lvtk::RealtimeReadTrait> _queueIn;
-    CLAPEventQueue<lvtk::RealtimeWriteTrait> _queueOut;
+    CLAPEventQueue<RealtimeReadTrait> _queueIn;
+    CLAPEventQueue<RealtimeWriteTrait> _queueOut;
 
     CLAPProcessor (CLAPModule::Ptr m, const String& i)
         : Processor (0), ID (i), _module (m)
@@ -1543,6 +1595,7 @@ private:
         {
             _host.setPlugin (plugin);
             _plugin = _host.clapPlugin();
+            _host.onRescanParamValues = [this]() { syncParams(); };
         }
     }
 

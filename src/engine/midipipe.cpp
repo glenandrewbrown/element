@@ -1,5 +1,5 @@
 // Copyright 2023 Kushview, LLC <info@kushview.net>
-// SPDX-License-Identifier: GPL3-or-later
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 /// An array of kv.MidiBuffers.
 // Designed for real time performance, therefore does virtually no type
@@ -10,7 +10,6 @@
 #include <element/lua.hpp>
 #include <element/midipipe.hpp>
 
-#include "ElementApp.h"
 #include "el/midi_buffer.hpp"
 #include "el/factories.hpp"
 

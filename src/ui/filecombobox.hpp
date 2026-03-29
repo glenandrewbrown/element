@@ -1,5 +1,5 @@
 // Copyright 2020 Raw Material Software Limited
-// SPDX-License-Identifier: GPL3-or-later
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Copied from JUCE
 
 #pragma once
@@ -213,6 +213,7 @@ private:
     String wildcard, enforcedSuffix, browseButtonText;
     juce::ListenerList<FileComboBoxListener> listeners;
     File defaultBrowseFile;
+    std::unique_ptr<juce::FileChooser> chooser;
 
     void showChooser();
     void handleAsyncUpdate() override;

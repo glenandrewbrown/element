@@ -1,5 +1,5 @@
 // Copyright 2023 Kushview, LLC <info@kushview.net>
-// SPDX-License-Identifier: GPL3-or-later
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include <element/context.hpp>
 #include <element/plugins.hpp>
@@ -216,7 +216,10 @@ void Services::handleMessage (const Message& msg)
         }
 
         if (handled)
+        {
+            gui->refreshMainMenu();
             return;
+        }
     }
 
     handled = true; // final else condition will set false
@@ -295,6 +298,8 @@ void Services::handleMessage (const Message& msg)
     else if (const auto* cbm = dynamic_cast<const ChangeBusesLayout*> (&msg))
     {
         ec->changeBusesLayout (cbm->node, cbm->layout);
+        if (cbm->onFinished)
+            cbm->onFinished();
     }
     else if (const auto* osm = dynamic_cast<const OpenSessionMessage*> (&msg))
     {

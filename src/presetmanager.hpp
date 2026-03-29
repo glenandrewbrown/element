@@ -1,12 +1,12 @@
 // Copyright 2014-2023 Kushview, LLC <info@kushview.net>
-// SPDX-License-Identifier: GPL3-or-later
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
 
 #include <element/node.hpp>
 #include <element/presets.hpp>
 
-#include "datapath.hpp"
+#include <element/datapath.hpp>
 
 namespace element {
 

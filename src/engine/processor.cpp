@@ -1,5 +1,5 @@
 // Copyright 2023 Kushview, LLC <info@kushview.net>
-// SPDX-License-Identifier: GPL3-or-later
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include <iomanip>
 
@@ -7,8 +7,6 @@
 #include <element/midipipe.hpp>
 #include <element/processor.hpp>
 #include <element/node.hpp>
-
-#include "ElementApp.h"
 
 #include "nodes/audioprocessor.hpp"
 #include "nodes/mididevice.hpp"
@@ -628,7 +626,6 @@ void Processor::renderBypassed (RenderContext& rc)
     rc.audio.clear (0, numSamples);
     rc.cv.clear (0, numSamples);
     rc.midi.clear (0, numSamples);
-    rc.atom.clear (0, numSamples);
 }
 
 //=============================================================================

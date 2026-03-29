@@ -1,5 +1,5 @@
 // Copyright 2023 Kushview, LLC <info@kushview.net>
-// SPDX-License-Identifier: GPL3-or-later
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
 
@@ -12,7 +12,6 @@
 namespace element {
 
 class Context;
-class SymbolMap;
 
 class GraphNode : public Processor,
                   private AsyncUpdater
@@ -184,8 +183,6 @@ public:
     /** Returns true if the graph is prepared. */
     bool prepared() const noexcept { return _prepared; }
 
-    SymbolMap& symbols() noexcept;
-
     /** Rebuild rendering ops immediately. */
     void rebuild() noexcept;
 
@@ -217,7 +214,6 @@ private:
     uint32 lastNodeId;
     AudioSampleBuffer renderingBuffers;
     OwnedArray<MidiBuffer> midiBuffers;
-    OwnedArray<AtomBuffer> atomBuffers;
     Array<void*> renderingOps;
     bool _prepared = false;
 

@@ -1,13 +1,11 @@
 // Copyright 2023 Kushview, LLC <info@kushview.net>
-// SPDX-License-Identifier: GPL3-or-later
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include <element/context.hpp>
 #include <element/devices.hpp>
 #include <element/services.hpp>
 #include <element/ui/style.hpp>
 #include <element/ui.hpp>
-
-#include "ElementApp.h"
 
 #include "engine/graphnode.hpp"
 #include "nodes/ionodeeditor.hpp"

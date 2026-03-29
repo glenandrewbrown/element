@@ -1,7 +1,5 @@
 // Copyright 2023 Kushview, LLC <info@kushview.net>
-// SPDX-License-Identifier: GPL3-or-later
-
-#include "ElementApp.h"
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include <element/context.hpp>
 #include <element/devices.hpp>
@@ -16,6 +14,10 @@
 #include "engine/rootgraph.hpp"
 #include <element/engine.hpp>
 #include <element/ui.hpp>
+
+#define ELEMENT_TRACE_SESSION_LOAD 0
+
+using namespace juce;
 
 namespace element {
 
@@ -939,13 +941,15 @@ void EngineService::sessionReloaded()
     {
         Logger::writeToLog ("[element] model and engine graph counts do not match");
     }
+#if ELEMENT_TRACE_SESSION_LOAD
     else
     {
         String msg ("[element] session reloaded");
         if (session->getName().isNotEmpty())
             msg << ": " << session->getName();
-        Logger::writeToLog (msg);
+        DBG (msg);
     }
+#endif
 }
 
 Node EngineService::addPlugin (GraphManager& c, const PluginDescription& desc)
@@ -1036,7 +1040,8 @@ void EngineService::changeBusesLayout (const Node& n, const AudioProcessor::Buse
         {
             if (proc->checkBusesLayoutSupported (layout))
             {
-                gp->suspendProcessing (true);
+                while (! gp->isSuspended())
+                    gp->suspendProcessing (true);
                 gp->releaseResources();
 
                 const bool wasNotSuspended = ! proc->isSuspended();
@@ -1048,7 +1053,9 @@ void EngineService::changeBusesLayout (const Node& n, const AudioProcessor::Buse
                     proc->suspendProcessing (false);
 
                 gp->prepareToRender (gp->getSampleRate(), gp->getBlockSize());
-                gp->suspendProcessing (false);
+
+                while (gp->isSuspended())
+                    gp->suspendProcessing (false);
 
                 controller->removeIllegalConnections();
                 controller->syncArcsModel();

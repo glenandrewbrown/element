@@ -1,5 +1,5 @@
 // Copyright 2023 Kushview, LLC <info@kushview.net>
-// SPDX-License-Identifier: GPL3-or-later
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
 
@@ -27,7 +27,7 @@ public:
     void addDefaultFormats();
 
     /** Add a plugin format */
-    void addFormat (juce::AudioPluginFormat*);
+    void addFormat (std::unique_ptr<juce::AudioPluginFormat>);
 
     /** Get the dead mans pedal file */
     const juce::File& getDeadAudioPluginsFile() const;

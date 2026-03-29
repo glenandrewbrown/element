@@ -1,123 +1,90 @@
 // Copyright 2023 Kushview, LLC <info@kushview.net>
-// SPDX-License-Identifier: GPL3-or-later
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
 
 #include <memory>
 #include <string>
-#include <vector>
 
-#include <element/signals.hpp>
+#include <element/element.hpp>
 
-#ifndef EL_UPDATE_REPOSITORY_HOST
-    #define EL_UPDATE_REPOSITORY_HOST "https://repo.kushview.net"
+#ifndef ELEMENT_UPDATES_HOST
+    #define ELEMENT_UPDATES_HOST "https://repo.kushview.net"
 #endif
 
-#ifndef EL_UPDATE_REPOSITORY_PATH
-    #define EL_UPDATE_REPOSITORY_PATH "/element/1/stable"
+#ifndef ELEMENT_UPDATES_PATH
+    #define ELEMENT_UPDATES_PATH "/element/1/stable"
 #endif
 
-#define EL_UPDATE_REPOSITORY_URL_BASE EL_UPDATE_REPOSITORY_HOST EL_UPDATE_REPOSITORY_PATH
+#define ELEMENT_UPDATES_URL_BASE ELEMENT_UPDATES_HOST ELEMENT_UPDATES_PATH
 
 #if JUCE_MAC
-    #define EL_UPDATE_REPOSITORY_URL EL_UPDATE_REPOSITORY_URL_BASE "/osx"
+    #define ELEMENT_UPDATES_URL ELEMENT_UPDATES_URL_BASE "/osx"
 #elif JUCE_WINDOWS
-    #define EL_UPDATE_REPOSITORY_URL EL_UPDATE_REPOSITORY_URL_BASE "/windows"
+    #define ELEMENT_UPDATES_URL ELEMENT_UPDATES_URL_BASE "/windows"
 #else
-    #define EL_UPDATE_REPOSITORY_URL EL_UPDATE_REPOSITORY_URL_BASE "/linux"
+    #define ELEMENT_UPDATES_URL ELEMENT_UPDATES_URL_BASE "/linux"
 #endif
 
 namespace element {
-namespace ui {
 
-/** An update package. */
-struct UpdatePackage {
-    /** Package (component) Identifier */
-    std::string ID;
-    /** Version number of the package
-        can be 3 or 4 segements.
-     */
-    std::string version;
-};
-
-struct UpdateRepo {
-    std::string host;
-    std::string username;
-    std::string password;
-    bool enabled { false };
-};
-
-/** Updater helper that can deal with Qt Installer Framework installers */
+/** Application update checker and installer.
+    
+    Provides functionality to check for, download, and install application updates.
+    Uses platform-specific update mechanisms (Sparkle on macOS, WinSparkle on Windows).
+ */
 class Updater {
 public:
-    Updater();
-    Updater (const std::string& package, const std::string& version, const std::string& url);
-    ~Updater();
-
-    //==========================================================================
-    /** Triggered when updates are found. Only fired when checking async. */
-    Signal<void()> sigUpdatesAvailable;
-
-    /** Check for updates in the background */
-    void clear();
-
-    /** Check for updates now or later. */
-    void check (bool async);
-
-    /** Checks if the updater program has been found on disk. */
-    bool exists() const noexcept;
-
-    /** Returns all package updates listed in the repo. */
-    std::vector<UpdatePackage> packages() const noexcept;
-
-    /** Returns available packages matching this updater's ID
-        and also is a greater version.
-    */
-    std::vector<UpdatePackage> available() const noexcept;
-
-    //==========================================================================
-    /** Change updater / package / repo information */
-    void setInfo (const std::string& package, const std::string& version, const std::string& url);
-
-    /** Change updater / package information */
-    void setInfo (const std::string& package, const std::string& version);
-
-    //==========================================================================
-    /** Returns the EXE file of the updater program. */
-    std::string exeFile() const noexcept;
-
-    /** Changes the EXE file of the updater program. */
-    void setExeFile (const std::string& file);
-
-    /** Change the XML file to check. Default is 'Updates.xml' */
-    void setUpdatesFilename (const std::string& filename);
-
-    /** Launch the updater GUI if possible. */
-    void launch();
-
-    //==========================================================================
-    /** Returns a list of user repositories. */
-    static std::vector<UpdateRepo> repositories();
-
-    /** Returns the repository URL or file:/// path */
-    std::string repository() const noexcept;
-
-    /** Set the base URL to the repository to check for Updates with.
-        This can also be a file:///path/to/folder on the system.
-    */
-    void setRepository (const std::string& url);
-
-    //==========================================================================
-    /** Override Online XML with local xml 
-        Call clear() to wipe it out.
+    /** Creates a platform-specific updater instance.
+        
+        @return A unique pointer to the created updater, or nullptr if updates 
+                are not supported on the current platform
      */
-    void setUpdatesXml (const std::string& xml);
+    static std::unique_ptr<Updater> create();
+
+    virtual ~Updater();
+
+    /** Checks for available updates.
+        
+        When background is true, the check is performed silently without showing UI 
+        unless an update is found. When background is false, a dialog is presented 
+        to the user immediately to show the check progress.
+        
+        If an update is available, a dialog will be shown to the user regardless of 
+        the background parameter, allowing them to review release notes and choose 
+        whether to install the update.
+        
+        This method returns immediately; the actual check happens asynchronously.
+        
+        @param background If true, checks silently in the background. If false, 
+                         shows immediate UI feedback to the user.
+     */
+    virtual void check (bool background);
+
+    /** Returns the currently configured update feed URL.
+        
+        @return The repository URL (http/https) or file system path (file:///) 
+                where the appcast feed is located
+     */
+    virtual std::string feedUrl() const noexcept;
+
+    /** Sets the update feed URL.
+        
+        Configures the base URL or file path to check for updates. This should point 
+        to the location of the appcast XML file that describes available updates.
+        
+        @param url The repository URL (e.g., "https://example.com/appcast.xml") or 
+                  local file path (e.g., "file:///path/to/appcast.xml"). Note that
+                  local file may or may not work depending on platform.
+     */
+    virtual void setFeedUrl (const std::string& url);
+
+protected:
+    /** Protected constructor. Use create() to instantiate. */
+    Updater();
 
 private:
-    class Updates;
-    std::unique_ptr<Updates> updates;
-    static std::string findExe (const std::string& basename = "updater");
+    EL_DISABLE_COPY (Updater)
 };
 
-} // namespace ui
 } // namespace element

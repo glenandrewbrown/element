@@ -1,5 +1,5 @@
 // Copyright 2023 Kushview, LLC <info@kushview.net>
-// SPDX-License-Identifier: GPL3-or-later
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
 
@@ -40,27 +40,21 @@ public:
     void run();
     Commands& commands();
 
-    /** Change updater info. */
-    void setUpdaterPackage (const std::string_view package, std::string_view version);
-
     /** Check for a newer version and show alert, if available. */
-    void checkUpdates();
-
-    /** Launch the updater tool, if available and enabled. */
-    void launchUpdater();
+    void checkUpdates (bool background);
 
     Services& services() const { return controller; }
-    KeyListener* getKeyListener() const;
+    juce::KeyListener* getKeyListener() const;
 
     void closeAllWindows();
 
     MainWindow* getMainWindow() const noexcept;
     void refreshMainMenu();
 
-    void showPreferencesDialog (const String& section = {});
+    void showPreferencesDialog (const juce::String& section = {});
 
-    void runDialog (const String& uri);
-    void runDialog (Component* c, const String& title = String());
+    void runDialog (const juce::String& uri);
+    void runDialog (juce::Component* c, const String& title = String());
 
     /** Get a reference to Sesison data */
     SessionRef session();
@@ -86,9 +80,9 @@ public:
     bool haveActiveWindows() const;
 
     /* Command manager... */
-    ApplicationCommandTarget* getNextCommandTarget() override;
-    void getAllCommands (Array<CommandID>& commands) override;
-    void getCommandInfo (CommandID commandID, ApplicationCommandInfo& result) override;
+    juce::ApplicationCommandTarget* getNextCommandTarget() override;
+    void getAllCommands (juce::Array<juce::CommandID>& commands) override;
+    void getCommandInfo (juce::CommandID commandID, juce::ApplicationCommandInfo& result) override;
     bool perform (const InvocationInfo& info) override;
 
     /** Returns the content component for this instance */
@@ -152,12 +146,12 @@ private:
     Services& controller;
     Context& world;
     SessionRef sessionRef;
-    OwnedArray<PluginWindow> pluginWindows;
+    juce::OwnedArray<PluginWindow> pluginWindows;
 
     std::unique_ptr<WindowManager> windowManager;
     std::unique_ptr<MainWindow> mainWindow;
     std::unique_ptr<Content> _content;
-    std::unique_ptr<DialogWindow> about;
+    std::unique_ptr<juce::DialogWindow> about;
     std::unique_ptr<ContentFactory> factory;
     std::unique_ptr<Designer> designer;
 
@@ -167,19 +161,19 @@ private:
     std::unique_ptr<KeyPressManager> keys;
 
     AboutInfo appInfo;
-    struct ForegroundCheck : public Timer {
+    struct ForegroundCheck : public juce::Timer {
         ForegroundCheck (GuiService& _ui) : ui (_ui) {}
         void timerCallback() override;
         GuiService& ui;
     } foregroundCheck;
 
-    friend class ChangeBroadcaster;
-    void changeListenerCallback (ChangeBroadcaster*) override;
+    friend class juce::ChangeBroadcaster;
+    void changeListenerCallback (juce::ChangeBroadcaster*) override;
 
     void showSplash();
     void toggleAboutScreen();
 
-    void saveProperties (PropertiesFile* props);
+    void saveProperties (juce::PropertiesFile* props);
     void setMainWindowTitler (std::function<juce::String()>);
 };
 

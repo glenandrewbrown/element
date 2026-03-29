@@ -1,5 +1,5 @@
 // Copyright 2023 Kushview, LLC <info@kushview.net>
-// SPDX-License-Identifier: GPL3-or-later
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include <element/graph.hpp>
 #include <element/node.hpp>
@@ -147,9 +147,14 @@ void SessionService::openFile (const File& file)
     if (didSomething)
     {
         if (auto* gc = sibling<GuiService>())
-            gc->stabilizeContent();
+            if (! file.hasFileExtension ("els"))
+                gc->stabilizeContent();
         changeResetter->triggerAsyncUpdate();
     }
+}
+
+const File SessionService::getSessionFile() const { 
+    return document != nullptr ? document->getFile() : File(); 
 }
 
 void SessionService::exportGraph (const Node& node, const File& targetFile)
@@ -173,6 +178,10 @@ void SessionService::importGraph (const File& file)
 void SessionService::closeSession()
 {
     DBG ("[SC] close session");
+}
+
+bool SessionService::hasSessionChanged() { 
+    return (document) ? document->hasChangedSinceSaved() : false; 
 }
 
 void SessionService::resetChanges (const bool resetDocumentFile)

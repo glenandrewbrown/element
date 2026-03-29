@@ -1,10 +1,11 @@
 // Copyright 2023 Kushview, LLC <info@kushview.net>
-// SPDX-License-Identifier: GPL3-or-later
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
 
 #include <cstdint>
 
+#include <element/element.h>
 #include <element/juce/core.hpp>
 
 namespace element {
@@ -39,7 +40,7 @@ private:
     JUCE_LEAK_DETECTOR (Arc)
 };
 
-struct ArcSorter {
+struct EL_API ArcSorter {
     static inline int compareElements (const Arc* const first, const Arc* const second) noexcept
     {
         if (first->sourceNode < second->sourceNode)
@@ -65,7 +66,7 @@ struct ArcSorter {
 
 /** Holds a fast lookup table for checking which arcs are inputs to others. */
 template <class ArcType>
-class ArcTable {
+class EL_API ArcTable {
 public:
     explicit ArcTable (const juce::OwnedArray<ArcType>& arcs)
     {

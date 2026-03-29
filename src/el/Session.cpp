@@ -1,5 +1,5 @@
 // Copyright 2023 Kushview, LLC <info@kushview.net>
-// SPDX-License-Identifier: GPL3-or-later
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 /// The Session Model.
 // Representation of a session.
@@ -11,6 +11,8 @@
 #include <element/session.hpp>
 
 #include "sol_helpers.hpp"
+
+using namespace juce;
 
 // clang-format off
 EL_PLUGIN_EXPORT 

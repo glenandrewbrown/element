@@ -1,5 +1,5 @@
 // Copyright 2023 Kushview, LLC <info@kushview.net>
-// SPDX-License-Identifier: GPL3-or-later
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
 
@@ -68,7 +68,7 @@ private:
 //==============================================================================
 class Content : public juce::Component {
 protected:
-    Content (Context& app);
+    Content (Context& ctx);
 
 public:
     virtual ~Content() noexcept;
@@ -77,7 +77,7 @@ public:
     Context& context();
 
     /** Access to the app controller */
-    Services& services() { return controller; }
+    Services& services() { return _services; }
 
     /** Access to the currently opened session */
     SessionPtr session();
@@ -124,7 +124,7 @@ protected:
 
 private:
     Context& _context;
-    Services& controller;
+    Services& _services;
 
     struct Tooltips;
     juce::SharedResourcePointer<Tooltips> tips;

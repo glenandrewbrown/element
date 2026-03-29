@@ -1,5 +1,5 @@
 // Copyright 2023 Kushview, LLC <info@kushview.net>
-// SPDX-License-Identifier: GPL3-or-later
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include <set>
 
@@ -8,8 +8,6 @@
 #include <element/plugins.hpp>
 #include <element/ui/content.hpp>
 #include <element/ui/navigation.hpp>
-
-#include "ElementApp.h"
 
 #include "engine/graphmanager.hpp"
 #include "nodes/baseprocessor.hpp"
@@ -28,7 +26,6 @@
 #include "ui/pluginspanelview.hpp"
 #include "ui/sessiontreepanel.hpp"
 #include "ui/audioiopanelview.hpp"
-#include "ui/nodeioconfiguration.hpp"
 #include "ui/grapheditorcomponent.hpp"
 
 #include "scopedflag.hpp"

@@ -1,12 +1,12 @@
 // Copyright 2023 Kushview, LLC <info@kushview.net>
-// SPDX-License-Identifier: GPL3-or-later
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include <element/juce.hpp>
 #include <element/script.hpp>
 
 #include "scripting/scriptmanager.hpp"
 #include "scripting/bindings.hpp"
-#include "datapath.hpp"
+#include <element/datapath.hpp>
 #include "sol/sol.hpp"
 
 namespace element {
@@ -127,7 +127,7 @@ File ScriptManager::getSystemScriptsDir()
 {
     File dir;
 
-#if defined(EL_APPIMAGE)
+#if defined(ELEMENT_APPIMAGE)
     dir = File::getSpecialLocation (File::currentExecutableFile)
               .getParentDirectory() // bin
               .getParentDirectory() // usr

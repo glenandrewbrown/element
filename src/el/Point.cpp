@@ -1,5 +1,5 @@
 // Copyright 2023 Kushview, LLC <info@kushview.net>
-// SPDX-License-Identifier: GPL3-or-later
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 /// A pair of x,y coordinates.
 // @classmod el.Point
@@ -13,28 +13,28 @@
 
 using namespace juce;
 
-// clang-format off
-EL_PLUGIN_EXPORT
-int luaopen_el_Point (lua_State* L)
+namespace element::lua {
+static int register_el_Point (lua_State* L)
 {
     sol::state_view lua (L);
     using PTF = Point<lua_Number>;
     auto M = lua.create_table();
+    // clang-format off
     M.new_usertype<PTF> (
         EL_TYPE_NAME_POINT, sol::no_constructor, "new", sol::factories (
-                                                            /// Create a new point with x and y = 0.
-                                                            // @function Point.new
-                                                            // @treturn el.Point
-                                                            // @within Constructors
-                                                            []() { return PTF(); },
+            /// Create a new point with x and y = 0.
+            // @function Point.new
+            // @treturn el.Point
+            // @within Constructors
+            []() { return PTF(); },
 
-                                                            /// Create a new point.
-                                                            // @function Point.new
-                                                            // @number x X coordinate
-                                                            // @number y Y coordinate
-                                                            // @treturn el.Point
-                                                            // @within Constructors
-                                                            [] (lua_Number x, lua_Number y) { return PTF (x, y); }),
+            /// Create a new point.
+            // @function Point.new
+            // @number x X coordinate
+            // @number y Y coordinate
+            // @treturn el.Point
+            // @within Constructors
+            [] (lua_Number x, lua_Number y) { return PTF (x, y); }),
         sol::meta_method::to_string, [] (PTF& self) {
             return self.toString().toStdString();
         },
@@ -105,8 +105,7 @@ int luaopen_el_Point (lua_State* L)
         // @function Point:distanceSquared
         "distanceSquared", sol::overload (
             [] (PTF& self) { return self.getDistanceSquaredFromOrigin(); }, 
-            [] (PTF& self, PTF& o) { return self.getDistanceSquaredFrom (o); 
-        }),
+            [] (PTF& self, PTF& o) { return self.getDistanceSquaredFrom (o); }),
 
         /// Returns the angle from this point to another one.
         //
@@ -135,7 +134,14 @@ int luaopen_el_Point (lua_State* L)
         // @treturn int
         "toInt", &PTF::toInt
     );
-
+    // clang-format on
     sol::stack::push (L, element::lua::removeAndClear (M, EL_TYPE_NAME_POINT));
     return 1;
+}
+} // namespace element::lua
+
+EL_PLUGIN_EXPORT
+int luaopen_el_Point (lua_State* L)
+{
+    return element::lua::register_el_Point (L);
 }

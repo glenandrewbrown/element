@@ -1,5 +1,5 @@
 // Copyright 2023 Kushview, LLC <info@kushview.net>
-// SPDX-License-Identifier: GPL3-or-later
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include <element/ui/navigation.hpp>
 #include <element/ui/style.hpp>
@@ -285,6 +285,7 @@ private:
     SignalConnection stateRestoredConnection;
 
     bool draggingPos = false;
+    std::unique_ptr<FileChooser> folderChooser;
 
     int _transportButtonSize = 32;
 
@@ -303,12 +304,18 @@ private:
 
         chooser->addListener (this);
         watchButton.onClick = [this]() {
-            FileChooser fc ("Select a folder to watch", File(), "*", true, false, nullptr);
-            if (fc.browseForDirectory())
-            {
-                processor.setWatchDir (fc.getResult());
-                addRecentsFrom (processor.getWatchDir());
-            }
+            folderChooser = std::make_unique<FileChooser> (
+                "Select a folder to watch", File(), "*");
+
+            auto safeThis = Component::SafePointer<AudioFilePlayerEditor> (this);
+            int flags = FileBrowserComponent::openMode | FileBrowserComponent::canSelectDirectories;
+            folderChooser->launchAsync (flags, [safeThis] (const FileChooser& fc) {
+                if (safeThis != nullptr && fc.getResults().size() > 0)
+                {
+                    safeThis->processor.setWatchDir (fc.getResult());
+                    safeThis->addRecentsFrom (safeThis->processor.getWatchDir());
+                }
+            });
         };
 
         transport.play.onClick = [this]() {
@@ -408,10 +415,10 @@ AudioFilePlayerNode::AudioFilePlayerNode()
     : BaseProcessor (BusesProperties()
                          .withOutput ("Main", AudioChannelSet::stereo(), true))
 {
-    addLegacyParameter (playing = new AudioParameterBool ("playing", "Playing", false));
-    addLegacyParameter (slave = new AudioParameterBool ("slave", "Slave", false));
-    addLegacyParameter (volume = new AudioParameterFloat ("volume", "Volume", -60.f, 12.f, 0.f));
-    addLegacyParameter (looping = new AudioParameterBool ("loop", "Loop", false));
+    addLegacyParameter (playing = new AudioParameterBool (juce::ParameterID ("playing", 1), "Playing", false));
+    addLegacyParameter (slave = new AudioParameterBool (juce::ParameterID ("slave", 1), "Slave", false));
+    addLegacyParameter (volume = new AudioParameterFloat (juce::ParameterID ("volume", 1), "Volume", -60.f, 12.f, 0.f));
+    addLegacyParameter (looping = new AudioParameterBool (juce::ParameterID ("loop", 1), "Loop", false));
 
     for (auto* const param : getParameters())
         param->addListener (this);
