@@ -171,7 +171,7 @@ private:
     std::atomic<bool> bypassed { false };
 
     juce::PluginDescription loadedPlugin;
-    std::unique_ptr<juce::XmlElement> lastKnownState;
+    juce::MemoryBlock lastKnownState;
 
     // Audio processing
     SharedAudioBuffer audioBuffer;
@@ -415,7 +415,7 @@ inline void SandboxHost::setPluginState (const juce::MemoryBlock& stateData)
                  static_cast<uint32_t> (stateData.getSize()));
 
     // Cache for crash recovery
-    lastKnownState = juce::parseXML (stateData.toString());
+    lastKnownState = stateData;
 }
 
 inline void SandboxHost::handleMessageFromWorker (const juce::MemoryBlock& mb)
@@ -617,10 +617,9 @@ inline void SandboxHost::attemptRestart()
             loadPlugin (loadedPlugin);
 
             // Restore state if available
-            if (lastKnownState)
+            if (lastKnownState.getSize() > 0)
             {
-                setPluginState (juce::MemoryBlock (lastKnownState->toString().toRawUTF8(),
-                                                    lastKnownState->toString().getNumBytesAsUTF8()));
+                setPluginState (lastKnownState);
             }
 
             // Re-prepare if we were processing
