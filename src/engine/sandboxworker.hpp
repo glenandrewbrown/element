@@ -425,7 +425,7 @@ inline void SandboxWorker::handleProcessBlock()
     const int inChannels = static_cast<int> (header->numInputChannels.load());
 
     // Read input audio from shared buffer
-    const uint32_t readBuffer = header->activeBuffer.load();
+    const uint32_t readBuffer = header->activeBuffer.load (std::memory_order_acquire);
     for (int ch = 0; ch < inChannels && ch < processBuffer.getNumChannels(); ++ch)
     {
         const float* src = audioBuffer.getInputBuffer (ch, readBuffer);
@@ -464,7 +464,7 @@ inline void SandboxWorker::handleProcessBlock()
     header->midiOutputSize.store (midiOutSize);
 
     // Swap output buffer
-    header->activeBuffer.store (writeBuffer);
+    header->activeBuffer.store (writeBuffer, std::memory_order_release);
     audioBuffer.markProcessed();
 
     sendResponse (SandboxMessageType::ProcessComplete);

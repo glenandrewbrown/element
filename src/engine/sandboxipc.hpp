@@ -218,7 +218,7 @@ public:
         if (header == nullptr)
             return;
 
-        const uint32_t writeBuffer = 1 - header->activeBuffer.load();
+        const uint32_t writeBuffer = 1 - header->activeBuffer.load (std::memory_order_acquire);
         const int numChannels = std::min (source.getNumChannels(), maxChannels);
 
         for (int ch = 0; ch < numChannels; ++ch)
@@ -228,8 +228,8 @@ public:
                         static_cast<size_t> (numSamples) * sizeof (float));
         }
 
-        header->numSamples.store (static_cast<uint32_t> (numSamples));
-        header->numInputChannels.store (static_cast<uint32_t> (numChannels));
+        header->numSamples.store (static_cast<uint32_t> (numSamples), std::memory_order_release);
+        header->numInputChannels.store (static_cast<uint32_t> (numChannels), std::memory_order_release);
     }
 
     /** Read processed audio from the active buffer (coordinator side). */
@@ -238,7 +238,7 @@ public:
         if (header == nullptr)
             return;
 
-        const uint32_t readBuffer = header->activeBuffer.load();
+        const uint32_t readBuffer = header->activeBuffer.load (std::memory_order_acquire);
         const int numChannels = std::min (dest.getNumChannels(), maxChannels);
 
         for (int ch = 0; ch < numChannels; ++ch)
@@ -255,8 +255,8 @@ public:
         if (header == nullptr)
             return;
 
-        header->activeBuffer.store (1 - header->activeBuffer.load());
-        header->coordinatorSequence.fetch_add (1);
+        header->activeBuffer.fetch_xor (1, std::memory_order_acq_rel);
+        header->coordinatorSequence.fetch_add (1, std::memory_order_release);
     }
 
     /** Check if new data is available (worker side). */
@@ -265,7 +265,7 @@ public:
         if (header == nullptr)
             return false;
 
-        return header->coordinatorSequence.load() != lastProcessedSequence;
+        return header->coordinatorSequence.load (std::memory_order_acquire) != lastProcessedSequence;
     }
 
     /** Mark data as processed (worker side). */
@@ -274,8 +274,8 @@ public:
         if (header == nullptr)
             return;
 
-        lastProcessedSequence = header->coordinatorSequence.load();
-        header->workerSequence.fetch_add (1);
+        lastProcessedSequence = header->coordinatorSequence.load (std::memory_order_acquire);
+        header->workerSequence.fetch_add (1, std::memory_order_release);
     }
 
 private:
