@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <atomic>
+
 #include "nodes/baseprocessor.hpp"
 #include <element/processor.hpp>
 #include "sol/sol.hpp"
@@ -55,12 +57,18 @@ protected:
     ParameterPtr getParameter (const PortDescription& port) override;
 
 private:
-    CriticalSection lock;
     sol::state lua;
     CodeDocument dspCode, edCode;
-    std::unique_ptr<DSPScript> script;
+
+    // Lock-free script swap: activeScript is read atomically on the audio thread.
+    // scriptOwner holds ownership for lifetime management (message thread only).
+    std::unique_ptr<DSPScript> scriptOwner;
+    std::atomic<DSPScript*> activeScript { nullptr };
+
+    // Retired scripts awaiting deletion on the message thread.
+    std::unique_ptr<DSPScript> retiredScript;
+
     ParameterArray inParams, outParams;
-    StringArray printMessages;
 
     int _program = 0;
 

@@ -63,19 +63,17 @@ ScriptNode::ScriptNode() noexcept
 
         if (msg.isNotEmpty())
         {
-            if (MessageManager::getInstance()->isThisTheMessageThread())
-            {
-                Logger::writeToLog (msg);
-            }
-            else
-            {
-                MessageManagerLock ml;
-                Logger::writeToLog (msg);
-            }
+            // Logger::writeToLog is thread-safe — no MessageManagerLock needed.
+            Logger::writeToLog (msg);
         }
     });
 
-    script.reset (new DSPScript (lua.create_table()));
+    scriptOwner.reset (new DSPScript (lua.create_table()));
+    activeScript.store (scriptOwner.get(), std::memory_order_release);
+
+    // Stop automatic Lua GC — it allocates/frees non-deterministically.
+    // GC steps are run explicitly on the message thread in loadScript().
+    lua_gc (lua.lua_state(), LUA_GCSTOP, 0);
 
     dspCode.replaceAllContent (String::fromUTF8 (
         scripts::amp_lua, scripts::amp_luaSize));
@@ -88,15 +86,17 @@ ScriptNode::ScriptNode() noexcept
 
 ScriptNode::~ScriptNode()
 {
-    script.reset();
+    activeScript.store (nullptr, std::memory_order_release);
+    retiredScript.reset();
+    scriptOwner.reset();
 }
 
 void ScriptNode::refreshPorts()
 {
-    if (script == nullptr)
+    if (scriptOwner == nullptr)
         return;
     PortList newPorts;
-    script->getPorts (newPorts);
+    scriptOwner->getPorts (newPorts);
     setPorts (newPorts);
     if (auto g = getParentGraph())
         g->triggerAsyncUpdate();
@@ -105,23 +105,25 @@ void ScriptNode::refreshPorts()
 void ScriptNode::setPlayHead (juce::AudioPlayHead* playhead)
 {
     Processor::setPlayHead (playhead);
-    if (script)
-        script->setPlayHead (playhead);
+    if (scriptOwner)
+        scriptOwner->setPlayHead (playhead);
 }
 
 ParameterPtr ScriptNode::getParameter (const PortDescription& port)
 {
     jassert (port.type == PortType::Control);
-    return script ? script->getParameterObject (port.channel, port.input) : nullptr;
+    return scriptOwner ? scriptOwner->getParameterObject (port.channel, port.input) : nullptr;
 }
 
 Result ScriptNode::loadScript (const String& newCode)
 {
+    // This method runs on the message thread only.
     auto result = DSPScript::validate (newCode);
     if (result.failed())
         return result;
 
-    ScopedLock sl (lock); // Lock EVERYTHING
+    // Clean up any previously retired script before loading a new one.
+    retiredScript.reset();
 
     ScriptLoader loader (lua);
     loader.load (newCode);
@@ -132,22 +134,31 @@ Result ScriptNode::loadScript (const String& newCode)
     if (! dsp.valid() || dsp.get_type() != sol::type::table)
         return Result::fail ("Could not instantiate script");
 
+    // Prepare the new script fully before swapping (no lock needed).
     auto newScript = std::make_unique<DSPScript> (dsp);
     newScript->setPlayHead (getPlayHead());
     if (prepared)
         newScript->prepare (sampleRate, blockSize);
     triggerPortReset();
 
-    if (script != nullptr)
-        newScript->copyParameterValues (*script);
-    script.swap (newScript);
+    if (scriptOwner != nullptr)
+        newScript->copyParameterValues (*scriptOwner);
 
-    if (newScript != nullptr)
+    // Atomically swap: audio thread will pick up the new script pointer.
+    auto oldScript = std::move (scriptOwner);
+    scriptOwner = std::move (newScript);
+    activeScript.store (scriptOwner.get(), std::memory_order_release);
+
+    // Retire the old script — release resources and call cleanup on message thread.
+    if (oldScript != nullptr)
     {
-        newScript->release();
-        newScript->cleanup();
-        newScript.reset();
+        oldScript->release();
+        oldScript->cleanup();
+        retiredScript = std::move (oldScript);
     }
+
+    // Run incremental Lua GC on the message thread (never on audio thread).
+    lua_gc (lua.lua_state(), LUA_GCSTEP, 10);
 
     return Result::ok();
 }
@@ -173,7 +184,8 @@ void ScriptNode::prepareToRender (double rate, int block)
         return;
     sampleRate = rate;
     blockSize = block;
-    script->prepare (sampleRate, blockSize);
+    if (scriptOwner)
+        scriptOwner->prepare (sampleRate, blockSize);
     prepared = true;
 }
 
@@ -182,13 +194,15 @@ void ScriptNode::releaseResources()
     if (! prepared)
         return;
     prepared = false;
-    script->release();
+    if (scriptOwner)
+        scriptOwner->release();
 }
 
 void ScriptNode::render (RenderContext& rc)
 {
-    ScopedLock sl (lock);
-    script->process (rc.audio, rc.midi);
+    // Lock-free: load the active script pointer atomically.
+    if (auto* s = activeScript.load (std::memory_order_acquire))
+        s->process (rc.audio, rc.midi);
 }
 
 void ScriptNode::setState (const void* data, int size)
@@ -205,10 +219,10 @@ void ScriptNode::setState (const void* data, int size)
         {
             if (state.hasProperty ("data"))
             {
-                const var& data = state.getProperty ("data");
-                if (data.isBinaryData())
-                    if (auto* block = data.getBinaryData())
-                        script->restore (block->getData(), block->getSize());
+                const var& scriptData = state.getProperty ("data");
+                if (scriptData.isBinaryData())
+                    if (auto* block = scriptData.getBinaryData())
+                        scriptOwner->restore (block->getData(), block->getSize());
             }
         }
 
@@ -223,7 +237,8 @@ void ScriptNode::getState (MemoryBlock& out)
         .setProperty ("editorCode", edCode.getAllContent(), nullptr);
 
     MemoryBlock block;
-    script->save (block);
+    if (scriptOwner)
+        scriptOwner->save (block);
     if (block.getSize() > 0)
         state.setProperty ("data", block, nullptr);
     block.reset();
@@ -237,7 +252,7 @@ void ScriptNode::getState (MemoryBlock& out)
 
 void ScriptNode::setParameter (int index, float value)
 {
-    ScopedLock sl (lock);
+    juce::ignoreUnused (index, value);
 }
 
 //==============================================================================
