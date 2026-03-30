@@ -424,7 +424,8 @@ void AudioMixerProcessor::prepareToPlay (const double sampleRate, const int buff
     setRateAndBufferSizeDetails (sampleRate, bufferSize);
     jassert (tracks.size() == getBusCount (true));
     jassert (1 == getBusCount (false));
-    tempBuffer.setSize (getMainBusNumOutputChannels(), bufferSize, false, true, true);
+    tempBuffer.setSize (getTotalNumInputChannels(), bufferSize,
+                        false, true /* clearExtraSpace */, false);
 }
 
 void AudioMixerProcessor::processBlock (AudioSampleBuffer& audio, MidiBuffer& midi)

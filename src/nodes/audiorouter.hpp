@@ -17,7 +17,13 @@ public:
     explicit AudioRouterNode (int ins = 4, int outs = 4);
     ~AudioRouterNode();
 
-    void prepareToRender (double sampleRate, int maxBufferSize) override { ignoreUnused (sampleRate, maxBufferSize); }
+    void prepareToRender (double sampleRate, int maxBufferSize) override
+    {
+        ignoreUnused (sampleRate);
+        // Pre-allocate tempAudio to max expected size so render() never mallocs
+        tempAudio.setSize (jmax (numSources, numDestinations),
+                           maxBufferSize, false, true /* clearExtraSpace */, false);
+    }
     void releaseResources() override {}
 
     inline bool wantsContext() const noexcept override { return true; }
