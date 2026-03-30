@@ -7,63 +7,27 @@
 #include <element/ui/content.hpp>
 
 #include "ui/guicommon.hpp"
-#include "ui/breadcrumb.hpp"
+#include "ui/graphtoolbar.hpp"
 
 namespace element {
 
-/** This is a simple container which displays a breadcrumb above a content area */
-class GraphDisplayView : public ContentView,
-                         public Button::Listener
+/** This is a simple container which displays a toolbar (with breadcrumb and
+    zoom controls) above a content area. */
+class GraphDisplayView : public ContentView
 {
 public:
     GraphDisplayView()
     {
-        addAndMakeVisible (breadcrumb);
-        addAndMakeVisible (configButton);
-        configButton.setTooltip ("Show graph settings");
-        configButton.addListener (this);
-        configButton.setVisible (false);
-
-        addAndMakeVisible (sessionConfigButton);
-        sessionConfigButton.setTooltip ("Show session settings");
-        sessionConfigButton.addListener (this);
-        sessionConfigButton.setVisible (false);
+        addAndMakeVisible (toolbar);
     }
 
-    virtual ~GraphDisplayView()
-    {
-        configButton.removeListener (this);
-    }
-
-    inline void buttonClicked (Button* b) override
-    {
-        auto* const world = ViewHelpers::getGuiController (this);
-        if (! world)
-            return;
-        if (b == &configButton)
-        {
-            world->commands().invokeDirectly (Commands::showGraphConfig, true);
-        }
-        else if (b == &sessionConfigButton)
-        {
-            world->commands().invokeDirectly (Commands::showSessionConfig, true);
-        }
-    }
+    virtual ~GraphDisplayView() = default;
 
     inline void setBreadCrumbVisible (const bool isVisible)
     {
-        if (isVisible != breadcrumb.isVisible())
+        if (isVisible != toolbar.isVisible())
         {
-            breadcrumb.setVisible (isVisible);
-            resized();
-        }
-    }
-
-    inline void setConfigButtonVisible (const bool isVisible)
-    {
-        if (isVisible != configButton.isVisible())
-        {
-            configButton.setVisible (isVisible);
+            toolbar.setVisible (isVisible);
             resized();
         }
     }
@@ -81,11 +45,11 @@ public:
             node = newNode;
 
             if (node.isValid())
-                breadcrumb.setNode (node);
+                toolbar.setBreadcrumbNode (node);
             else if (graph.isValid())
-                breadcrumb.setNode (graph);
+                toolbar.setBreadcrumbNode (graph);
             else
-                breadcrumb.setNode (Node());
+                toolbar.setBreadcrumbNode (Node());
 
             graphNodeChanged (graph, node);
         }
@@ -94,25 +58,15 @@ public:
     inline void resized() override
     {
         auto r = getLocalBounds();
-        if (breadcrumb.isVisible())
-            breadcrumb.setBounds (r.removeFromTop (24));
+        if (toolbar.isVisible())
+            toolbar.setBounds (r.removeFromTop (28));
         graphDisplayResized (r);
-
-        const int configButtonSize = 14;
-        r = getLocalBounds().reduced (4);
-        r = r.removeFromTop (configButtonSize);
-
-        if (sessionConfigButton.isVisible())
-        {
-            sessionConfigButton.setBounds (r.removeFromRight (configButtonSize));
-            r.removeFromRight (2);
-        }
-
-        configButton.setBounds (r.removeFromRight (configButtonSize));
     }
 
     Node getGraph() const { return graph; }
     Node getNode() const { return node; }
+
+    GraphEditorToolbar& getToolbar() { return toolbar; }
 
 protected:
     virtual void graphDisplayResized (const Rectangle<int>& area) = 0;
@@ -121,8 +75,7 @@ protected:
 
 private:
     Node graph, node;
-    BreadCrumbComponent breadcrumb;
-    ConfigButton configButton, sessionConfigButton;
+    GraphEditorToolbar toolbar;
 };
 
 } // namespace element
