@@ -7,6 +7,7 @@
 #include <element/ui/navigation.hpp>
 
 #include "ui/datapathbrowser.hpp"
+#include "ui/sessionbrowserpanel.hpp"
 #include "ui/nodeeditorview.hpp"
 #include "ui/graphsettingsview.hpp"
 #include "ui/nodepropertiesview.hpp"
@@ -377,6 +378,14 @@ void NavigationConcertinaPanel::updateContent()
         pv->setName ("Plugins");
         pv->setComponentID ("Plugins");
         addPanelInternal (-1, pv, "Plugins", 0);
+    }
+
+    if (! namesHidden.contains ("Sessions"))
+    {
+        auto* sb = new SessionBrowserPanel();
+        sb->setName ("SessionBrowser");
+        sb->setComponentID ("SessionBrowser");
+        addPanelInternal (-1, sb, "Sessions", nullptr);
     }
 
     if (! namesHidden.contains ("Data Path"))
