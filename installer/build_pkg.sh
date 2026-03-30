@@ -611,11 +611,16 @@ if [ -n "${NOTARIZE_APPLE_ID:-}" ] && [ -n "${NOTARIZE_PASSWORD:-}" ] && [ -n "$
 fi
 
 echo ""
-echo "=== Build Complete ==="
+echo "=== PKG Build Complete ==="
 echo "Package created: $FINAL_PKG"
 echo ""
-echo "Package contents:"
-pkgutil --payload-files "$FINAL_PKG" 2>/dev/null | head -30 || echo "(use 'pkgutil --expand' to inspect)"
-echo ""
-echo "To install: sudo installer -pkg \"$FINAL_PKG\" -target /"
-echo "Or double-click the .pkg file in Finder"
+
+# Build DMG wrapper (default release format)
+if [ "${SKIP_DMG:-}" != "1" ]; then
+    echo "Building DMG installer..."
+    bash "$SCRIPT_DIR/build_dmg.sh" "$VERSION" "$BUILD_DIR" "$OUTPUT_DIR"
+else
+    echo "Skipping DMG (SKIP_DMG=1)"
+    echo "To install: sudo installer -pkg \"$FINAL_PKG\" -target /"
+    echo "Or double-click the .pkg file in Finder"
+fi

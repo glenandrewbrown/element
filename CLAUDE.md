@@ -8,6 +8,7 @@ Element is an advanced audio plugin host built with JUCE, supporting AU/LV2/VST/
 
 **Target platforms:** macOS, Linux, Windows
 **C++ Standard:** C++20
+**JUCE Version:** 8.0.12
 **License:** GPL-3.0-or-later
 
 ## Build Commands
@@ -15,6 +16,9 @@ Element is an advanced audio plugin host built with JUCE, supporting AU/LV2/VST/
 ```bash
 # Configure (from repo root)
 cmake -B build
+
+# Configure for macOS Sonoma compatibility (required on macOS)
+cmake -B build -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0
 
 # Build
 cmake --build build
@@ -52,7 +56,8 @@ cmake -B build -DELEMENT_ENABLE_ASIO=ON
 
 - **macOS:** `brew install boost`
 - **Linux:** `apt-get install libboost-dev libfreetype-dev libx11-dev libjack-dev libasound2-dev lv2-dev liblilv-dev libsuil-dev libcurl4-openssl-dev`
-- **Git submodules:** `git submodule update --init --recursive`
+- **CMake FetchContent:** JUCE (8.0.12), sol2, lvtk, and clap-juce-extensions are fetched automatically by CMake at configure time. No manual submodule initialization is required for these dependencies.
+- **Other submodules:** `git submodule update --init --recursive` (for any remaining submodules)
 
 ## Architecture
 
@@ -72,15 +77,24 @@ element/
 │   │   ├── graphnode.cpp
 │   │   ├── midiengine.cpp
 │   │   ├── nodefactory.cpp
+│   │   ├── sandboxhost.hpp       # Out-of-process plugin coordination
+│   │   ├── sandboxworker.hpp     # Isolated plugin processing worker
+│   │   ├── sandboxipc.hpp        # IPC protocol (SharedAudioBuffer, SandboxMessageHeader)
+│   │   ├── sandboxsemaphore.hpp  # Cross-platform semaphore (Mach/POSIX/Win)
+│   │   ├── sandboxsharedmemory.hpp # Cross-platform shared memory (shm_open/mmap)
 │   │   └── ...
 │   ├── nodes/             # Built-in node implementations
+│   │   ├── sandboxedprocessor.hpp  # SandboxedProcessorNode (graph node wrapper)
+│   │   ├── reroutenode.hpp         # RerouteNode, AudioRerouteNode, MidiRerouteNode
+│   │   └── ...
 │   ├── ui/                # User interface components
 │   │   ├── grapheditorcomponent.hpp  # Main graph editor
 │   │   ├── block.hpp                 # Node block UI
 │   │   ├── minimapcomponent.hpp      # Graph minimap navigation
 │   │   ├── commentboxcomponent.hpp   # Visual grouping boxes
 │   │   ├── nodesearchcomponent.hpp   # Quick node search
-│   │   └── moleculemanager.hpp       # Node template management
+│   │   ├── moleculemanager.hpp       # Molecule, MoleculeLibrary, PluginUsageTracker
+│   │   └── moleculemanager.cpp
 │   ├── services/          # Application services
 │   │   ├── deviceservice.cpp
 │   │   ├── engineservice.cpp
@@ -96,9 +110,16 @@ element/
 │   ├── engine/            # Engine-specific tests
 │   ├── scripting/         # Lua scripting tests
 │   └── integration/       # Integration tests
-├── scripts/               # Lua scripts
+├── scripts/               # Shell scripts and Lua scripts
+│   ├── codesign-macos.sh  # macOS code signing
+│   ├── notarize-macos.sh  # macOS notarization
+│   └── sign-all-macos.sh  # Sign all targets
+├── installer/
+│   └── build_dmg.sh       # DMG installer build (default installer format)
+├── cmake/
+│   └── entitlements.plist # macOS sandbox entitlements
 ├── data/                  # Resources (icons, fonts, etc.)
-└── deps/                  # Git submodules (JUCE, sol2, lvtk, clap-juce-extensions)
+└── docs/                  # User documentation
 ```
 
 ### Core Concepts
@@ -127,6 +148,12 @@ element/
 - Uses `RenderContext` for audio/MIDI/CV buffers
 - Key methods: `prepareToRender()`, `render()`, `releaseResources()`
 
+**Sandbox** - Out-of-process plugin isolation system:
+- `SandboxHost` coordinates the host-side of sandboxed plugins
+- `SandboxWorker` runs in a separate process handling isolated plugin processing
+- Audio data is exchanged via lock-free shared memory (`SharedAudioBuffer`)
+- Control messages use JUCE pipes; synchronization uses platform semaphores
+
 ### Key Classes
 
 | Class | File | Purpose |
@@ -141,6 +168,15 @@ element/
 | `NodeFactory` | src/engine/nodefactory.cpp | Creates node instances |
 | `PluginManager` | include/element/plugins.hpp | Plugin management |
 | `GraphEditorComponent` | src/ui/grapheditorcomponent.hpp | Visual graph editor |
+| `SandboxHost` | src/engine/sandboxhost.hpp | Out-of-process plugin coordination |
+| `SandboxWorker` | src/engine/sandboxworker.hpp | Isolated plugin processing worker |
+| `SharedAudioBuffer` | src/engine/sandboxipc.hpp | Lock-free shared memory audio buffer |
+| `SandboxedProcessorNode` | src/nodes/sandboxedprocessor.hpp | Graph node wrapper for sandboxed plugins |
+| `RerouteNode` | src/nodes/reroutenode.hpp | Generic, audio, and MIDI reroute nodes |
+| `CommentBoxComponent` | src/ui/commentboxcomponent.hpp | Visual grouping boxes in the graph editor |
+| `MinimapComponent` | src/ui/minimapcomponent.hpp | Bird's eye minimap navigation |
+| `NodeSearchComponent` | src/ui/nodesearchcomponent.hpp | Quick node insertion via search |
+| `MoleculeLibrary` | src/ui/moleculemanager.hpp | Reusable node template library |
 
 ### Audio Processing Flow
 
@@ -149,6 +185,7 @@ element/
 3. `GraphBuilder` creates `GraphOp` sequence
 4. Audio thread executes ops in order
 5. Each `GraphNode` wraps a `Processor`
+6. Sandboxed plugins run in a separate process via `SandboxHost`/`SandboxWorker`; audio crosses the process boundary through lock-free `SharedAudioBuffer` in shared memory, with semaphore signaling for synchronization and JUCE pipes for control messages
 
 ### Plugin Support
 
@@ -158,6 +195,7 @@ element/
 - **VST2:** Legacy VST (optional, requires SDK)
 - **LV2:** Linux Audio Plugins
 - **CLAP:** CLever Audio Plugin
+- **Sandboxed:** Any format can be wrapped in `SandboxedProcessorNode` for out-of-process isolation
 
 ### Built-in Node Types
 
@@ -171,9 +209,9 @@ element/
 | OSCSender | `el.OSCSender` | Send OSC messages |
 | OSCReceiver | `el.OSCReceiver` | Receive OSC messages |
 | Script | `el.Script` | Lua script node |
-| Reroute | `el.Reroute` | Generic signal reroute |
-| AudioReroute | `el.AudioReroute` | Audio signal reroute |
-| MidiReroute | `el.MidiReroute` | MIDI signal reroute |
+| Reroute | `el.Reroute` / `element.reroute` | Generic signal reroute |
+| AudioReroute | `el.AudioReroute` / `element.audioReroute` | Audio signal reroute |
+| MidiReroute | `el.MidiReroute` / `element.midiReroute` | MIDI signal reroute |
 
 ## Testing
 
@@ -216,6 +254,7 @@ cd build && ctest
 - Use lock-free structures for audio thread
 - `RingBuffer` for thread-safe communication
 - Pre-allocate buffers
+- Sandbox IPC uses lock-free shared memory; never allocate or block in the audio exchange path
 
 ### Error Handling
 - `jassert()` for debug assertions
@@ -267,6 +306,8 @@ add (new SingleNodeProvider<MyNode> ("el.MyNode"));
 
 3. Add editor in `src/nodes/` if needed (inherit from `Editor`)
 
+4. To run the node out-of-process, wrap it in `SandboxedProcessorNode` instead of registering it directly.
+
 ### Working with Sessions
 
 ```cpp
@@ -295,6 +336,21 @@ function process(midi)
 end
 ```
 
+### Building the macOS Installer
+
+The default installer format is a DMG wrapping a PKG.
+
+```bash
+# Sign all targets first
+scripts/sign-all-macos.sh
+
+# Notarize (requires Apple Developer credentials in environment)
+scripts/notarize-macos.sh
+
+# Build the DMG
+installer/build_dmg.sh
+```
+
 ## Graph Editor Features
 
 The graph editor (`GraphEditorComponent`) provides visual node editing with these features:
@@ -302,7 +358,7 @@ The graph editor (`GraphEditorComponent`) provides visual node editing with thes
 - **Comment Boxes:** Visual grouping with color-coding (`CommentBoxComponent`)
 - **Minimap Navigation:** Bird's eye view for large graphs (`MinimapComponent`)
 - **Node Search:** Quick node insertion via search (`NodeSearchComponent`)
-- **Molecules:** Reusable node templates (`MoleculeManager`)
+- **Molecules:** Reusable node templates managed by `MoleculeLibrary`; `PluginUsageTracker` records frequently used plugins for quick access
 - **Alignment Tools:** Snap-to-grid, node alignment
 - **Lasso Selection:** Multi-select with Shift+click or drag
 
@@ -314,7 +370,11 @@ See `docs/GraphEditorEnhancements_UserManual.md` for detailed usage.
 
 **Audio dropouts:** Increase buffer size in audio settings, check for allocations in audio path.
 
-**Build errors (submodules):** Run `git submodule update --init --recursive`
+**Build errors (missing dependencies):** JUCE, sol2, lvtk, and clap-juce-extensions are fetched via CMake FetchContent at configure time. Ensure you have an internet connection on first configure. For any remaining submodules run `git submodule update --init --recursive`.
+
+**macOS build errors:** Pass `-DCMAKE_OSX_DEPLOYMENT_TARGET=14.0` to cmake for Sonoma compatibility.
+
+**Sandbox plugin crash:** Check that `cmake/entitlements.plist` includes the required entitlements and that `scripts/codesign-macos.sh` has been run on the worker binary.
 
 **Test failures:** Ensure JUCE MessageManager is initialized (handled by test fixtures).
 

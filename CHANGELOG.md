@@ -1,5 +1,44 @@
 # Change Log
 
+## [1.1.0] - 2026-03-29
+
+### Added
+- Graph editor: minimap navigation for bird's-eye view of large graphs.
+- Graph editor: node search (Cmd+F) for quick node insertion.
+- Graph editor: comment boxes (Shift+C) for visual grouping with color-coding.
+- Graph editor: molecule templates for saving and reusing node groups.
+- Graph editor: wire activity animation showing live signal flow.
+- Graph editor: plugin insertion directly into existing connections.
+- Graph editor: alignment and snap-to-grid tools for node layout.
+- Plugin sandbox: out-of-process hosting with crash isolation and automatic restart with state recovery.
+- Plugin sandbox: lock-free shared memory IPC using platform semaphores.
+- Reroute nodes: generic, audio, and MIDI signal reroute for cleaner graph layouts.
+- macOS: code signing and notarization scripts.
+- macOS: DMG installer format.
+
+### Fixed
+- Fixed memory leak in color picker caused by retained LambdaChangeListener.
+- Fixed use-after-free in async modal callbacks by using SafePointer.
+- Fixed TOCTOU race condition in shared buffer swap using atomic fetch_xor.
+- Fixed buffer overflow in shared audio buffer with bounds clamping.
+- Fixed plugin state caching to use binary MemoryBlock instead of XML.
+- Fixed dangling raw pointers in CommentBox, NodeSearch, and Minimap components by using SafePointer.
+- Fixed keyboard shortcuts conflicting with text input by adding Shift modifier requirement.
+- Removed unused BlockComponent members (dead code).
+- Fixed SPDX license identifiers.
+
+### Security
+- Lua sandbox restricted to safe standard libraries only; os, io, and debug access removed.
+- Real-time thread priority applied to audio processing thread.
+
+### Performance
+- Consolidated per-connector 30Hz timers into a single centralized timer, reducing timer overhead.
+- Lock-free audio processing: no mutex contention on the audio thread.
+
+### Build
+- macOS deployment target set to 14.0 for Sonoma compatibility.
+- Updated for JUCE 8.0.12 API changes, including addDefaultFormats.
+
 ## [1.0.0] - 2026-02-06
 
 ### Changed
