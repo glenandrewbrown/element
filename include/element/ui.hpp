@@ -145,7 +145,6 @@ private:
 
     Services& controller;
     Context& world;
-    SessionRef sessionRef;
     juce::OwnedArray<PluginWindow> pluginWindows;
 
     std::unique_ptr<WindowManager> windowManager;

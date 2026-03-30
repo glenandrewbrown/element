@@ -125,18 +125,24 @@ void SessionService::openFile (const File& file)
 
         if (result.wasOk())
         {
-            auto& gui = *sibling<GuiService>();
-            gui.closeAllPluginWindows();
-            refreshOtherControllers();
-
-            if (auto* cc = gui.content())
+            if (auto* gui = sibling<GuiService>())
             {
-                auto ui = currentSession->data().getOrCreateChildWithName (tags::ui, nullptr);
-                cc->applySessionState (ui.getProperty ("content").toString());
+                gui->closeAllPluginWindows();
+                refreshOtherControllers();
+
+                if (auto* cc = gui->content())
+                {
+                    auto ui = currentSession->data().getOrCreateChildWithName (tags::ui, nullptr);
+                    cc->applySessionState (ui.getProperty ("content").toString());
+                }
+
+                gui->stabilizeContent();
+            }
+            else
+            {
+                refreshOtherControllers();
             }
 
-            if (auto* gui2 = sibling<GuiService>())
-                gui2->stabilizeContent();
             resetChanges();
         }
 
