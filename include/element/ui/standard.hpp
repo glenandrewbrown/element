@@ -15,7 +15,7 @@ class Context;
 class MeterBridgeView;
 class GuiService;
 class ContentContainer;
-class NavigationConcertinaPanel;
+class NavigationPanel;
 class NodeChannelStripView;
 class VirtualKeyboardView;
 
@@ -30,7 +30,8 @@ public:
 
     void resizeContent (const juce::Rectangle<int>& area) override;
 
-    NavigationConcertinaPanel* getNavigationConcertinaPanel() const { return nav.get(); }
+    NavigationPanel* getNavigationPanel() const { return nav.get(); }
+    NavigationPanel* getNavigationConcertinaPanel() const { return nav.get(); }
 
     void setMainView (const juce::String& name);
     void setSecondaryView (const juce::String& name);
@@ -88,7 +89,7 @@ protected:
     virtual ContentView* createContentView (const juce::String&) { return nullptr; }
 
 private:
-    std::unique_ptr<NavigationConcertinaPanel> nav;
+    std::unique_ptr<NavigationPanel> nav;
     friend class ContentContainer;
     std::unique_ptr<ContentContainer> container;
     StretchableLayoutManager layout;

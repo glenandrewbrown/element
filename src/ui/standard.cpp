@@ -19,7 +19,6 @@
 #include "ui/audioiopanelview.hpp"
 #include "ui/connectiongrid.hpp"
 #include "ui/controllersview.hpp"
-#include "ui/datapathbrowser.hpp"
 #include "ui/emptyview.hpp"
 #include "ui/grapheditorview.hpp"
 #include "ui/graphmixerview.hpp"
@@ -469,9 +468,8 @@ StandardContent::StandardContent (Context& ctl_)
     addAndMakeVisible (container.get());
     bar1 = std::make_unique<Resizer> (*this, &layout, 1, true);
     addAndMakeVisible (bar1.get());
-    nav = std::make_unique<NavigationConcertinaPanel> (ctl_);
+    nav = std::make_unique<NavigationPanel> (ctl_);
     addAndMakeVisible (nav.get());
-    nav->updateContent();
 
     toolBarVisible = true;
     toolBarSize = 32;
@@ -484,10 +482,6 @@ StandardContent::StandardContent (Context& ctl_)
 
     nav->setSize (304, getHeight());
     resizerMouseUp();
-    if (auto gp = nav->findPanel<GraphSettingsView>())
-        nav->expandPanelFully (gp, false);
-    if (auto stp = nav->findPanel<SessionTreePanel>())
-        nav->setPanelSize (stp, 200, false);
 
     resized();
 
@@ -667,20 +661,13 @@ void StandardContent::resizeContent (const Rectangle<int>& area)
 bool StandardContent::isInterestedInDragSource (const SourceDetails& dragSourceDetails)
 {
     const auto& desc (dragSourceDetails.description);
-    return desc.toString() == "ccNavConcertinaPanel" || (desc.isArray() && desc.size() >= 2 && desc[0] == "plugin");
+    return desc.isArray() && desc.size() >= 2 && desc[0] == "plugin";
 }
 
 void StandardContent::itemDropped (const SourceDetails& dragSourceDetails)
 {
     const auto& desc (dragSourceDetails.description);
-    if (desc.toString() == "ccNavConcertinaPanel")
-    {
-        if (auto* panel = nav->findPanel<DataPathTreeComponent>())
-            filesDropped (StringArray ({ panel->getSelectedFile().getFullPathName() }),
-                          dragSourceDetails.localPosition.getX(),
-                          dragSourceDetails.localPosition.getY());
-    }
-    else if (desc.isArray() && desc.size() >= 2 && desc[0] == "plugin")
+    if (desc.isArray() && desc.size() >= 2 && desc[0] == "plugin")
     {
         auto& list (context().plugins().getKnownPlugins());
         if (auto plugin = list.getTypeForIdentifierString (desc[1].toString()))
@@ -770,23 +757,12 @@ void StandardContent::stabilize (const bool refreshDataPathTrees)
     if (session->getNumGraphs() <= 0)
         setContentView (new EmptyContentView());
 
-    if (auto* ss = nav->findPanel<SessionTreePanel>())
-        ss->setSession (session);
-    if (auto* mcv = nav->findPanel<NodePropertiesView>())
-        mcv->stabilizeContent();
-    if (auto* ncv = nav->findPanel<NodeEditorView>())
-        ncv->stabilizeContent();
-    if (auto* gcv = nav->findPanel<GraphSettingsView>())
-        gcv->stabilizeContent();
+    nav->stabilizeAll();
 
     stabilizeViews();
 
     if (auto* main = findParentComponentOfClass<MainWindow>())
         main->refreshMenu();
-
-    if (refreshDataPathTrees)
-        if (auto* data = nav->findPanel<DataPathTreeComponent>())
-            data->refresh();
 
     refreshToolbar();
     refreshStatusBar();
@@ -1210,7 +1186,7 @@ void StandardContent::getSessionState (String& state)
 {
     ValueTree data ("state");
 
-    if (auto* const ned = nav->findPanel<NodeEditorView>())
+    if (auto* const ned = nav->getNodeEditorView())
     {
         String nedState;
         ned->getState (nedState);
@@ -1220,7 +1196,7 @@ void StandardContent::getSessionState (String& state)
         }
     }
 
-    if (auto* const npv = nav->findPanel<NodePropertiesView>())
+    if (auto* const npv = nav->getNodePropertiesView())
     {
         String npvState;
         npv->getState (npvState);
@@ -1249,13 +1225,13 @@ void StandardContent::applySessionState (const String& state)
     if (! data.isValid())
         return;
 
-    if (auto* const ned = nav->findPanel<NodeEditorView>())
+    if (auto* const ned = nav->getNodeEditorView())
     {
         String nedState = data.getProperty ("NodeEditorView").toString();
         ned->setState (nedState);
     }
 
-    if (auto* const npv = nav->findPanel<NodePropertiesView>())
+    if (auto* const npv = nav->getNodePropertiesView())
     {
         String npvState = data.getProperty ("NodePropertiesView").toString();
         npv->setState (npvState);

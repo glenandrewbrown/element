@@ -13,7 +13,7 @@ namespace element {
 class Content;
 class Context;
 class Node;
-class NavigationConcertinaPanel;
+class NavigationPanel;
 class GuiService;
 
 namespace ViewHelpers {
