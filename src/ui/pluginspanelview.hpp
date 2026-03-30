@@ -39,6 +39,8 @@ public:
     void textEditorReturnKeyPressed (TextEditor&) override;
     void changeListenerCallback (ChangeBroadcaster*) override;
     void timerCallback() override;
+    void mouseMove (const MouseEvent& e) override;
+    void mouseExit (const MouseEvent& e) override;
 
     void setViewMode (ViewMode mode);
     void refreshContent();

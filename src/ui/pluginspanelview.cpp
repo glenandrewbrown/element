@@ -202,8 +202,11 @@ public:
 
         // ── Star (x=5, 16x16 area) ──
         {
-            Path star;
-            star.addStar ({ 0.f, 0.f }, 5, 4.f, 7.f);
+            static const Path star = [] {
+                Path p;
+                p.addStar ({ 0.f, 0.f }, 5, 4.f, 7.f);
+                return p;
+            }();
 
             auto starBounds = star.getBounds();
             auto transform = AffineTransform::translation (-starBounds.getCentreX(), -starBounds.getCentreY())
@@ -238,12 +241,9 @@ public:
         const int badgeRightMargin = 4;
         if (fmt.isNotEmpty())
         {
-            Font badgeFont (FontOptions (10.f));
-            badgeFont = badgeFont.boldened();
+            static const Font badgeFont = Font (FontOptions (10.f)).boldened();
             g.setFont (badgeFont);
-            GlyphArrangement glyphs;
-            glyphs.addLineOfText (badgeFont, fmt, 0.f, 0.f);
-            int textW = (int) std::ceil (glyphs.getBoundingBox (0, -1, false).getWidth());
+            int textW = (int) std::ceil (badgeFont.getStringWidthFloat (fmt));
             badgeWidth = textW + 8;
             int badgeX = width - badgeWidth - badgeRightMargin;
             int badgeH = 14;
@@ -260,8 +260,9 @@ public:
         {
             const int nameX = 37;
             int nameW = width - nameX - badgeWidth - badgeRightMargin - 4;
+            static const Font nameFont (FontOptions (12.f));
             g.setColour (rowIsSelected ? Colours::white : element::Colors::textColor.darker (0.1f));
-            g.setFont (Font (FontOptions (12.f)));
+            g.setFont (nameFont);
             g.drawText (desc.name, nameX, 0, nameW, height, Justification::centredLeft, true);
         }
     }
@@ -337,10 +338,11 @@ private:
         else
             menu.addItem (1, "Add to Favorites");
 
-        menu.showMenuAsync (PopupMenu::Options(), [&tracker, desc] (int result)
+        Component::SafePointer<PluginsPanelView> safeThis (&panel);
+        menu.showMenuAsync (PopupMenu::Options(), [safeThis, desc] (int result)
         {
-            if (result == 1)
-                tracker.toggleFavorite (desc);
+            if (result == 1 && safeThis != nullptr)
+                safeThis->plugins.getUsageTracker().toggleFavorite (desc);
         });
     }
 };
@@ -401,7 +403,8 @@ PluginsPanelView::~PluginsPanelView()
     plugins.getUsageTracker().removeChangeListener (this);
     plugins.getKnownPlugins().removeChangeListener (this);
     flatList.setModel (nullptr);
-    tree.getRootItem()->clearSubItems();
+    if (auto* root = tree.getRootItem())
+        root->clearSubItems();
     tree.deleteRootItem();
 }
 
@@ -573,6 +576,29 @@ void PluginsPanelView::textEditorReturnKeyPressed (TextEditor&)
 void PluginsPanelView::changeListenerCallback (ChangeBroadcaster*)
 {
     refreshContent();
+}
+
+void PluginsPanelView::mouseMove (const MouseEvent& e)
+{
+    if (flatList.isVisible())
+    {
+        auto localPos = flatList.getLocalPoint (this, e.position).roundToInt();
+        int row = flatList.getRowContainingPosition (localPos.x, localPos.y);
+        if (row != hoveredRow)
+        {
+            hoveredRow = row;
+            flatList.repaint();
+        }
+    }
+}
+
+void PluginsPanelView::mouseExit (const MouseEvent&)
+{
+    if (hoveredRow != -1)
+    {
+        hoveredRow = -1;
+        flatList.repaint();
+    }
 }
 
 } // namespace element
