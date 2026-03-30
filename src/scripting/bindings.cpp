@@ -422,9 +422,14 @@ void initializeState (sol::state_view& view)
         sol::lib::package
     );
 
-    // Remove dangerous functions from base library
-    view["dofile"] = sol::lua_nil;
+    // Remove dangerous functions from base library to close the Lua sandbox.
+    // These globals enable Remote Code Execution if a malicious session file
+    // injects Lua code. See: CRITICAL security issue — Lua RCE closure.
+    view["dofile"]   = sol::lua_nil;
     view["loadfile"] = sol::lua_nil;
+    view["load"]     = sol::lua_nil;
+    view["io"]       = sol::lua_nil;
+    view["os"]       = sol::lua_nil;
 
     auto package = view["package"];
     auto newSearchers = view.create_table();
@@ -436,8 +441,9 @@ void initializeState (sol::state_view& view)
     package["searchers"] = newSearchers;
 
     package["path"] = getLuaPath().toStdString();
-    package["cpath"] = getLuaCPath().toStdString();
+    package["cpath"] = "";           // No native library loading (.so/.dylib)
     package["spath"] = getScriptSearchPath().toStdString();
+    package["loadlib"] = sol::lua_nil; // Prevent package.loadlib() native loading
 }
 
 void initializeState (sol::state_view& view, Context& g)
