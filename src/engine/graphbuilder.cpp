@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include <element/processor.hpp>
+#include <element/midichannels.hpp>
 #include "engine/miditranspose.hpp"
 #include "engine/graphnode.hpp"
 #include "engine/graphbuilder.hpp"
@@ -225,6 +226,9 @@ public:
 
         lastMute = node->isMuted();
 
+        // Cache midiChannels at construction (message thread) — safe full read.
+        cachedMidiChannels = node->getMidiChannels();
+
         osChanSize = totalChans;
         osChans.reset (new float*[osChanSize]);
         tempMidi.ensureSize (128);
@@ -301,11 +305,24 @@ public:
         // Begin MIDI filters
         {
             jassert (tempMidi.getNumEvents() == 0);
-            ScopedLock spl (node->getPropertyLock());
+
+            // Lock-free reads: these properties are all juce::Atomic<int> — safe
+            // to read without a lock. For midiChannels (non-atomic BigInteger),
+            // use tryLock to update a cached copy; skip the update if the lock
+            // is contended (stale cache is acceptable for one audio buffer).
             transpose.setNoteOffset (node->getTransposeOffset());
             const auto keyRange (node->getKeyRange());
-            const auto midiChans (node->getMidiChannels());
             const auto useMidiProgram (node->areMidiProgramsEnabled());
+
+            {
+                const auto& propLock = node->getPropertyLock();
+                if (propLock.tryEnter())
+                {
+                    cachedMidiChannels = node->getMidiChannels();
+                    propLock.exit();
+                }
+            }
+            const auto& midiChans = cachedMidiChannels;
 
             if (keyRange.getLength() > 0 || ! midiChans.isOmni() || useMidiProgram)
             {
@@ -493,6 +510,7 @@ private:
     bool lastMute = false;
     MidiTranspose transpose;
     MidiBuffer tempMidi;
+    MidiChannels cachedMidiChannels;
 
     AudioSampleBuffer dummyCV;
 
