@@ -50,6 +50,9 @@ public:
     /** Initialize from command line. Returns true if this is a worker process. */
     bool initialise (const juce::String& commandLine);
 
+    /** Deferred initialization — only called when confirmed as a worker process. */
+    void initializeWorker();
+
 protected:
     //==========================================================================
     /** Called when connected to coordinator. */
@@ -128,7 +131,16 @@ private:
 
 inline SandboxWorker::SandboxWorker()
 {
-    // Set up crash handler to not show OS dialogs
+    // NOTE: Do NOT set crash handlers, loggers, or initialize formats here.
+    // This constructor runs on EVERY app launch (before we know if this is
+    // a sandbox worker). Heavy initialization is deferred to initializeWorker()
+    // which only runs when we confirm this is a worker process.
+}
+
+/** Called only when this process is confirmed as a sandbox worker. */
+inline void SandboxWorker::initializeWorker()
+{
+    // Set up crash handler to not show OS dialogs in sandbox worker process
     juce::SystemStats::setApplicationCrashHandler ([] (void*) {});
 
     // Initialize logging
@@ -166,6 +178,8 @@ inline bool SandboxWorker::initialise (const juce::String& commandLine)
     // Try to connect as worker process
     if (initialiseFromCommandLine (commandLine, EL_PLUGIN_HOST_PROCESS_ID, 20000))
     {
+        // Only now do we know this is a real worker process — initialize
+        initializeWorker();
         juce::Logger::writeToLog ("Sandbox worker initialized");
 
         // Hide dock icon on macOS
