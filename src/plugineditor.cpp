@@ -346,20 +346,27 @@ PluginEditor::PluginEditor (PluginProcessor& plugin)
 PluginEditor::~PluginEditor()
 {
     auto* const app = processor.getServices();
-    auto* const gui = app->find<UI>();
+    auto* const gui = app != nullptr ? app->find<UI>() : nullptr;
 
-    if (app != nullptr && gui != nullptr)
+    if (gui != nullptr)
         gui->saveSettings();
 
     perfParamChangedConnection.disconnect();
+
+    // Close plugin windows before teardown to avoid dangling references
+    if (gui != nullptr)
+        gui->closeAllPluginWindows();
+
+    // Clear the content component BEFORE removing it from our hierarchy.
+    // This ensures StandardContent's destructor properly notifies views
+    // (willBeRemoved -> GraphEditorComponent::setNode) while the JUCE
+    // Component parent chain is still intact.  Doing it after removal
+    // (or during the VST3 wrapper's own teardown) causes heap corruption.
+    if (gui != nullptr)
+        gui->clearContentComponent();
+
     removeChildComponent (content.getComponent());
     content = nullptr;
-
-    if (gui != nullptr)
-    {
-        gui->closeAllPluginWindows();
-        gui->clearContentComponent();
-    }
 }
 
 //==============================================================================
