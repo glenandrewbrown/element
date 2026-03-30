@@ -28,7 +28,6 @@
 #define EL_PLUGIN_SCANNER_DEFAULT_TIMEOUT 60000 // 60 Seconds (increased for heavy plugins)
 
 #include <errno.h>
-extern char* program_invocation_name;
 
 namespace element {
 using namespace juce;
@@ -394,6 +393,13 @@ bool PluginScanner::retrieveDescriptions (const String& formatName,
             }
         }
 
+        if (response.state == State::connectionLost)
+        {
+            // Scanner subprocess crashed on this plugin.  Reset it so
+            // a fresh subprocess is spawned for the next plugin.
+            superprocess.reset();
+        }
+
         return (response.state == State::gotResult);
     }
 }
@@ -430,7 +436,7 @@ void PluginScanner::scanAudioFormat (const String& formatName)
         identifiers = format->searchPathsForPlugins (
             detail::readSearchPath (*_manager.props, formatName),
             true,
-            false);
+            true);
     }
     else if (auto* provider = _manager.getProvider (formatName))
     {
@@ -611,7 +617,7 @@ private:
             auto* const format = manager.getFormat (i);
             FileSearchPath path = paths[format->getName()];
             path.addPath (format->getDefaultLocationsToSearch());
-            const auto found = format->searchPathsForPlugins (path, true, false);
+            const auto found = format->searchPathsForPlugins (path, true, true);
 
             ScopedLock sl (lock);
             plugins.set (format->getName(), found);
@@ -982,7 +988,14 @@ void PluginManager::saveUserPlugins (ApplicationProperties& settings)
 {
     setPropertiesFile (settings.getUserSettings());
     if (auto elm = priv->allPlugins.createXml())
-        elm->writeTo (detail::pluginsXmlFile());
+    {
+        const auto file = detail::pluginsXmlFile();
+        elm->writeTo (file);
+
+        // Keep a backup so plugin data survives crashes or failed updates
+        const auto backup = file.withFileExtension ("xml.backup");
+        file.copyFileTo (backup);
+    }
 }
 
 void PluginManager::restoreUserPlugins (ApplicationProperties& settings)
@@ -998,7 +1011,26 @@ void PluginManager::restoreUserPlugins (ApplicationProperties& settings)
         props->removeValue (detail::pluginListKey());
     }
 
-    if (auto xml = XmlDocument::parse (detail::pluginsXmlFile()))
+    const auto file = detail::pluginsXmlFile();
+    auto xml = XmlDocument::parse (file);
+
+    // Fall back to backup if primary is missing or corrupt
+    if (! xml)
+    {
+        const auto backup = file.withFileExtension ("xml.backup");
+        if (backup.existsAsFile())
+        {
+            xml = XmlDocument::parse (backup);
+            if (xml)
+            {
+                // Restore the primary from backup
+                backup.copyFileTo (file);
+                std::clog << "[element] restored plugin list from backup" << std::endl;
+            }
+        }
+    }
+
+    if (xml)
         restoreUserPlugins (*xml);
     settings.saveIfNeeded();
 }

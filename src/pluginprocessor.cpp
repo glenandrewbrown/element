@@ -77,10 +77,11 @@ PluginProcessor::PluginProcessor (Variant instanceType, int numBuses)
     asyncPrepare.reset (new AsyncPrepare (*this));
     _latency = std::make_unique<Latency> (*this);
 
-    if (MessageManager::getInstance()->isThisTheMessageThread())
-        handleAsyncUpdate();
-    else
-        triggerAsyncUpdate();
+    // Do NOT initialize the full Context here. During a host plugin scan,
+    // the constructor is called just to query metadata (name, parameters,
+    // bus layouts). Creating the entire Context (Lua VM, AudioEngine,
+    // DeviceManager, PluginManager) is far too heavy and can crash the host.
+    // Initialization is deferred to prepareToPlay() or setStateInformation().
 }
 
 PluginProcessor::~PluginProcessor()
@@ -91,15 +92,19 @@ PluginProcessor::~PluginProcessor()
         param->clearNode();
     perfparams.clear();
 
-    if (controllerActive)
+    if (controllerActive && context)
         context->services().deactivate();
 
-    engine->releaseExternalResources();
+    if (engine)
+        engine->releaseExternalResources();
 
-    if (auto session = context->session())
-        session->clear();
+    if (context)
+    {
+        if (auto session = context->session())
+            session->clear();
+        context->setEngine (nullptr);
+    }
 
-    context->setEngine (nullptr);
     engine = nullptr;
     context = nullptr;
 }
@@ -292,8 +297,11 @@ bool PluginProcessor::hasEditor() const { return true; }
 
 AudioProcessorEditor* PluginProcessor::createEditor()
 {
-    if (auto* gui = context->services().find<GuiService>())
-        gui->stabilizeContent();
+    if (! controllerActive)
+        initialize();
+    if (context)
+        if (auto* gui = context->services().find<GuiService>())
+            gui->stabilizeContent();
     return new PluginEditor (*this);
 }
 
