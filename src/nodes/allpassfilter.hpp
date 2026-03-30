@@ -43,7 +43,8 @@ public:
         float temp = input + (bufferedValue * 0.5f);
         JUCE_UNDENORMALISE (temp);
         buffer[bufferIndex] = temp;
-        bufferIndex = (bufferIndex + 1) % bufferSize;
+        if (bufferSize > 0)
+            bufferIndex = (bufferIndex + 1) % bufferSize;
         return bufferedValue - input;
     }
 

@@ -139,7 +139,7 @@ void MidiRouterNode::setWithoutLocking (int src, int dst, bool set)
 
 void MidiRouterNode::set (int src, int dst, bool patched)
 {
-    jassert (src >= 0 && src < numSources && dst >= 0 && numDestinations < 4);
+    jassert (src >= 0 && src < numSources && dst >= 0 && dst < numDestinations);
     toggles.set (src, dst, patched);
     state.set (src, dst, patched);
 }

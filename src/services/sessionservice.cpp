@@ -57,7 +57,8 @@ void SessionService::deactivate()
         document = nullptr;
     }
 
-    changeResetter->cancelPendingUpdate();
+    if (changeResetter)
+        changeResetter->cancelPendingUpdate();
     changeResetter.reset (nullptr);
 
     currentSession->clear();
@@ -71,7 +72,8 @@ void SessionService::openDefaultSession()
 
     loadNewSessionData();
     refreshOtherControllers();
-    sibling<GuiService>()->stabilizeContent();
+    if (auto* gui = sibling<GuiService>())
+        gui->stabilizeContent();
     resetChanges (true);
 }
 
@@ -133,7 +135,8 @@ void SessionService::openFile (const File& file)
                 cc->applySessionState (ui.getProperty ("content").toString());
             }
 
-            sibling<GuiService>()->stabilizeContent();
+            if (auto* gui2 = sibling<GuiService>())
+                gui2->stabilizeContent();
             resetChanges();
         }
 
@@ -198,9 +201,11 @@ void SessionService::saveSession (const bool saveAs, const bool askForFile, cons
     jassert (document && currentSession);
     auto result = FileBasedDocument::userCancelledSave;
 
-    auto& gui = *sibling<GuiService>();
+    auto* gui = sibling<GuiService>();
+    if (! gui)
+        return;
 
-    if (auto* cc = gui.content())
+    if (auto* cc = gui->content())
     {
         String state;
         cc->getSessionState (state);
@@ -233,7 +238,8 @@ void SessionService::saveSession (const bool saveAs, const bool askForFile, cons
 
         if (saveAs)
         {
-            sibling<UI>()->recentFiles().addFile (document->getFile());
+            if (auto* ui = sibling<UI>())
+                ui->recentFiles().addFile (document->getFile());
             currentSession->data().setProperty (tags::name,
                                                 document->getFile().getFileNameWithoutExtension(),
                                                 nullptr);
@@ -260,10 +266,12 @@ void SessionService::newSession()
 
     if (res == 1 || res == 2)
     {
-        sibling<GuiService>()->closeAllPluginWindows();
+        if (auto* gc = sibling<GuiService>())
+            gc->closeAllPluginWindows();
         loadNewSessionData();
         refreshOtherControllers();
-        sibling<GuiService>()->stabilizeContent();
+        if (auto* gc = sibling<GuiService>())
+            gc->stabilizeContent();
         resetChanges (true);
     }
 }
@@ -298,10 +306,14 @@ void SessionService::loadNewSessionData()
 
 void SessionService::refreshOtherControllers()
 {
-    sibling<EngineService>()->sessionReloaded();
-    sibling<DeviceService>()->refresh();
-    sibling<MappingService>()->learn (false);
-    sibling<PresetService>()->refresh();
+    if (auto* es = sibling<EngineService>())
+        es->sessionReloaded();
+    if (auto* ds = sibling<DeviceService>())
+        ds->refresh();
+    if (auto* ms = sibling<MappingService>())
+        ms->learn (false);
+    if (auto* ps = sibling<PresetService>())
+        ps->refresh();
     sigSessionLoaded();
 }
 

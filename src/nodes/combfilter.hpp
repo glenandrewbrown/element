@@ -58,7 +58,8 @@ public:
         float temp = input + (last * feedbackLevel);
         JUCE_UNDENORMALISE (temp);
         buffer[bufferIndex] = temp;
-        bufferIndex = (bufferIndex + 1) % bufferSize;
+        if (bufferSize > 0)
+            bufferIndex = (bufferIndex + 1) % bufferSize;
         return output;
     }
 

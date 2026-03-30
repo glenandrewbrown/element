@@ -490,7 +490,7 @@ void AudioMixerProcessor::processBlock (AudioSampleBuffer& audio, MidiBuffer& mi
     masterMonitor->muted.set (*masterMute);
     masterMonitor->gain.set (gain);
 
-    for (int i = 0; i < 2; ++i)
+    for (int i = 0; i < jmin (2, output.getNumChannels()); ++i)
         masterMonitor->rms.getReference (i).set (
             output.getRMSLevel (i, 0, numSamples));
 
