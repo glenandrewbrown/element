@@ -13,6 +13,30 @@
 namespace element {
 using namespace juce;
 
+// ── Color constants (matching plugin browser style) ────────────────────────
+namespace ListColors {
+    static const Colour rowDefault     { 0xff16191a };
+    static const Colour rowHover       { 0xff2a2d2e };
+    static const Colour rowSelected    { 0xff4765a0 };
+    static const Colour emptyText      { 0xff888888 };
+    static const Colour segDefault     { 0xff3b3b3b };
+    static const Colour segActive      { 0xff4765a0 };
+    static const Colour segTextDefault { 0xffcccccc };
+    static const Colour segTextActive  { 0xffffffff };
+
+    // Category dot colors
+    static const Colour catSession    { 0xff4fc3f7 };
+    static const Colour catGraph      { 0xff81c784 };
+    static const Colour catPreset     { 0xffffb74d };
+    static const Colour catController { 0xffce93d8 };
+
+    // Row text
+    static const Colour nameDefault   { 0xffcccccc };
+    static const Colour nameSelected  { 0xffffffff };
+    static const Colour metaDefault   { 0xff888888 };
+    static const Colour metaSelected  { 0xffdddddd };
+} // namespace ListColors
+
 //==============================================================================
 // EntryListBoxModel
 //==============================================================================
@@ -30,34 +54,49 @@ void SessionBrowserPanel::EntryListBoxModel::paintListBoxItem (
 
     const auto& entry = panel.filteredEntries.getReference (row);
 
+    // Row background
     if (selected)
-        g.fillAll (Colors::toggleBlue.withAlpha (0.3f));
+        g.fillAll (ListColors::rowSelected);
 
-    // Icon / category indicator
-    const int iconWidth = 6;
+    // ── Line 1: category dot + name ──────────────────────────────────────
     Colour catColour;
     switch (entry.category)
     {
-        case FileCategory::Session:    catColour = Colour (0xff4fc3f7); break; // light blue
-        case FileCategory::Graph:      catColour = Colour (0xff81c784); break; // green
-        case FileCategory::Preset:     catColour = Colour (0xffffb74d); break; // orange
-        case FileCategory::Controller: catColour = Colour (0xffce93d8); break; // purple
+        case FileCategory::Session:    catColour = ListColors::catSession;    break;
+        case FileCategory::Graph:      catColour = ListColors::catGraph;      break;
+        case FileCategory::Preset:     catColour = ListColors::catPreset;     break;
+        case FileCategory::Controller: catColour = ListColors::catController; break;
         default:                       catColour = Colors::textColor.withAlpha (0.3f); break;
     }
+
+    // Category dot: 8x8 circle at x=4, vertically centered in line 1 area (y=4..24)
+    const float dotSize = 8.0f;
+    const float dotX    = 4.0f;
+    const float dotY    = 4.0f + (20.0f - dotSize) / 2.0f; // centered in line 1
     g.setColour (catColour);
-    g.fillRoundedRectangle (4.f, (h - 12.f) / 2.f, (float) iconWidth, 12.f, 2.f);
+    g.fillEllipse (dotX, dotY, dotSize, dotSize);
 
-    // Name
-    const int textLeft = iconWidth + 10;
-    g.setColour (Colors::textColor);
-    g.setFont (Font (FontOptions (13.f)));
-    g.drawText (entry.name, textLeft, 0, w - textLeft - 90, h, Justification::centredLeft, true);
+    // Name: x=16, 14px bold, line 1 area
+    const int textLeft = 16;
+    g.setColour (selected ? ListColors::nameSelected : ListColors::nameDefault);
+    g.setFont (Font (FontOptions (14.f)).boldened());
+    g.drawText (entry.name, textLeft, 4, w - textLeft - 8, 20,
+                Justification::centredLeft, true);
 
-    // Date
-    g.setColour (Colors::textColor.withAlpha (0.5f));
+    // ── Line 2: date + file size / category label ────────────────────────
+    g.setColour (selected ? ListColors::metaSelected : ListColors::metaDefault);
     g.setFont (Font (FontOptions (11.f)));
+
     const auto dateStr = entry.modified.formatted ("%b %d, %H:%M");
-    g.drawText (dateStr, w - 88, 0, 84, h, Justification::centredRight, true);
+    String metaStr = dateStr;
+
+    if (entry.fileSize > 0)
+        metaStr += "  |  " + formatFileSize (entry.fileSize);
+    else
+        metaStr += "  |  " + categoryLabel (entry.category);
+
+    g.drawText (metaStr, textLeft, 22, w - textLeft - 8, 14,
+                Justification::centredLeft, true);
 }
 
 void SessionBrowserPanel::EntryListBoxModel::listBoxItemDoubleClicked (
@@ -103,18 +142,23 @@ SessionBrowserPanel::SessionBrowserPanel()
     searchBox.setTextToShowWhenEmpty (TRANS ("Search sessions..."), Colors::textColor.darker());
     searchBox.onTextChange = [this] { startTimer (200); };
 
-    addAndMakeVisible (categoryFilter);
-    categoryFilter.addItem ("All", 1);
-    categoryFilter.addItem ("Sessions", 2);
-    categoryFilter.addItem ("Graphs", 3);
-    categoryFilter.addItem ("Presets", 4);
-    categoryFilter.addItem ("Controllers", 5);
-    categoryFilter.setSelectedId (1, dontSendNotification);
-    categoryFilter.onChange = [this] { applyFilter(); };
+    // Segmented control buttons
+    addAndMakeVisible (btnAllFiles);
+    addAndMakeVisible (btnRecent);
+
+    auto setupButton = [this] (TextButton& btn, ViewMode mode)
+    {
+        btn.setClickingTogglesState (false);
+        btn.onClick = [this, mode]() { setViewMode (mode); };
+    };
+
+    setupButton (btnAllFiles, ViewMode::AllFiles);
+    setupButton (btnRecent, ViewMode::Recent);
+    updateSegmentButtons();
 
     addAndMakeVisible (listBox);
     listBox.setModel (&model);
-    listBox.setRowHeight (28);
+    listBox.setRowHeight (40);
     listBox.setColour (ListBox::backgroundColourId, Colours::transparentBlack);
 
 #if JUCE_MAC || JUCE_WINDOWS
@@ -123,6 +167,7 @@ SessionBrowserPanel::SessionBrowserPanel()
     watcher.addListener (this);
 #endif
 
+    loadRecentFiles();
     scanDirectory();
 }
 
@@ -138,18 +183,47 @@ SessionBrowserPanel::~SessionBrowserPanel()
 void SessionBrowserPanel::resized()
 {
     auto r = getLocalBounds().reduced (2);
-    auto top = r.removeFromTop (24);
-    searchBox.setBounds (top.removeFromLeft (top.getWidth() * 2 / 3).reduced (0, 1));
-    categoryFilter.setBounds (top.reduced (2, 1));
-    r.removeFromTop (2);
+    auto top = r.removeFromTop (22);
+    searchBox.setBounds (top);
+    r.removeFromTop (4);
+
+    auto segArea = r.removeFromTop (20);
+    int segW = segArea.getWidth() / 2;
+    btnAllFiles.setBounds (segArea.removeFromLeft (segW));
+    btnRecent.setBounds (segArea);
+
+    r.removeFromTop (4);
     listBox.setBounds (r);
 }
 
-void SessionBrowserPanel::paint (Graphics&) {}
+void SessionBrowserPanel::paint (Graphics& g)
+{
+    // Empty state when no entries match
+    if (filteredEntries.isEmpty() && listBox.isVisible())
+    {
+        auto contentArea = getLocalBounds().reduced (2);
+        // Skip past search (22) + gap (4) + segment (20) + gap (4)
+        contentArea.removeFromTop (50);
+
+        g.setColour (ListColors::emptyText);
+        g.setFont (Font (FontOptions (14.f)));
+
+        String emptyText;
+        if (viewMode == ViewMode::Recent)
+            emptyText = "No recently opened sessions.";
+        else
+            emptyText = "No sessions found.\nCreate one from File > Save Session.";
+
+        g.drawFittedText (emptyText, contentArea, Justification::centred, 2);
+    }
+}
 
 void SessionBrowserPanel::refresh()
 {
-    scanDirectory();
+    if (viewMode == ViewMode::AllFiles)
+        scanDirectory();
+    else
+        buildRecentEntries();
 }
 
 void SessionBrowserPanel::timerCallback()
@@ -159,7 +233,40 @@ void SessionBrowserPanel::timerCallback()
 }
 
 //==============================================================================
-// Scanning
+// View mode switching
+//==============================================================================
+
+void SessionBrowserPanel::setViewMode (ViewMode mode)
+{
+    if (viewMode == mode)
+        return;
+    viewMode = mode;
+    updateSegmentButtons();
+
+    if (viewMode == ViewMode::AllFiles)
+        scanDirectory();
+    else
+        buildRecentEntries();
+}
+
+void SessionBrowserPanel::updateSegmentButtons()
+{
+    styleSegmentButton (btnAllFiles, viewMode == ViewMode::AllFiles);
+    styleSegmentButton (btnRecent, viewMode == ViewMode::Recent);
+}
+
+void SessionBrowserPanel::styleSegmentButton (TextButton& btn, bool active)
+{
+    btn.setColour (TextButton::buttonColourId,
+                   active ? ListColors::segActive : ListColors::segDefault);
+    btn.setColour (TextButton::buttonOnColourId, ListColors::segActive);
+    btn.setColour (TextButton::textColourOffId,
+                   active ? ListColors::segTextActive : ListColors::segTextDefault);
+    btn.setColour (TextButton::textColourOnId, ListColors::segTextActive);
+}
+
+//==============================================================================
+// Scanning (All Files mode)
 //==============================================================================
 
 void SessionBrowserPanel::scanDirectory()
@@ -181,6 +288,7 @@ void SessionBrowserPanel::scanDirectory()
             fe.name     = file.getFileNameWithoutExtension();
             fe.modified = file.getLastModificationTime();
             fe.category = categoryFromExtension (file.getFileExtension().toLowerCase());
+            fe.fileSize = file.getSize();
             allEntries.add (fe);
         }
     };
@@ -213,6 +321,7 @@ void SessionBrowserPanel::scanDirectory()
         fe.name     = file.getFileNameWithoutExtension();
         fe.modified = file.getLastModificationTime();
         fe.category = categoryFromExtension (file.getFileExtension().toLowerCase());
+        fe.fileSize = file.getSize();
         allEntries.add (fe);
     }
 
@@ -224,27 +333,25 @@ void SessionBrowserPanel::scanDirectory()
     applyFilter();
 }
 
+//==============================================================================
+// Filter
+//==============================================================================
+
 void SessionBrowserPanel::applyFilter()
 {
-    filteredEntries.clearQuick();
-
-    const auto text = searchBox.getText().trim();
-    const int catId = categoryFilter.getSelectedId();
-
-    FileCategory catFilter = FileCategory::Unknown;
-    switch (catId)
+    if (viewMode == ViewMode::Recent)
     {
-        case 2: catFilter = FileCategory::Session; break;
-        case 3: catFilter = FileCategory::Graph; break;
-        case 4: catFilter = FileCategory::Preset; break;
-        case 5: catFilter = FileCategory::Controller; break;
-        default: break; // All
+        // buildRecentEntries handles filtering, updateContent, and repaint
+        buildRecentEntries();
+        return;
     }
+
+    // All Files mode: filter allEntries by search text only
+    filteredEntries.clearQuick();
+    const auto text = searchBox.getText().trim();
 
     for (const auto& entry : allEntries)
     {
-        if (catFilter != FileCategory::Unknown && entry.category != catFilter)
-            continue;
         if (text.isNotEmpty() && ! entry.name.containsIgnoreCase (text))
             continue;
         filteredEntries.add (entry);
@@ -252,7 +359,12 @@ void SessionBrowserPanel::applyFilter()
 
     listBox.updateContent();
     listBox.repaint();
+    repaint(); // for empty state
 }
+
+//==============================================================================
+// Open / Context Menu
+//==============================================================================
 
 void SessionBrowserPanel::openEntry (const FileEntry& entry)
 {
@@ -262,6 +374,7 @@ void SessionBrowserPanel::openEntry (const FileEntry& entry)
 
     if (entry.file.hasFileExtension ("els") || entry.file.hasFileExtension ("elg"))
     {
+        recordRecentOpen (entry.file);
         cc->post (new OpenSessionMessage (entry.file));
     }
     else if (entry.file.hasFileExtension ("eln") || entry.file.hasFileExtension ("elpreset"))
@@ -320,6 +433,131 @@ void SessionBrowserPanel::showContextMenu (int row, const MouseEvent&)
     }
 }
 
+//==============================================================================
+// Recently opened tracking
+//==============================================================================
+
+void SessionBrowserPanel::recordRecentOpen (const File& file)
+{
+    const auto path = file.getFullPathName();
+
+    // Remove existing entry if present (move to front)
+    const int idx = recentPaths.indexOf (path);
+    if (idx >= 0)
+    {
+        recentPaths.remove (idx);
+        recentTimes.remove (idx);
+    }
+
+    // Add to front
+    recentPaths.insert (0, path);
+    recentTimes.insert (0, Time::getCurrentTime());
+
+    // Trim to max
+    while (recentPaths.size() > maxRecentEntries)
+    {
+        recentPaths.remove (recentPaths.size() - 1);
+        recentTimes.remove (recentTimes.size() - 1);
+    }
+
+    saveRecentFiles();
+
+    // If currently in Recent view, refresh display
+    if (viewMode == ViewMode::Recent)
+        buildRecentEntries();
+}
+
+File SessionBrowserPanel::getRecentFilePath() const
+{
+    return File::getSpecialLocation (File::userApplicationDataDirectory)
+        .getChildFile ("Element")
+        .getChildFile ("recent_sessions.xml");
+}
+
+void SessionBrowserPanel::loadRecentFiles()
+{
+    recentPaths.clear();
+    recentTimes.clear();
+
+    const auto xmlFile = getRecentFilePath();
+    if (! xmlFile.existsAsFile())
+        return;
+
+    auto xml = parseXML (xmlFile);
+    if (xml == nullptr || ! xml->hasTagName ("RecentSessions"))
+        return;
+
+    for (auto* child : xml->getChildIterator())
+    {
+        if (! child->hasTagName ("Entry"))
+            continue;
+
+        const auto path = child->getStringAttribute ("path");
+        const auto timeMs = child->getStringAttribute ("time").getLargeIntValue();
+
+        if (path.isNotEmpty())
+        {
+            recentPaths.add (path);
+            recentTimes.add (Time (timeMs));
+        }
+    }
+}
+
+void SessionBrowserPanel::saveRecentFiles()
+{
+    auto xml = std::make_unique<XmlElement> ("RecentSessions");
+
+    for (int i = 0; i < recentPaths.size(); ++i)
+    {
+        auto* entry = xml->createNewChildElement ("Entry");
+        entry->setAttribute ("path", recentPaths[i]);
+        entry->setAttribute ("time", String (recentTimes[i].toMilliseconds()));
+    }
+
+    const auto xmlFile = getRecentFilePath();
+    xmlFile.getParentDirectory().createDirectory();
+    xml->writeTo (xmlFile, {});
+}
+
+void SessionBrowserPanel::buildRecentEntries()
+{
+    filteredEntries.clearQuick();
+
+    for (int i = 0; i < recentPaths.size(); ++i)
+    {
+        const File file (recentPaths[i]);
+        if (! file.existsAsFile())
+            continue;
+
+        FileEntry fe;
+        fe.file     = file;
+        fe.name     = file.getFileNameWithoutExtension();
+        fe.modified = (i < recentTimes.size()) ? recentTimes[i] : file.getLastModificationTime();
+        fe.category = categoryFromExtension (file.getFileExtension().toLowerCase());
+        fe.fileSize = file.getSize();
+        filteredEntries.add (fe);
+    }
+
+    // Apply search filter if text is present
+    const auto text = searchBox.getText().trim();
+    if (text.isNotEmpty())
+    {
+        for (int i = filteredEntries.size(); --i >= 0;)
+        {
+            if (! filteredEntries.getReference (i).name.containsIgnoreCase (text))
+                filteredEntries.remove (i);
+        }
+    }
+
+    listBox.updateContent();
+    listBox.repaint();
+    repaint(); // for empty state
+}
+
+//==============================================================================
+// Helpers
+//==============================================================================
+
 SessionBrowserPanel::FileCategory
 SessionBrowserPanel::categoryFromExtension (const String& ext)
 {
@@ -340,6 +578,17 @@ String SessionBrowserPanel::categoryLabel (FileCategory cat)
         case FileCategory::Controller: return "Controller";
         default:                       return "Other";
     }
+}
+
+String SessionBrowserPanel::formatFileSize (int64 bytes)
+{
+    if (bytes < 1024)
+        return String (bytes) + " B";
+    if (bytes < 1024 * 1024)
+        return String (bytes / 1024) + " KB";
+
+    const double mb = static_cast<double> (bytes) / (1024.0 * 1024.0);
+    return String (mb, 1) + " MB";
 }
 
 } // namespace element
