@@ -155,6 +155,11 @@ private:
     // recalculate A values for new ratio or knee width
     void recalcAs()
     {
+        if (kneeDB <= 0.0f)
+        {
+            aFF = 0.0f;
+            return;
+        }
         aFF = (1.0f - (1.0f / ratio.getTargetValue())) / (2.0f * kneeDB);
     }
 

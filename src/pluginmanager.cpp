@@ -928,6 +928,12 @@ Processor* PluginManager::createGraphNode (const PluginDescription& desc, String
 
 Processor* PluginManager::createSandboxedGraphNode (const PluginDescription& desc, String& errorMsg)
 {
+    // DISABLED: sandbox IPC is fundamentally broken — process-local semaphores,
+    // shared memory issues. Always return null to fall back to in-process loading.
+    errorMsg = "Sandbox mode is currently disabled due to IPC stability issues";
+    juce::Logger::writeToLog ("[element] sandbox disabled: loading " + desc.name + " in-process");
+    return nullptr;
+
     errorMsg.clear();
 
     // Only create sandboxed nodes for external plugins (not internal nodes)
