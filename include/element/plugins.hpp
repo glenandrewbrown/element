@@ -17,6 +17,7 @@ class NodeProvider;
 class PluginScannerCoordinator;
 class PluginScanner;
 class SandboxedProcessorNode;
+class PluginUsageTracker;
 
 class PluginManager : public juce::ChangeBroadcaster {
 public:
@@ -35,6 +36,9 @@ public:
     /** Access to the main known plugins list */
     juce::KnownPluginList& getKnownPlugins();
     const juce::KnownPluginList& getKnownPlugins() const;
+
+    /** Access the plugin usage tracker (favorites, recently used) */
+    PluginUsageTracker& getUsageTracker();
 
     /** Scan/Add a description to the known plugins */
     void addToKnownPlugins (const juce::PluginDescription& desc);
