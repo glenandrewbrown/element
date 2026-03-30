@@ -10,7 +10,7 @@
 #include "ui/guicommon.hpp"
 #include "presetmanager.hpp"
 #include "ui/block.hpp"
-#include "ui/moleculemanager.hpp"
+#include "ui/pluginusagetracker.hpp"
 #include "./utils.hpp"
 
 namespace element {
@@ -19,12 +19,8 @@ class PluginsPopupMenu : public PopupMenu
 {
 public:
     PluginsPopupMenu (Component* sender)
+        : usageTracker (initPlugins (sender))
     {
-        jassert (sender != nullptr);
-        auto* cc = ViewHelpers::findContentComponent (sender);
-        jassert (cc != nullptr);
-        plugins = &cc->context().plugins();
-        jassert (plugins != nullptr);
         available = plugins->getKnownPlugins().getTypes();
     }
 
@@ -148,6 +144,18 @@ private:
     OwnedArray<PluginDescription> unverified;
     PluginManager* plugins { nullptr };
     bool hasAddedPlugins = false;
+
+    /** Helper called from the initializer list to set up plugins
+        before constructing usageTracker. */
+    KnownPluginList& initPlugins (Component* sender)
+    {
+        jassert (sender != nullptr);
+        auto* cc = ViewHelpers::findContentComponent (sender);
+        jassert (cc != nullptr);
+        plugins = &cc->context().plugins();
+        jassert (plugins != nullptr);
+        return plugins->getKnownPlugins();
+    }
 
     // Favorites and recently used
     PluginUsageTracker usageTracker;
