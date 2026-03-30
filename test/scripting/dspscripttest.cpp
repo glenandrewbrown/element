@@ -80,4 +80,75 @@ BOOST_AUTO_TEST_CASE (Basics)
     expect (Amp.get_or ("released", false) == true);
 }
 
+BOOST_AUTO_TEST_CASE (LuaSandboxDangerousGlobalsBlocked)
+{
+    LuaFixture fix;
+    sol::state_view lua (fix.luaState());
+
+    // load() must be nil — prevents loading arbitrary code from strings
+    {
+        auto result = lua.script ("return type(load)", "sandbox_test");
+        BOOST_REQUIRE_MESSAGE (result.valid(), "script failed");
+        std::string t = result;
+        BOOST_REQUIRE_MESSAGE (t == "nil", "load should be nil, got: " + t);
+    }
+
+    // loadfile() must be nil — prevents loading code from files
+    {
+        auto result = lua.script ("return type(loadfile)", "sandbox_test");
+        BOOST_REQUIRE_MESSAGE (result.valid(), "script failed");
+        std::string t = result;
+        BOOST_REQUIRE_MESSAGE (t == "nil", "loadfile should be nil, got: " + t);
+    }
+
+    // dofile() must be nil — prevents executing files
+    {
+        auto result = lua.script ("return type(dofile)", "sandbox_test");
+        BOOST_REQUIRE_MESSAGE (result.valid(), "script failed");
+        std::string t = result;
+        BOOST_REQUIRE_MESSAGE (t == "nil", "dofile should be nil, got: " + t);
+    }
+
+    // io must be nil — prevents file I/O
+    {
+        auto result = lua.script ("return type(io)", "sandbox_test");
+        BOOST_REQUIRE_MESSAGE (result.valid(), "script failed");
+        std::string t = result;
+        BOOST_REQUIRE_MESSAGE (t == "nil", "io should be nil, got: " + t);
+    }
+
+    // os must be nil — prevents OS command execution
+    {
+        auto result = lua.script ("return type(os)", "sandbox_test");
+        BOOST_REQUIRE_MESSAGE (result.valid(), "script failed");
+        std::string t = result;
+        BOOST_REQUIRE_MESSAGE (t == "nil", "os should be nil, got: " + t);
+    }
+
+    // package.cpath must be empty — prevents loading native .so/.dylib
+    {
+        auto result = lua.script ("return package.cpath", "sandbox_test");
+        BOOST_REQUIRE_MESSAGE (result.valid(), "script failed");
+        std::string cpath = result;
+        BOOST_REQUIRE_MESSAGE (cpath.empty(), "package.cpath should be empty, got: " + cpath);
+    }
+
+    // package.loadlib must be nil — prevents native library loading
+    {
+        auto result = lua.script ("return type(package.loadlib)", "sandbox_test");
+        BOOST_REQUIRE_MESSAGE (result.valid(), "script failed");
+        std::string t = result;
+        BOOST_REQUIRE_MESSAGE (t == "nil", "package.loadlib should be nil, got: " + t);
+    }
+
+    // package.path must not contain system paths like /usr
+    {
+        auto result = lua.script ("return package.path", "sandbox_test");
+        BOOST_REQUIRE_MESSAGE (result.valid(), "script failed");
+        std::string path = result;
+        BOOST_REQUIRE_MESSAGE (path.find ("/usr") == std::string::npos,
+                               "package.path should not contain /usr, got: " + path);
+    }
+}
+
 BOOST_AUTO_TEST_SUITE_END()
