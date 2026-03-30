@@ -442,7 +442,8 @@ void EngineService::removeGraph (int index)
     if (toRemove.isValid())
         sigNodeRemoved (toRemove);
     // FIXME: dont notify the UI top-down
-    sibling<UI>()->stabilizeContent();
+    if (auto* ui = sibling<UI>())
+        ui->stabilizeContent();
 }
 
 void EngineService::connectChannels (const Node& graph, const Node& src, const int sc, const Node& dst, const int dc)
@@ -575,7 +576,8 @@ void EngineService::addNode (const Node& _node)
     {
         const Node actual (root->getNodeModelForId (nodeId));
         if (context().settings().showPluginWindowsWhenAdded())
-            sibling<GuiService>()->presentPluginWindow (actual);
+            if (auto* gui = sibling<GuiService>())
+                gui->presentPluginWindow (actual);
     }
     else
     {
@@ -619,7 +621,8 @@ Node EngineService::addPlugin (const PluginDescription& desc, const bool verifie
         {
             node = root->getNodeModelForId (nodeId);
             if (! dontShowUI && context().settings().showPluginWindowsWhenAdded())
-                sibling<GuiService>()->presentPluginWindow (node);
+                if (auto* gui = sibling<GuiService>())
+                    gui->presentPluginWindow (node);
         }
     }
     else
@@ -963,7 +966,8 @@ Node EngineService::addPlugin (GraphManager& c, const PluginDescription& desc)
 
         const Node node (c.getNodeModelForId (nodeId));
         if (context().settings().showPluginWindowsWhenAdded())
-            sibling<GuiService>()->presentPluginWindow (node);
+            if (auto* gui = sibling<GuiService>())
+                gui->presentPluginWindow (node);
         if (! node.isValid())
         {
             jassertfalse; // fatal, but continue
@@ -1060,7 +1064,8 @@ void EngineService::changeBusesLayout (const Node& n, const AudioProcessor::Buse
                 controller->removeIllegalConnections();
                 controller->syncArcsModel();
 
-                sibling<GuiService>()->stabilizeViews();
+                if (auto* gui = sibling<GuiService>())
+                    gui->stabilizeViews();
             }
         }
     }
@@ -1119,11 +1124,13 @@ void EngineService::replace (const Node& node, const PluginDescription& desc)
 
             removeNode (node);
             if (wasWindowOpen)
-                sibling<GuiService>()->presentPluginWindow (newNode);
+                if (auto* gui = sibling<GuiService>())
+                    gui->presentPluginWindow (newNode);
         }
     }
 
-    sibling<GuiService>()->stabilizeViews();
+    if (auto* gui = sibling<GuiService>())
+        gui->stabilizeViews();
 }
 
 } // namespace element

@@ -240,7 +240,7 @@ bool GraphNode::connectChannels (PortType type, uint32 sourceNode, int32 sourceC
 {
     Processor* src = getNodeForId (sourceNode);
     Processor* dst = getNodeForId (destNode);
-    if (! src && ! dst)
+    if (! src || ! dst)
         return false;
     return addConnection (src->nodeId, src->getPortForChannel (type, sourceChannel, false), dst->nodeId, dst->getPortForChannel (type, destChannel, true));
 }
@@ -530,6 +530,7 @@ void GraphNode::reset()
 
 void GraphNode::render (RenderContext& rc)
 {
+    juce::ScopedNoDenormals noDenormals;
     const int32 numSamples = rc.audio.getNumSamples();
     auto& midiMessages = *rc.midi.getWriteBuffer (0);
     currentAudioInputBuffer = &rc.audio;

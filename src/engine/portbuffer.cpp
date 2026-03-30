@@ -139,7 +139,7 @@ bool PortBuffer::addEvent (int64 frames, uint32 size, uint32 bodyType, const uin
         LV2_Event* ev = (LV2_Event*) (buffer.event->data + buffer.event->size);
         ev->frames = static_cast<uint32> (frames);
         ev->subframes = 0;
-        ev->type = type;
+        ev->type = bodyType;
         ev->size = size;
         memcpy ((uint8*) ev + sizeof (LV2_Event), data, size);
 
@@ -171,13 +171,11 @@ void PortBuffer::reset()
 {
     if (isAudio() || isCV())
     {
-        buffer.atom->size = capacity - sizeof (LV2_Atom);
-        buffer.atom->type = bufferType;
+        // Audio/CV buffers use float* — do not write LV2_Atom header
     }
     else if (isControl())
     {
-        buffer.atom->size = sizeof (float);
-        buffer.atom->type = bufferType;
+        // Control buffers use float* — do not write LV2_Atom header
     }
     else if (isSequence())
     {

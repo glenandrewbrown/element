@@ -403,7 +403,7 @@ bool MidiDeviceProcessor::deviceIsAvailable (const String& name)
         if (info.name == name)
             return true;
     }
-    return true;
+    return false;
 }
 
 bool MidiDeviceProcessor::deviceIsAvailable (const MidiDeviceInfo& dev)
@@ -411,7 +411,7 @@ bool MidiDeviceProcessor::deviceIsAvailable (const MidiDeviceInfo& dev)
     for (const auto& info : getAvailableDevices())
         if (info.identifier == dev.identifier)
             return true;
-    return true;
+    return false;
 }
 
 void MidiDeviceProcessor::timerCallback()
