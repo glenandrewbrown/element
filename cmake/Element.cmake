@@ -45,6 +45,30 @@ endif()
 include(GNUInstallDirs)
 include(FetchContent)
 
+# Build number: read from build_number.txt, auto-increment on each configure
+set(ELEMENT_BUILD_NUMBER_FILE "${CMAKE_SOURCE_DIR}/build_number.txt")
+if(EXISTS "${ELEMENT_BUILD_NUMBER_FILE}")
+    file(READ "${ELEMENT_BUILD_NUMBER_FILE}" ELEMENT_BUILD_NUMBER)
+    string(STRIP "${ELEMENT_BUILD_NUMBER}" ELEMENT_BUILD_NUMBER)
+else()
+    set(ELEMENT_BUILD_NUMBER "1")
+endif()
+
+# Git short hash for version identification
+execute_process(
+    COMMAND git rev-parse --short=8 HEAD
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+    OUTPUT_VARIABLE ELEMENT_GIT_SHORT_HASH
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+)
+if(NOT ELEMENT_GIT_SHORT_HASH)
+    set(ELEMENT_GIT_SHORT_HASH "unknown")
+endif()
+
+set(ELEMENT_VERSION_STRING "${PROJECT_VERSION}.${ELEMENT_BUILD_NUMBER}")
+message(STATUS "Element version: ${ELEMENT_VERSION_STRING} (${ELEMENT_GIT_SHORT_HASH})")
+
 # Fetch ASIO
 if(WIN32 AND ELEMENT_ENABLE_ASIO)
     FetchContent_Declare(ASIOSDK

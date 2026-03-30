@@ -14,14 +14,30 @@ OUTPUT_DIR="${3:-installer/output}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
-PKG_PATH="$PROJECT_ROOT/$OUTPUT_DIR/Element-${VERSION}.pkg"
-DMG_PATH="$PROJECT_ROOT/$OUTPUT_DIR/Element-${VERSION}.dmg"
+# Read build number (already incremented by build_pkg.sh)
+BUILD_NUMBER_FILE="$PROJECT_ROOT/build_number.txt"
+if [ -f "$BUILD_NUMBER_FILE" ]; then
+    # build_pkg.sh already incremented, so current value is next build.
+    # The PKG was built with (current - 1).
+    BUILD_NUMBER=$(( $(cat "$BUILD_NUMBER_FILE" | tr -d '[:space:]') - 1 ))
+    [ "$BUILD_NUMBER" -lt 1 ] && BUILD_NUMBER=1
+else
+    BUILD_NUMBER=1
+fi
+FULL_VERSION="${VERSION}.${BUILD_NUMBER}"
+
+# Find the PKG (try full version first, then base version)
+PKG_PATH="$PROJECT_ROOT/$OUTPUT_DIR/Element-${FULL_VERSION}.pkg"
+if [ ! -f "$PKG_PATH" ]; then
+    PKG_PATH="$PROJECT_ROOT/$OUTPUT_DIR/Element-${VERSION}.pkg"
+fi
+
+DMG_PATH="$PROJECT_ROOT/$OUTPUT_DIR/Element-${FULL_VERSION}.dmg"
 DMG_STAGING="$PROJECT_ROOT/$OUTPUT_DIR/dmg_staging"
-DMG_VOLUME_NAME="Element ${VERSION}"
-DMG_TEMP="$PROJECT_ROOT/$OUTPUT_DIR/Element-${VERSION}-temp.dmg"
+DMG_VOLUME_NAME="Element ${FULL_VERSION}"
 
 echo "=== Element DMG Builder ==="
-echo "Version: $VERSION"
+echo "Version: $FULL_VERSION"
 echo ""
 
 # Step 1: Build the PKG if it doesn't exist
@@ -48,7 +64,7 @@ cp "$PKG_PATH" "$DMG_STAGING/Install Element.pkg"
 cat > "$DMG_STAGING/README.txt" << 'READMEEOF'
 Element - Modular Audio Plugin Host
 ====================================
-Version: VERSIONPLACEHOLDER
+Version: FULLVERSIONPLACEHOLDER
 Copyright (C) 2017-2026 Kushview, LLC
 License: GPL-3.0-or-later
 
@@ -89,7 +105,7 @@ https://kushview.net
 READMEEOF
 
 # Replace version placeholder
-sed -i '' "s/VERSIONPLACEHOLDER/$VERSION/g" "$DMG_STAGING/README.txt"
+sed -i '' "s/FULLVERSIONPLACEHOLDER/$FULL_VERSION/g" "$DMG_STAGING/README.txt"
 
 # Step 5: Copy license
 if [ -f "$PROJECT_ROOT/LICENSES/GPL-3.0-or-later.txt" ]; then
@@ -103,7 +119,7 @@ echo ""
 echo "Creating DMG..."
 
 # Remove old DMG if exists
-rm -f "$DMG_PATH" "$DMG_TEMP"
+rm -f "$DMG_PATH"
 
 # Create compressed read-only DMG directly from staging folder
 hdiutil create \
