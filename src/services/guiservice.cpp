@@ -626,9 +626,7 @@ void GuiService::run()
 
 SessionRef GuiService::session()
 {
-    if (! sessionRef)
-        sessionRef = world.session();
-    return sessionRef;
+    return world.session();
 }
 
 ApplicationCommandTarget* GuiService::getNextCommandTarget()

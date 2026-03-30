@@ -600,6 +600,9 @@ Node EngineService::addPlugin (const PluginDescription& desc, const bool verifie
     {
         auto* format = context().plugins().getAudioPluginFormat (desc.pluginFormatName);
         jassert (format != nullptr);
+        if (format == nullptr)
+            return Node();
+
         auto& list (context().plugins().getKnownPlugins());
         list.removeFromBlacklist (desc.fileOrIdentifier);
         list.removeType (desc);
@@ -638,13 +641,15 @@ void EngineService::removeNode (const Node& node)
     if (! graph.isGraph())
         return;
 
-    auto* const gui = sibling<GuiService>();
     if (auto* manager = graphs->findGraphManagerFor (graph))
     {
         jassert (manager->contains (node.getNodeId()));
-        gui->closePluginWindowsFor (node, true);
-        if (gui->getSelectedNode() == node)
-            gui->selectNode (Node());
+        if (auto* const gui = sibling<GuiService>())
+        {
+            gui->closePluginWindowsFor (node, true);
+            if (gui->getSelectedNode() == node)
+                gui->selectNode (Node());
+        }
         manager->removeNode (node.getNodeId());
         sigNodeRemoved (node);
     }
@@ -880,6 +885,8 @@ Node EngineService::addPlugin (const Node& graph, const PluginDescription& desc,
         {
             auto* format = context().plugins().getAudioPluginFormat (desc.pluginFormatName);
             jassert (format != nullptr);
+            if (format == nullptr)
+                return Node();
 
             list.removeFromBlacklist (desc.fileOrIdentifier);
 
@@ -1044,8 +1051,13 @@ void EngineService::changeBusesLayout (const Node& n, const AudioProcessor::Buse
         {
             if (proc->checkBusesLayoutSupported (layout))
             {
-                while (! gp->isSuspended())
-                    gp->suspendProcessing (true);
+                gp->suspendProcessing (true);
+                for (int attempts = 0; ! gp->isSuspended() && attempts < 500; ++attempts)
+                    juce::Thread::sleep (1);
+
+                if (! gp->isSuspended())
+                    return; // abort rather than hang forever
+
                 gp->releaseResources();
 
                 const bool wasNotSuspended = ! proc->isSuspended();
@@ -1058,8 +1070,9 @@ void EngineService::changeBusesLayout (const Node& n, const AudioProcessor::Buse
 
                 gp->prepareToRender (gp->getSampleRate(), gp->getBlockSize());
 
-                while (gp->isSuspended())
-                    gp->suspendProcessing (false);
+                gp->suspendProcessing (false);
+                for (int attempts = 0; gp->isSuspended() && attempts < 500; ++attempts)
+                    juce::Thread::sleep (1);
 
                 controller->removeIllegalConnections();
                 controller->syncArcsModel();

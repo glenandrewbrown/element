@@ -68,7 +68,7 @@ void DeviceService::add (const Controller& device, const Control& control)
     }
     else
     {
-        DBG (String ("[element] device not found in session: ") << session->getName() << " / " << device.getName().toString());
+        DBG (String ("[element] device not found in session: ") << (session ? session->getName() : "null") << " / " << device.getName().toString());
     }
 }
 
@@ -117,7 +117,7 @@ void DeviceService::remove (const Controller& device, const Control& control)
     }
     else
     {
-        DBG (String ("[element] device not found in session: ") << session->getName() << " / " << device.getName().toString());
+        DBG (String ("[element] device not found in session: ") << (session ? session->getName() : "null") << " / " << device.getName().toString());
     }
 }
 
@@ -152,6 +152,9 @@ void DeviceService::refresh()
     auto& midi (context().midi());
     auto session = context().session();
     mapping.clear();
+
+    if (! session)
+        return;
 
     for (int i = 0; i < session->getNumControllers(); ++i)
         mapping.addInput (session->getController (i), midi);
