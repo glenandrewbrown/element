@@ -322,7 +322,10 @@ public:
 
     void handleConnectionLost() override
     {
-        logger->logMessage ("[scanner] connection lost");
+        cancelPendingUpdate();
+        if (logger)
+            logger->logMessage ("[scanner] connection lost");
+        Logger::setCurrentLogger (nullptr);
         logger.reset();
         settings = nullptr;
         plugins = nullptr;
@@ -381,7 +384,12 @@ bool PluginScanner::retrieveDescriptions (const String& formatName,
         const auto response = superprocess->getResponse();
 
         if (response.state == State::timeout)
+        {
+            // Pump the message loop so the UI stays responsive during scanning
+            if (MessageManager::getInstance()->isThisTheMessageThread())
+                MessageManager::getInstance()->runDispatchLoopUntil (4);
             continue;
+        }
 
         if (response.xml != nullptr)
         {

@@ -26,6 +26,8 @@ public:
 
     void resized() override;
     void paint (juce::Graphics&) override;
+    void mouseMove (const juce::MouseEvent&) override;
+    void mouseExit (const juce::MouseEvent&) override;
 
     /** Refresh the file list from disk. */
     void refresh();
@@ -86,6 +88,7 @@ private:
     EntryListBoxModel model;
 
     ViewMode viewMode { ViewMode::AllFiles };
+    int hoveredRow { -1 };
 
     juce::Array<FileEntry> allEntries;
     juce::Array<FileEntry> filteredEntries;
@@ -102,7 +105,7 @@ private:
     void scanDirectory();
     void applyFilter();
     void timerCallback() override;
-    void openEntry (const FileEntry& entry);
+    void openEntry (const FileEntry entry);
     void showContextMenu (int row, const juce::MouseEvent& e);
 
     // View mode

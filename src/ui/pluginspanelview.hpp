@@ -60,6 +60,7 @@ private:
 
     ViewMode viewMode { ViewMode::All };
     int hoveredRow { -1 };
+    bool isRefreshing { false };
 
     void updateTreeView();
     void styleSegmentButton (TextButton& btn, bool active);

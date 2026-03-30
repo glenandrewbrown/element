@@ -168,7 +168,7 @@ public:
     }
 
 private:
-    GraphEditorComponent* graphEditor { nullptr };
+    juce::Component::SafePointer<GraphEditorComponent> graphEditor;
     TextEditor searchBox;
     ListBox resultsList { "searchResults", this };
     juce::Array<juce::Component::SafePointer<BlockComponent>> searchResults;

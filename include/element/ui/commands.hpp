@@ -79,6 +79,14 @@ public:
 
         recentsClear = 0x1000,
 
+        showPanelSession = 0x1100,
+        showPanelBrowse,
+        showPanelInspector,
+        showPanelEditor,
+        graphZoomIn,
+        graphZoomOut,
+        graphFitToView,
+
         quit = juce::StandardApplicationCommandIDs::quit,
         copy = juce::StandardApplicationCommandIDs::copy,
         undo = juce::StandardApplicationCommandIDs::undo,
@@ -160,6 +168,14 @@ public:
             graphSaveAs,
 
             recentsClear,
+
+            showPanelSession,
+            showPanelBrowse,
+            showPanelInspector,
+            showPanelEditor,
+            graphZoomIn,
+            graphZoomOut,
+            graphFitToView,
         };
     }
 
@@ -250,6 +266,27 @@ public:
             case Commands::recentsClear:
                 return "recentsClear";
                 break;
+            case Commands::showPanelSession:
+                return "showPanelSession";
+                break;
+            case Commands::showPanelBrowse:
+                return "showPanelBrowse";
+                break;
+            case Commands::showPanelInspector:
+                return "showPanelInspector";
+                break;
+            case Commands::showPanelEditor:
+                return "showPanelEditor";
+                break;
+            case Commands::graphZoomIn:
+                return "graphZoomIn";
+                break;
+            case Commands::graphZoomOut:
+                return "graphZoomOut";
+                break;
+            case Commands::graphFitToView:
+                return "graphFitToView";
+                break;
             default:
                 break;
         }
@@ -317,6 +354,22 @@ public:
 
         if (str == "recentsClear")
             return Commands::recentsClear;
+
+        if (str == "showPanelSession")
+            return Commands::showPanelSession;
+        if (str == "showPanelBrowse")
+            return Commands::showPanelBrowse;
+        if (str == "showPanelInspector")
+            return Commands::showPanelInspector;
+        if (str == "showPanelEditor")
+            return Commands::showPanelEditor;
+        if (str == "graphZoomIn")
+            return Commands::graphZoomIn;
+        if (str == "graphZoomOut")
+            return Commands::graphZoomOut;
+        if (str == "graphFitToView")
+            return Commands::graphFitToView;
+
         return Commands::invalid;
     }
 

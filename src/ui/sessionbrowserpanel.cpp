@@ -57,6 +57,8 @@ void SessionBrowserPanel::EntryListBoxModel::paintListBoxItem (
     // Row background
     if (selected)
         g.fillAll (ListColors::rowSelected);
+    else if (row == panel.hoveredRow)
+        g.fillAll (ListColors::rowHover);
 
     // ── Line 1: category dot + name ──────────────────────────────────────
     Colour catColour;
@@ -116,7 +118,7 @@ var SessionBrowserPanel::EntryListBoxModel::getDragSourceDescription (
         {
             const auto& entry = panel.filteredEntries.getReference (row);
             var result;
-            result.append ("plugin");
+            result.append ("session-file");
             result.append (entry.file.getFullPathName());
             return result;
         }
@@ -160,6 +162,7 @@ SessionBrowserPanel::SessionBrowserPanel()
     listBox.setModel (&model);
     listBox.setRowHeight (40);
     listBox.setColour (ListBox::backgroundColourId, Colours::transparentBlack);
+    listBox.addMouseListener (this, true);
 
 #if JUCE_MAC || JUCE_WINDOWS
     watcher.addFolder (DataPath::defaultSessionDir());
@@ -173,6 +176,7 @@ SessionBrowserPanel::SessionBrowserPanel()
 
 SessionBrowserPanel::~SessionBrowserPanel()
 {
+    listBox.removeMouseListener (this);
 #if JUCE_MAC || JUCE_WINDOWS
     watcher.removeListener (this);
     watcher.removeAllFolders();
@@ -215,6 +219,29 @@ void SessionBrowserPanel::paint (Graphics& g)
             emptyText = "No sessions found.\nCreate one from File > Save Session.";
 
         g.drawFittedText (emptyText, contentArea, Justification::centred, 2);
+    }
+}
+
+void SessionBrowserPanel::mouseMove (const MouseEvent& e)
+{
+    if (listBox.isVisible())
+    {
+        auto localPos = listBox.getLocalPoint (this, e.position).roundToInt();
+        int row = listBox.getRowContainingPosition (localPos.x, localPos.y);
+        if (row != hoveredRow)
+        {
+            hoveredRow = row;
+            listBox.repaint();
+        }
+    }
+}
+
+void SessionBrowserPanel::mouseExit (const MouseEvent&)
+{
+    if (hoveredRow != -1)
+    {
+        hoveredRow = -1;
+        listBox.repaint();
     }
 }
 
@@ -366,7 +393,7 @@ void SessionBrowserPanel::applyFilter()
 // Open / Context Menu
 //==============================================================================
 
-void SessionBrowserPanel::openEntry (const FileEntry& entry)
+void SessionBrowserPanel::openEntry (const FileEntry entry)
 {
     auto* cc = ViewHelpers::findContentComponent (this);
     if (! cc)
@@ -394,7 +421,8 @@ void SessionBrowserPanel::showContextMenu (int row, const MouseEvent&)
     if (! isPositiveAndBelow (row, filteredEntries.size()))
         return;
 
-    const auto& entry = filteredEntries.getReference (row);
+    // Copy by value — modal menu loop can invalidate array references
+    const auto entry = filteredEntries[row];
     PopupMenu menu;
     menu.addItem (1, "Open");
     menu.addItem (2, "Show in Finder");
@@ -420,7 +448,7 @@ void SessionBrowserPanel::showContextMenu (int row, const MouseEvent&)
             msg << entry.file.getFullPathName();
             if (AlertWindow::showOkCancelBox (AlertWindow::QuestionIcon, "Delete file", msg))
             {
-                if (entry.file.deleteFile())
+                if (entry.file.moveToTrash())
                     scanDirectory();
                 else
                     AlertWindow::showMessageBoxAsync (AlertWindow::WarningIcon,
