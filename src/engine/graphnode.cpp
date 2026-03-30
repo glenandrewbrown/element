@@ -484,7 +484,9 @@ void GraphNode::prepareToRender (double sampleRate, int estimatedSamplesPerBlock
     }
 
     currentAudioInputBuffer = nullptr;
-    currentAudioOutputBuffer.setSize (jmax (1, getNumAudioOutputs()), estimatedSamplesPerBlock);
+    currentAudioOutputBuffer.setSize (
+        jmax (1, getNumAudioOutputs()), estimatedSamplesPerBlock,
+        false, true /* clearExtraSpace */, false);
     currentMidiInputBuffer = nullptr;
     currentMidiOutputBuffer.clear();
     clearRenderingSequence();
@@ -534,7 +536,9 @@ void GraphNode::render (RenderContext& rc)
     const int32 numSamples = rc.audio.getNumSamples();
     auto& midiMessages = *rc.midi.getWriteBuffer (0);
     currentAudioInputBuffer = &rc.audio;
-    currentAudioOutputBuffer.setSize (jmax (1, rc.audio.getNumChannels()), numSamples);
+    currentAudioOutputBuffer.setSize (
+        jmax (1, rc.audio.getNumChannels()), numSamples,
+        false, false, true /* avoidReallocating */);
     currentAudioOutputBuffer.clear();
 
     if (midiChannels.isOmni() && velocityCurve.getMode() == VelocityCurve::Linear)
