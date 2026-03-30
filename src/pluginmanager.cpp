@@ -14,6 +14,7 @@
 #include "engine/ionode.hpp"
 #include "nodes/nodetypes.hpp"
 #include "nodes/sandboxedprocessor.hpp"
+#include "ui/pluginusagetracker.hpp"
 #include "utils.hpp"
 
 #define EL_DEAD_AUDIO_PLUGINS_FILENAME "scanner/crashed.txt"
@@ -642,6 +643,7 @@ public:
         : owner (o)
     {
         deadAudioPlugins = DataPath::applicationDataDir().getChildFile (EL_DEAD_AUDIO_PLUGINS_FILENAME);
+        usageTracker = std::make_unique<PluginUsageTracker> (allPlugins);
     }
 
     ~Private() {}
@@ -684,6 +686,7 @@ private:
     int blockSize = 512;
     std::unique_ptr<PluginScanner> scanner;
     bool hasAddedFormats = false;
+    std::unique_ptr<PluginUsageTracker> usageTracker;
 
     void scanAudioPlugins (const StringArray& names)
     {
@@ -983,6 +986,7 @@ AudioPluginFormat* PluginManager::getAudioPluginFormat (const String& name) cons
 KnownPluginList& PluginManager::getKnownPlugins() { return priv->allPlugins; }
 const KnownPluginList& PluginManager::getKnownPlugins() const { return priv->allPlugins; }
 const File& PluginManager::getDeadAudioPluginsFile() const { return priv->deadAudioPlugins; }
+PluginUsageTracker& PluginManager::getUsageTracker() { return *priv->usageTracker; }
 
 void PluginManager::saveUserPlugins (ApplicationProperties& settings)
 {
