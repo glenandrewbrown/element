@@ -4,6 +4,7 @@
 #include "ui/pluginusagetracker.hpp"
 
 namespace element {
+using namespace juce;
 
 static constexpr int maxRecentEntries = 50;
 static constexpr int coalescedSaveMs = 2000;
@@ -87,7 +88,7 @@ bool PluginUsageTracker::isFavorite (const PluginDescription& desc) const
 Array<PluginDescription> PluginUsageTracker::getFavorites() const
 {
     Array<PluginDescription> results;
-    const auto& types = knownPlugins.getTypes();
+    const auto types = knownPlugins.getTypes();
 
     for (const auto& type : types)
     {
@@ -101,7 +102,7 @@ Array<PluginDescription> PluginUsageTracker::getFavorites() const
 Array<PluginDescription> PluginUsageTracker::getRecentlyUsed (int maxItems) const
 {
     Array<PluginDescription> results;
-    const auto& types = knownPlugins.getTypes();
+    const auto types = knownPlugins.getTypes();
 
     for (int i = 0; i < jmin (maxItems, recentlyUsed.size()); ++i)
     {
@@ -149,10 +150,16 @@ void PluginUsageTracker::save()
     if (auto xml = data.createXml())
     {
         settingsFile.getParentDirectory().createDirectory();
-        xml->writeTo (settingsFile);
-    }
 
-    savePending = false;
+        if (xml->writeTo (settingsFile))
+        {
+            savePending = false;
+        }
+        else
+        {
+            juce::Logger::writeToLog ("[element] failed to save plugin usage data");
+        }
+    }
 }
 
 void PluginUsageTracker::load()
@@ -163,7 +170,14 @@ void PluginUsageTracker::load()
     if (! settingsFile.existsAsFile())
         return;
 
-    if (auto xml = XmlDocument::parse (settingsFile))
+    auto xml = XmlDocument::parse (settingsFile);
+
+    if (xml == nullptr)
+    {
+        Logger::writeToLog ("[element] plugin_usage.xml parse failed — starting with empty usage data");
+        return;
+    }
+
     {
         auto data = ValueTree::fromXml (*xml);
 
