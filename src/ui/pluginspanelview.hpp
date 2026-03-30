@@ -5,10 +5,12 @@
 #define EL_PLUGINS_PANEL_VIEW_H
 
 #include <element/ui/content.hpp>
+#include <juce_audio_processors/juce_audio_processors.h>
 
 namespace element {
 
 class PluginManager;
+class PluginUsageTracker;
 
 class PluginsPanelView : public ContentView,
                          public ChangeListener,
@@ -16,6 +18,13 @@ class PluginsPanelView : public ContentView,
                          public Timer
 {
 public:
+    enum class ViewMode
+    {
+        All,
+        Favorites,
+        Recent
+    };
+
     PluginsPanelView (PluginManager& pm);
     ~PluginsPanelView();
 
@@ -31,12 +40,28 @@ public:
     void changeListenerCallback (ChangeBroadcaster*) override;
     void timerCallback() override;
 
+    void setViewMode (ViewMode mode);
+    void refreshContent();
+
 private:
+    class FlatListModel;
+
     PluginManager& plugins;
     TreeView tree;
     TextEditor search;
+    ListBox flatList;
+    std::unique_ptr<FlatListModel> flatListModel;
+
+    TextButton btnAll { "All" };
+    TextButton btnFavorites { "Favorites" };
+    TextButton btnRecent { "Recent" };
+
+    ViewMode viewMode { ViewMode::All };
+    int hoveredRow { -1 };
 
     void updateTreeView();
+    void styleSegmentButton (TextButton& btn, bool active);
+    void updateSegmentButtons();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PluginsPanelView);
 };
