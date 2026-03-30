@@ -13,12 +13,28 @@ IDENTIFIER_PREFIX="net.kushview.element"
 # Paths
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+
+# Build number: read from build_number.txt, increment, and write back
+BUILD_NUMBER_FILE="$PROJECT_ROOT/build_number.txt"
+if [ -f "$BUILD_NUMBER_FILE" ]; then
+    BUILD_NUMBER=$(cat "$BUILD_NUMBER_FILE" | tr -d '[:space:]')
+else
+    BUILD_NUMBER=1
+fi
+
+# Increment for next build
+NEXT_BUILD=$((BUILD_NUMBER + 1))
+echo "$NEXT_BUILD" > "$BUILD_NUMBER_FILE"
+
+# Full version includes build number
+FULL_VERSION="${VERSION}.${BUILD_NUMBER}"
+GIT_HASH=$(git -C "$PROJECT_ROOT" rev-parse --short=8 HEAD 2>/dev/null || echo "unknown")
 PKG_ROOT="$PROJECT_ROOT/$OUTPUT_DIR/pkg_root"
 PKG_SCRIPTS="$PROJECT_ROOT/$OUTPUT_DIR/scripts"
 PKG_RESOURCES="$PROJECT_ROOT/installer/resources"
 
 echo "=== Element Package Builder ==="
-echo "Version: $VERSION"
+echo "Version: $FULL_VERSION (build #${BUILD_NUMBER}, ${GIT_HASH})"
 echo "Build Dir: $BUILD_DIR"
 echo "Output Dir: $OUTPUT_DIR"
 echo ""
@@ -577,7 +593,7 @@ cat > "$PROJECT_ROOT/$OUTPUT_DIR/resources/conclusion.html" << 'EOF'
 EOF
 
 # Build the final product package
-FINAL_PKG="$PROJECT_ROOT/$OUTPUT_DIR/Element-${VERSION}.pkg"
+FINAL_PKG="$PROJECT_ROOT/$OUTPUT_DIR/Element-${FULL_VERSION}.pkg"
 
 productbuild \
     --distribution "$DIST_XML" \
