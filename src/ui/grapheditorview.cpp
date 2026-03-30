@@ -36,6 +36,21 @@ void GraphEditorView::init()
 
     // Setup search component
     _search.setGraphEditor (&_editor.graphEditorComponent());
+
+    // Connect toolbar to graph editor
+    auto& toolbar = getToolbar();
+    toolbar.setGraphEditor (&_editor.graphEditorComponent());
+
+    // Breadcrumb click navigates up the graph hierarchy
+    toolbar.onBreadcrumbClicked = [this] (const Node& clickedNode) {
+        setNode (clickedNode);
+    };
+
+    // Keep zoom label in sync when zoom changes
+    _editor.graphEditorComponent().onZoomChanged = [this]() {
+        getToolbar().updateZoomLabel();
+        getToolbar().repaint();
+    };
 }
 
 GraphEditorView::~GraphEditorView()
@@ -143,6 +158,8 @@ void GraphEditorView::stabilizeContent()
 
     const auto g = getGraph();
     _editor.setNode (g);
+    getToolbar().setGraphEditor (&_editor.graphEditorComponent());
+    getToolbar().updateZoomLabel();
     onNodeSelected();
 }
 
