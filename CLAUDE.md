@@ -338,18 +338,22 @@ end
 
 ### Building the macOS Installer
 
-The default installer format is a DMG wrapping a PKG.
+The default installer format is a DMG wrapping a PKG. Build numbers auto-increment via `build_number.txt`.
 
 ```bash
-# Sign all targets first
-scripts/sign-all-macos.sh
+# Full pipeline: build, sign, package
+cmake -B build-release -DCMAKE_BUILD_TYPE=Release -DELEMENT_BUILD_PLUGINS=ON -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0
+cmake --build build-release -j8
 
-# Notarize (requires Apple Developer credentials in environment)
-scripts/notarize-macos.sh
+# Sign all targets (ad-hoc without Developer ID, or set DEVELOPER_ID_APP)
+scripts/sign-all-macos.sh build-release
 
-# Build the DMG
-installer/build_dmg.sh
+# Build versioned PKG + DMG (auto-increments build number)
+# Produces Element-1.1.0.<build>.dmg
+installer/build_pkg.sh 1.1.0 build-release installer/output
 ```
+
+Build numbering: `build_number.txt` is read and incremented each time `build_pkg.sh` runs. Output files are named `Element-<version>.<build>.pkg` and `.dmg` (e.g., `Element-1.1.0.3.dmg`).
 
 ## Graph Editor Features
 
