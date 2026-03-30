@@ -8,6 +8,7 @@
 
 #include "sandboxipc.hpp"
 #include "sandboxsemaphore.hpp"
+#include "sandboxsharedmemory.hpp"
 
 #include <atomic>
 #include <memory>
@@ -99,7 +100,8 @@ private:
     bool isPrepared { false };
     bool isBypassed { false };
 
-    // Shared audio buffer
+    // Shared audio buffer (backed by OS shared memory when available)
+    SandboxSharedMemory sharedMemory;
     SharedAudioBuffer audioBuffer;
 
     // Internal buffers
@@ -152,6 +154,9 @@ inline SandboxWorker::~SandboxWorker()
             plugin->releaseResources();
         plugin.reset();
     }
+
+    // Detach from shared memory (worker is not owner, so no unlink)
+    sharedMemory.close();
 
     juce::Logger::setCurrentLogger (nullptr);
 }
@@ -393,26 +398,55 @@ inline void SandboxWorker::handleUnloadPlugin()
 
 inline void SandboxWorker::handlePrepareToPlay (const void* payload, uint32_t payloadSize)
 {
-    if (payloadSize < sizeof (PreparePayload))
+    PreparePayload prep;
+    std::string shmName;
+
+    if (! parsePrepareMessage (payload, payloadSize, prep, shmName))
     {
         sendError ("Invalid PrepareToPlay payload");
         return;
     }
 
-    auto* prep = static_cast<const PreparePayload*> (payload);
-    sampleRate = prep->sampleRate;
-    blockSize = prep->maxBlockSize;
-    numInputChannels = prep->numInputChannels;
-    numOutputChannels = prep->numOutputChannels;
+    sampleRate = prep.sampleRate;
+    blockSize = prep.maxBlockSize;
+    numInputChannels = prep.numInputChannels;
+    numOutputChannels = prep.numOutputChannels;
 
     juce::Logger::writeToLog ("PrepareToPlay: rate=" + juce::String (sampleRate) +
                                " blockSize=" + juce::String (blockSize) +
                                " inputs=" + juce::String (numInputChannels) +
                                " outputs=" + juce::String (numOutputChannels));
 
-    // Allocate shared buffer
     const int maxChannels = std::max (numInputChannels, numOutputChannels);
-    audioBuffer.allocate (maxChannels, blockSize);
+    const size_t requiredSize = SharedAudioBuffer::calculateRequiredSize (maxChannels, blockSize);
+
+    // Attempt to attach to host's shared memory region
+    sharedMemory.close();
+    bool usedShm = false;
+
+    if (! shmName.empty())
+    {
+        if (sharedMemory.attach (shmName, requiredSize))
+        {
+            audioBuffer.attachToMemory (sharedMemory.getData(), requiredSize,
+                                        maxChannels, blockSize);
+            usedShm = true;
+            juce::Logger::writeToLog ("[sandbox-worker] Attached to shared memory: "
+                                       + juce::String (shmName.c_str())
+                                       + " (" + juce::String (requiredSize) + " bytes)");
+        }
+        else
+        {
+            juce::Logger::writeToLog ("[sandbox-worker] Failed to attach to shared memory: "
+                                       + juce::String (shmName.c_str())
+                                       + " — falling back to local allocation");
+        }
+    }
+
+    if (! usedShm)
+    {
+        audioBuffer.allocate (maxChannels, blockSize);
+    }
 
     // Allocate process buffer
     processBuffer.setSize (maxChannels, blockSize);
@@ -641,6 +675,9 @@ inline void SandboxWorker::handleShutdown()
             plugin->releaseResources();
         plugin.reset();
     }
+
+    // Detach from shared memory before exit
+    sharedMemory.close();
 
     // Give time for final messages to send
     juce::Thread::sleep (50);

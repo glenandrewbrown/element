@@ -124,7 +124,60 @@ struct PreparePayload
     int32_t maxBlockSize;
     int32_t numInputChannels;
     int32_t numOutputChannels;
+
+    /** Shared memory name length (0 = no shared memory, use local). */
+    uint32_t shmNameLength { 0 };
+
+    // Followed by shmNameLength bytes of UTF-8 shared memory name.
+    // Use createPrepareMessage() / parsePrepareMessage() to serialize.
 };
+
+/** Serialize a PreparePayload with optional shared memory name. */
+inline juce::MemoryBlock createPrepareMessage (double sampleRate, int32_t maxBlockSize,
+                                                int32_t numInputChannels, int32_t numOutputChannels,
+                                                const std::string& shmName = {})
+{
+    const uint32_t nameLen = static_cast<uint32_t> (shmName.size());
+    const size_t totalPayload = sizeof (PreparePayload) + nameLen;
+
+    juce::MemoryBlock payload (totalPayload, true);
+    auto* prep = static_cast<PreparePayload*> (payload.getData());
+    prep->sampleRate = sampleRate;
+    prep->maxBlockSize = maxBlockSize;
+    prep->numInputChannels = numInputChannels;
+    prep->numOutputChannels = numOutputChannels;
+    prep->shmNameLength = nameLen;
+
+    if (nameLen > 0)
+    {
+        auto* namePtr = static_cast<uint8_t*> (payload.getData()) + sizeof (PreparePayload);
+        std::memcpy (namePtr, shmName.data(), nameLen);
+    }
+
+    return payload;
+}
+
+/** Parse a PreparePayload and extract the optional shared memory name. */
+inline bool parsePrepareMessage (const void* payload, uint32_t payloadSize,
+                                  PreparePayload& prep, std::string& shmName)
+{
+    if (payloadSize < sizeof (PreparePayload))
+        return false;
+
+    std::memcpy (&prep, payload, sizeof (PreparePayload));
+
+    shmName.clear();
+    if (prep.shmNameLength > 0)
+    {
+        if (payloadSize < sizeof (PreparePayload) + prep.shmNameLength)
+            return false;
+
+        const auto* namePtr = static_cast<const char*> (payload) + sizeof (PreparePayload);
+        shmName.assign (namePtr, prep.shmNameLength);
+    }
+
+    return true;
+}
 
 /** Latency change message payload. */
 struct LatencyPayload
@@ -180,18 +233,42 @@ public:
     SharedAudioBuffer() = default;
     ~SharedAudioBuffer() = default;
 
-    /** Allocate local buffers (for non-shared-memory mode). */
-    void allocate (int numChannels, int numSamples)
+    /** Calculate the total bytes required for a given channel/sample configuration. */
+    static size_t calculateRequiredSize (int numChannels, int numSamples)
     {
         const size_t bufferBytes = static_cast<size_t> (numChannels) *
                                    static_cast<size_t> (numSamples) * sizeof (float);
-        const size_t midiBytes = 4096; // 4KB per MIDI buffer
-        const size_t totalSize = sizeof (Header) +
-                                 (bufferBytes * 4) +  // 2 input + 2 output double-buffered
-                                 (midiBytes * 2);     // input + output MIDI
+        const size_t midiBytes = 4096;
+        return sizeof (Header) +
+               (bufferBytes * 4) +  // 2 input + 2 output double-buffered
+               (midiBytes * 2);     // input + output MIDI
+    }
 
+    /** Allocate local buffers (for non-shared-memory mode / in-process fallback). */
+    void allocate (int numChannels, int numSamples)
+    {
+        usingExternalMemory = false;
+        const size_t totalSize = calculateRequiredSize (numChannels, numSamples);
         memory.allocate (totalSize, true);
-        setupPointers (numChannels, numSamples);
+        setupPointers (static_cast<uint8_t*> (memory.getData()), numChannels, numSamples);
+    }
+
+    /**
+     * Attach to externally-provided memory (e.g., OS shared memory).
+     * The caller is responsible for ensuring the memory remains valid
+     * and is at least calculateRequiredSize() bytes.
+     */
+    void attachToMemory (uint8_t* externalData, size_t externalSize,
+                         int numChannels, int numSamples)
+    {
+        const size_t required = calculateRequiredSize (numChannels, numSamples);
+        jassert (externalData != nullptr);
+        jassert (externalSize >= required);
+        juce::ignoreUnused (required);
+
+        usingExternalMemory = true;
+        memory.free();
+        setupPointers (externalData, numChannels, numSamples);
     }
 
     /** Get the header for reading/writing state. */
@@ -342,12 +419,12 @@ public:
     }
 
 private:
-    void setupPointers (int numChannels, int numSamples)
+    void setupPointers (uint8_t* base, int numChannels, int numSamples)
     {
         maxChannels = numChannels;
         maxSamples = numSamples;
 
-        uint8_t* ptr = static_cast<uint8_t*> (memory.getData());
+        uint8_t* ptr = base;
 
         header = reinterpret_cast<Header*> (ptr);
         new (header) Header();  // Placement new for atomic initialization
@@ -373,6 +450,7 @@ private:
     }
 
     juce::HeapBlock<uint8_t> memory;
+    bool usingExternalMemory { false };
     Header* header { nullptr };
     float* inputBuffers[2] { nullptr, nullptr };
     float* outputBuffers[2] { nullptr, nullptr };

@@ -8,6 +8,7 @@
 
 #include "sandboxipc.hpp"
 #include "sandboxsemaphore.hpp"
+#include "sandboxsharedmemory.hpp"
 
 #if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
   #include <immintrin.h>
@@ -192,7 +193,9 @@ private:
     juce::PluginDescription loadedPlugin;
     juce::MemoryBlock lastKnownState;
 
-    // Audio processing
+    // Audio processing — shared memory backed
+    SandboxSharedMemory sharedMemory;
+    std::string shmName;
     SharedAudioBuffer audioBuffer;
     double currentSampleRate { 0.0 };
     int currentBlockSize { 0 };
@@ -276,6 +279,10 @@ inline void SandboxHost::shutdown()
     // Force kill if still running
     killWorkerProcess();
 
+    // Release shared memory
+    sharedMemory.close();
+    shmName.clear();
+
     state.store (State::Idle);
     pluginLoaded.store (false);
 }
@@ -328,23 +335,42 @@ inline void SandboxHost::prepareToPlay (double sampleRate, int maxBlockSize,
     numInputChannels = inputChannels;
     numOutputChannels = outputChannels;
 
-    // Allocate shared audio buffer
     const int maxChannels = std::max (inputChannels, outputChannels);
-    audioBuffer.allocate (maxChannels, maxBlockSize);
+    const size_t requiredSize = SharedAudioBuffer::calculateRequiredSize (maxChannels, maxBlockSize);
+
+    // Attempt to create OS shared memory for cross-process audio IPC
+    sharedMemory.close();
+    shmName = SandboxSharedMemory::generateName();
+
+    if (sharedMemory.create (shmName, requiredSize))
+    {
+        // Point the audio buffer at the shared memory region
+        audioBuffer.attachToMemory (sharedMemory.getData(), requiredSize,
+                                    maxChannels, maxBlockSize);
+        juce::Logger::writeToLog ("[sandbox] Created shared memory: "
+                                   + juce::String (shmName.c_str())
+                                   + " (" + juce::String (requiredSize) + " bytes)");
+    }
+    else
+    {
+        // Fallback to process-local allocation (in-process mode)
+        juce::Logger::writeToLog ("[sandbox] Shared memory creation failed, using local allocation");
+        shmName.clear();
+        audioBuffer.allocate (maxChannels, maxBlockSize);
+    }
 
     if (auto* header = audioBuffer.getHeader())
     {
         header->sampleRate = sampleRate;
     }
 
-    // Send prepare message to worker
-    PreparePayload payload;
-    payload.sampleRate = sampleRate;
-    payload.maxBlockSize = maxBlockSize;
-    payload.numInputChannels = inputChannels;
-    payload.numOutputChannels = outputChannels;
-
-    sendMessage (SandboxMessageType::PrepareToPlay, &payload, sizeof (payload));
+    // Send prepare message to worker, including shared memory name
+    auto payload = createPrepareMessage (sampleRate, maxBlockSize,
+                                          inputChannels, outputChannels,
+                                          shmName);
+    sendMessage (SandboxMessageType::PrepareToPlay,
+                 payload.getData(),
+                 static_cast<uint32_t> (payload.getSize()));
 }
 
 inline void SandboxHost::processBlock (juce::AudioSampleBuffer& buffer,
