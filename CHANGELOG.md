@@ -17,6 +17,7 @@
 - macOS: DMG installer format.
 
 ### Fixed
+- Fixed crash when launching Element with a session file argument (.els) on macOS.
 - Fixed memory leak in color picker caused by retained LambdaChangeListener.
 - Fixed use-after-free in async modal callbacks by using SafePointer.
 - Fixed TOCTOU race condition in shared buffer swap using atomic fetch_xor.
@@ -36,6 +37,7 @@
 - Lock-free audio processing: no mutex contention on the audio thread.
 
 ### Build
+- Auto-incrementing build numbers for PKG and DMG installers (e.g., Element-1.1.0.3).
 - macOS deployment target set to 14.0 for Sonoma compatibility.
 - Updated for JUCE 8.0.12 API changes, including addDefaultFormats.
 
