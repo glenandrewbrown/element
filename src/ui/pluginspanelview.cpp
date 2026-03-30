@@ -51,6 +51,22 @@ public:
     }
 };
 
+/** Returns true if the given plugin tree (or any of its sub-folders)
+    contains at least one plugin whose name matches the search text. */
+static bool folderHasMatchingPlugins (const KnownPluginList::PluginTree& folder,
+                                      const String& searchText)
+{
+    for (const auto& plugin : folder.plugins)
+        if (plugin.name.containsIgnoreCase (searchText))
+            return true;
+
+    for (const auto* sub : folder.subFolders)
+        if (folderHasMatchingPlugins (*sub, searchText))
+            return true;
+
+    return false;
+}
+
 class PluginFolderTreeViewItem : public TreeViewItem
 {
 public:
@@ -74,7 +90,8 @@ public:
         {
             const auto text = panel.getSearchText();
             for (auto* folder : tree.subFolders)
-                addSubItem (new PluginFolderTreeViewItem (panel, *folder));
+                if (text.isEmpty() || folderHasMatchingPlugins (*folder, text))
+                    addSubItem (new PluginFolderTreeViewItem (panel, *folder));
             for (const auto& plugin : tree.plugins)
                 if (text.isEmpty() || plugin.name.containsIgnoreCase (text))
                     addSubItem (new PluginTreeViewItem (plugin));
@@ -103,8 +120,10 @@ public:
     {
         if (isNowOpen)
         {
+            const auto text = owner.getSearchText();
             for (auto* folder : data->subFolders)
-                addSubItem (new PluginFolderTreeViewItem (owner, *folder));
+                if (text.isEmpty() || folderHasMatchingPlugins (*folder, text))
+                    addSubItem (new PluginFolderTreeViewItem (owner, *folder));
         }
         else
         {

@@ -206,7 +206,7 @@ const String Application::getApplicationName() { return "Element"; }
 
 const String Application::getApplicationVersion() { return ELEMENT_VERSION_STRING; }
 
-bool Application::moreThanOneInstanceAllowed() { return true; }
+bool Application::moreThanOneInstanceAllowed() { return false; }
 
 void Application::initialise (const String& commandLine)
 {
@@ -369,6 +369,11 @@ void Application::anotherInstanceStarted (const String& commandLine)
         return;
 
     maybeOpenCommandLineFile (commandLine);
+
+    // Bring existing instance to front when another instance tries to launch
+    if (auto* gui = world->services().find<GuiService>())
+        if (auto* mw = gui->getMainWindow())
+            mw->toFront (true);
 }
 
 void Application::suspended() {}
