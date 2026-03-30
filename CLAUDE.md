@@ -26,6 +26,11 @@ cmake --build build
 # Build with parallel jobs
 cmake --build build -j8
 
+# Preferred build directories:
+# build-merged  — development builds (debug, incremental)
+# build-release — release builds for installers
+# Note: Sources use file(GLOB_RECURSE) — new .cpp files require cmake reconfigure
+
 # Run tests
 cd build && ctest --output-on-failure
 
@@ -93,7 +98,11 @@ element/
 │   │   ├── minimapcomponent.hpp      # Graph minimap navigation
 │   │   ├── commentboxcomponent.hpp   # Visual grouping boxes
 │   │   ├── nodesearchcomponent.hpp   # Quick node search
-│   │   ├── moleculemanager.hpp       # Molecule, MoleculeLibrary, PluginUsageTracker
+│   │   ├── moleculemanager.hpp       # Molecule, MoleculeLibrary
+│   │   ├── pluginusagetracker.hpp    # PluginUsageTracker (owned by PluginManager)
+│   │   ├── graphtoolbar.hpp          # Graph editor toolbar (zoom, breadcrumb, toggles)
+│   │   ├── browsepanel.hpp           # Tabbed Plugins + Sessions wrapper
+│   │   ├── inspectorpanel.hpp        # Tabbed Node + Graph properties wrapper
 │   │   └── moleculemanager.cpp
 │   ├── services/          # Application services
 │   │   ├── deviceservice.cpp
@@ -115,7 +124,8 @@ element/
 │   ├── notarize-macos.sh  # macOS notarization
 │   └── sign-all-macos.sh  # Sign all targets
 ├── installer/
-│   └── build_dmg.sh       # DMG installer build (default installer format)
+│   ├── build_pkg.sh       # PKG + DMG installer build (entry point)
+│   └── build_dmg.sh       # DMG wrapping (called by build_pkg.sh)
 ├── cmake/
 │   └── entitlements.plist # macOS sandbox entitlements
 ├── data/                  # Resources (icons, fonts, etc.)
@@ -177,6 +187,19 @@ element/
 | `MinimapComponent` | src/ui/minimapcomponent.hpp | Bird's eye minimap navigation |
 | `NodeSearchComponent` | src/ui/nodesearchcomponent.hpp | Quick node insertion via search |
 | `MoleculeLibrary` | src/ui/moleculemanager.hpp | Reusable node template library |
+| `PluginUsageTracker` | src/ui/pluginusagetracker.hpp | Favorites + recently used tracking (owned by PluginManager) |
+| `GraphEditorToolbar` | src/ui/graphtoolbar.hpp | 28px toolbar: breadcrumb + zoom + snap/layout toggles |
+| `NavigationPanel` | include/element/ui/navigation.hpp | Icon sidebar navigation (replaces ConcertinaPanel) |
+| `BrowsePanel` | src/ui/browsepanel.hpp | Tabbed Plugins + Sessions wrapper |
+| `InspectorPanel` | src/ui/inspectorpanel.hpp | Tabbed Node + Graph properties with auto-activation |
+
+### Navigation Architecture
+
+The sidebar uses `NavigationPanel` (icon sidebar with 4 panels), NOT an accordion.
+`NavigationConcertinaPanel` is a backward-compat alias for `NavigationPanel`.
+Panels are accessed via typed accessors (e.g., `nav->getSessionTreePanel()`),
+NOT via `findPanel<T>()`. The `DataPathTreeComponent` panel was removed —
+data path access is via File menu.
 
 ### Audio Processing Flow
 
@@ -219,13 +242,13 @@ Uses **Boost.Test** framework with CTest integration.
 
 ```bash
 # Run all tests
-cd build && ctest
+cd build-merged && ctest --output-on-failure
 
 # Run specific test
-./test_element --run_test=NodeTests
+cd build-merged && ctest -R "NodeTests"
 
 # Run with verbose output
-./test_element --log_level=all
+cd build-merged && ctest --output-on-failure
 ```
 
 ### Test Structure
@@ -235,6 +258,20 @@ cd build && ctest
 - `test/integration/` - Integration tests (SessionChanged)
 - `test/TestMain.cpp` - Main test runner with JUCE MessageManager fixture
 
+## UI Verification
+
+AX-based autonomous UI verification — no screenshots needed. See `tools/automation/`.
+
+```bash
+# Run all UI verification suites (Element must be running)
+cd tools/automation && python3 element_verify.py --suite all
+
+# Map the Accessibility tree (for debugging UI issues)
+python3 element_ax_map.py --depth 5
+```
+
+Suites: `plugin-browser`, `session-browser`, `navigation`, `toolbar`
+
 ## Coding Guidelines
 
 ### Style
@@ -242,6 +279,12 @@ cd build && ctest
 - Namespace: `element`
 - Header guards: `#pragma once`
 - JUCE coding conventions
+- **Never use `using namespace juce;` in headers** — qualify with `juce::` prefix. Allowed in `.cpp` files only.
+
+### Gotchas
+- **PluginProcessor init:** Do NOT initialize the full Context in the constructor — DAW plugin scans call the constructor just to query metadata. Heavy init is deferred to `prepareToPlay()` or `createEditor()`.
+- **PluginEditor teardown:** Close plugin windows and clear content BEFORE removing from JUCE component hierarchy — prevents heap corruption in VST3 wrapper.
+- **JUCE AXWindows:** `AXWindows` attribute may return empty for JUCE apps. Use `AXMainWindow`/`AXFocusedWindow` as fallback when querying via Accessibility API.
 
 ### Patterns
 - PIMPL idiom for implementation hiding (`class Impl`)
@@ -349,8 +392,8 @@ cmake --build build-release -j8
 scripts/sign-all-macos.sh build-release
 
 # Build versioned PKG + DMG (auto-increments build number)
-# Produces Element-1.1.0.<build>.dmg
-installer/build_pkg.sh 1.1.0 build-release installer/output
+# Produces Element-<version>.<build>.dmg
+installer/build_pkg.sh 1.2.0 build-release installer/output
 ```
 
 Build numbering: `build_number.txt` is read and incremented each time `build_pkg.sh` runs. Output files are named `Element-<version>.<build>.pkg` and `.dmg` (e.g., `Element-1.1.0.3.dmg`).
@@ -359,6 +402,7 @@ Build numbering: `build_number.txt` is read and incremented each time `build_pkg
 
 The graph editor (`GraphEditorComponent`) provides visual node editing with these features:
 
+- **Toolbar:** 28px bar with breadcrumb navigation, zoom controls (always visible), snap-to-grid toggle, layout direction, comment box button. Responsive — optional controls hide at narrow widths.
 - **Comment Boxes:** Visual grouping with color-coding (`CommentBoxComponent`)
 - **Minimap Navigation:** Bird's eye view for large graphs (`MinimapComponent`)
 - **Node Search:** Quick node insertion via search (`NodeSearchComponent`)
