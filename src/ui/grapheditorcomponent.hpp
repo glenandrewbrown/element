@@ -8,6 +8,7 @@
 #include "ui/block.hpp"
 #include "ui/commentboxcomponent.hpp"
 #include "ui/moleculemanager.hpp"
+#include "ui/quickaddcomponent.hpp"
 #include "scopedcallback.hpp"
 
 namespace element {
@@ -219,6 +220,9 @@ private:
 
     // Molecule library for saving/loading plugin groups
     MoleculeLibrary moleculeLibrary;
+
+    // Quick-add popup for right-click → search → insert workflow
+    std::unique_ptr<QuickAddComponent> quickAdd;
 
     LassoComponent<uint32> lasso;
     friend class SelectedNodes;

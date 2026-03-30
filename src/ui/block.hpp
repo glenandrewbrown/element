@@ -284,6 +284,7 @@ private:
 
     Value nodeEnabled,
         nodeName,
+        nodeBypassed,
         hiddenPorts,
         displayModeValue;
 
@@ -390,6 +391,7 @@ private:
     bool mouseInCornerResize = false;
     Rectangle<int> getBoxRectangle() const;
     Rectangle<int> getCornerResizeBox() const;
+    Rectangle<int> getBypassIconArea() const;
 
     GraphEditorComponent* getGraphPanel() const noexcept;
     void setButtonVisible (Button&, bool);

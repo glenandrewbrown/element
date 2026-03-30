@@ -286,6 +286,8 @@ BlockComponent::BlockComponent (const Node& graph_, const Node& node_, const boo
     nodeEnabled.addListener (this);
     nodeName = node.getPropertyAsValue (tags::name);
     nodeName.addListener (this);
+    nodeBypassed = node.getPropertyAsValue (tags::bypass);
+    nodeBypassed.addListener (this);
 
     shadow.setShadowProperties (DropShadow (Colours::black.withAlpha (0.5f), 3, Point<int> (0, 1)));
     setComponentEffect (&shadow);
@@ -379,6 +381,7 @@ BlockComponent::~BlockComponent() noexcept
 
     nodeEnabled.removeListener (this);
     nodeName.removeListener (this);
+    nodeBypassed.removeListener (this);
     hiddenPorts.removeListener (this);
     displayModeValue.removeListener (this);
     deleteAllPins();
@@ -528,6 +531,10 @@ void BlockComponent::setMuteButtonVisible (bool visible) { setButtonVisible (mut
 void BlockComponent::valueChanged (Value& value)
 {
     if (nodeEnabled.refersToSameSourceAs (value))
+    {
+        repaint();
+    }
+    else if (nodeBypassed.refersToSameSourceAs (value))
     {
         repaint();
     }
@@ -712,6 +719,20 @@ void BlockComponent::mouseDown (const MouseEvent& e)
 {
     if (! isEnabled())
         return;
+
+    // Check if click is on the bypass icon area
+    if (displayMode != Compact
+        && e.mods.isLeftButtonDown()
+        && ! e.mods.isPopupMenu()
+        && getBypassIconArea().toFloat().contains (e.position))
+    {
+        const bool newBypassed = ! node.isBypassed();
+        node.getPropertyAsValue (tags::bypass).setValue (newBypassed);
+        if (obj != nullptr && obj->isSuspended() != newBypassed)
+            obj->suspendProcessing (newBypassed);
+        repaint();
+        return;
+    }
 
     originalPos = localPointToGlobal (Point<int>());
     originalBounds = getBounds();
@@ -1014,6 +1035,17 @@ Rectangle<int> BlockComponent::getCornerResizeBox() const
     return { r.getRight() - 14, r.getBottom() - 14, 12, 12 };
 }
 
+Rectangle<int> BlockComponent::getBypassIconArea() const
+{
+    auto box = getBoxRectangle();
+    const int iconSize = 12;
+    const int margin = 4;
+    return { box.getRight() - iconSize - margin,
+             box.getY() + margin,
+             iconSize,
+             iconSize };
+}
+
 void BlockComponent::paintOverChildren (Graphics& g)
 {
     ignoreUnused (g);
@@ -1152,6 +1184,39 @@ void BlockComponent::paint (Graphics& g)
                 break;
             }
         }
+    }
+
+    // Draw bypass icon (power symbol) in top-right of header
+    if (displayMode != Compact)
+    {
+        const auto bypassArea = getBypassIconArea();
+        const bool bypassed = node.isBypassed();
+        const float cx = bypassArea.getCentreX();
+        const float cy = bypassArea.getCentreY();
+        const float radius = 4.0f;
+
+        // Circle part of power icon (open at top)
+        Path powerPath;
+        const float gapAngle = MathConstants<float>::pi * 0.25f;
+        powerPath.addArc (cx - radius, cy - radius + 1.0f,
+                          radius * 2.0f, radius * 2.0f,
+                          -MathConstants<float>::halfPi + gapAngle,
+                          MathConstants<float>::twoPi - MathConstants<float>::halfPi - gapAngle,
+                          true);
+
+        auto iconColor = bypassed ? Colour (0xFFE07020) : Colours::grey;
+        g.setColour (iconColor);
+        g.strokePath (powerPath, PathStrokeType (1.4f));
+
+        // Vertical line at top (the "I" part)
+        g.drawLine (cx, cy - radius - 0.5f, cx, cy - 0.5f, 1.4f);
+    }
+
+    // Draw dimming overlay when bypassed
+    if (node.isBypassed())
+    {
+        g.setColour (Colours::black.withAlpha (0.35f));
+        g.fillRoundedRectangle (box.toFloat(), cornerSize);
     }
 
     if (mouseInCornerResize)

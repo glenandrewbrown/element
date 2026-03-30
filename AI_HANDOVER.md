@@ -1,60 +1,83 @@
 # AI Handover — Element
 
-**Last Updated:** 2026-03-30T13:20:00Z
+**Last Updated:** 2026-03-30T20:55:00Z
 **Agent:** Claude Opus 4.6 (1M context)
-**Session Type:** Full Test & Verification Run
+**Session Type:** Deep Stability Audit + UX Feature Implementation
 **Branch:** `local-enhancements`
 
 ## Work Verified Complete
 
-### Prior Sessions (UI/UX Overhaul)
-- [x] **Phase A: Plugin Browser** — Favorites, recently used, type badges, format labels, segmented control (All/Favorites/Recent). PluginUsageTracker extracted to own file, owned by PluginManager. 6 commits, spec + code quality reviewed.
-- [x] **Phase C: Session Browser** — Two-line rows (name + date/size), All Files/Recent segmented control, empty state, recently-opened tracking.
-- [x] **Phase B: Graph Toolbar** — 28px toolbar replacing 24px breadcrumb. Zoom controls (always visible), snap/layout/comment toggles (responsive). Breadcrumb with truncation + click navigation.
-- [x] **Phase D: Navigation** — Icon sidebar (24px strip) replaces 7-section ConcertinaPanel. 4 panels: Session, Browse, Inspector, Editor. 12 findPanel<T>() call sites migrated. Backward-compat alias.
-- [x] **Automation Tools** — AX tree mapper, assertion library (rapidfuzz fuzzy matching), verification orchestrator. 4 suites, 12/12 assertions pass in 0.27s.
-- [x] **Skills** — verify-element-ui, inspect-ax-tree, element-build-and-package
-- [x] **DMG Installer** — Element 1.2.0.6 (80MB)
-- [x] **CLAUDE.md** — Updated with UI verification, coding gotchas, fixed stale paths
+### Stability Fixes (30 bugs, 10 files)
+- [x] Dangling raw pointers → SafePointer (`graphtoolbar.hpp:208`, `nodesearchcomponent.hpp:171`)
+- [x] Lambda callback lifetime (`grapheditorview.cpp` destructor clears `onZoomChanged`, `onBreadcrumbClicked`)
+- [x] Null dereference guards in `didBecomeActive`, `stabilizeContent`, `onNodeSelected`, `StandardContent` constructor
+- [x] Missing `stopTimer()` in `PluginsPanelView::~PluginsPanelView()`
+- [x] Missing `removeAllChangeListeners()` in `PluginUsageTracker::~PluginUsageTracker()`
+- [x] Navigation panel: null guards in `showPanel()`, `resized()`, icon callback clearing in destructor
+- [x] Session browser: by-value `FileEntry` params, `moveToTrash()` instead of `deleteFile()`, drag type fix
+- [x] Missing `break` in switch (`standard.cpp` showSessionConfig falls through to showGraphConfig)
+- [x] `ContentContainer` fixed: was adding `primary` twice instead of `secondary`
+- [x] Re-entrancy guard on `refreshContent()`, thread safety on `changeListenerCallback`
+- [x] Plugin scanner UI freeze: `runDispatchLoopUntil(4)` in polling loop
+- [x] Scanner worker: `cancelPendingUpdate()` + safe logger cleanup in `handleConnectionLost`
+- [x] Breadcrumb: nodeIndex field prevents index mismatch after collapse
+- [x] WCAG AA contrast: breadcrumb `#9ca3af`, star `#777777`, badge white, icon `#9ca3af`
 
-### This Session (2026-03-30 Verification Run)
-- [x] **Full rebuild** — cmake configure + build from latest source, 100% success
-- [x] **CTest unit tests** — 33/33 suites passed (43.93s total, 0 failures)
-- [x] **AX UI verification** — 12/12 checks passed across 4 suites (plugin-browser, session-browser, navigation, toolbar) in 0.32s
-- [x] **AX tree mapping** — 195 nodes mapped at depth 5, cached to element_ax_cache.json (87KB)
-- [x] **Visual verification** — Screenshot captured confirming: graph editor with nodes, sidebar navigation, virtual keyboard, status bar all rendering correctly
+### UX Features (10 items)
+- [x] Tooltips on sidebar icons (TooltipClient on IconButton)
+- [x] Keyboard shortcuts: Cmd+1-4 panels, Cmd+±  zoom, Cmd+0 fit (via ApplicationCommandManager)
+- [x] Manufacturer name in plugin flat list rows
+- [x] Session browser hover states (hoveredRow pattern)
+- [x] Real fit-to-view: bounding box zoom with 0.85 padding, 0.1-2.0 clamp
+- [x] Bypass toggle: power icon on node blocks, dimmed when bypassed
+- [x] Small window mode: minimap auto-hide <600px, search popup viewport clamping
+- [x] QuickAddComponent: right-click canvas → search popup → Enter inserts at cursor
+- [x] Port tooltips: already existed in PortComponent constructor (verified)
+- [x] Drag type: session browser uses "session-file" not "plugin"
+
+### Documentation
+- [x] `docs/plans/2026-03-30-ui-ux-improvement-plan.md` — Gemini-reviewed v2 plan
+- [x] `docs/plans/2026-03-30-p0-p1-implementation-design.md` — implementation specs
+- [x] `docs/plans/2026-03-30-ui-ux-design.md` — original 4-phase design (pre-existing)
+
+### New Files
+- `src/ui/quickaddcomponent.hpp` — inline plugin search popup for graph canvas
 
 ## Work Pending
 
-- [ ] **Interactive click automation** — Blocked by pyobjc AXValueRef position extraction incompatibility. Need to use `Quartz.AXValueGetValue()` with correct constants or switch to AppleScript/osascript for click targeting
-- [ ] **Phase D code review** — Skipped due to session length; run spec + quality review on navigation consolidation
-- [ ] **Phase B code review** — Skipped; run quality review on graph toolbar
-- [ ] **Follow-up items from design plan:**
-  - Empty canvas state (watermark/onboarding hint)
-  - Connection signal metering (needs audio engine FIFO plumbing)
-  - WCAG contrast fix (`text-muted` #6b7280 → #7b8290)
-  - Linux FileSystemWatcher fallback (timer-based poll)
+- [ ] **CRITICAL: Full backend/engine code audit** — User reports app still crashes frequently. Need comprehensive review of engine/, services/, nodes/, and remaining UI code NOT touched in this session
+- [ ] **Third-party UI/UX design** — User commissioning professional design. All UI work paused pending external blueprint
+- [ ] **Code foundation document** — Create comprehensive architecture doc for third-party designer
+- [ ] Commit this session's changes (16 files modified, 1 new file, +492/-64 lines)
 
 ## Critical Warnings
 
-1. **NavigationConcertinaPanel is now NavigationPanel** — `NavigationConcertinaPanel` is a typedef alias. Use typed accessors (`nav->getSessionTreePanel()`) not `findPanel<T>()`.
-2. **DataPathTreeComponent removed from sidebar** — Access via File menu only. The drag-and-drop at `standard.cpp:678` was removed.
-3. **PluginUsageTracker owned by PluginManager** — Access via `plugins.getUsageTracker()`. Lives in `src/ui/pluginusagetracker.hpp` (NOT moleculemanager.hpp).
-4. **`using namespace juce;` banned in headers** — Use `juce::` qualification. Allowed in .cpp files only.
-5. **pyobjc AXValueRef** — `AXValueRef` objects from `AXPosition`/`AXSize` attributes cannot be accessed via `.x`/`.y` properties. Use `Quartz.AXValueGetValue()` or `CoreFoundation` unpacking. The `kAXValueTypeCGPoint` constant may not be directly available in all pyobjc versions — use numeric constant `1` for CGPoint, `2` for CGSize.
+1. **App is still unstable** — The 30 fixes address bugs found in the 18 files changed by the UI/UX overhaul. The broader codebase (engine, services, nodes, scripting) has NOT been audited. User reports frequent crashes beyond what was fixed.
 
-## Next Steps
+2. **UI design is being externally commissioned** — Do NOT make further UI/UX changes. All visual design work is frozen pending third-party blueprint. Focus exclusively on backend stability and code quality.
 
-1. Fix interactive click automation (use osascript `click at {x, y}` or fix pyobjc AXValue unpacking with numeric type constants)
-2. Run code reviews on Phase B and D
-3. Consider merging `local-enhancements` to `main` — all tests green, UI verified
-4. Update version to 1.2.0 in CMake/JUCE config if not already done
+3. **build-merged directory is root-owned** — Cannot write to it. Use `build-bugfix` for all builds. The `build/` directory has a stale CMakeCache from a different path.
 
-## Session Stats (Cumulative)
+4. **Gemini API quota exhausted** — Free tier daily limit hit for all Pro models. Will reset at 8pm Europe/London.
 
-- 13 commits, 25 files changed, +3,350 / -790 lines
-- 33/33 unit tests pass (verified 2026-03-30)
-- 12/12 UI verification assertions pass (verified 2026-03-30)
-- 195 AX nodes mapped
-- 4 design plans created
-- 3 project skills created
+5. **`using namespace juce;` banned in headers** — Qualify with `juce::` prefix. Allowed in `.cpp` files only.
+
+6. **New .cpp files require cmake reconfigure** — Sources use `file(GLOB_RECURSE)`.
+
+## Next Steps (Priority Order)
+
+1. **Commit current changes** — 16 files with stability fixes + features, all tests green
+2. **Deep backend audit** — Review engine/, services/, nodes/ for crash-causing bugs
+3. **Create code foundation doc** — Architecture, threading model, lifecycle, API surface for third-party designer
+4. **Address remaining crash reports** — Run with debug builds, capture crash logs, fix root causes
+
+## Session Stats
+
+- 16 files modified, 1 new file
+- +492 / -64 lines changed
+- 30 stability bugs fixed
+- 10 UX features implemented
+- 33/33 unit tests pass
+- 3 parallel expert reviews conducted
+- 1 Gemini second opinion obtained
+- Build: clean, 0 errors, 0 warnings

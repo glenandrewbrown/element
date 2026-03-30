@@ -114,8 +114,9 @@ public:
         int seg = hitTestSegment (e.getPosition());
         if (seg >= 0 && seg < segments.size() && ! segments[seg].isLeaf)
         {
-            if (onBreadcrumbClicked && seg < breadcrumbNodes.size())
-                onBreadcrumbClicked (breadcrumbNodes[seg]);
+            int ni = segments[seg].nodeIndex;
+            if (onBreadcrumbClicked && ni >= 0 && ni < breadcrumbNodes.size())
+                onBreadcrumbClicked (breadcrumbNodes[ni]);
             return;
         }
 
@@ -192,20 +193,20 @@ private:
     static constexpr int dividerHeight = 16;
 
     // Colors from spec
-    static constexpr uint32 colBtnIcon        = 0xff8a9099;
+    static constexpr uint32 colBtnIcon        = 0xff9ca3af;
     static constexpr uint32 colBtnHoverBg     = 0xff2e3235;
     static constexpr uint32 colBtnHoverIcon   = 0xffcccccc;
     static constexpr uint32 colBtnPressedBg   = 0xff3b3f45;
     static constexpr uint32 colBtnPressedIcon = 0xffffffff;
     static constexpr uint32 colToggleOnBg     = 0xff1f3260;
     static constexpr uint32 colToggleOnIcon   = 0xff33aaf9;
-    static constexpr uint32 colAncestorText   = 0xff6b7280;
+    static constexpr uint32 colAncestorText   = 0xff9ca3af;
     static constexpr uint32 colLeafText       = 0xffcccccc;
     static constexpr uint32 colHoverBg        = 0xff2e3235;
     static constexpr uint32 colHoverText      = 0xffffffff;
     static constexpr uint32 colDivider        = 0xff2e3235;
 
-    GraphEditorComponent* graphEditor = nullptr;
+    juce::Component::SafePointer<GraphEditorComponent> graphEditor;
 
     // Breadcrumb data
     Array<Node> breadcrumbNodes;
@@ -216,6 +217,7 @@ private:
         String text;
         Rectangle<int> bounds;
         bool isLeaf;
+        int nodeIndex = -1; // index into breadcrumbNodes, -1 = not clickable
     };
     Array<BreadcrumbSegment> segments;
 
@@ -394,6 +396,7 @@ private:
             BreadcrumbSegment seg;
             seg.text = breadcrumbNodes[i].getName();
             seg.isLeaf = (i == breadcrumbNodes.size() - 1);
+            seg.nodeIndex = i;
 
             int textW = measureTextWidth (font, seg.text);
             int segW = textW + hPad;
@@ -442,6 +445,7 @@ private:
                 BreadcrumbSegment ellipsisSeg;
                 ellipsisSeg.text = String (CharPointer_UTF8 ("\xe2\x80\xa6"));
                 ellipsisSeg.isLeaf = false;
+                ellipsisSeg.nodeIndex = -1; // not clickable
                 ellipsisSeg.bounds = { 0, 0, jmax (16, ellipsisW), toolbarHeight };
                 collapsed.add (ellipsisSeg);
 
@@ -699,7 +703,78 @@ private:
     {
         if (graphEditor == nullptr)
             return;
-        graphEditor->setZoomScale (1.0f);
+
+        // Calculate bounding box of all BlockComponent children.
+        float minX = std::numeric_limits<float>::max();
+        float minY = std::numeric_limits<float>::max();
+        float maxX = std::numeric_limits<float>::lowest();
+        float maxY = std::numeric_limits<float>::lowest();
+        bool hasBlocks = false;
+
+        for (int i = 0; i < graphEditor->getNumChildComponents(); ++i)
+        {
+            if (auto* block = dynamic_cast<BlockComponent*> (graphEditor->getChildComponent (i)))
+            {
+                auto bounds = block->getBounds();
+                minX = jmin (minX, static_cast<float> (bounds.getX()));
+                minY = jmin (minY, static_cast<float> (bounds.getY()));
+                maxX = jmax (maxX, static_cast<float> (bounds.getRight()));
+                maxY = jmax (maxY, static_cast<float> (bounds.getBottom()));
+                hasBlocks = true;
+            }
+        }
+
+        // No blocks — just reset to 1.0 and bail.
+        if (! hasBlocks)
+        {
+            graphEditor->setZoomScale (1.0f);
+            updateZoomLabel();
+            repaint();
+            return;
+        }
+
+        const float boundsW = maxX - minX;
+        const float boundsH = maxY - minY;
+
+        // Guard against degenerate (zero-area) bounds.
+        if (boundsW < 1.0f || boundsH < 1.0f)
+        {
+            graphEditor->setZoomScale (1.0f);
+            updateZoomLabel();
+            repaint();
+            return;
+        }
+
+        // Find the parent Viewport that hosts the graph editor.
+        auto* viewport = graphEditor->findParentComponentOfClass<juce::Viewport>();
+        if (viewport == nullptr)
+        {
+            graphEditor->setZoomScale (1.0f);
+            updateZoomLabel();
+            repaint();
+            return;
+        }
+
+        const float vpW = static_cast<float> (viewport->getViewWidth());
+        const float vpH = static_cast<float> (viewport->getViewHeight());
+
+        // Compute zoom so all nodes fit with 85 % padding factor.
+        float zoom = jmin (vpW / boundsW, vpH / boundsH) * 0.85f;
+
+        // Clamp zoom to safe range (stray-node protection).
+        constexpr float minZoom = 0.1f;
+        constexpr float maxZoom = 2.0f;
+        zoom = jlimit (minZoom, maxZoom, zoom);
+
+        graphEditor->setZoomScale (zoom);
+
+        // Center the viewport on the bounding box center.
+        const float centreX = (minX + maxX) * 0.5f * zoom;
+        const float centreY = (minY + maxY) * 0.5f * zoom;
+        const int vpX = juce::roundToInt (centreX - vpW * 0.5f);
+        const int vpY = juce::roundToInt (centreY - vpH * 0.5f);
+        viewport->setViewPosition (jmax (0, vpX), jmax (0, vpY));
+
         updateZoomLabel();
         repaint();
     }

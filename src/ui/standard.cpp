@@ -104,7 +104,7 @@ public:
         bar->mouseReleased.connect (
             std::bind (&ContentContainer::lockLayout, this));
         secondary.reset (new ContentView());
-        addAndMakeVisible (primary.get());
+        addAndMakeVisible (secondary.get());
 
         bottom.reset (new Bottom (cc));
         addAndMakeVisible (bottom.get());
@@ -489,10 +489,13 @@ StandardContent::StandardContent (Context& ctl_)
     setNodeChannelStripVisible (false);
     setMeterBridgeVisible (false);
 
-    auto& srv = *ctl_.services().find<SessionService>();
-    sessionLoadedConn = srv.sigSessionLoaded.connect ([this]() {
-        setCurrentNode (session()->getActiveGraph());
-    });
+    if (auto* srv = ctl_.services().find<SessionService>())
+    {
+        sessionLoadedConn = srv->sigSessionLoaded.connect ([this]() {
+            if (auto s = session())
+                setCurrentNode (s->getActiveGraph());
+        });
+    }
 }
 
 StandardContent::~StandardContent() noexcept
@@ -911,7 +914,7 @@ bool StandardContent::isVirtualKeyboardVisible() const
 void StandardContent::setVirtualKeyboardVisible (const bool vis)
 {
     auto keyboard = getVirtualKeyboardView();
-    if (keyboard->isVisible() == vis)
+    if (keyboard == nullptr || keyboard->isVisible() == vis)
         return;
 
     keyboard->setVisible (vis);
@@ -962,7 +965,14 @@ void StandardContent::getAllCommands (Array<CommandID>& commands)
         Commands::toggleChannelStrip,
         Commands::showLastContentView,
         Commands::rotateContentView,
-        Commands::selectAll
+        Commands::selectAll,
+        Commands::showPanelSession,
+        Commands::showPanelBrowse,
+        Commands::showPanelInspector,
+        Commands::showPanelEditor,
+        Commands::graphZoomIn,
+        Commands::graphZoomOut,
+        Commands::graphFitToView
     });
     // clang-format on
 }
@@ -1001,6 +1011,7 @@ void StandardContent::getCommandInfo (CommandID commandID, ApplicationCommandInf
             if (getMainViewName() == EL_VIEW_SESSION_SETTINGS)
                 flags |= Info::isTicked;
             result.setInfo ("Session Settings", "Session Settings", "Session", flags);
+            break;
         }
         //=====
         case Commands::showGraphConfig: {
@@ -1082,6 +1093,57 @@ void StandardContent::getCommandInfo (CommandID commandID, ApplicationCommandInf
             result.addDefaultKeypress ('a', ModifierKeys::commandModifier);
             break;
         }
+
+        // Panel switching shortcuts
+        case Commands::showPanelSession: {
+            int flags = 0;
+            if (nav && nav->getActivePanel() == 0)
+                flags |= Info::isTicked;
+            result.setInfo ("Show Session Panel", "Switch sidebar to Session panel", "UI", flags);
+            result.addDefaultKeypress ('1', ModifierKeys::commandModifier);
+            break;
+        }
+        case Commands::showPanelBrowse: {
+            int flags = 0;
+            if (nav && nav->getActivePanel() == 1)
+                flags |= Info::isTicked;
+            result.setInfo ("Show Browse Panel", "Switch sidebar to Browse panel", "UI", flags);
+            result.addDefaultKeypress ('2', ModifierKeys::commandModifier);
+            break;
+        }
+        case Commands::showPanelInspector: {
+            int flags = 0;
+            if (nav && nav->getActivePanel() == 2)
+                flags |= Info::isTicked;
+            result.setInfo ("Show Inspector Panel", "Switch sidebar to Inspector panel", "UI", flags);
+            result.addDefaultKeypress ('3', ModifierKeys::commandModifier);
+            break;
+        }
+        case Commands::showPanelEditor: {
+            int flags = 0;
+            if (nav && nav->getActivePanel() == 3)
+                flags |= Info::isTicked;
+            result.setInfo ("Show Node Editor Panel", "Switch sidebar to Node Editor panel", "UI", flags);
+            result.addDefaultKeypress ('4', ModifierKeys::commandModifier);
+            break;
+        }
+
+        // Graph zoom shortcuts
+        case Commands::graphZoomIn: {
+            result.setInfo ("Zoom In", "Zoom into the graph editor", "Graph", 0);
+            result.addDefaultKeypress ('=', ModifierKeys::commandModifier);
+            break;
+        }
+        case Commands::graphZoomOut: {
+            result.setInfo ("Zoom Out", "Zoom out of the graph editor", "Graph", 0);
+            result.addDefaultKeypress ('-', ModifierKeys::commandModifier);
+            break;
+        }
+        case Commands::graphFitToView: {
+            result.setInfo ("Fit to View", "Fit the graph to the visible area", "Graph", 0);
+            result.addDefaultKeypress ('0', ModifierKeys::commandModifier);
+            break;
+        }
     }
 }
 
@@ -1159,6 +1221,50 @@ bool StandardContent::perform (const InvocationInfo& info)
                 view->selectAllNodes();
             break;
         }
+
+        // Panel switching
+        case Commands::showPanelSession:
+            if (nav) nav->activatePanel (0);
+            break;
+        case Commands::showPanelBrowse:
+            if (nav) nav->activatePanel (1);
+            break;
+        case Commands::showPanelInspector:
+            if (nav) nav->activatePanel (2);
+            break;
+        case Commands::showPanelEditor:
+            if (nav) nav->activatePanel (3);
+            break;
+
+        // Graph zoom
+        case Commands::graphZoomIn: {
+            if (auto* view = dynamic_cast<GraphEditorView*> (container->primary.get()))
+            {
+                auto& ed = view->editor().graphEditorComponent();
+                ed.setZoomScale (jmin (2.0f, ed.getZoomScale() + 0.25f));
+                view->getToolbar().updateZoomLabel();
+            }
+            break;
+        }
+        case Commands::graphZoomOut: {
+            if (auto* view = dynamic_cast<GraphEditorView*> (container->primary.get()))
+            {
+                auto& ed = view->editor().graphEditorComponent();
+                ed.setZoomScale (jmax (0.25f, ed.getZoomScale() - 0.25f));
+                view->getToolbar().updateZoomLabel();
+            }
+            break;
+        }
+        case Commands::graphFitToView: {
+            if (auto* view = dynamic_cast<GraphEditorView*> (container->primary.get()))
+            {
+                auto& ed = view->editor().graphEditorComponent();
+                ed.setZoomScale (1.0f);
+                view->getToolbar().updateZoomLabel();
+            }
+            break;
+        }
+
         default:
             result = false;
             break;
@@ -1166,7 +1272,8 @@ bool StandardContent::perform (const InvocationInfo& info)
 
     if (result)
     {
-        services().find<UI>()->refreshMainMenu();
+        if (auto* ui = services().find<UI>())
+            ui->refreshMainMenu();
     }
     return result;
 }

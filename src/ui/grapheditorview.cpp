@@ -55,6 +55,11 @@ void GraphEditorView::init()
 
 GraphEditorView::~GraphEditorView()
 {
+    // Clear callbacks that capture raw `this` before members are destroyed
+    _editor.graphEditorComponent().onZoomChanged = nullptr;
+    getToolbar().onBreadcrumbClicked = nullptr;
+    getToolbar().setGraphEditor (nullptr);
+
     nodeSelectedConnection.disconnect();
     nodeRemovedConnection.disconnect();
     sessionLoadedConnection.disconnect();
@@ -138,15 +143,17 @@ void GraphEditorView::stabilizeContent()
     {
         if (auto* const cc = ViewHelpers::findContentComponent (this))
         {
-            auto& gui = *cc->services().find<GuiService>();
-            nodeSelectedConnection = gui.nodeSelected.connect (
-                std::bind (&GraphEditorView::onNodeSelected, this));
-            auto& eng = *gui.sibling<EngineService>();
-            nodeRemovedConnection = eng.sigNodeRemoved.connect (
-                std::bind (&GraphEditorView::onNodeRemoved, this, std::placeholders::_1));
-            auto& s = *cc->services().find<SessionService>();
-            sessionLoadedConnection = s.sigSessionLoaded.connect (
-                std::bind (&GraphEditorView::onSessionLoaded, this));
+            if (auto* gui = cc->services().find<GuiService>())
+            {
+                nodeSelectedConnection = gui->nodeSelected.connect (
+                    std::bind (&GraphEditorView::onNodeSelected, this));
+                if (auto* eng = gui->sibling<EngineService>())
+                    nodeRemovedConnection = eng->sigNodeRemoved.connect (
+                        std::bind (&GraphEditorView::onNodeRemoved, this, std::placeholders::_1));
+            }
+            if (auto* s = cc->services().find<SessionService>())
+                sessionLoadedConnection = s->sigSessionLoaded.connect (
+                    std::bind (&GraphEditorView::onSessionLoaded, this));
         }
     }
 
@@ -167,7 +174,8 @@ void GraphEditorView::didBecomeActive()
 {
     auto* world = ViewHelpers::getGlobals (this);
     jassert (world); // something went majorly wrong...
-    world->midi().addChangeListener (this);
+    if (world)
+        world->midi().addChangeListener (this);
     stabilizeContent();
     restoreSettings();
     _editor.updateComponents();
@@ -187,6 +195,12 @@ void GraphEditorView::graphDisplayResized (const Rectangle<int>& area)
 {
     auto r = area;
     _editor.setBounds (r);
+
+    // Auto-hide minimap in small windows (< 600px wide)
+    if (r.getWidth() < 600)
+        _minimap.setVisible (false);
+    else
+        _minimap.setVisible (minimapVisible);
 
     updateMinimapBounds();
     updateSearchBounds();
@@ -220,8 +234,9 @@ void GraphEditorView::onNodeSelected()
     if (auto* const cc = ViewHelpers::findContentComponent (this))
     {
         auto session = cc->session();
-        auto& gui = *cc->services().find<GuiService>();
-        const auto selected = gui.getSelectedNode();
+        auto* gui = cc->services().find<GuiService>();
+        if (gui == nullptr) return;
+        const auto selected = gui->getSelectedNode();
         if (selected.descendsFrom (getGraph()))
         {
             // prevent minor gui changes from marking session as dirty.
@@ -340,15 +355,22 @@ void GraphEditorView::hideNodeSearch()
 
 void GraphEditorView::updateSearchBounds()
 {
-    // Position search popup in top-center of the editor
-    const int searchWidth = 300;
-    const int searchHeight = 200;
+    // Position search popup in top-center of the editor, clamped to viewport
+    const int searchWidth = juce::jmin (300, _editor.getWidth() - 20);
+    const int searchHeight = juce::jmin (200, _editor.getHeight() - 60);
     const int topMargin = 40;
 
     auto editorBounds = _editor.getBounds();
+    int searchX = editorBounds.getX() + (editorBounds.getWidth() - searchWidth) / 2;
+    int searchY = editorBounds.getY() + topMargin;
+
+    // Clamp to stay within editor bounds
+    searchX = juce::jmax (editorBounds.getX(), juce::jmin (searchX, editorBounds.getRight() - searchWidth));
+    searchY = juce::jmax (editorBounds.getY(), juce::jmin (searchY, editorBounds.getBottom() - searchHeight));
+
     _search.setBounds (
-        editorBounds.getX() + (editorBounds.getWidth() - searchWidth) / 2,
-        editorBounds.getY() + topMargin,
+        searchX,
+        searchY,
         searchWidth,
         searchHeight
     );

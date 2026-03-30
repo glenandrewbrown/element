@@ -1085,6 +1085,26 @@ void GraphEditorComponent::mouseDown (const MouseEvent& e)
 
     if (e.mods.isPopupMenu())
     {
+        // Quick-add popup: right-click shows inline search
+        // Hold Shift+right-click for the full context menu
+        if (! e.mods.isShiftDown())
+        {
+            if (! quickAdd)
+            {
+                if (auto* ctx = ViewHelpers::getGlobals (this))
+                {
+                    quickAdd = std::make_unique<QuickAddComponent> (ctx->plugins());
+                    addAndMakeVisible (*quickAdd);
+                }
+            }
+
+            if (quickAdd)
+            {
+                quickAdd->showAt (e.getPosition(), graph);
+                return;
+            }
+        }
+
         PluginsPopupMenu menu (this);
         if (graph.isGraph())
         {

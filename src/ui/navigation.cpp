@@ -95,18 +95,22 @@ juce::Path createPencilIcon()
 } // namespace
 
 // =============================================================================
-struct NavigationPanel::IconButton : public juce::Component
+struct NavigationPanel::IconButton : public juce::Component,
+                                     public juce::TooltipClient
 {
     int index = 0;
     juce::Path iconPath;
     bool isActive = false;
     bool isHovered = false;
     std::function<void (int)> onClick;
+    juce::String tooltip;
 
-    IconButton (int idx, juce::Path path)
-        : index (idx), iconPath (std::move (path))
+    IconButton (int idx, juce::Path path, const juce::String& tip = {})
+        : index (idx), iconPath (std::move (path)), tooltip (tip)
     {
     }
+
+    juce::String getTooltip() override { return tooltip; }
 
     void paint (juce::Graphics& g) override
     {
@@ -151,17 +155,17 @@ NavigationPanel::NavigationPanel (Context& g)
     : globals (g)
 {
     // Create 4 icon buttons
-    auto addIcon = [this] (int idx, juce::Path path) {
-        auto* btn = new IconButton (idx, std::move (path));
+    auto addIcon = [this] (int idx, juce::Path path, const juce::String& tip) {
+        auto* btn = new IconButton (idx, std::move (path), tip);
         btn->onClick = [this] (int i) { showPanel (i); };
         addAndMakeVisible (btn);
         icons.add (btn);
     };
 
-    addIcon (0, createTreeIcon());
-    addIcon (1, createSearchIcon());
-    addIcon (2, createSlidersIcon());
-    addIcon (3, createPencilIcon());
+    addIcon (0, createTreeIcon(), "Session Tree");
+    addIcon (1, createSearchIcon(), "Browse Plugins & Sessions");
+    addIcon (2, createSlidersIcon(), "Inspector");
+    addIcon (3, createPencilIcon(), "Node Editor");
 
     // Create panels
     sessionPanel = std::make_unique<SessionTreePanel>();
@@ -179,6 +183,10 @@ NavigationPanel::NavigationPanel (Context& g)
 
 NavigationPanel::~NavigationPanel()
 {
+    // Clear icon callbacks first to prevent use-after-free during destruction
+    for (auto* icon : icons)
+        icon->onClick = nullptr;
+
     editorPanel.reset();
     inspectorPanel.reset();
     browsePanel.reset();
@@ -191,10 +199,10 @@ void NavigationPanel::showPanel (int index)
 {
     activeIndex = juce::jlimit (0, numPanels - 1, index);
 
-    sessionPanel->setVisible (activeIndex == 0);
-    browsePanel->setVisible (activeIndex == 1);
-    inspectorPanel->setVisible (activeIndex == 2);
-    editorPanel->setVisible (activeIndex == 3);
+    if (sessionPanel)   sessionPanel->setVisible (activeIndex == 0);
+    if (browsePanel)    browsePanel->setVisible (activeIndex == 1);
+    if (inspectorPanel) inspectorPanel->setVisible (activeIndex == 2);
+    if (editorPanel)    editorPanel->setVisible (activeIndex == 3);
 
     for (auto* icon : icons)
     {
@@ -238,10 +246,10 @@ void NavigationPanel::resized()
     // Content area
     auto contentArea = getLocalBounds().withTrimmedLeft (iconStripWidth);
 
-    sessionPanel->setBounds (contentArea);
-    browsePanel->setBounds (contentArea);
-    inspectorPanel->setBounds (contentArea);
-    editorPanel->setBounds (contentArea);
+    if (sessionPanel)   sessionPanel->setBounds (contentArea);
+    if (browsePanel)    browsePanel->setBounds (contentArea);
+    if (inspectorPanel) inspectorPanel->setBounds (contentArea);
+    if (editorPanel)    editorPanel->setBounds (contentArea);
 }
 
 // =============================================================================

@@ -152,7 +152,7 @@ namespace ListColors {
     static const Colour rowHover       { 0xff2a2d2e };
     static const Colour rowSelected    { 0xff4765a0 };
     static const Colour divider        { 0xff2a2d2f };
-    static const Colour starOff        { 0xff555555 };
+    static const Colour starOff        { 0xff777777 };
     static const Colour starOffHover   { 0xff8a9099 };
     static const Colour starOn         { 0xff33aaf9 };
     static const Colour starOnHover    { 0xff55bbff };
@@ -160,7 +160,7 @@ namespace ListColors {
     static const Colour typeEffect     { 0xff81c784 };
     static const Colour typeMidi       { 0xffce93d8 };
     static const Colour badgeBg        { 0xff555555 };
-    static const Colour badgeText      { 0xffcccccc };
+    static const Colour badgeText      { 0xffffffff };
     static const Colour emptyText      { 0xff888888 };
     static const Colour segDefault     { 0xff3b3b3b };
     static const Colour segHover       { 0xff4a4a4a };
@@ -243,7 +243,9 @@ public:
         {
             static const Font badgeFont = Font (FontOptions (10.f)).boldened();
             g.setFont (badgeFont);
-            int textW = (int) std::ceil (badgeFont.getStringWidthFloat (fmt));
+            GlyphArrangement ga;
+            ga.addLineOfText (badgeFont, fmt, 0.0f, 0.0f);
+            int textW = juce::roundToInt (ga.getBoundingBox (0, -1, true).getWidth());
             badgeWidth = textW + 8;
             int badgeX = width - badgeWidth - badgeRightMargin;
             int badgeH = 14;
@@ -256,14 +258,35 @@ public:
             g.drawText (fmt, badgeX, badgeY, badgeWidth, badgeH, Justification::centred);
         }
 
-        // ── Plugin name ──
+        // ── Plugin name + manufacturer ──
         {
             const int nameX = 37;
-            int nameW = width - nameX - badgeWidth - badgeRightMargin - 4;
+            const int availableW = width - nameX - badgeWidth - badgeRightMargin - 4;
             static const Font nameFont (FontOptions (12.f));
-            g.setColour (rowIsSelected ? Colours::white : element::Colors::textColor.darker (0.1f));
+            static const Font mfgFont (FontOptions (10.f));
+
+            // Draw plugin name (measure its width so manufacturer can follow)
             g.setFont (nameFont);
+            GlyphArrangement nameGa;
+            nameGa.addLineOfText (nameFont, desc.name, 0.0f, 0.0f);
+            int nameTextW = juce::roundToInt (nameGa.getBoundingBox (0, -1, true).getWidth());
+            int nameW = juce::jmin (nameTextW, availableW);
+            g.setColour (rowIsSelected ? Colours::white : element::Colors::textColor.darker (0.1f));
             g.drawText (desc.name, nameX, 0, nameW, height, Justification::centredLeft, true);
+
+            // Draw manufacturer name in smaller grey text after the plugin name
+            if (desc.manufacturerName.isNotEmpty())
+            {
+                const int mfgGap = 6;
+                int mfgX = nameX + nameW + mfgGap;
+                int mfgW = availableW - nameW - mfgGap;
+                if (mfgW > 20)
+                {
+                    g.setFont (mfgFont);
+                    g.setColour (rowIsSelected ? Colour (0xffbbbbbb) : Colour (0xff888888));
+                    g.drawText (desc.manufacturerName, mfgX, 0, mfgW, height, Justification::centredLeft, true);
+                }
+            }
         }
     }
 
@@ -399,6 +422,7 @@ PluginsPanelView::PluginsPanelView (PluginManager& p)
 
 PluginsPanelView::~PluginsPanelView()
 {
+    stopTimer();
     flatList.removeMouseListener (this);
     plugins.getUsageTracker().removeChangeListener (this);
     plugins.getKnownPlugins().removeChangeListener (this);
@@ -496,6 +520,11 @@ void PluginsPanelView::styleSegmentButton (TextButton& btn, bool active)
 
 void PluginsPanelView::refreshContent()
 {
+    if (isRefreshing)
+        return;
+    isRefreshing = true;
+    const juce::ScopeGuard guard ([this] { isRefreshing = false; });
+
     const auto searchText = search.getText();
     const bool hasSearch = searchText.isNotEmpty();
 
@@ -541,6 +570,7 @@ void PluginsPanelView::refreshContent()
         results = filtered;
     }
 
+    hoveredRow = -1;
     flatListModel->setEntries (results);
     flatList.updateContent();
     flatList.repaint();
@@ -551,9 +581,8 @@ void PluginsPanelView::updateTreeView()
 {
     tree.deleteRootItem();
     tree.setRootItem (new PluginsPanelTreeRootItem (*this, plugins));
-    auto* root = tree.getRootItem();
-    for (int i = 0; i < root->getNumSubItems(); ++i)
-        root->getSubItem (i)->setOpenness (TreeViewItem::Openness::opennessOpen);
+    if (auto* root = tree.getRootItem())
+        root->setOpenness (TreeViewItem::Openness::opennessOpen);
 }
 
 void PluginsPanelView::textEditorTextChanged (TextEditor&)
@@ -575,6 +604,8 @@ void PluginsPanelView::textEditorReturnKeyPressed (TextEditor&)
 
 void PluginsPanelView::changeListenerCallback (ChangeBroadcaster*)
 {
+    if (! juce::MessageManager::existsAndIsCurrentThread())
+        return; // ignore callbacks from non-message threads
     refreshContent();
 }
 

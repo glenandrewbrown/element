@@ -25,6 +25,7 @@ PluginUsageTracker::PluginUsageTracker (KnownPluginList& knownPluginsRef)
 
 PluginUsageTracker::~PluginUsageTracker()
 {
+    removeAllChangeListeners();
     stopTimer();
 
     if (savePending)
