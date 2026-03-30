@@ -210,7 +210,6 @@ bool Application::moreThanOneInstanceAllowed() { return true; }
 
 void Application::initialise (const String& commandLine)
 {
-    // Check for sandbox worker mode first (no Context needed)
     if (maybeLaunchSandboxWorker (commandLine))
         return;
 
@@ -338,16 +337,28 @@ void Application::maybeOpenCommandLineFile (const String& commandLine)
     if (auto* sc = world->services().find<SessionService>())
     {
         const auto path = commandLine.unquoted().trim();
+        if (path.isEmpty())
+            return;
+
         const File sessionFile = File::isAbsolutePath (path)
                                      ? File (path)
                                      : File::getCurrentWorkingDirectory().getChildFile (path);
         if (sessionFile.existsAsFile())
         {
-            const File file (path);
-            if (file.hasFileExtension ("els"))
-                sc->openFile (file);
-            else if (file.hasFileExtension ("elg"))
-                sc->importGraph (file);
+            // Defer session loading to the message thread to avoid
+            // crashes during early startup when UI is not yet stable.
+            auto fileCopy = sessionFile;
+            juce::MessageManager::callAsync ([this, fileCopy]() {
+                if (! world)
+                    return;
+                if (auto* svc = world->services().find<SessionService>())
+                {
+                    if (fileCopy.hasFileExtension ("els"))
+                        svc->openFile (fileCopy);
+                    else if (fileCopy.hasFileExtension ("elg"))
+                        svc->importGraph (fileCopy);
+                }
+            });
         }
     }
 }
