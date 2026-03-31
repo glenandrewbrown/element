@@ -53,3 +53,4 @@ add_test(NAME "SandboxSemaphoreTests" COMMAND test_element --run_test=SandboxSem
 add_test(NAME "SharedAudioBufferTests" COMMAND test_element --run_test=SharedAudioBufferTests)
 add_test(NAME "SandboxProtocolTests" COMMAND test_element --run_test=SandboxProtocolTests)
 add_test(NAME "SettingsCredentialTests" COMMAND test_element --run_test=SettingsCredentialTests)
+add_test(NAME "AtomicRenderSwapTests" COMMAND test_element --run_test=AtomicRenderSwapTests)
