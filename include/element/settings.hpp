@@ -176,6 +176,13 @@ public:
     /** Check if a specific plugin should be sandboxed based on current mode. */
     bool shouldSandboxPlugin (const juce::PluginDescription& desc) const;
 
+    /** Obfuscate a string for storage (XOR + base64). Not cryptographic —
+        prevents casual plaintext exposure in preference files. */
+    static juce::String obfuscate (const juce::String& plaintext);
+
+    /** Reverse obfuscation. */
+    static juce::String deobfuscate (const juce::String& obfuscated);
+
 private:
     juce::PropertiesFile* getProps() const;
 };
