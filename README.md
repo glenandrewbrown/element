@@ -30,8 +30,13 @@ _*Ubuntu is the most tested, but should run on any major distribution_
 * Placeholder Nodes
 * Built In Virtual Keyboard
 * Multiple Undo/Redo
-* Scripting - Custom DSP and DSP UI's
+* Scripting — Custom DSP and DSP UIs with sandboxed Lua scripting
 * Embed plugin UIs directly in Graphs
+* Plugin browser — favorites, recently used, type badges, and format labels
+* Session browser — recent files tracking with category organization
+* Quick Scan — discover plugins without loading or validating for faster startup
+* Icon sidebar navigation — compact panel switcher for Sessions, Plugins, Inspector, and Editor
+* Single-instance enforcement — prevents multiple copies from running simultaneously
 
 **Graph Editor**
 * Minimap navigation — bird's eye view of large graphs (Shift+M to toggle)
@@ -45,9 +50,11 @@ _*Ubuntu is the most tested, but should run on any major distribution_
 
 **Plugin Sandbox Isolation**
 * Out-of-process hosting protects the main application from plugin crashes
-* Lock-free shared memory audio IPC keeps the audio thread non-blocking
+* Lock-free shared memory audio IPC with semaphore signaling for cross-process coordination
+* Atomic pointer-swap operations in real-time paths eliminate lock contention
 * Automatic crash recovery with state restoration
 * Xrun detection and graceful degradation
+* Real-time thread priority for sandbox worker audio processing
 
 **Reroute Nodes**
 * Generic, Audio, and MIDI reroute nodes for cleaner graph layouts without long crossing wires
@@ -59,6 +66,9 @@ See [building.md](./docs/building.md) for instructions and dependency details.
 
 ### Contributing
 If you'd like to contribute code please review the [code style](./docs/cppstyle.md) and [contributor notes](CONTRIBUTING.md) before submitting pull requests.  You may also want to join the [#element](https://discord.gg/fAsQ5fMuHy) channel on the Kushview [Discord](https://discord.gg/fAsQ5fMuHy) server.
+
+### Testing
+Element includes AX-based UI automation and verification tools for macOS. See [tools/automation/README.md](./tools/automation/README.md) for running deterministic UI verification tests without screenshots.
 
 ### Issue Reporting
 Please report bugs and feature requests on Gitlab. [Element issue tracker](https://gitlab.com/kushview/element/-/issues).
