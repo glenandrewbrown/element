@@ -438,6 +438,47 @@ void Settings::setClockSource (const juce::String& src)
         p->setValue (clockSourceKey, src);
 }
 
+static constexpr uint8_t obfuscationKey[] = {
+    0x4b, 0x75, 0x73, 0x68, 0x76, 0x69, 0x65, 0x77,  // "Kushview"
+    0x45, 0x6c, 0x65, 0x6d, 0x65, 0x6e, 0x74, 0x21   // "Element!"
+};
+
+juce::String Settings::obfuscate (const juce::String& plaintext)
+{
+    if (plaintext.isEmpty())
+        return {};
+
+    auto utf8 = plaintext.toUTF8();
+    const int len = static_cast<int> (utf8.sizeInBytes() - 1); // exclude null
+    juce::MemoryBlock block (static_cast<size_t> (len));
+
+    for (int i = 0; i < len; ++i)
+        static_cast<uint8_t*> (block.getData())[i] =
+            static_cast<uint8_t> (utf8.getAddress()[i]) ^ obfuscationKey[i % 16];
+
+    return block.toBase64Encoding();
+}
+
+juce::String Settings::deobfuscate (const juce::String& encoded)
+{
+    if (encoded.isEmpty())
+        return {};
+
+    juce::MemoryBlock block;
+    if (! block.fromBase64Encoding (encoded))
+        return encoded; // Not base64 — return as-is (legacy plaintext)
+
+    const int len = static_cast<int> (block.getSize());
+    juce::MemoryBlock decoded (static_cast<size_t> (len) + 1, true);
+
+    for (int i = 0; i < len; ++i)
+        static_cast<uint8_t*> (decoded.getData())[i] =
+            static_cast<uint8_t*> (block.getData())[i] ^ obfuscationKey[i % 16];
+
+    return juce::String::fromUTF8 (
+        static_cast<const char*> (decoded.getData()), len);
+}
+
 juce::String Settings::getUpdateKeyType() const
 {
     if (auto* p = getProps())
@@ -460,27 +501,27 @@ void Settings::setUpdateKeyType (const String& slug)
 juce::String Settings::getUpdateKeyUser() const
 {
     if (auto* p = getProps())
-        return p->getValue (updateKeyUserKey, "");
+        return deobfuscate (p->getValue (updateKeyUserKey, ""));
     return "";
 }
 
 void Settings::setUpdateKeyUser (const String& user)
 {
     if (auto p = getProps())
-        p->setValue (updateKeyUserKey, user.trim());
+        p->setValue (updateKeyUserKey, obfuscate (user.trim()));
 }
 
 juce::String Settings::getUpdateKey() const
 {
     if (auto* p = getProps())
-        return p->getValue (updateKeyKey, "");
+        return deobfuscate (p->getValue (updateKeyKey, ""));
     return "";
 }
 
 void Settings::setUpdateKey (const String& slug)
 {
     if (auto p = getProps())
-        p->setValue (updateKeyKey, slug.trim());
+        p->setValue (updateKeyKey, obfuscate (slug.trim()));
 }
 
 juce::String Settings::getUpdateChannel() const
