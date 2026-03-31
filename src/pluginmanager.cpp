@@ -30,6 +30,12 @@
 
 #include <errno.h>
 
+#if JUCE_MAC
+// AU metadata reading is in pluginmanager_au.mm to avoid namespace
+// conflicts between juce:: and macOS AudioToolbox types.
+extern bool readAUMetadata (const juce::String& identifier, juce::PluginDescription& desc);
+#endif
+
 namespace element {
 using namespace juce;
 
@@ -540,6 +546,79 @@ void PluginScanner::scanForAudioPlugins (const StringArray& formats)
     listeners.call (&Listener::audioPluginScanFinished);
 }
 
+// --- Lightweight metadata helpers (no plugin instantiation) ---
+
+/** Read VST3 metadata from moduleinfo.json without loading the plugin. */
+static bool readVST3ModuleInfo (const String& identifier, OwnedArray<PluginDescription>& results)
+{
+    File vst3File (identifier);
+    if (! vst3File.isDirectory())
+        return false;
+
+    auto moduleInfo = vst3File.getChildFile ("Contents/Resources/moduleinfo.json");
+    if (! moduleInfo.existsAsFile())
+        return false;
+
+    auto json = JSON::parse (moduleInfo.loadFileAsString());
+    if (json.isVoid())
+        return false;
+
+    auto factoryInfo = json.getProperty ("Factory Info", var());
+    String vendor = factoryInfo.getProperty ("Vendor", "Unknown").toString();
+    String moduleVersion = json.getProperty ("Version", "").toString();
+
+    auto classes = json.getProperty ("Classes", var());
+    if (! classes.isArray())
+        return false;
+
+    for (int i = 0; i < classes.getArray()->size(); ++i)
+    {
+        auto cls = classes.getArray()->getReference (i);
+        String category = cls.getProperty ("Category", "").toString();
+
+        // Only add "Audio Module Class" entries (skip controller classes)
+        if (category != "Audio Module Class")
+            continue;
+
+        auto* desc = results.add (new PluginDescription());
+        desc->name = cls.getProperty ("Name", "Unknown").toString();
+        desc->manufacturerName = cls.getProperty ("Vendor", vendor).toString();
+        desc->version = cls.getProperty ("Version", moduleVersion).toString();
+        desc->pluginFormatName = "VST3";
+        desc->fileOrIdentifier = identifier;
+        desc->descriptiveName = desc->name;
+        desc->numInputChannels = 2;
+        desc->numOutputChannels = 2;
+
+        // Parse sub-categories
+        auto subCats = cls.getProperty ("Sub Categories", var());
+        StringArray catStrings;
+        if (subCats.isArray())
+        {
+            for (int j = 0; j < subCats.getArray()->size(); ++j)
+                catStrings.add (subCats.getArray()->getReference (j).toString());
+        }
+
+        if (catStrings.contains ("Instrument") || catStrings.contains ("Synth"))
+        {
+            desc->category = "Instrument";
+            desc->isInstrument = true;
+        }
+        else if (catStrings.contains ("Fx") || catStrings.contains ("Effect"))
+        {
+            desc->category = catStrings.joinIntoString ("|");
+            desc->isInstrument = false;
+        }
+        else
+        {
+            desc->category = catStrings.joinIntoString ("|");
+            desc->isInstrument = false;
+        }
+    }
+
+    return results.size() > 0;
+}
+
 void PluginScanner::quickScanForPlugins (const StringArray& formats)
 {
     cancelFlag = 0;
@@ -569,7 +648,6 @@ void PluginScanner::quickScanForPlugins (const StringArray& formats)
                     continue;
                 }
 
-                // Skip if already known or blacklisted
                 if (list.getTypeForFile (ID) || list.getBlacklistedFiles().contains (ID))
                 {
                     step += 1.f;
@@ -579,17 +657,54 @@ void PluginScanner::quickScanForPlugins (const StringArray& formats)
                 listeners.call (&Listener::audioPluginScanStarted,
                                 format->getNameOfPluginFromIdentifier (ID));
 
-                // Use findAllTypesForFile IN-PROCESS to read full metadata
-                // (name, manufacturer, category, I/O, version) without spawning
-                // a subprocess. Fast for AU (reads AudioComponent registry) and
-                // VST3 (reads module factory info).
-                OwnedArray<PluginDescription> descriptions;
-                format->findAllTypesForFile (descriptions, ID);
+                bool added = false;
 
-                for (auto* desc : descriptions)
+#if JUCE_MAC
+                // AU: read from AudioComponent registry (instant, no loading)
+                if (formatName == "AudioUnit")
                 {
-                    list.removeFromBlacklist (desc->fileOrIdentifier);
-                    list.addType (*desc);
+                    PluginDescription desc;
+                    if (readAUMetadata (ID, desc))
+                    {
+                        list.removeFromBlacklist (ID);
+                        list.addType (desc);
+                        ++totalAdded;
+                        added = true;
+                    }
+                }
+#endif
+
+                // VST3: read from moduleinfo.json (fast file read, no loading)
+                if (! added && formatName == "VST3")
+                {
+                    OwnedArray<PluginDescription> descriptions;
+                    if (readVST3ModuleInfo (ID, descriptions))
+                    {
+                        for (auto* d : descriptions)
+                        {
+                            list.removeFromBlacklist (d->fileOrIdentifier);
+                            list.addType (*d);
+                            ++totalAdded;
+                        }
+                        added = true;
+                    }
+                }
+
+                // Fallback: create minimal description from filename
+                if (! added)
+                {
+                    PluginDescription desc;
+                    desc.pluginFormatName = formatName;
+                    desc.fileOrIdentifier = ID;
+                    desc.name = format->getNameOfPluginFromIdentifier (ID);
+                    desc.descriptiveName = desc.name;
+                    desc.manufacturerName = "Unknown";
+                    desc.category = "Unknown";
+                    desc.numInputChannels = 2;
+                    desc.numOutputChannels = 2;
+                    desc.isInstrument = false;
+                    list.removeFromBlacklist (ID);
+                    list.addType (desc);
                     ++totalAdded;
                 }
 
@@ -599,7 +714,6 @@ void PluginScanner::quickScanForPlugins (const StringArray& formats)
         }
         else if (auto* provider = _manager.getProvider (formatName))
         {
-            // CLAP/LV2 providers: use their native lightweight discovery
             auto providerIds = provider->findTypes (
                 detail::readSearchPath (*_manager.props, formatName),
                 true,

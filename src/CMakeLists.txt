@@ -31,7 +31,9 @@ file(GLOB_RECURSE ELEMENT_SOURCES
 target_sources(element PRIVATE ${ELEMENT_SOURCES})
 
 if(APPLE)
-    target_sources(element PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/ui/nsviewwithparent.mm")
+    target_sources(element PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/ui/nsviewwithparent.mm"
+        "${CMAKE_CURRENT_SOURCE_DIR}/pluginmanager_au.mm")
 endif()
 
 target_compile_definitions(element 

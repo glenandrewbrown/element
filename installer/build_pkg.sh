@@ -5,7 +5,6 @@
 set -e
 
 # Configuration
-VERSION="${1:-1.0.0}"
 BUILD_DIR="${2:-build}"
 OUTPUT_DIR="${3:-installer/output}"
 IDENTIFIER_PREFIX="net.kushview.element"
@@ -14,20 +13,24 @@ IDENTIFIER_PREFIX="net.kushview.element"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
-# Build number: read from build_number.txt, increment, and write back
-BUILD_NUMBER_FILE="$PROJECT_ROOT/build_number.txt"
-if [ -f "$BUILD_NUMBER_FILE" ]; then
-    BUILD_NUMBER=$(cat "$BUILD_NUMBER_FILE" | tr -d '[:space:]')
-else
-    BUILD_NUMBER=1
+# Read version from the built app's Info.plist — single source of truth.
+# CMake bakes build_number.txt into CFBundleVersion at configure time.
+APP_PLIST=""
+if [ -f "$PROJECT_ROOT/$BUILD_DIR/element_app_artefacts/Release/Element.app/Contents/Info.plist" ]; then
+    APP_PLIST="$PROJECT_ROOT/$BUILD_DIR/element_app_artefacts/Release/Element.app/Contents/Info.plist"
+elif [ -f "$PROJECT_ROOT/$BUILD_DIR/element_app_artefacts/Element.app/Contents/Info.plist" ]; then
+    APP_PLIST="$PROJECT_ROOT/$BUILD_DIR/element_app_artefacts/Element.app/Contents/Info.plist"
 fi
 
-# Increment for next build
-NEXT_BUILD=$((BUILD_NUMBER + 1))
-echo "$NEXT_BUILD" > "$BUILD_NUMBER_FILE"
+if [ -n "$APP_PLIST" ]; then
+    VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP_PLIST" 2>/dev/null || echo "${1:-1.0.0}")
+    FULL_VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$APP_PLIST" 2>/dev/null || echo "$VERSION")
+else
+    VERSION="${1:-1.0.0}"
+    FULL_VERSION="$VERSION"
+    echo "WARNING: Could not read version from built app. Using: $VERSION"
+fi
 
-# Full version includes build number
-FULL_VERSION="${VERSION}.${BUILD_NUMBER}"
 GIT_HASH=$(git -C "$PROJECT_ROOT" rev-parse --short=8 HEAD 2>/dev/null || echo "unknown")
 PKG_ROOT="$PROJECT_ROOT/$OUTPUT_DIR/pkg_root"
 PKG_SCRIPTS="$PROJECT_ROOT/$OUTPUT_DIR/scripts"
