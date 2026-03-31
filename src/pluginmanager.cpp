@@ -540,6 +540,93 @@ void PluginScanner::scanForAudioPlugins (const StringArray& formats)
     listeners.call (&Listener::audioPluginScanFinished);
 }
 
+void PluginScanner::quickScanForPlugins (const StringArray& formats)
+{
+    cancelFlag = 0;
+    int totalAdded = 0;
+
+    for (const auto& formatName : formats)
+    {
+        if (cancelFlag.get() != 0)
+            break;
+
+        if (auto* format = _manager.getAudioPluginFormat (formatName))
+        {
+            auto identifiers = format->searchPathsForPlugins (
+                detail::readSearchPath (*_manager.props, formatName),
+                true,
+                true);
+
+            float step = 0.f;
+            for (const auto& ID : identifiers)
+            {
+                if (cancelFlag.get() != 0)
+                    break;
+
+                if (shouldSkipPluginScan (ID))
+                {
+                    step += 1.f;
+                    continue;
+                }
+
+                // Skip if already known or blacklisted
+                if (list.getTypeForFile (ID) || list.getBlacklistedFiles().contains (ID))
+                {
+                    step += 1.f;
+                    continue;
+                }
+
+                listeners.call (&Listener::audioPluginScanStarted,
+                                format->getNameOfPluginFromIdentifier (ID));
+
+                // Use findAllTypesForFile IN-PROCESS to read full metadata
+                // (name, manufacturer, category, I/O, version) without spawning
+                // a subprocess. Fast for AU (reads AudioComponent registry) and
+                // VST3 (reads module factory info).
+                OwnedArray<PluginDescription> descriptions;
+                format->findAllTypesForFile (descriptions, ID);
+
+                for (auto* desc : descriptions)
+                {
+                    list.removeFromBlacklist (desc->fileOrIdentifier);
+                    list.addType (*desc);
+                    ++totalAdded;
+                }
+
+                listeners.call (&Listener::audioPluginScanProgress,
+                                ++step / static_cast<float> (identifiers.size()));
+            }
+        }
+        else if (auto* provider = _manager.getProvider (formatName))
+        {
+            // CLAP/LV2 providers: use their native lightweight discovery
+            auto providerIds = provider->findTypes (
+                detail::readSearchPath (*_manager.props, formatName),
+                true,
+                false);
+
+            for (const auto& ID : providerIds)
+            {
+                if (list.getTypeForFile (ID))
+                    continue;
+
+                OwnedArray<PluginDescription> descriptions;
+                provider->scan (ID, descriptions);
+
+                for (auto* d : descriptions)
+                {
+                    list.addType (*d);
+                    ++totalAdded;
+                }
+            }
+        }
+    }
+
+    cancelFlag = 0;
+    Logger::writeToLog ("Quick scan complete: " + String (totalAdded) + " plugins added");
+    listeners.call (&Listener::audioPluginScanFinished);
+}
+
 //==============================================================================
 using UnverifiedPluginMap = HashMap<String, StringArray>;
 using UnverifiedPluginPaths = HashMap<String, FileSearchPath>;

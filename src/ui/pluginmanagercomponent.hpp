@@ -69,6 +69,10 @@ public:
     /** Scan for all third party types */
     void scanAll();
 
+    /** Quick scan: discover plugin files without loading/validating them.
+        Plugins appear immediately but with minimal metadata until first loaded. */
+    void quickScan();
+
     /** Returns true if there's currently a scan in progress. */
     bool isScanning() const noexcept;
 
