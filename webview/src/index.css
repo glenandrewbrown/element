@@ -1,0 +1,194 @@
+@import "tailwindcss";
+
+/* ── Element Design System ── */
+
+@theme {
+  /* Neumorphic Surface Tones (narrow range, critical) */
+  --color-canvas: #1e1e22;
+  --color-panel: #222226;
+  --color-surface: #252529;
+  --color-elevated: #2a2a2e;
+  --color-pressed: #1a1a1e;
+
+  /* Panel borders & dividers */
+  --color-panel-border: #3a3a3e;
+  --color-surface-elevated: #333338;
+
+  /* Semantic Block Colours */
+  --color-generator: #4a90d9;
+  --color-modifier: #e8a838;
+  --color-logic: #2bc4c4;
+
+  /* Format Badges */
+  --color-badge-vst3: #4a90d9;
+  --color-badge-au: #a855f7;
+  --color-badge-clap: #2bc4c4;
+  --color-badge-lv2: #6b7280;
+
+  /* Signal & Feedback */
+  --color-signal-primary: #4a90d9;
+  --color-success: #34d399;
+  --color-warning: #e8a838;
+  --color-error: #ef4444;
+
+  /* Text */
+  --color-text-primary: #e5e5ea;
+  --color-text-secondary: #8e8e93;
+  --color-text-dim: #5a5a5e;
+
+  /* Easing */
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Font */
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+}
+
+/* ── Global Reset ── */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  min-width: 600px;
+  min-height: 400px;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--color-canvas);
+  color: var(--color-text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Neumorphic Utilities ── */
+
+.neu-raised {
+  box-shadow:
+    -2px -2px 8px rgba(255, 255, 255, 0.05),
+    4px 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.neu-inset {
+  box-shadow:
+    inset 2px 2px 6px rgba(0, 0, 0, 0.5),
+    inset -1px -1px 3px rgba(255, 255, 255, 0.05);
+}
+
+.neu-pressed {
+  box-shadow:
+    inset 4px 4px 10px rgba(0, 0, 0, 0.6),
+    inset -1px -1px 2px rgba(255, 255, 255, 0.02);
+}
+
+/* ── Glow Effects ── */
+
+.glow-blue {
+  filter: drop-shadow(0 0 4px rgba(74, 144, 217, 0.4));
+}
+
+.glow-orange {
+  filter: drop-shadow(0 0 4px rgba(232, 168, 56, 0.4));
+}
+
+.glow-teal {
+  filter: drop-shadow(0 0 4px rgba(43, 196, 196, 0.4));
+}
+
+/* ── Typography Utilities ── */
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Border Utilities ── */
+
+.ghost-border {
+  outline: 1px solid rgba(139, 145, 156, 0.12);
+}
+
+/* ── Canvas Grid ── */
+
+.canvas-grid {
+  background-image: radial-gradient(var(--color-elevated) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+/* ── CSS Containment for Block nodes ── */
+
+.react-flow__node {
+  contain: content;
+}
+
+/* ── will-change on canvas during interaction ── */
+
+.react-flow__viewport {
+  will-change: transform;
+}
+
+/* ── Zero tooltip delay ── */
+
+[title],
+[data-tooltip] {
+  --tooltip-delay: 0ms;
+}
+
+/* Tailwind tooltip plugin override if present */
+.tooltip {
+  transition-delay: 0ms !important;
+}
+
+/* ── Perform Mode Canvas Overrides ── */
+
+.perform-mode .react-flow__handle {
+  visibility: hidden;
+}
+
+.perform-mode .react-flow__edge {
+  opacity: 0.3;
+  transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.perform-mode .react-flow__node {
+  cursor: default;
+}
+
+.perform-mode .block-body {
+  display: none;
+}
+
+.perform-mode .block-macro-strip {
+  display: flex;
+}
+
+/* ── Reduced Motion ── */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* Kill Framer Motion spring physics */
+  [style*="transform"] {
+    transition: none !important;
+  }
+
+  .react-flow__viewport {
+    will-change: auto;
+  }
+}
