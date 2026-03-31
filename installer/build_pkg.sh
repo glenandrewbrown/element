@@ -178,6 +178,10 @@ rm -rf "/Library/Audio/Plug-Ins/Components/KV-Element.component" 2>/dev/null
 rm -rf "/Library/Audio/Plug-Ins/Components/KV-Element-FX.component" 2>/dev/null
 rm -rf "/Library/Audio/Plug-Ins/Components/KV-Element-MFX.component" 2>/dev/null
 rm -rf "/Library/Audio/Plug-Ins/Components/Element.component" 2>/dev/null
+# Legacy: raw artefacts directories from early installers (Dec 2025)
+rm -rf "/Library/Audio/Plug-Ins/Components/element_instrument_artefacts" 2>/dev/null
+rm -rf "/Library/Audio/Plug-Ins/Components/element_effect_artefacts" 2>/dev/null
+rm -rf "/Library/Audio/Plug-Ins/Components/element_midi_effect_artefacts" 2>/dev/null
 
 # Remove user AU plugins
 echo "  - Removing AU plugins from ~/Library/Audio/Plug-Ins/Components/..."
@@ -193,6 +197,9 @@ echo "  - Removing VST3 plugins from /Library/Audio/Plug-Ins/VST3/..."
 rm -rf "/Library/Audio/Plug-Ins/VST3/KV-Element.vst3" 2>/dev/null
 rm -rf "/Library/Audio/Plug-Ins/VST3/KV-Element-FX.vst3" 2>/dev/null
 rm -rf "/Library/Audio/Plug-Ins/VST3/Element.vst3" 2>/dev/null
+# Legacy artefacts
+rm -rf "/Library/Audio/Plug-Ins/VST3/element_instrument_artefacts" 2>/dev/null
+rm -rf "/Library/Audio/Plug-Ins/VST3/element_effect_artefacts" 2>/dev/null
 
 # Remove user VST3 plugins
 echo "  - Removing VST3 plugins from ~/Library/Audio/Plug-Ins/VST3/..."
@@ -207,6 +214,9 @@ echo "  - Removing CLAP plugins from /Library/Audio/Plug-Ins/CLAP/..."
 rm -rf "/Library/Audio/Plug-Ins/CLAP/KV-Element.clap" 2>/dev/null
 rm -rf "/Library/Audio/Plug-Ins/CLAP/KV-Element-FX.clap" 2>/dev/null
 rm -rf "/Library/Audio/Plug-Ins/CLAP/Element.clap" 2>/dev/null
+# Legacy artefacts
+rm -rf "/Library/Audio/Plug-Ins/CLAP/element_instrument_artefacts" 2>/dev/null
+rm -rf "/Library/Audio/Plug-Ins/CLAP/element_effect_artefacts" 2>/dev/null
 
 # Remove user CLAP plugins
 echo "  - Removing CLAP plugins from ~/Library/Audio/Plug-Ins/CLAP/..."
@@ -228,6 +238,13 @@ if [ -n "$HOME" ]; then
     rm -rf "$HOME/Library/Audio/Plug-Ins/LV2/KV-Element.lv2" 2>/dev/null
     rm -rf "$HOME/Library/Audio/Plug-Ins/LV2/KV-Element-FX.lv2" 2>/dev/null
     rm -rf "$HOME/Library/Audio/Plug-Ins/LV2/Element.lv2" 2>/dev/null
+fi
+
+# Clear Element's own plugin scanner cache so stale entries don't cause crashes
+echo "  - Clearing Element plugin scanner cache..."
+if [ -n "$HOME" ]; then
+    rm -f "$HOME/Library/Application Support/Element/scanner.xml" 2>/dev/null
+    rm -f "$HOME/Library/Application Support/Kushview/Element/scanner.xml" 2>/dev/null
 fi
 
 # Note: We do NOT clear the entire AudioUnit cache - that would force
@@ -316,16 +333,18 @@ echo ""
 echo "Building component packages..."
 
 # Build Application package (includes preinstall/postinstall scripts)
+# --component-plist prevents macOS from relocating to stale bundle locations
 echo "  - Element Application"
 pkgbuild \
     --root "$PKG_ROOT/Applications" \
     --identifier "${IDENTIFIER_PREFIX}.app" \
     --version "$VERSION" \
     --install-location "/Applications" \
+    --component-plist "$SCRIPT_DIR/component.plist" \
     --scripts "$PKG_SCRIPTS" \
     "$PROJECT_ROOT/$OUTPUT_DIR/components/ElementApp.pkg"
 
-# Build AU Plugins package
+# Build AU Plugins package (no scripts — preinstall/postinstall only on app component)
 if [ -n "$(ls -A "$PKG_ROOT/Library/Audio/Plug-Ins/Components/" 2>/dev/null)" ]; then
     echo "  - AU Plugins"
     pkgbuild \
@@ -333,7 +352,6 @@ if [ -n "$(ls -A "$PKG_ROOT/Library/Audio/Plug-Ins/Components/" 2>/dev/null)" ];
         --identifier "${IDENTIFIER_PREFIX}.au" \
         --version "$VERSION" \
         --install-location "/Library/Audio/Plug-Ins/Components" \
-        --scripts "$PKG_SCRIPTS" \
         "$PROJECT_ROOT/$OUTPUT_DIR/components/ElementAU.pkg"
 fi
 
