@@ -2,6 +2,114 @@
 
 This file provides guidance to Claude Code when working with code in this repository.
 
+## UI/UX Overhaul Context
+
+You are working on the Element audio plugin host UI/UX overhaul.
+
+**CRITICAL CONTEXT:** Load and read `docs/ELEMENT_UNIFIED_BLUEPRINT.md` before doing anything. This is the single source of truth. V3.0 — the Instrument Paradigm.
+
+### Key Facts
+
+- Element is a modular audio plugin host (VST3/AU/LV2/CLAP) built with JUCE 8 / C++20
+- UI: React/Tailwind frontend hosted in JUCE's `WebBrowserComponent`
+- Graph engine: `@xyflow/react` (React Flow v12) with aggressive memoisation
+- Bridge: `window.__JUCE__` API for C++ <-> JS communication
+- State: `juce::ValueTree` single source of truth, synced to React via 60Hz Timer
+- Three signal types: Audio (blue `#4A90D9`), MIDI (teal `#2BC4C4`), Value/CV (orange `#E8A838`)
+
+### Design Paradigm — The Instrument
+
+Element is a precision creative instrument for expert users in flow state. NOT for beginners. Technical depth surfaced beautifully. Speed of iteration is the supreme metric. Information density IS the beauty. One unified dark palette. No mode-switching colour gimmicks.
+
+### Visual Language — Neumorphism (NOT glass)
+
+No glassmorphism. No backdrop-blur. No transparency. The entire UI is one continuous dark chassis with controls extruded from or pressed into the surface via paired soft shadows. Narrow tonal range between surfaces (critical for the "same material" illusion):
+
+| Token | Hex | Usage |
+|-------|-----|-------|
+| Canvas | `#1E1E22` | Main background |
+| Panel | `#222226` | Side panels, toolbars |
+| Surface | `#252529` | Cards, blocks |
+| Elevated | `#2A2A2E` | Hover states |
+| Pressed | `#1A1A1E` | Inset fields, tracks |
+
+- Raised: light shadow top-left `rgba(255,255,255,0.05)` + dark bottom-right `rgba(0,0,0,0.4)`, 8px blur min
+- Pressed: inner shadows inverted. Buttons press INTO the surface on click.
+- Micro-glow: 4px outer glow of semantic hue at 25% opacity on active elements
+
+### Semantic Colours (colour-blind safe, each with shape indicator)
+
+- Generators: `#4A90D9` Blue + Circle (●)
+- Modifiers: `#E8A838` Orange + Diamond (◆)
+- Logic: `#2BC4C4` Teal + Triangle (▲)
+- Text: `#E5E5EA` primary, `#8E8E93` secondary
+
+### Speed-First Navigation
+
+| Gesture | Action |
+|---------|--------|
+| Double-click Block | Dive into nested Board (150ms) |
+| Double-click empty canvas | Navigate UP one level (150ms) |
+| `Cmd+K` | Command palette (search everything) |
+| Right-click canvas | QuickAdd at cursor |
+| `Ctrl+0-9` / `Shift+0-9` | Spatial bookmarks |
+| `Tab` | Jump to next block in signal chain |
+| `Escape` | Deselect / close / back out one level |
+
+### Key Features
+
+- Edit Mode (workshop) / Perform Mode (stage) — structural change, NOT palette change
+- Dashboard Builder in Perform Mode (freely composable knobs/faders/buttons/meters/pads)
+- Scene/Preset system (multiple parameter snapshots per project, switchable without plugin reload)
+- Panic button (red, always visible, sends Note Off to all MIDI outputs)
+- Value Events as third signal type (CV/control data independent of MIDI)
+
+### Terminology (mandatory)
+
+| Legacy | New Term | Definition |
+|--------|----------|------------|
+| Session | **Project** | Master file containing all routings |
+| Graph | **Board** | Visual routing canvas |
+| Node/Plugin | **Block** | Individual instrument/effect/utility |
+| Sub-Graph | **Container** | Nested Board local to project |
+| Sub-Graph (linked) | **Portal** | Nested Board linked to external `.elboard` |
+| Connection/Arc | **Cable** | Signal path between ports |
+| Preset/Template | **Snippet** | Reusable group of Blocks and Cables |
+
+### WebView Frontend Commands
+
+```bash
+cd webview
+
+# Install dependencies
+npm install
+
+# Development (hot reload at localhost:5173)
+npm run dev
+
+# Type check
+npx tsc -b
+
+# Production build (outputs to webview/dist/)
+npm run build
+```
+
+### Frontend Architecture
+
+```
+webview/src/
+├── data/           # Types, demo graph data, demo perform data
+├── stores/         # Zustand stores (useGraphStore, useAppStore, usePerformStore)
+├── hooks/          # useKeyboard (global shortcuts)
+├── components/
+│   ├── neu/        # Neumorphic primitives (NeuButton, NeuKnob, NeuFader, etc.)
+│   ├── layout/     # AppShell, Toolbar, panels (ToolPalette, InspectorHub, etc.)
+│   └── canvas/     # GraphCanvas, Block, Cable, QuickAddPopup, CommandPalette
+└── index.css       # Tailwind + design system tokens + neumorphic utilities
+```
+
+---
+
 ## Project Overview
 
 Element is an advanced audio plugin host built with JUCE, supporting AU/LV2/VST/VST3/CLAP plugin formats. It provides a modular node-based graph system for creating complex audio routing, instruments, and effects chains.
