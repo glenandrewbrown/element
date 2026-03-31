@@ -363,14 +363,13 @@ static void deleteRenderOpArray (Array<void*>& ops)
 
 void GraphNode::clearRenderingSequence()
 {
-    Array<void*> oldOps;
+    auto* oldOps = activeRenderingOps.exchange (nullptr, std::memory_order_acq_rel);
 
+    if (oldOps != nullptr)
     {
-        const ScopedLock sl (seqLock);
-        renderingOps.swapWith (oldOps);
+        deleteRenderOpArray (*oldOps);
+        delete oldOps;
     }
-
-    deleteRenderOpArray (oldOps);
 }
 
 bool GraphNode::isAnInputTo (const uint32 possibleInputId,
@@ -440,11 +439,18 @@ void GraphNode::buildRenderingSequence()
                 midiBuffers.add (new MidiBuffer());
         }
 
-        ScopedLock sl (seqLock);
-        renderingOps.swapWith (newRenderingOps);
+        auto* published = new juce::Array<void*>();
+        published->swapWith (newRenderingOps);
+        auto* oldOps = activeRenderingOps.exchange (published, std::memory_order_acq_rel);
+
+        if (oldOps != nullptr)
+        {
+            deleteRenderOpArray (*oldOps);
+            delete oldOps;
+        }
     }
 
-    // delete the old ones..
+    // newRenderingOps is now empty after swapWith, but clear for safety
     deleteRenderOpArray (newRenderingOps);
 
     renderingSequenceChanged();
@@ -571,11 +577,14 @@ void GraphNode::render (RenderContext& rc)
     currentMidiOutputBuffer.clear();
 
     {
-        ScopedLock sl (seqLock);
-        for (auto ptr : renderingOps)
+        auto* ops = activeRenderingOps.load (std::memory_order_acquire);
+        if (ops != nullptr)
         {
-            GraphOp* const op = static_cast<GraphOp*> (ptr);
-            op->perform (renderingBuffers, midiBuffers, numSamples);
+            for (auto ptr : *ops)
+            {
+                GraphOp* const op = static_cast<GraphOp*> (ptr);
+                op->perform (renderingBuffers, midiBuffers, numSamples);
+            }
         }
     }
 

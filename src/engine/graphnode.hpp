@@ -214,7 +214,6 @@ private:
     uint32 lastNodeId;
     AudioSampleBuffer renderingBuffers;
     OwnedArray<MidiBuffer> midiBuffers;
-    Array<void*> renderingOps;
     bool _prepared = false;
 
     AudioSampleBuffer* currentAudioInputBuffer;
@@ -231,7 +230,10 @@ private:
     bool customPortsSet = false;
     PortList userPorts;
 
-    CriticalSection seqLock;
+    /** Active rendering ops, swapped atomically.
+        Audio thread reads via acquire load. Message thread writes via exchange.
+        The old ops array is deleted on the message thread after swap. */
+    std::atomic<juce::Array<void*>*> activeRenderingOps { nullptr };
     friend class ScriptNode; // workaround so parameter connections work when params change.
     void handleAsyncUpdate() override;
     void clearRenderingSequence();
