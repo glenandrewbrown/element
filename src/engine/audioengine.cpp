@@ -430,8 +430,7 @@ public:
         processCurrentGraph (buffer, tempMidi);
 
         {
-            ScopedLock lockMidiOut (engine.world.midi().getMidiOutputLock());
-            if (auto* const midiOut = engine.world.midi().getDefaultMidiOutput())
+            if (auto* const midiOut = engine.world.midi().getAtomicMidiOutput())
             {
                 const double delayMs = midiOutLatency.get();
                 if (! tempMidi.isEmpty())
