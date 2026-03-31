@@ -13,7 +13,8 @@ namespace element {
 
 /** Toolbar displayed above the graph editor with breadcrumb navigation,
     zoom controls, and optional toggle buttons for snap/layout/comment. */
-class GraphEditorToolbar : public Component
+class GraphEditorToolbar : public Component,
+                           public juce::TooltipClient
 {
 public:
     GraphEditorToolbar()
@@ -168,6 +169,25 @@ public:
                 return;
             }
         }
+    }
+
+    juce::String getTooltip() override
+    {
+        auto pos = getMouseXYRelative();
+        if (zoomOutBounds.contains (pos)) return "Zoom Out (Cmd+-)";
+        if (zoomInBounds.contains (pos))  return "Zoom In (Cmd+=)";
+        if (fitBounds.contains (pos))     return "Fit to View (Cmd+0)";
+        if (zoomLabelBounds.contains (pos)) return "Click to reset zoom to 100%";
+
+        const bool isWide = getWidth() >= compactThreshold;
+        if (isWide)
+        {
+            if (snapBounds.contains (pos))    return "Snap to Grid";
+            if (layoutBounds.contains (pos))  return "Layout Direction";
+            if (commentBounds.contains (pos)) return "Add Comment";
+        }
+
+        return {};
     }
 
     void updateZoomLabel()

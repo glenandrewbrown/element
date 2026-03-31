@@ -32,10 +32,10 @@ cmake --build build -j8
 # Note: Sources use file(GLOB_RECURSE) — new .cpp files require cmake reconfigure
 
 # Run tests
-cd build && ctest --output-on-failure
+cd build-merged && ctest --output-on-failure
 
 # Run specific test suite
-cd build && ctest -R "NodeTests"
+cd build-merged && ctest -R "NodeTests"
 
 # Clean build
 rm -rf build && cmake -B build && cmake --build build
@@ -186,6 +186,7 @@ element/
 | `CommentBoxComponent` | src/ui/commentboxcomponent.hpp | Visual grouping boxes in the graph editor |
 | `MinimapComponent` | src/ui/minimapcomponent.hpp | Bird's eye minimap navigation |
 | `NodeSearchComponent` | src/ui/nodesearchcomponent.hpp | Quick node insertion via search |
+| `QuickAddComponent` | src/ui/quickaddcomponent.hpp | Right-click → search → insert at cursor |
 | `MoleculeLibrary` | src/ui/moleculemanager.hpp | Reusable node template library |
 | `PluginUsageTracker` | src/ui/pluginusagetracker.hpp | Favorites + recently used tracking (owned by PluginManager) |
 | `GraphEditorToolbar` | src/ui/graphtoolbar.hpp | 28px toolbar: breadcrumb + zoom + snap/layout toggles |
@@ -204,9 +205,9 @@ data path access is via File menu.
 ### Audio Processing Flow
 
 1. Session contains root `Graph` nodes
-2. `GraphManager` builds engine representation
-3. `GraphBuilder` creates `GraphOp` sequence
-4. Audio thread executes ops in order
+2. `GraphManager` builds engine representation (message thread)
+3. `GraphBuilder` creates `GraphOp` sequence, published via atomic pointer swap
+4. Audio thread loads active ops via `std::atomic::load(acquire)` — no lock
 5. Each `GraphNode` wraps a `Processor`
 6. Sandboxed plugins run in a separate process via `SandboxHost`/`SandboxWorker`; audio crosses the process boundary through lock-free `SharedAudioBuffer` in shared memory, with semaphore signaling for synchronization and JUCE pipes for control messages
 
@@ -253,9 +254,10 @@ cd build-merged && ctest --output-on-failure
 
 ### Test Structure
 - `test/fixture/` - Test fixtures (headers: TestNode.h, PreparedGraph.h, context.hpp)
-- `test/engine/` - Engine-specific tests (LinearFade, MidiChannelMap, VelocityCurve)
+- `test/engine/` - Engine tests (LinearFade, MidiChannelMap, VelocityCurve, SandboxIPC, GraphNodeLockFree)
 - `test/scripting/` - Lua scripting tests
 - `test/integration/` - Integration tests (SessionChanged)
+- `test/SettingsCredentialTest.cpp` - Credential obfuscation round-trip tests
 - `test/TestMain.cpp` - Main test runner with JUCE MessageManager fixture
 
 ## UI Verification
@@ -294,10 +296,12 @@ Suites: `plugin-browser`, `session-browser`, `navigation`, `toolbar`
 
 ### Real-time Safety
 - No allocations in audio callbacks
-- Use lock-free structures for audio thread
+- No mutexes on audio thread — all audio-thread data access uses atomic pointer swaps
+- `GraphNode` render ops: `std::atomic<Array<void*>*>` — message thread builds new ops, publishes via `exchange(acq_rel)`, audio thread reads via `load(acquire)`
+- MIDI output: `std::atomic<MidiOutput*>` — audio thread reads lock-free, message thread swaps on device change
+- Sandbox IPC: lock-free shared memory + platform semaphores (Mach/POSIX/Win), spin-wait + bounded sem_timedwait
 - `RingBuffer` for thread-safe communication
-- Pre-allocate buffers
-- Sandbox IPC uses lock-free shared memory; never allocate or block in the audio exchange path
+- Pre-allocate buffers in `prepareToRender()`, never in `render()`
 
 ### Error Handling
 - `jassert()` for debug assertions
@@ -406,9 +410,25 @@ The graph editor (`GraphEditorComponent`) provides visual node editing with thes
 - **Comment Boxes:** Visual grouping with color-coding (`CommentBoxComponent`)
 - **Minimap Navigation:** Bird's eye view for large graphs (`MinimapComponent`)
 - **Node Search:** Quick node insertion via search (`NodeSearchComponent`)
+- **QuickAdd:** Right-click canvas → inline search popup → insert at cursor (`QuickAddComponent`)
 - **Molecules:** Reusable node templates managed by `MoleculeLibrary`; `PluginUsageTracker` records frequently used plugins for quick access
 - **Alignment Tools:** Snap-to-grid, node alignment
 - **Lasso Selection:** Multi-select with Shift+click or drag
+
+### Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| Cmd+1/2/3/4 | Switch sidebar panels (Session/Browse/Inspector/Editor) |
+| Cmd+= / Cmd+- | Zoom in/out |
+| Cmd+0 | Fit graph to view |
+| Cmd+D | Duplicate selected nodes |
+| Cmd+T / Cmd+R | Rename selected node |
+| Cmd+F | Open node search |
+| Shift+C | Create comment box |
+| Shift+M | Toggle minimap |
+| Delete/Backspace | Delete selected nodes |
+| Right-click canvas | QuickAdd popup |
 
 See `docs/GraphEditorEnhancements_UserManual.md` for detailed usage.
 
@@ -430,8 +450,7 @@ See `docs/GraphEditorEnhancements_UserManual.md` for detailed usage.
 
 ## Code Quality Notes
 
-Based on recent code review (see `CODE_REVIEW_REPORT.md`):
-
-- **Magic numbers:** Define named constants instead of hardcoded values (e.g., menu item IDs)
-- **Large files:** Consider splitting files over 1000 lines into focused modules
+- **Magic numbers:** Define named constants instead of hardcoded values (e.g., menu item IDs in preferences.cpp, grapheditorcomponent.cpp)
+- **Large files:** Consider splitting files over 1000 lines (`clapprovider.cpp` 1867, `node.cpp` 1453, `preferences.cpp` 1315)
 - **Memory:** Prefer `std::make_unique` over raw `new` for immediate smart pointer wrapping
+- **Namespace:** One remaining `using namespace juce` in a header (`include/element/juce.hpp`) — has FIXME comment
