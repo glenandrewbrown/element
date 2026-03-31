@@ -715,6 +715,14 @@ void PluginListComponent::optionsMenuCallback (int result)
             break;
         }
 
+        case 6: {
+            // Quick scan — discover plugins without loading/validating
+            if (auto* world = ViewHelpers::getGlobals (this))
+                plugins.saveUserPlugins (world->settings());
+            quickScan();
+            break;
+        }
+
         case 99:
             editPluginPath ("CLAP");
             saveSettings (this, true);
@@ -788,6 +796,8 @@ void PluginListComponent::buttonClicked (Button* button)
         menu.addItem (3, TRANS ("Show folder containing selected plug-in"), canShowSelectedFolder());
         menu.addItem (4, TRANS ("Remove any plug-ins whose files no longer exist"));
         menu.addItem (5, TRANS ("Clear blacklist (re-enable all failed plugins)"), list.getBlacklistedFiles().size() > 0);
+        menu.addSeparator();
+        menu.addItem (6, TRANS ("Quick Scan (no validation)"));
         menu.addSeparator();
         menu.addItem (8, "Scan for new or updated CLAP plugins");
         for (int i = 0; i < formatManager.getNumFormats(); ++i)
@@ -880,6 +890,19 @@ void PluginListComponent::scanAll()
                                        scanAllFormats (plugins),
                                        TRANS ("Scanning for plug-ins..."),
                                        TRANS ("Searching for all possible plug-in files...")));
+}
+
+void PluginListComponent::quickScan()
+{
+    plugins.scanInternalPlugins();
+
+    if (auto* scanner = plugins.getBackgroundAudioPluginScanner())
+    {
+        scanner->quickScanForPlugins (scanAllFormats (plugins));
+    }
+
+    updateList();
+    saveListToSettings();
 }
 
 void PluginListComponent::scanFor (AudioPluginFormat& format)

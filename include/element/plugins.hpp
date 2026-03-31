@@ -173,6 +173,11 @@ public:
     /** Scan for plugins of multiple types */
     void scanForAudioPlugins (const juce::StringArray& formats);
 
+    /** Quick scan: discover plugin files and add to list WITHOUT loading/validating.
+        This is much faster and won't crash, but plugin metadata (name, manufacturer,
+        I/O config) won't be populated until the plugin is first loaded. */
+    void quickScanForPlugins (const juce::StringArray& formats);
+
     /** Cancels the current scan operation if possible. */
     void cancel();
 
