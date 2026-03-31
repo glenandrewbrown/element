@@ -45,7 +45,7 @@ endif()
 include(GNUInstallDirs)
 include(FetchContent)
 
-# Build number: read from build_number.txt, auto-increment on each configure
+# Build number: read from build_number.txt (single source of truth for all versioning)
 set(ELEMENT_BUILD_NUMBER_FILE "${CMAKE_SOURCE_DIR}/build_number.txt")
 if(EXISTS "${ELEMENT_BUILD_NUMBER_FILE}")
     file(READ "${ELEMENT_BUILD_NUMBER_FILE}" ELEMENT_BUILD_NUMBER)
