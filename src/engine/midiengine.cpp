@@ -359,10 +359,10 @@ void MidiEngine::setDefaultMidiOutput (const MidiDeviceInfo& device)
         if (newMidiOut)
             newMidiOut->startBackgroundThread();
 
-        {
-            ScopedLock sl (midiOutputLock);
-            defaultMidiOutput.swap (newMidiOut);
-        }
+        // Update the atomic pointer for lock-free audio thread access
+        atomicMidiOutput.store (newMidiOut.get(), std::memory_order_release);
+        // Transfer ownership (message thread only)
+        defaultMidiOutput.swap (newMidiOut);
 
         if (newMidiOut) // is now the old output
         {
