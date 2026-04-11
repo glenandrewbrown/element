@@ -368,6 +368,203 @@ const valueConstant: BlockData = {
   isMacroTagged: false,
 };
 
+// ── MIDI Processing Suite (teal #2BC4C4) ──
+
+const midiFilter: BlockData = {
+  id: "midi-filter",
+  name: "MIDI Filter",
+  category: "logic",
+  format: "INT",
+  position: { x: 450, y: 80 },
+  ports: [
+    {
+      id: "mf-midi-in",
+      type: "midi",
+      direction: "input",
+      label: "MIDI In",
+      connected: true,
+    },
+    {
+      id: "mf-midi-out",
+      type: "midi",
+      direction: "output",
+      label: "MIDI Out",
+      connected: true,
+    },
+  ],
+  cpuLoad: 0,
+  latencyMs: 0,
+  bypassed: false,
+  error: false,
+  isMacroTagged: false,
+};
+
+const midiTranspose: BlockData = {
+  id: "midi-transpose",
+  name: "MIDI Transpose",
+  category: "logic",
+  format: "INT",
+  position: { x: 650, y: 80 },
+  ports: [
+    {
+      id: "mt-midi-in",
+      type: "midi",
+      direction: "input",
+      label: "MIDI In",
+      connected: true,
+    },
+    {
+      id: "mt-midi-out",
+      type: "midi",
+      direction: "output",
+      label: "MIDI Out",
+      connected: true,
+    },
+  ],
+  cpuLoad: 0,
+  latencyMs: 0,
+  bypassed: false,
+  error: false,
+  isMacroTagged: true,
+};
+
+const arpeggiator: BlockData = {
+  id: "arpeggiator",
+  name: "Arpeggiator",
+  category: "logic",
+  format: "INT",
+  position: { x: 450, y: 180 },
+  ports: [
+    {
+      id: "arp-midi-in",
+      type: "midi",
+      direction: "input",
+      label: "MIDI In",
+      connected: true,
+    },
+    {
+      id: "arp-midi-out",
+      type: "midi",
+      direction: "output",
+      label: "MIDI Out",
+      connected: true,
+    },
+    {
+      id: "arp-clock",
+      type: "value",
+      direction: "input",
+      label: "Clock In",
+      connected: false,
+    },
+  ],
+  cpuLoad: 0.1,
+  latencyMs: 0,
+  bypassed: false,
+  error: false,
+  isMacroTagged: true,
+};
+
+const logicalEditor: BlockData = {
+  id: "logical-editor",
+  name: "Logical Editor",
+  category: "logic",
+  format: "INT",
+  position: { x: 650, y: 180 },
+  ports: [
+    {
+      id: "le-midi-in",
+      type: "midi",
+      direction: "input",
+      label: "MIDI In",
+      connected: true,
+    },
+    {
+      id: "le-midi-out",
+      type: "midi",
+      direction: "output",
+      label: "MIDI Out",
+      connected: true,
+    },
+    {
+      id: "le-midi-reject",
+      type: "midi",
+      direction: "output",
+      label: "Rejected",
+      connected: false,
+    },
+  ],
+  cpuLoad: 0,
+  latencyMs: 0,
+  bypassed: false,
+  error: false,
+  isMacroTagged: false,
+};
+
+const midiVelocity: BlockData = {
+  id: "midi-velocity",
+  name: "MIDI Velocity",
+  category: "logic",
+  format: "INT",
+  position: { x: 350, y: 280 },
+  ports: [
+    {
+      id: "mv-midi-in",
+      type: "midi",
+      direction: "input",
+      label: "MIDI In",
+      connected: true,
+    },
+    {
+      id: "mv-midi-out",
+      type: "midi",
+      direction: "output",
+      label: "MIDI Out",
+      connected: true,
+    },
+  ],
+  cpuLoad: 0,
+  latencyMs: 0,
+  bypassed: false,
+  error: false,
+  isMacroTagged: false,
+};
+
+const midiChannelizer: BlockData = {
+  id: "midi-channelizer",
+  name: "MIDI Channelizer",
+  category: "logic",
+  format: "INT",
+  position: { x: 550, y: 280 },
+  ports: [
+    {
+      id: "mc-midi-in",
+      type: "midi",
+      direction: "input",
+      label: "MIDI In",
+      connected: true,
+    },
+    {
+      id: "mc-midi-out1",
+      type: "midi",
+      direction: "output",
+      label: "Ch 1-8",
+      connected: true,
+    },
+    {
+      id: "mc-midi-out2",
+      type: "midi",
+      direction: "output",
+      label: "Ch 9-16",
+      connected: false,
+    },
+  ],
+  cpuLoad: 0,
+  latencyMs: 0,
+  bypassed: false,
+  error: false,
+  isMacroTagged: false,
+};
+
 // ── Special ──
 
 const voiceChain: BlockData = {
@@ -457,9 +654,29 @@ const audioOutput: BlockData = {
 const cables: CableData[] = [
   // --- MIDI cables (teal, 2px mono) ---
   {
-    id: "cable-mr-to-osc",
+    id: "cable-mr-to-filter",
     source: "midi-router",
     sourcePort: "mr-midi-out1",
+    target: "midi-filter",
+    targetPort: "mf-midi-in",
+    signalType: "midi",
+    channelCount: 1,
+    isSidechain: false,
+  },
+  {
+    id: "cable-filter-to-transpose",
+    source: "midi-filter",
+    sourcePort: "mf-midi-out",
+    target: "midi-transpose",
+    targetPort: "mt-midi-in",
+    signalType: "midi",
+    channelCount: 1,
+    isSidechain: false,
+  },
+  {
+    id: "cable-transpose-to-osc",
+    source: "midi-transpose",
+    sourcePort: "mt-midi-out",
     target: "osc-a",
     targetPort: "osc-a-midi",
     signalType: "midi",
@@ -467,11 +684,51 @@ const cables: CableData[] = [
     isSidechain: false,
   },
   {
-    id: "cable-mr-to-kontakt",
+    id: "cable-mr-to-arp",
     source: "midi-router",
     sourcePort: "mr-midi-out2",
+    target: "arpeggiator",
+    targetPort: "arp-midi-in",
+    signalType: "midi",
+    channelCount: 1,
+    isSidechain: false,
+  },
+  {
+    id: "cable-arp-to-logical",
+    source: "arpeggiator",
+    sourcePort: "arp-midi-out",
+    target: "logical-editor",
+    targetPort: "le-midi-in",
+    signalType: "midi",
+    channelCount: 1,
+    isSidechain: false,
+  },
+  {
+    id: "cable-logical-to-kontakt",
+    source: "logical-editor",
+    sourcePort: "le-midi-out",
     target: "kontakt",
     targetPort: "kontakt-midi",
+    signalType: "midi",
+    channelCount: 1,
+    isSidechain: false,
+  },
+  {
+    id: "cable-mr-to-velocity",
+    source: "midi-router",
+    sourcePort: "mr-midi-out1",
+    target: "midi-velocity",
+    targetPort: "mv-midi-in",
+    signalType: "midi",
+    channelCount: 1,
+    isSidechain: false,
+  },
+  {
+    id: "cable-velocity-to-channelizer",
+    source: "midi-velocity",
+    sourcePort: "mv-midi-out",
+    target: "midi-channelizer",
+    targetPort: "mc-midi-in",
     signalType: "midi",
     channelCount: 1,
     isSidechain: false,
@@ -669,11 +926,18 @@ const commentBoxes: CommentBoxData[] = [
     size: { width: 280, height: 520 },
   },
   {
+    id: "comment-midi-processing",
+    label: "MIDI PROCESSING",
+    color: "rgba(43, 196, 196, 0.12)",
+    position: { x: 330, y: 50 },
+    size: { width: 420, height: 280 },
+  },
+  {
     id: "comment-insert",
     label: "INSERT CHAIN",
     color: "rgba(232, 168, 56, 0.12)",
-    position: { x: 360, y: 180 },
-    size: { width: 580, height: 440 },
+    position: { x: 360, y: 350 },
+    size: { width: 580, height: 320 },
   },
 ];
 
@@ -716,6 +980,24 @@ const macros: MacroControl[] = [
     type: "knob",
     signalType: "audio",
   },
+  {
+    id: "macro-transpose",
+    name: "Transpose",
+    sourceBlock: "midi-transpose",
+    sourceParam: "semitones",
+    value: 50,
+    type: "knob",
+    signalType: "midi",
+  },
+  {
+    id: "macro-arp-rate",
+    name: "Arp Rate",
+    sourceBlock: "arpeggiator",
+    sourceParam: "rate",
+    value: 60,
+    type: "knob",
+    signalType: "midi",
+  },
 ];
 
 // ── Assembled Demo Graph ──
@@ -737,6 +1019,13 @@ export const demoGraph: DemoGraph = {
     voiceChain,
     externalPortal,
     audioOutput,
+    // MIDI Processing Suite
+    midiFilter,
+    midiTranspose,
+    arpeggiator,
+    logicalEditor,
+    midiVelocity,
+    midiChannelizer,
   ],
   cables,
   commentBoxes,

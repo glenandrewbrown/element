@@ -39,31 +39,274 @@ const portStyle: Record<
   value: { hex: "#E8A838", radius: "2px", rotate: false },
 };
 
-// ── Mini waveform (generator viz) ──
+// ── Rich visualizations for specific plugin types ──
 
+// Mini waveform visualization
 function MiniWaveform({ color }: { color: string }) {
-  const bars = [
-    { h: 8, o: 0.4 },
-    { h: 12, o: 0.6 },
-    { h: 16, o: 1 },
-    { h: 12, o: 0.6 },
-    { h: 8, o: 0.4 },
-  ];
   return (
-    <div className="h-6 bg-[#1A1A1E] rounded shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] flex items-center justify-around px-1">
-      {bars.map((b, i) => (
-        <div
-          key={i}
-          className="w-[2px] rounded-full"
-          style={{
-            height: b.h,
-            backgroundColor: color,
-            opacity: b.o,
-          }}
+    <div className="h-10 bg-[#131317] rounded border border-white/5 p-1.5 relative overflow-hidden">
+      <svg className="w-full h-full" viewBox="0 0 100 24" preserveAspectRatio="none">
+        <path 
+          d="M0,12 Q10,4 20,12 T40,12 T60,12 T80,12 T100,12" 
+          fill="none" 
+          stroke={color} 
+          strokeWidth="1.5"
+          opacity="0.8"
         />
+      </svg>
+    </div>
+  );
+}
+
+// Oscillator knob with wavetable position
+function OscillatorViz({ color, name }: { color: string; name: string }) {
+  return (
+    <div className="flex items-center gap-2 p-1.5">
+      <div className="w-10 h-10 rounded-full border-2 flex items-center justify-center relative" style={{ borderColor: `${color}50` }}>
+        <div className="w-0.5 h-4 rounded-full absolute top-1 origin-bottom rotate-[45deg]" style={{ backgroundColor: color }} />
+      </div>
+      <div className="flex-1 space-y-1">
+        <div className="h-8 bg-[#131317] rounded overflow-hidden border border-white/5">
+          <svg className="w-full h-full" viewBox="0 0 60 24">
+            <path d="M0,12 Q8,2 15,12 T30,12 T45,12 T60,12" fill="none" stroke={color} strokeWidth="1" opacity="0.7" />
+          </svg>
+        </div>
+        <div className="flex justify-between text-[8px]">
+          <span className="text-text-dim">WT POS</span>
+          <span style={{ color }} className="tabular">128</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// EQ curve visualization
+function EQCurveViz({ color }: { color: string }) {
+  return (
+    <div className="h-16 bg-[#131317] rounded border border-white/5 p-1 relative">
+      <svg className="w-full h-full" viewBox="0 0 100 40" preserveAspectRatio="none">
+        <path 
+          d="M0,35 L15,35 Q25,35 35,8 T55,22 T75,35 L100,35" 
+          fill="none" 
+          stroke={color} 
+          strokeWidth="1.5"
+          opacity="0.7"
+        />
+        {/* Band markers */}
+        <circle cx="35" cy="10" r="2.5" fill={color} />
+        <circle cx="55" cy="20" r="2" fill={color} opacity="0.5" />
+      </svg>
+      <div className="absolute bottom-1 right-2 flex gap-2 text-[7px]" style={{ color }}>
+        <span className="tabular">2.4kHz</span>
+        <span className="tabular">-4.2dB</span>
+      </div>
+    </div>
+  );
+}
+
+// Compressor gain reduction meter
+function CompressorViz({ color }: { color: string }) {
+  return (
+    <div className="space-y-1.5 p-1">
+      <div className="flex items-center gap-2">
+        <div className="flex-1 h-4 bg-[#131317] rounded border border-white/5 flex overflow-hidden">
+          <div className="w-1/3 h-full" style={{ backgroundColor: `${color}40` }} />
+          <div className="w-1/4 h-full" style={{ backgroundColor: `${color}80` }} />
+          <div className="w-1/6 h-full" style={{ backgroundColor: color }} />
+        </div>
+        <span className="text-[8px] text-text-dim">-6dB</span>
+      </div>
+      <div className="flex justify-between text-[8px] text-text-dim">
+        <span>RATIO: 4:1</span>
+        <span className="tabular" style={{ color }}>GR</span>
+      </div>
+    </div>
+  );
+}
+
+// MIDI Router channel mapping
+function MIDIRouterViz({ color }: { color: string }) {
+  return (
+    <div className="space-y-1 p-1.5">
+      {[{ from: "CH 1", to: "BUS A" }, { from: "CH 2", to: "BUS B" }].map((route, i) => (
+        <div key={i} className="flex items-center justify-between px-2 py-1 bg-[#131317] rounded border border-white/5 text-[8px]">
+          <span className="text-text-dim">{route.from}</span>
+          <svg width="12" height="8" viewBox="0 0 12 8">
+            <path d="M0,4 L8,4 M6,1 L9,4 L6,7" fill="none" stroke={color} strokeWidth="1.5" />
+          </svg>
+          <span className="text-text-dim">{route.to}</span>
+        </div>
       ))}
     </div>
   );
+}
+
+// MIDI Filter note range
+function MIDIFilterViz({ color }: { color: string }) {
+  return (
+    <div className="p-1.5 space-y-1">
+      <div className="flex items-center justify-between text-[8px]">
+        <span className="text-text-dim">NOTE RANGE</span>
+        <span style={{ color }} className="tabular">C2 - C5</span>
+      </div>
+      <div className="h-3 bg-[#131317] rounded-full border border-white/5 relative overflow-hidden">
+        <div className="absolute left-[20%] right-[30%] h-full rounded-full" style={{ backgroundColor: `${color}60` }} />
+      </div>
+      <div className="flex items-center justify-between text-[8px]">
+        <span className="text-text-dim">VELOCITY</span>
+        <span style={{ color }} className="tabular">1 - 127</span>
+      </div>
+    </div>
+  );
+}
+
+// MIDI Transpose display
+function MIDITransposeViz({ color }: { color: string }) {
+  return (
+    <div className="p-2 flex items-center justify-center gap-3">
+      <div className="text-center">
+        <div className="text-2xl font-black tabular" style={{ color }}>+12</div>
+        <div className="text-[8px] text-text-dim uppercase">SEMITONES</div>
+      </div>
+      <div className="h-8 w-px bg-white/10" />
+      <div className="text-center">
+        <div className="text-lg font-bold tabular text-text-secondary">+1</div>
+        <div className="text-[8px] text-text-dim uppercase">OCTAVE</div>
+      </div>
+    </div>
+  );
+}
+
+// Arpeggiator pattern
+function ArpeggiatorViz({ color }: { color: string }) {
+  const steps = [1, 3, 2, 4, 3, 5, 4, 6];
+  return (
+    <div className="p-1.5 space-y-1">
+      <div className="h-10 bg-[#131317] rounded border border-white/5 flex items-end justify-around px-1 pb-1">
+        {steps.map((h, i) => (
+          <div key={i} className="w-2 rounded-t" style={{ height: h * 5, backgroundColor: i === 2 ? color : `${color}50` }} />
+        ))}
+      </div>
+      <div className="flex justify-between text-[8px]">
+        <span className="text-text-dim">UP-DOWN</span>
+        <span style={{ color }} className="tabular">1/16</span>
+      </div>
+    </div>
+  );
+}
+
+// Logical Editor rules
+function LogicalEditorViz({ color }: { color: string }) {
+  return (
+    <div className="p-1.5 space-y-1">
+      <div className="px-2 py-1 bg-[#131317] rounded border border-white/5 text-[8px] flex items-center gap-2">
+        <span className="text-text-dim">IF</span>
+        <span style={{ color }}>Velocity {"<"} 64</span>
+      </div>
+      <div className="px-2 py-1 bg-[#131317] rounded border border-white/5 text-[8px] flex items-center gap-2">
+        <span className="text-text-dim">THEN</span>
+        <span style={{ color }}>Delete Note</span>
+      </div>
+    </div>
+  );
+}
+
+// Input gain slider
+function InputGainViz({ color }: { color: string }) {
+  return (
+    <div className="p-1.5 space-y-1.5">
+      <div className="flex justify-between items-center text-[9px]">
+        <span className="text-text-dim uppercase">Input Gain</span>
+        <span style={{ color }} className="tabular">+3.5 dB</span>
+      </div>
+      <div className="h-1.5 bg-[#131317] rounded-full border border-white/5 overflow-hidden">
+        <div className="h-full w-2/3 rounded-full" style={{ backgroundColor: color, boxShadow: `0 0 6px ${color}60` }} />
+      </div>
+    </div>
+  );
+}
+
+// LFO waveform
+function LFOViz({ color }: { color: string }) {
+  return (
+    <div className="p-1.5 space-y-1">
+      <div className="h-8 bg-[#131317] rounded border border-white/5 overflow-hidden">
+        <svg className="w-full h-full" viewBox="0 0 60 20">
+          <path d="M0,10 Q7.5,0 15,10 T30,10 T45,10 T60,10" fill="none" stroke={color} strokeWidth="1.5" />
+        </svg>
+      </div>
+      <div className="flex justify-between text-[8px]">
+        <span className="text-text-dim">SINE</span>
+        <span style={{ color }} className="tabular">2.0 Hz</span>
+      </div>
+    </div>
+  );
+}
+
+// Reverb decay visualization  
+function ReverbViz({ color }: { color: string }) {
+  return (
+    <div className="p-1.5 space-y-1">
+      <div className="h-8 bg-[#131317] rounded border border-white/5 overflow-hidden relative">
+        <svg className="w-full h-full" viewBox="0 0 60 20">
+          <path d="M0,18 Q5,2 15,10 Q25,16 35,14 Q45,12 55,17 L60,18" fill={`${color}20`} stroke={color} strokeWidth="1" />
+        </svg>
+      </div>
+      <div className="flex justify-between text-[8px]">
+        <span className="text-text-dim">DECAY</span>
+        <span style={{ color }} className="tabular">2.4s</span>
+      </div>
+    </div>
+  );
+}
+
+// Delay time visualization
+function DelayViz({ color }: { color: string }) {
+  return (
+    <div className="p-1.5 space-y-1.5">
+      <div className="flex gap-1 h-6 items-end">
+        {[1, 0.7, 0.5, 0.3, 0.15].map((h, i) => (
+          <div key={i} className="flex-1 rounded-t" style={{ height: `${h * 100}%`, backgroundColor: color, opacity: 1 - i * 0.15 }} />
+        ))}
+      </div>
+      <div className="flex justify-between text-[8px]">
+        <span className="text-text-dim">1/8 SYNC</span>
+        <span style={{ color }} className="tabular">45% FB</span>
+      </div>
+    </div>
+  );
+}
+
+// Select visualization based on plugin name
+function getBlockVisualization(name: string, category: string, color: string) {
+  const lowerName = name.toLowerCase();
+  
+  // MIDI/Logic category
+  if (category === "logic") {
+    if (lowerName.includes("router") || lowerName.includes("route")) return <MIDIRouterViz color={color} />;
+    if (lowerName.includes("filter") && lowerName.includes("midi")) return <MIDIFilterViz color={color} />;
+    if (lowerName.includes("transpose")) return <MIDITransposeViz color={color} />;
+    if (lowerName.includes("arp")) return <ArpeggiatorViz color={color} />;
+    if (lowerName.includes("logical") || lowerName.includes("editor")) return <LogicalEditorViz color={color} />;
+    if (lowerName.includes("lfo")) return <LFOViz color={color} />;
+    return <MIDIRouterViz color={color} />;
+  }
+  
+  // Generator category
+  if (category === "generator") {
+    if (lowerName.includes("osc") || lowerName.includes("serum") || lowerName.includes("vital")) return <OscillatorViz color={color} name={name} />;
+    if (lowerName.includes("input") || lowerName.includes("audio in")) return <InputGainViz color={color} />;
+    return <MiniWaveform color={color} />;
+  }
+  
+  // Modifier category
+  if (lowerName.includes("eq") || lowerName.includes("pro-q") || lowerName.includes("proq")) return <EQCurveViz color={color} />;
+  if (lowerName.includes("comp") || lowerName.includes("1176") || lowerName.includes("limiter")) return <CompressorViz color={color} />;
+  if (lowerName.includes("reverb") || lowerName.includes("valhalla") || lowerName.includes("room")) return <ReverbViz color={color} />;
+  if (lowerName.includes("delay") || lowerName.includes("h-delay")) return <DelayViz color={color} />;
+  if (lowerName.includes("filter") && !lowerName.includes("midi")) return <EQCurveViz color={color} />;
+  
+  return null;
 }
 
 // ── Bypass stripe overlay ──
@@ -352,43 +595,28 @@ function BlockComponent({ data, selected }: NodeProps) {
         </div>
       </div>
 
-      {/* Body — tight 8px padding, UE5-like density */}
+      {/* Body — rich visualizations based on plugin type */}
       {/* Hidden by .perform-mode .block-body { display:none } */}
       <div
-        className="block-body p-2 space-y-1.5"
+        className="block-body"
         style={{ opacity: d.bypassed ? 0.6 : 1 }}
       >
-        {/* Category-specific viz */}
-        {d.category === "generator" && <MiniWaveform color={cat.hex} />}
-
-        {d.category === "modifier" && (
-          <div className="text-[10px] text-white/30 tracking-widest text-center uppercase">
-            Signal Processing
+        {/* Plugin-specific visualization */}
+        {getBlockVisualization(d.name, d.category, cat.hex) || (
+          <div className="p-2 text-[9px] text-white/30 tracking-widest text-center uppercase">
+            {d.category === "generator" ? "Audio Source" : d.category === "logic" ? "Logic / MIDI" : "Signal Processing"}
           </div>
         )}
 
-        {d.category === "logic" && (
-          <div className="text-[10px] text-white/30 tracking-widest text-center uppercase">
-            Routing
-          </div>
-        )}
-
-        {/* Latency readout */}
-        {d.latencyMs > 0 && (
-          <div className="flex justify-between items-center text-[10px] text-text-secondary">
-            <span>LATENCY</span>
-            <span className="tabular" style={{ color: cat.hex }}>
-              {d.latencyMs}ms
-            </span>
-          </div>
-        )}
-
-        {/* CPU readout — tiny, bottom-right */}
-        {d.cpuLoad > 0 && (
-          <div className="text-right">
-            <span className="text-[10px] tabular text-text-dim">
-              {d.cpuLoad.toFixed(1)}ms
-            </span>
+        {/* Status row: Latency + CPU */}
+        {(d.latencyMs > 0 || d.cpuLoad > 0) && (
+          <div className="flex justify-between items-center px-2 py-1 border-t border-white/5 text-[8px] text-text-dim">
+            {d.latencyMs > 0 && (
+              <span className="tabular">LAT: <span style={{ color: cat.hex }}>{d.latencyMs}ms</span></span>
+            )}
+            {d.cpuLoad > 0 && (
+              <span className="tabular">CPU: <span style={{ color: d.cpuLoad > 50 ? "#EF4444" : d.cpuLoad > 25 ? "#E8A838" : cat.hex }}>{d.cpuLoad.toFixed(1)}%</span></span>
+            )}
           </div>
         )}
       </div>
