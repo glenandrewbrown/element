@@ -525,13 +525,12 @@ public:
         mainContentLabel.setFont (Font (FontOptions (12.0, Font::bold)));
         addAndMakeVisible (mainContentBox);
         mainContentBox.addItem ("Standard", 1);
-        // mainContentBox.addItem ("Workspace", 2);
-        if (settings.getMainContentType() == "standard")
+        mainContentBox.addItem ("Web (React)", 2);
+        const auto mct = settings.getMainContentType();
+        if (mct == "standard")
             mainContentBox.setSelectedId (1, dontSendNotification);
         else
-        {
-            jassertfalse;
-        } // invalid content type
+            mainContentBox.setSelectedId (2, dontSendNotification);
         mainContentBox.getSelectedIdAsValue().addListener (this);
     }
 
@@ -668,8 +667,8 @@ public:
         }
         else if (value.refersToSameSourceAs (mainContentBox.getSelectedIdAsValue()))
         {
-            auto uitype = settings.getMainContentType();
-            if (1 == mainContentBox.getSelectedId())
+            String uitype ("webview");
+            if (mainContentBox.getSelectedId() == 1)
                 uitype = "standard";
 
             if (uitype != settings.getMainContentType())

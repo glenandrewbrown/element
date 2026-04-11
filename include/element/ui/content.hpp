@@ -25,6 +25,7 @@ class Services;
 class Context;
 class MainWindow;
 class Node;
+class Graph;
 
 //==============================================================================
 class ContentView : public juce::Component {
@@ -112,6 +113,13 @@ public:
     virtual void setCurrentNode (const Node& node);
     virtual void stabilize (const bool refreshDataPathTrees = false);
     virtual void stabilizeViews();
+
+    /** Optional footer strip (e.g. performance sliders in plugin editor). Default: no-op. */
+    virtual void setExtraView (juce::Component* comp);
+    virtual juce::Component* extraView();
+
+    /** Plugin editor embed: show the active board. Default: no-op. */
+    virtual void setupPluginEditorWithGraph (Graph&);
 
     /** @internal */
     void paint (juce::Graphics& g) override;

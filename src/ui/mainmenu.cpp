@@ -22,7 +22,18 @@
 #include "ui/viewhelpers.hpp"
 #include "ui/pluginwindow.hpp"
 
+#if JUCE_WEB_BROWSER
+ #include <element/ui/web_content.hpp>
+#endif
+
 namespace element {
+
+#if JUCE_WEB_BROWSER
+static bool mainMenuWebShellActive (MainWindow& owner)
+{
+    return dynamic_cast<WebContent*> (owner.getContentComponent()) != nullptr;
+}
+#endif
 
 MainMenu::MainMenu (MainWindow& parent, Commands& c)
     : owner (parent), world (parent.context()), cmd (c) {}
@@ -246,15 +257,26 @@ void MainMenu::addRecentFiles (PopupMenu& menu)
 
 void MainMenu::buildFileMenu (PopupMenu& menu)
 {
-    menu.addCommandItem (&cmd, Commands::sessionNew, "New Session");
-    menu.addSeparator();
+#if JUCE_WEB_BROWSER
+    const bool webShell = mainMenuWebShellActive (owner);
+#else
+    const bool webShell = false;
+#endif
+    if (! webShell)
+    {
+        menu.addCommandItem (&cmd, Commands::sessionNew, "New Session");
+        menu.addSeparator();
+    }
     menu.addCommandItem (&cmd, Commands::sessionOpen, "Open Session...");
     addRecentFiles (menu);
-    menu.addCommandItem (&cmd, Commands::sessionSave, "Save Session");
-    menu.addCommandItem (&cmd, Commands::sessionSaveAs, "Save Session As...");
-    menu.addSeparator();
-    menu.addCommandItem (&cmd, Commands::importGraph, "Import...");
-    menu.addCommandItem (&cmd, Commands::exportGraph, "Export graph...");
+    if (! webShell)
+    {
+        menu.addCommandItem (&cmd, Commands::sessionSave, "Save Session");
+        menu.addCommandItem (&cmd, Commands::sessionSaveAs, "Save Session As...");
+        menu.addSeparator();
+        menu.addCommandItem (&cmd, Commands::importGraph, "Import...");
+        menu.addCommandItem (&cmd, Commands::exportGraph, "Export graph...");
+    }
 
 #if ! JUCE_MAC
     menu.addSeparator();
@@ -267,9 +289,28 @@ void MainMenu::buildFileMenu (PopupMenu& menu)
 #endif
 }
 
-void MainMenu::buildEditMenu (PopupMenu& menu) { buildEditMenu (cmd, menu); }
+void MainMenu::buildEditMenu (PopupMenu& menu)
+{
+#if JUCE_WEB_BROWSER
+    if (mainMenuWebShellActive (owner))
+    {
+        menu.addCommandItem (&cmd, Commands::undo, "Undo");
+        menu.addCommandItem (&cmd, Commands::redo, "Redo");
+        return;
+    }
+#endif
+    buildEditMenu (cmd, menu);
+}
 void MainMenu::buildViewMenu (PopupMenu& menu)
 {
+#if JUCE_WEB_BROWSER
+    if (mainMenuWebShellActive (owner))
+    {
+        menu.addCommandItem (&cmd, Commands::showPluginManager, "Plugin Manager");
+        menu.addCommandItem (&cmd, Commands::showKeymapEditor, "Key Mappings");
+        return;
+    }
+#endif
     auto& settings (world.settings());
     buildViewMenu (cmd, menu);
     if (settings.getBool ("legacyControllers", false))

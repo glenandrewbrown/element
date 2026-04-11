@@ -85,6 +85,10 @@ public:
     void getCommandInfo (juce::CommandID commandID, juce::ApplicationCommandInfo& result) override;
     bool perform (const InvocationInfo& info) override;
 
+    /** Undo / redo used by the WebView bridge (same transaction stack as the graph editor). */
+    void performUndo();
+    void performRedo();
+
     /** Returns the content component for this instance */
     Content* content();
 

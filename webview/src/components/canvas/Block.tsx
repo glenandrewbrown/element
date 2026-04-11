@@ -77,6 +77,23 @@ const bypassOverlay: React.CSSProperties = {
   borderRadius: "inherit",
 };
 
+const muteOverlay: React.CSSProperties = {
+  position: "absolute",
+  inset: 0,
+  background: "rgba(0,0,0,0.38)",
+  pointerEvents: "none",
+  borderRadius: "inherit",
+};
+
+/** JUCE `Colour::toString()` is often `#AARRGGBB`; CSS border wants opaque RGB. */
+function hostColourOutline(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  const t = raw.trim();
+  if (t.startsWith("#") && t.length === 9) return `#${t.slice(3)}`;
+  if (t.startsWith("#") && t.length === 7) return t;
+  return undefined;
+}
+
 // ── Block component ──
 
 function BlockComponent({ data, selected }: NodeProps) {
@@ -232,11 +249,20 @@ function BlockComponent({ data, selected }: NodeProps) {
     ? "-2px -2px 8px rgba(255,255,255,0.08), 2px 2px 8px rgba(0,0,0,0.5)"
     : "-2px -2px 8px rgba(255,255,255,0.04), 2px 2px 8px rgba(0,0,0,0.35)";
 
+  const hostOutline = hostColourOutline(d.hostColor);
+
   return (
     <div
       style={{
         contain: "content",
         boxShadow: selectedShadow,
+        ...(hostOutline
+          ? {
+              outlineWidth: 2,
+              outlineColor: hostOutline,
+              outlineStyle: "solid",
+            }
+          : {}),
       }}
       className={[
         "w-48 bg-[#252529] rounded-lg overflow-visible flex flex-col relative",
@@ -255,6 +281,8 @@ function BlockComponent({ data, selected }: NodeProps) {
       {/* Bypass stripe overlay */}
       {d.bypassed && <div style={bypassOverlay} />}
 
+      {d.muted && <div style={muteOverlay} />}
+
       {/* Top colour stripe */}
       <div className={`h-1 ${cat.bg} rounded-t-lg`} />
 
@@ -269,12 +297,19 @@ function BlockComponent({ data, selected }: NodeProps) {
             {d.name}
           </span>
         </div>
-        <span
-          className="text-[10px] font-bold shrink-0"
-          style={{ color: `${cat.hex}CC` }}
-        >
-          {d.format}
-        </span>
+        <div className="flex items-center gap-1 shrink-0">
+          {d.muteInput ? (
+            <span className="text-[8px] font-black text-modifier uppercase px-1 rounded bg-modifier/15">
+              M in
+            </span>
+          ) : null}
+          <span
+            className="text-[10px] font-bold"
+            style={{ color: `${cat.hex}CC` }}
+          >
+            {d.format}
+          </span>
+        </div>
       </div>
 
       {/* Body — tight 8px padding, UE5-like density */}

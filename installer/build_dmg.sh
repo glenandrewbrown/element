@@ -14,22 +14,29 @@ OUTPUT_DIR="${3:-installer/output}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
-# Read build number (already incremented by build_pkg.sh)
-BUILD_NUMBER_FILE="$PROJECT_ROOT/build_number.txt"
-if [ -f "$BUILD_NUMBER_FILE" ]; then
-    # build_pkg.sh already incremented, so current value is next build.
-    # The PKG was built with (current - 1).
-    BUILD_NUMBER=$(( $(cat "$BUILD_NUMBER_FILE" | tr -d '[:space:]') - 1 ))
-    [ "$BUILD_NUMBER" -lt 1 ] && BUILD_NUMBER=1
-else
-    BUILD_NUMBER=1
+# Match build_pkg.sh: CFBundleVersion is the PKG filename (e.g. 2.2.0.16).
+APP_PLIST=""
+if [ -f "$PROJECT_ROOT/$BUILD_DIR/element_app_artefacts/Release/Element.app/Contents/Info.plist" ]; then
+    APP_PLIST="$PROJECT_ROOT/$BUILD_DIR/element_app_artefacts/Release/Element.app/Contents/Info.plist"
+elif [ -f "$PROJECT_ROOT/$BUILD_DIR/element_app_artefacts/Element.app/Contents/Info.plist" ]; then
+    APP_PLIST="$PROJECT_ROOT/$BUILD_DIR/element_app_artefacts/Element.app/Contents/Info.plist"
 fi
-FULL_VERSION="${VERSION}.${BUILD_NUMBER}"
 
-# Find the PKG (try full version first, then base version)
+FULL_VERSION=""
+SHORT_VERSION="$VERSION"
+if [ -n "$APP_PLIST" ]; then
+    FULL_VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$APP_PLIST" 2>/dev/null || true)
+    SHORT_VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP_PLIST" 2>/dev/null || echo "$VERSION")
+fi
+if [ -z "$FULL_VERSION" ]; then
+    BN=$(cat "$PROJECT_ROOT/build_number.txt" 2>/dev/null | tr -d '[:space:]' || echo "1")
+    FULL_VERSION="${VERSION}.${BN}"
+fi
+
+# Find the PKG (must match productbuild output from build_pkg.sh)
 PKG_PATH="$PROJECT_ROOT/$OUTPUT_DIR/Element-${FULL_VERSION}.pkg"
 if [ ! -f "$PKG_PATH" ]; then
-    PKG_PATH="$PROJECT_ROOT/$OUTPUT_DIR/Element-${VERSION}.pkg"
+    PKG_PATH="$PROJECT_ROOT/$OUTPUT_DIR/Element-${SHORT_VERSION}.pkg"
 fi
 
 DMG_PATH="$PROJECT_ROOT/$OUTPUT_DIR/Element-${FULL_VERSION}.dmg"

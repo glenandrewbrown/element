@@ -1418,6 +1418,12 @@ void StandardContent::setExtraView (Component* extra)
     resized();
 }
 
+void StandardContent::setupPluginEditorWithGraph (Graph& g)
+{
+    auto view = std::make_unique<GraphEditorView> (static_cast<const Node&> (g));
+    setMainView (view.release());
+}
+
 void StandardContent::setMeterBridgeVisible (bool vis)
 {
     if (isMeterBridgeVisible() == vis)

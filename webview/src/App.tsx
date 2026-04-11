@@ -16,6 +16,7 @@ import { GraphCanvas } from "./components/canvas/GraphCanvas";
 import { CommandPalette } from "./components/canvas/CommandPalette";
 import { useAppStore } from "./stores/useAppStore";
 import { useKeyboard } from "./hooks/useKeyboard";
+import { useJuceBridge } from "./hooks/useJuceBridge";
 
 function AppInner() {
   const mode = useAppStore((s) => s.mode);
@@ -25,6 +26,7 @@ function AppInner() {
   const closePalette = useCallback(() => setPaletteOpen(false), []);
 
   useKeyboard({ onToggleCommandPalette: togglePalette });
+  useJuceBridge();
 
   return (
     <>

@@ -1,0 +1,4 @@
+# Repomix-specific excludes (layered on .gitignore)
+repomix-output.md
+repomix-output.xml
+repomix-output.*

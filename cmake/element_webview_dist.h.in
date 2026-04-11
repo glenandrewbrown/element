@@ -1,0 +1,9 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+#pragma once
+
+namespace element::webview_dist {
+
+/** Absolute path to the Vite production bundle (run `npm run build` in webview/). */
+inline constexpr const char* kDistPath = R"(@ELEMENT_WEBVIEW_DIST_PATH@)";
+
+} // namespace element::webview_dist

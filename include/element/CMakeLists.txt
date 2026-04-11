@@ -48,3 +48,8 @@ configure_file(${PROJECT_SOURCE_DIR}/cmake/version.txt.in
     ${CMAKE_BINARY_DIR}/version.txt @ONLY)
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/version.h.in
     ${GENERATED_INCLUDE_DIR}/element/version.h @ONLY)
+
+# Vite bundle path for WebBrowserComponent ResourceProvider (npm run build in webview/).
+set(ELEMENT_WEBVIEW_DIST_PATH "${CMAKE_SOURCE_DIR}/webview/dist")
+configure_file(${PROJECT_SOURCE_DIR}/cmake/element_webview_dist.h.in
+    ${GENERATED_INCLUDE_DIR}/element/element_webview_dist.hpp @ONLY)

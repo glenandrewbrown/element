@@ -1,7 +1,7 @@
 # Element UI/UX Overhaul - LLM Agent Briefing Pack
 
 **Version:** 3.0 (Aligned with Blueprint V3.0 - Instrument Paradigm + Neumorphism)
-**Date:** 2026-03-31
+**Date:** 2026-04-01 (aligned with Blueprint V3.0, feature inventory, Stitch reference, JUCE 8.0.12 WebView flags)
 **Purpose:** Ready-to-use prompts, agent definitions, and research briefs for the multi-agent vibe-coded development of Element's UI/UX overhaul.
 
 ---
@@ -52,6 +52,8 @@
 ---
 
 ## 2. Claude Code Session Prompts
+
+**Prompt index:** Use **§2.3** for the full C++ WebView bridge implementation spec. Use **§5.1 Step 5 (INTEGRATION)** for wiring a finished React component into the host app and bridge—not §5.1 for the C++ bridge body. **§6.1** lists companion docs (inventory, Stitch HTML).
 
 ### 2.1 Session Initialiser (Run at start of every session)
 
@@ -183,6 +185,14 @@ EXISTING ARCHITECTURE:
 - State lives in juce::ValueTree (see CLAUDE.md Architecture section)
 - Audio processing uses GraphBuilder -> GraphOp sequence -> atomic pointer swap
 - Sandbox plugins use SandboxHost/SandboxWorker with SharedAudioBuffer IPC
+
+JUCE 8 CMAKE / MODULE FLAGS (Element pins JUCE 8.0.12 — verify names in juce_gui_extra):
+- Set JUCE_WEB_BROWSER=1 on targets that compile WebView code (today the static library may still force 0 — flip when adding the host).
+- Windows WebView2: JUCE_USE_WIN_WEBVIEW2_WITH_STATIC_LINKING=1 (exact spelling per upstream; avoid copy-paste from outdated tutorials using different underscores).
+- Binary targets created with juce_add_gui_app / juce_add_plugin: NEEDS_WEB_BROWSER TRUE (e.g. Linux WebKit); NEEDS_WEBVIEW2 TRUE on Windows for static WebView2 linking, not only the static element library.
+- Prefer WebBrowserComponent::Options::withBackend (Backend::webview2) on Windows so the engine is not the legacy IE backend.
+- Production: withResourceProvider + goToURL (WebBrowserComponent::getResourceProviderRoot()); provider serves "/" as index.html. Dev: optional allowedOrigin (e.g. Vite http://127.0.0.1:5173) on withResourceProvider if scripts must reach bundled paths — narrow or omit in release builds.
+- JS → C++: window.__JUCE__.backend.emitEvent (eventId, data) with withEventListener on the C++ side; parameter UI may use WebSliderRelay / WebSliderParameterAttachment where applicable.
 
 Write production-quality C++ following the coding guidelines in CLAUDE.md.
 ```
@@ -568,26 +578,33 @@ STEP 4 - VALIDATION:
 
 Every Claude Code session working on Element should load:
 
-1. `ELEMENT_UNIFIED_BLUEPRINT.md` (this project's north star)
-2. `CLAUDE.md` (build commands, architecture, coding guidelines)
-3. The specific component file(s) being worked on
+1. `docs/ELEMENT_UNIFIED_BLUEPRINT.md` (north star architecture + WebView spec)
+2. `docs/ELEMENT_FEATURE_INVENTORY.md` (feature → UI mapping, parity checklist)
+3. `CLAUDE.md` (build commands, architecture, coding guidelines)
+4. `AGENTS.md` (Cursor/agent entry; points at rules and skills)
+5. Visual reference: `docs/stitch-reference/` (`DESIGN.md`, `edit-mode.html`, `perform-mode.html`)
+6. The specific source file(s) being worked on
+
+**Web v1 product policies (don’t contradict in agents):** session **New/Open/Save/Recent** stay on the **native File menu** (not bridged in React). Nested **plugin editor UIs** use **floating JUCE windows**; `WebContent::presentView` is intentionally a no-op until an in-web embed bridge exists. Graph **copy/paste** in the Web shell uses a **host pasteboard** + `DuplicateNodeMessage` (undo-aligned), not the OS text clipboard.
 
 ### 6.2 Context Budget Guidelines
 
 | Session Type | Max Context | Strategy |
-|---|---|---|
-| Single component work | 60k tokens | Blueprint + CLAUDE.md + component file + adjacent components |
-| Architecture work | 100k tokens | Blueprint + CLAUDE.md + full src/ui/ directory codemaps |
-| Bug fix | 40k tokens | Blueprint (Section 5 theme only) + specific file + error output |
-| Research | 80k tokens | Research prompt + web search results + Blueprint (relevant section) |
+| --- | --- | --- |
+| Single component work | 60k tokens | Blueprint + inventory + CLAUDE.md + component file + adjacent components |
+| Architecture work | 100k tokens | Blueprint + CLAUDE.md + `src/ui/` / bridge host codemaps |
+| Bug fix | 40k tokens | Blueprint (visual Section 5 only if UI-related) + specific file + error output |
+| Research | 80k tokens | Research prompt + results + Blueprint (relevant section) |
 
 ### 6.3 RepoPrompt Strategy
 
-Use codemaps for the C++ codebase (don't load full files unless editing). Load full files only for:
-- The specific React component being created/edited
-- `src/hooks/useJuceBridge.ts` (always needed for C++ communication)
-- `src/providers/ThemeProvider.tsx` (always needed for styling)
-- `tailwind.config.ts` (when adjusting theme tokens)
+Use codemaps for the C++ codebase (don't load full files unless editing). For the React app under `webview/`, load full files only when editing:
+
+- The specific component being created/edited (e.g. `webview/src/components/**`)
+- `webview/src/hooks/useJuceBridge.ts` — **add this when the bridge exists**; until then, stub types at the call sites
+- `webview/src/App.tsx`, `webview/src/main.tsx` (app shell entry)
+- `webview/src/index.css` — **Tailwind v4 `@theme` tokens** (design system; no `tailwind.config.ts` in this project)
+- `vite.config.ts` when changing Vite/Tailwind plugin options
 
 ---
 
@@ -618,11 +635,12 @@ Every PR / commit should pass these checks:
 - [ ] Information density: would an expert user want MORE data visible, not less?
 
 ### 7.3 Technical Quality Gate
-- [ ] TypeScript strict mode passes
+- [ ] TypeScript strict mode passes (`cd webview && npx tsc -b`)
 - [ ] No console errors or warnings
 - [ ] Renders in WebKit (macOS), WebView2 (Windows), and WebKit2 (Linux)
 - [ ] No memory leaks in component lifecycle
 - [ ] 60fps maintained with demo graph visible
+- [ ] **C++ / realtime:** metering or graph telemetry uses lock-free queues only; no allocations and no `std::mutex` on the audio thread (see §2.3)
 
 ---
 

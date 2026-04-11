@@ -1,6 +1,56 @@
 {
-    // See https://go.microsoft.com/fwlink/?LinkId=733558
-    // for the documentation about the tasks.json format
-    "version": "2.0.0",
-    "tasks": []
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "CMake: configure (build-merged)",
+      "type": "shell",
+      "command": "cmake",
+      "args": [
+        "-B",
+        "build-merged",
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+        "-DCMAKE_OSX_DEPLOYMENT_TARGET=14.0"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "CMake: build (build-merged)",
+      "type": "shell",
+      "command": "cmake",
+      "args": ["--build", "build-merged", "-j8"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": ["$gcc"],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "CTest: build-merged",
+      "type": "shell",
+      "command": "ctest",
+      "args": ["--output-on-failure", "--timeout", "30", "-j4"],
+      "options": {
+        "cwd": "${workspaceFolder}/build-merged"
+      },
+      "group": "test",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    }
+  ]
 }

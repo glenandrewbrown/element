@@ -73,6 +73,9 @@ juce_add_gui_app(element_app
     MICROPHONE_PERMISSION_ENABLED TRUE
 
     PLIST_TO_MERGE          "${ELEMENT_APP_PLIST_TO_MERGE}"
+
+    NEEDS_WEB_BROWSER       TRUE
+    NEEDS_WEBVIEW2          TRUE
 )
 
 target_sources(element_app PRIVATE src/main.cc)
@@ -156,6 +159,9 @@ if(ELEMENT_BUILD_PLUGINS)
         NEEDS_MIDI_OUTPUT       OFF
         EDITOR_WANTS_KEYBOARD_FOCUS ON
         FORMATS                 ${ELEMENT_PLUGIN_FORMATS}
+
+        NEEDS_WEB_BROWSER       TRUE
+        NEEDS_WEBVIEW2          TRUE
     )
     clap_juce_extensions_plugin(TARGET element_instrument
         CLAP_ID "net.kushview.plugins.Element"
@@ -183,6 +189,9 @@ if(ELEMENT_BUILD_PLUGINS)
         NEEDS_MIDI_OUTPUT           OFF
         EDITOR_WANTS_KEYBOARD_FOCUS ON
         FORMATS                     ${ELEMENT_PLUGIN_FORMATS}
+
+        NEEDS_WEB_BROWSER           TRUE
+        NEEDS_WEBVIEW2              TRUE
     )
     clap_juce_extensions_plugin(TARGET element_effect
         CLAP_ID "net.kushview.ElementFX"
@@ -210,6 +219,9 @@ if(ELEMENT_BUILD_PLUGINS)
             NEEDS_MIDI_OUTPUT           ON
             EDITOR_WANTS_KEYBOARD_FOCUS ON
             FORMATS                     AU
+
+            NEEDS_WEB_BROWSER           TRUE
+            NEEDS_WEBVIEW2              TRUE
         )
 
         target_sources(element_midi_effect PRIVATE src/plugins/midieffect.cc)

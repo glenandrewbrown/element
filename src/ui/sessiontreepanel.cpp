@@ -5,6 +5,9 @@
 #include <element/graph.hpp>
 #include <element/ui/standard.hpp>
 #include <element/ui/content.hpp>
+#if JUCE_WEB_BROWSER
+ #include <element/ui/web_content.hpp>
+#endif
 #include <element/ui/navigation.hpp>
 #include <element/node.hpp>
 
@@ -61,6 +64,14 @@ inline static void showGraphEditor (Component* c, const Node& node)
     {
         return;
     }
+
+   #if JUCE_WEB_BROWSER
+    if (auto* wc = dynamic_cast<WebContent*> (ViewHelpers::findContentComponent (c)))
+    {
+        wc->activateBoard (node);
+        return;
+    }
+   #endif
 
     if (auto* cc = dynamic_cast<StandardContent*> (ViewHelpers::findContentComponent (c)))
     {

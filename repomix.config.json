@@ -1,0 +1,59 @@
+{
+  "$schema": "https://repomix.com/schemas/latest/schema.json",
+  "input": {
+    "maxFileSize": 2000000
+  },
+  "output": {
+    "filePath": "repomix-output.md",
+    "style": "markdown",
+    "parsableStyle": false,
+    "compress": false,
+    "headerText": "Element — JUCE audio plugin host. Read repomix-instruction.md and CLAUDE.md for architecture. Cursor rules: .cursor/rules/.",
+    "instructionFilePath": "repomix-instruction.md",
+    "fileSummary": true,
+    "directoryStructure": true,
+    "files": true,
+    "removeComments": false,
+    "removeEmptyLines": false,
+    "topFilesLength": 25,
+    "tokenCountTree": 5000,
+    "showLineNumbers": false,
+    "truncateBase64": true,
+    "copyToClipboard": false,
+    "includeEmptyDirectories": false,
+    "git": {
+      "sortByChanges": true,
+      "sortByChangesMaxCommits": 100,
+      "includeDiffs": false,
+      "includeLogs": false,
+      "includeLogsCount": 30
+    }
+  },
+  "include": ["**/*"],
+  "ignore": {
+    "useGitignore": true,
+    "useDotIgnore": true,
+    "useDefaultPatterns": true,
+    "customPatterns": [
+      "repomix-output.*",
+      "**/repomix-output.*",
+      "data/screenshot.png",
+      "**/.cursor/**",
+      "**/node_modules/**",
+      "**/build*/**",
+      "**/deps/juce/**",
+      "**/deps/lvtk/**",
+      "**/deps/sol2/**",
+      "**/installer/*.pkg",
+      "**/installer/*.dmg",
+      "**/libs/vstsdk2.4/**",
+      "**/libs/ASIOSDK/**"
+    ]
+  },
+  "security": {
+    "enableSecurityCheck": true
+  },
+  "tokenCount": {
+    "encoding": "o200k_base"
+  }
+}

@@ -410,12 +410,15 @@ void Settings::setDesktopScale (double scale)
 //=============================================================================
 String Settings::getMainContentType() const
 {
-    return "standard";
+    if (auto* p = getProps())
+        return p->getValue (mainContentTypeKey, "webview");
+    return "webview";
 }
 
 void Settings::setMainContentType (const String& tp)
 {
-    ignoreUnused (tp);
+    if (auto* p = getProps())
+        p->setValue (mainContentTypeKey, tp);
 }
 
 //=============================================================================

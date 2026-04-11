@@ -5,12 +5,16 @@
 
 #include "ElementApp.h"
 #include <element/node.hpp>
+#include <memory>
 
 namespace element {
 
 class Content;
 class GuiService;
 class Processor;
+
+/** Same editor chrome as PluginWindow, for embedding in WebContent / WebView host (no DocumentWindow). */
+std::unique_ptr<juce::Component> createPluginEditorPanel (GuiService&, const Node& node);
 
 /** A desktop window containing a plugin's UI. */
 class PluginWindow : public DocumentWindow,

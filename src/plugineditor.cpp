@@ -1,7 +1,9 @@
 // Copyright 2023 Kushview, LLC <info@kushview.net>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#include <element/ui/content.hpp>
 #include <element/ui/standard.hpp>
+#include <element/graph.hpp>
 #include <element/ui/style.hpp>
 #include <element/ui/commands.hpp>
 #include <element/ui.hpp>
@@ -9,8 +11,6 @@
 #include "ui/guicommon.hpp"
 #include "ui/windowmanager.hpp"
 #include "ui/pluginwindow.hpp"
-#include "ui/grapheditorview.hpp"
-
 #include "plugineditor.hpp"
 #include "pluginprocessor.hpp"
 
@@ -466,7 +466,7 @@ bool PluginEditor::keyPressed (const KeyPress& key)
 //==============================================================================
 void PluginEditor::updatePerformanceParamEnablements()
 {
-    if (auto* cc = dynamic_cast<StandardContent*> (content.getComponent()))
+    if (auto* cc = dynamic_cast<Content*> (content.getComponent()))
     {
         if (auto* ps = dynamic_cast<PerfSliders*> (cc->extraView()))
             ps->update();
@@ -486,7 +486,7 @@ void PluginEditor::handleAsyncUpdate()
     content = gui->content();
     jassert (content);
 
-    if (auto* cc = dynamic_cast<StandardContent*> (content.getComponent()))
+    if (auto* cc = dynamic_cast<Content*> (content.getComponent()))
         cc->setExtraView (new PerfSliders (processor));
 
     setResizable (true, true);
@@ -518,10 +518,11 @@ void PluginEditor::handleAsyncUpdate()
             for (int w = 0; w < gui->getNumPluginWindows(); ++w)
                 if (auto* window = gui->getPluginWindow (w))
                     window->toFront (false);
-            // if (auto standard = dynamic_cast<StandardContent*> (content.getComponent()))
-            //     standard->setCurrentNode (graph);
-            if (auto* cc = dynamic_cast<StandardContent*> (content.getComponent()))
-                cc->setMainView (new GraphEditorView (graph));
+            if (auto* cc = dynamic_cast<Content*> (content.getComponent()))
+            {
+                Graph G (graph);
+                cc->setupPluginEditorWithGraph (G);
+            }
         }
     }
 
