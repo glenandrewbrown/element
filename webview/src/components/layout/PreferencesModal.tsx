@@ -314,7 +314,8 @@ export function PreferencesModal({ onClose }: { onClose: () => void }) {
 
           {/* MIDI Tab */}
           {activeTab === "midi" && (
-            <section className="space-y-4">
+            <>
+              <section className="space-y-4">
               <h3 className="text-[11px] uppercase tracking-wider text-text-secondary font-bold">
                 MIDI Devices
               </h3>
@@ -370,12 +371,14 @@ export function PreferencesModal({ onClose }: { onClose: () => void }) {
               >
                 Apply MIDI Settings
               </button>
-            </section>
+              </section>
+            </>
           )}
 
           {/* Plugins Tab */}
           {activeTab === "plugins" && (
-            <section className="space-y-4">
+            <>
+              <section className="space-y-4">
               <h3 className="text-[11px] uppercase tracking-wider text-text-secondary font-bold">
                 Plugin Search Paths
               </h3>
@@ -449,12 +452,14 @@ export function PreferencesModal({ onClose }: { onClose: () => void }) {
                   Apply Plugin Settings
                 </button>
               </div>
-            </section>
+              </section>
+            </>
           )}
 
           {/* Canvas Tab */}
           {activeTab === "canvas" && (
-            <section className="space-y-4">
+            <>
+              <section className="space-y-4">
               <h3 className="text-[11px] uppercase tracking-wider text-text-secondary font-bold">
                 Canvas Settings
               </h3>
@@ -486,12 +491,14 @@ export function PreferencesModal({ onClose }: { onClose: () => void }) {
               >
                 Apply Canvas Settings
               </button>
-            </section>
+              </section>
+            </>
           )}
 
           {/* Mapping Tab */}
           {activeTab === "mapping" && (
-            <section className="space-y-4">
+            <>
+              <section className="space-y-4">
               <h3 className="text-[11px] uppercase tracking-wider text-text-secondary font-bold">
                 MIDI Controller Mapping
               </h3>
@@ -587,7 +594,8 @@ export function PreferencesModal({ onClose }: { onClose: () => void }) {
                   Dismiss Host Overlay
                 </button>
               </div>
-            </section>
+              </section>
+            </>
           )}
         </div>
       </div>
