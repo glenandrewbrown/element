@@ -459,10 +459,10 @@ function PluginEditorControls({ block }: { block: BlockData }) {
 function CableInspector({ cableId }: { cableId: string }) {
   const edges = useGraphStore(selectEdges);
   const nodes = useGraphStore(selectNodes);
-  const cable = edges.find((e) => e.id === cableId);
+  const edge = edges.find((e) => e.id === cableId);
   const level = useCableMeterStore((s) => s.levels[cableId] ?? 0);
 
-  if (!cable) {
+  if (!edge) {
     return (
       <div className="text-[10px] text-text-dim text-center py-4">
         Cable not found
@@ -470,10 +470,12 @@ function CableInspector({ cableId }: { cableId: string }) {
     );
   }
 
-  const sourceNode = nodes.find((n) => n.id === cable.source);
-  const targetNode = nodes.find((n) => n.id === cable.target);
-  const signalType = cable.signalType || "audio";
-  const channelCount = cable.channelCount || 2;
+  // Get cable data - React Flow wraps our data in a `data` property
+  const cable = edge.data as { signalType?: string; channelCount?: number; isSidechain?: boolean; sourcePort?: string; targetPort?: string } | undefined;
+  const sourceNode = nodes.find((n) => n.id === edge.source);
+  const targetNode = nodes.find((n) => n.id === edge.target);
+  const signalType = cable?.signalType || "audio";
+  const channelCount = cable?.channelCount || 2;
 
   const signalColor =
     signalType === "audio"
@@ -493,7 +495,7 @@ function CableInspector({ cableId }: { cableId: string }) {
         <div className="flex items-center gap-2 text-[10px]">
           <span className="text-text-secondary">From:</span>
           <span className="font-bold text-text-primary">{sourceNode?.name || "Unknown"}</span>
-          <span className="text-text-dim">({cable.sourcePort})</span>
+          <span className="text-text-dim">({edge.sourceHandle || cable?.sourcePort || "out"})</span>
         </div>
         <div className="flex items-center justify-center text-text-dim">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
@@ -503,7 +505,7 @@ function CableInspector({ cableId }: { cableId: string }) {
         <div className="flex items-center gap-2 text-[10px]">
           <span className="text-text-secondary">To:</span>
           <span className="font-bold text-text-primary">{targetNode?.name || "Unknown"}</span>
-          <span className="text-text-dim">({cable.targetPort})</span>
+          <span className="text-text-dim">({edge.targetHandle || cable?.targetPort || "in"})</span>
         </div>
       </div>
 
@@ -539,7 +541,7 @@ function CableInspector({ cableId }: { cableId: string }) {
         </div>
       </div>
 
-      {cable.isSidechain && (
+      {cable?.isSidechain && (
         <div className="flex items-center gap-2 px-3 py-2 bg-modifier/10 rounded border border-modifier/30">
           <span className="text-[10px] font-bold text-modifier uppercase">Sidechain</span>
         </div>
