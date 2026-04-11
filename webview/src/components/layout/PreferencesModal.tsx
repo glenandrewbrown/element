@@ -186,94 +186,94 @@ export function PreferencesModal({ onClose }: { onClose: () => void }) {
                 <h3 className="text-[11px] uppercase tracking-wider text-text-secondary font-bold">
                   Audio Device Configuration
                 </h3>
-            <label className="block text-text-secondary text-[10px] uppercase">
-              Driver type
-              <select
-                className="mt-1 w-full bg-pressed rounded px-2 py-1.5 text-text-primary border border-white/5"
-                value={driver}
-                onChange={(e) => setDriver(e.target.value)}
-              >
-                {(audio?.deviceTypes?.length
-                  ? audio.deviceTypes
-                  : [driver]
-                ).map((d) => (
-                  <option key={d || "default"} value={d}>
-                    {d || "Default"}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="block text-text-secondary text-[10px] uppercase">
-              Output
-              <select
-                className="mt-1 w-full bg-pressed rounded px-2 py-1.5 text-text-primary border border-white/5"
-                value={outDev}
-                onChange={(e) => setOutDev(e.target.value)}
-              >
-                {(audio?.outputDevices ?? []).map((d) => (
-                  <option key={d} value={d}>
-                    {d}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="block text-text-secondary text-[10px] uppercase">
-              Input
-              <select
-                className="mt-1 w-full bg-pressed rounded px-2 py-1.5 text-text-primary border border-white/5"
-                value={inDev}
-                onChange={(e) => setInDev(e.target.value)}
-              >
-                {(audio?.inputDevices ?? []).map((d) => (
-                  <option key={d} value={d}>
-                    {d}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              <label className="block text-text-secondary text-[10px] uppercase">
-                Sample rate
-                <select
-                  className="mt-1 w-full bg-pressed rounded px-2 py-1.5 text-text-primary border border-white/5"
-                  value={sr}
-                  onChange={(e) => setSr(Number(e.target.value))}
+                <label className="block text-text-secondary text-[10px] uppercase">
+                  Driver type
+                  <select
+                    className="mt-1 w-full bg-pressed rounded px-2 py-1.5 text-text-primary border border-white/5"
+                    value={driver}
+                    onChange={(e) => setDriver(e.target.value)}
+                  >
+                    {(audio?.deviceTypes?.length
+                      ? audio.deviceTypes
+                      : [driver]
+                    ).map((d) => (
+                      <option key={d || "default"} value={d}>
+                        {d || "Default"}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block text-text-secondary text-[10px] uppercase">
+                  Output
+                  <select
+                    className="mt-1 w-full bg-pressed rounded px-2 py-1.5 text-text-primary border border-white/5"
+                    value={outDev}
+                    onChange={(e) => setOutDev(e.target.value)}
+                  >
+                    {(audio?.outputDevices ?? []).map((d) => (
+                      <option key={d} value={d}>
+                        {d}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block text-text-secondary text-[10px] uppercase">
+                  Input
+                  <select
+                    className="mt-1 w-full bg-pressed rounded px-2 py-1.5 text-text-primary border border-white/5"
+                    value={inDev}
+                    onChange={(e) => setInDev(e.target.value)}
+                  >
+                    {(audio?.inputDevices ?? []).map((d) => (
+                      <option key={d} value={d}>
+                        {d}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="block text-text-secondary text-[10px] uppercase">
+                    Sample rate
+                    <select
+                      className="mt-1 w-full bg-pressed rounded px-2 py-1.5 text-text-primary border border-white/5"
+                      value={sr}
+                      onChange={(e) => setSr(Number(e.target.value))}
+                    >
+                      {(audio?.sampleRates ?? []).map((r) => (
+                        <option key={r} value={r}>
+                          {r}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block text-text-secondary text-[10px] uppercase">
+                    Buffer
+                    <select
+                      className="mt-1 w-full bg-pressed rounded px-2 py-1.5 text-text-primary border border-white/5"
+                      value={buf}
+                      onChange={(e) => setBuf(Number(e.target.value))}
+                    >
+                      {(audio?.bufferSizes ?? []).map((b) => (
+                        <option key={b} value={b}>
+                          {b}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <button
+                  type="button"
+                  className="w-full py-2 rounded bg-elevated shadow-neu-raised text-text-primary text-[11px] font-bold uppercase tracking-wide"
+                  onClick={() =>
+                    void nativeAudioApplySetup({
+                      outputDeviceName: outDev,
+                      inputDeviceName: inDev,
+                      audioDeviceType: driver,
+                      sampleRate: sr,
+                      bufferSize: buf,
+                    })
+                  }
                 >
-                  {(audio?.sampleRates ?? []).map((r) => (
-                    <option key={r} value={r}>
-                      {r}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="block text-text-secondary text-[10px] uppercase">
-                Buffer
-                <select
-                  className="mt-1 w-full bg-pressed rounded px-2 py-1.5 text-text-primary border border-white/5"
-                  value={buf}
-                  onChange={(e) => setBuf(Number(e.target.value))}
-                >
-                  {(audio?.bufferSizes ?? []).map((b) => (
-                    <option key={b} value={b}>
-                      {b}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <button
-              type="button"
-              className="w-full py-2 rounded bg-elevated shadow-neu-raised text-text-primary text-[11px] font-bold uppercase tracking-wide"
-              onClick={() =>
-                void nativeAudioApplySetup({
-                  outputDeviceName: outDev,
-                  inputDeviceName: inDev,
-                  audioDeviceType: driver,
-                  sampleRate: sr,
-                  bufferSize: buf,
-                })
-              }
-            >
                   Apply audio
                 </button>
               </section>
