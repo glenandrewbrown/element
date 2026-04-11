@@ -30,7 +30,7 @@ const LEFT_W = 260;
 const LEFT_COLLAPSED_W = 36;
 const RIGHT_W = 280;
 const RIGHT_COLLAPSED_W = 36;
-const BOTTOM_EDIT_H = 64;
+const BOTTOM_EDIT_H = 180; // Increased to fit keyboard
 const BOTTOM_PERFORM_H = 180;
 
 // ── Panel wrappers ──

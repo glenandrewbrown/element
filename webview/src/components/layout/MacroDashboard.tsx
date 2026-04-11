@@ -293,7 +293,7 @@ export function MacroDashboard() {
 
 export function PanicButton() {
   return (
-    <button className="absolute bottom-6 right-6 w-14 h-14 rounded-full bg-pressed shadow-[-2px_-2px_8px_rgba(255,255,255,0.04),2px_2px_8px_rgba(0,0,0,0.35)] border border-error/20 flex flex-col items-center justify-center active:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] active:translate-y-px group transition-all z-10">
+    <button className="absolute bottom-32 right-6 w-14 h-14 rounded-full bg-pressed shadow-[-2px_-2px_8px_rgba(255,255,255,0.04),2px_2px_8px_rgba(0,0,0,0.35)] border border-error/20 flex flex-col items-center justify-center active:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] active:translate-y-px group transition-all z-10">
       <Icon
         d={ICON_EMERGENCY}
         size={24}
