@@ -193,7 +193,7 @@ export function Toolbar() {
               </div>
             </div>
           ) : (
-            /* Perform mode: badge + BPM + LIVE */
+            /* Perform mode: badge + BPM + LIVE + Mode toggle */
             <>
               <div className="h-4 w-px bg-white/10 mx-1" />
               <div className="flex items-center gap-4">
@@ -209,6 +209,17 @@ export function Toolbar() {
                   <span>4/4</span>
                   <span>LIVE</span>
                 </div>
+                {/* Mode toggle - back to Edit */}
+                <button
+                  onClick={toggleMode}
+                  className="flex items-center gap-1 bg-pressed px-3 py-1 rounded-full shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] border border-white/5"
+                >
+                  <span className="text-[10px] text-text-secondary">EDIT</span>
+                  <div className="w-6 h-3 bg-modifier rounded-full relative">
+                    <div className="absolute left-0.5 top-0.5 w-2 h-2 bg-text-primary rounded-full" />
+                  </div>
+                  <span className="text-[10px] text-modifier font-bold">PERFORM</span>
+                </button>
               </div>
             </>
           )}

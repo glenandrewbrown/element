@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { NeuButton } from "../neu";
 import { ConsolePanel } from "./ConsolePanel";
+import { VirtualKeyboard } from "./VirtualKeyboard";
 
 // ── Icon paths ──
 const ICON_FOLDER = "M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z";
@@ -8,6 +9,7 @@ const ICON_AUTOMATION = "M19.43 12.98c.04-.32.07-.64.07-.98 0-.34-.03-.66-.07-.9
 const ICON_LOG = "M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z";
 const ICON_CONSOLE = "M20 19V7H4v12h16m0-16c1.11 0 2 .89 2 2v14c0 1.1-.89 2-2 2H4c-1.1 0-2-.9-2-2V5c0-1.11.9-2 2-2h16m-7 14v-2h5v2h-5m-3.13-3.83L9 12.79 6.21 15.5 4.79 14.08l4.21-4.21 2.79 2.79 3.79-3.79 1.42 1.42-5.21 5.21z";
 const ICON_DISK = "M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z";
+const ICON_KEYBOARD = "M20 5H4c-1.1 0-1.99.9-1.99 2L2 17c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-9 3h2v2h-2V8zm0 3h2v2h-2v-2zM8 8h2v2H8V8zm0 3h2v2H8v-2zm-1 2H5v-2h2v2zm0-3H5V8h2v2zm9 7H8v-2h8v2zm0-4h-2v-2h2v2zm0-3h-2V8h2v2zm3 3h-2v-2h2v2zm0-3h-2V8h2v2z";
 
 function Icon({ d, size = 14, className = "" }: { d: string; size?: number; className?: string }) {
   return (
@@ -17,7 +19,7 @@ function Icon({ d, size = 14, className = "" }: { d: string; size?: number; clas
   );
 }
 
-type BottomTab = "snippets" | "automation" | "log" | "console";
+type BottomTab = "snippets" | "automation" | "log" | "console" | "keyboard";
 
 // ── SnippetShelf ──
 
@@ -29,6 +31,7 @@ export function SnippetShelf() {
     { id: "automation", label: "Automation", icon: ICON_AUTOMATION },
     { id: "log", label: "Log", icon: ICON_LOG },
     { id: "console", label: "Console", icon: ICON_CONSOLE },
+    { id: "keyboard", label: "Keyboard", icon: ICON_KEYBOARD },
   ];
 
   return (
@@ -157,6 +160,8 @@ export function SnippetShelf() {
         )}
 
         {activeTab === "console" && <ConsolePanel />}
+
+        {activeTab === "keyboard" && <VirtualKeyboard />}
       </div>
     </div>
   );

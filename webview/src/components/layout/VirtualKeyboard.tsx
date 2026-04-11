@@ -50,7 +50,7 @@ function Key({ note, isBlack, isActive, onNoteOn, onNoteOff }: KeyProps) {
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseLeave}
         className={[
-          "absolute w-6 h-16 -ml-3 z-10 rounded-b transition-all cursor-pointer",
+          "absolute w-5 h-12 -ml-2.5 z-10 rounded-b transition-all cursor-pointer",
           isActive
             ? "bg-generator shadow-[0_0_8px_rgba(74,144,217,0.6)] translate-y-0.5"
             : "bg-[#1A1A1E] shadow-[2px_2px_6px_rgba(0,0,0,0.5),-1px_-1px_3px_rgba(255,255,255,0.03)] hover:bg-[#252529]",
@@ -68,7 +68,7 @@ function Key({ note, isBlack, isActive, onNoteOn, onNoteOff }: KeyProps) {
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseLeave}
       className={[
-        "relative w-10 h-24 rounded-b transition-all cursor-pointer flex items-end justify-center pb-1",
+        "relative w-8 h-20 rounded-b transition-all cursor-pointer flex items-end justify-center pb-0.5",
         isActive
           ? "bg-generator shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4)] translate-y-0.5"
           : "bg-[#E5E5EA] shadow-[2px_2px_6px_rgba(0,0,0,0.3),-1px_-1px_3px_rgba(255,255,255,0.1)] hover:bg-[#D0D0D5]",
@@ -77,7 +77,7 @@ function Key({ note, isBlack, isActive, onNoteOn, onNoteOff }: KeyProps) {
     >
       <span
         className={[
-          "text-[8px] font-bold",
+          "text-[7px] font-bold",
           isActive ? "text-white" : "text-[#1A1A1E]/40",
         ].join(" ")}
       >
@@ -251,11 +251,11 @@ export function VirtualKeyboard({ onClose }: VirtualKeyboardProps) {
   }, [baseNote, handleNoteOn, handleNoteOff]);
 
   return (
-    <div className="flex flex-col bg-panel border border-white/5 rounded-lg shadow-[-2px_-2px_8px_rgba(255,255,255,0.04),2px_2px_8px_rgba(0,0,0,0.35)] overflow-hidden">
+    <div className="h-full flex flex-col bg-panel overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2 bg-pressed border-b border-white/5">
-        <span className="text-[11px] font-bold text-text-primary uppercase tracking-widest">
-          Virtual Keyboard
+      <div className="flex items-center justify-between px-4 py-1.5 bg-pressed border-b border-white/5">
+        <span className="text-[10px] font-bold text-text-primary uppercase tracking-widest">
+          MIDI Keyboard
         </span>
         <div className="flex items-center gap-4">
           {/* Octave controls */}
@@ -300,7 +300,7 @@ export function VirtualKeyboard({ onClose }: VirtualKeyboardProps) {
       </div>
 
       {/* Keyboard */}
-      <div className="flex px-2 py-3 bg-[#131317] justify-center">
+      <div className="flex-1 flex px-2 py-2 bg-[#131317] justify-center items-start">
         <Octave
           baseNote={baseNote - 12}
           activeNotes={activeNotes}
@@ -322,8 +322,8 @@ export function VirtualKeyboard({ onClose }: VirtualKeyboardProps) {
       </div>
 
       {/* Footer hint */}
-      <div className="px-4 py-1.5 bg-pressed border-t border-white/5 text-[9px] text-text-dim text-center">
-        Use A-L keys to play. Z/X to shift octave. Hold SPACE for sustain.
+      <div className="px-4 py-1 bg-pressed border-t border-white/5 text-[8px] text-text-dim text-center">
+        Keys: A-L | Octave: Z/X | Sustain: Hold SPACE
       </div>
     </div>
   );
