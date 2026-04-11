@@ -132,6 +132,7 @@ function PlaceholderPanel({ label }: { label: string }) {
 
 interface AppShellProps {
   toolbar?: ReactNode;
+  statusBar?: ReactNode;
   editLeftPanel?: ReactNode;
   editRightPanel?: ReactNode;
   editBottomPanel?: ReactNode;
@@ -143,6 +144,7 @@ interface AppShellProps {
 
 export function AppShell({
   toolbar,
+  statusBar,
   editLeftPanel,
   editRightPanel,
   editBottomPanel,
@@ -234,6 +236,16 @@ export function AppShell({
           </BottomSlot>
         )}
       </AnimatePresence>
+
+      {/* ── Status Bar ── */}
+      {statusBar && (
+        <div
+          className="fixed left-0 right-0 z-40"
+          style={{ bottom: bottomOpen ? bottomH : 0 }}
+        >
+          {statusBar}
+        </div>
+      )}
 
       {/* ── Canvas (center fill) ── */}
       <main

@@ -8,6 +8,7 @@ import { InspectorHub } from "./components/layout/InspectorHub";
 import { SnippetShelf } from "./components/layout/SnippetShelf";
 import { QuickAccess } from "./components/layout/QuickAccess";
 import { LiveHealth } from "./components/layout/LiveHealth";
+import { StatusBar } from "./components/layout/StatusBar";
 import {
   MacroDashboard,
   PanicButton,
@@ -32,6 +33,7 @@ function AppInner() {
     <>
       <AppShell
         toolbar={<Toolbar />}
+        statusBar={<StatusBar />}
         editLeftPanel={<ToolPalette />}
         editRightPanel={<InspectorHub />}
         editBottomPanel={<SnippetShelf />}

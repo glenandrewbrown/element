@@ -231,3 +231,32 @@ export async function nativeSetNodeParameter(
   ]);
   return r === true;
 }
+
+export async function nativeGraphSetNodeColor(
+  nodeId: string,
+  color: string,
+): Promise<boolean> {
+  const r = await invokeElementNative("elementGraphSetNodeColor", [
+    nodeId,
+    color,
+  ]);
+  return r === true;
+}
+
+export async function nativeGraphRemoveNodes(
+  nodeIds: string[],
+): Promise<number> {
+  const r = await invokeElementNative("elementGraphRemoveNodes", [nodeIds]);
+  return typeof r === "number" ? r : 0;
+}
+
+export async function nativeGraphAlignNodes(
+  nodeIds: string[],
+  direction: "horizontal" | "vertical",
+): Promise<boolean> {
+  const r = await invokeElementNative("elementGraphAlignNodes", [
+    nodeIds,
+    direction,
+  ]);
+  return r === true;
+}

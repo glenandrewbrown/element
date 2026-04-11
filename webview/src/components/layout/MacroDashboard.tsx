@@ -207,14 +207,81 @@ export function MacroDashboard() {
         )}
 
         {activeTab === "scenes" && (
-          <div className="flex-1 flex items-center justify-center text-[10px] text-text-dim uppercase tracking-widest">
-            Scene Launch Grid
+          <div className="flex gap-4 flex-1">
+            {/* Scene Grid */}
+            <div className="flex-1 grid grid-cols-4 gap-3 content-start">
+              {[...Array(8)].map((_, i) => {
+                const scene = { id: `scene-${i}`, name: `Scene ${i + 1}`, active: i === 0, hasCapture: i < 3 };
+                return (
+                  <button
+                    key={i}
+                    className={[
+                      "h-16 rounded-lg flex flex-col items-center justify-center transition-all",
+                      scene.active
+                        ? "bg-modifier/20 border-2 border-modifier shadow-[0_0_12px_rgba(232,168,56,0.2)]"
+                        : "bg-surface border border-white/5 hover:border-white/10",
+                    ].join(" ")}
+                  >
+                    <span className="text-[11px] font-bold text-text-primary">{scene.name}</span>
+                    <span className="text-[9px] text-text-dim">PC {i}</span>
+                    {scene.hasCapture && (
+                      <div className="w-1.5 h-1.5 rounded-full bg-logic mt-1" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            
+            {/* Scene controls */}
+            <div className="w-32 flex flex-col gap-2 border-l border-white/5 pl-4">
+              <button className="py-2 px-3 bg-surface rounded text-[10px] font-bold text-text-primary">
+                + Add Scene
+              </button>
+              <button className="py-2 px-3 bg-logic/20 rounded text-[10px] font-bold text-logic">
+                Capture
+              </button>
+              <div className="flex-1" />
+              <div className="text-[9px] text-text-dim">
+                Click to activate. MIDI PC supported.
+              </div>
+            </div>
           </div>
         )}
 
         {activeTab === "fx" && (
-          <div className="flex-1 flex items-center justify-center text-[10px] text-text-dim uppercase tracking-widest">
-            Performance FX
+          <div className="flex gap-8 flex-1">
+            {/* XY Pad */}
+            <div className="w-32 h-28 bg-pressed rounded-lg shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4)] relative border border-white/5">
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-3 h-3 rounded-full bg-generator shadow-[0_0_8px_rgba(74,144,217,0.6)]" />
+              </div>
+              <span className="absolute bottom-1 right-2 text-[8px] text-text-dim">XY PAD</span>
+            </div>
+            
+            {/* FX Buttons */}
+            <div className="grid grid-cols-4 gap-2 flex-1 content-start">
+              {["Filter Sweep", "Stutter", "Reverb Wash", "Bit Crush", "Tape Stop", "Vinyl", "Gate", "Noise"].map((fx, i) => (
+                <button
+                  key={fx}
+                  className={[
+                    "h-12 rounded-lg flex items-center justify-center text-[10px] font-bold uppercase transition-all",
+                    i === 0 ? "bg-generator/20 text-generator border border-generator/30" : "bg-surface border border-white/5 text-text-secondary hover:text-text-primary",
+                  ].join(" ")}
+                >
+                  {fx}
+                </button>
+              ))}
+            </div>
+            
+            {/* Dry/Wet slider */}
+            <div className="w-24 flex flex-col items-center gap-2">
+              <span className="text-[9px] text-text-secondary uppercase">Dry/Wet</span>
+              <div className="flex-1 w-8 bg-pressed rounded-sm relative overflow-hidden border border-white/5">
+                <div className="absolute bottom-0 w-full bg-modifier h-[35%]" />
+                <div className="absolute bottom-[35%] left-[-2px] right-[-2px] h-2 bg-surface border border-white/10 z-10" />
+              </div>
+              <span className="text-[10px] font-bold text-modifier tabular">35%</span>
+            </div>
           </div>
         )}
       </div>
