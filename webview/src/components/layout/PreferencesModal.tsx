@@ -182,10 +182,10 @@ export function PreferencesModal({ onClose }: { onClose: () => void }) {
           {/* Audio Tab */}
           {activeTab === "audio" && (
             <>
-            <section className="space-y-4">
-            <h3 className="text-[11px] uppercase tracking-wider text-text-secondary font-bold">
-              Audio Device Configuration
-            </h3>
+              <section className="space-y-4">
+                <h3 className="text-[11px] uppercase tracking-wider text-text-secondary font-bold">
+                  Audio Device Configuration
+                </h3>
             <label className="block text-text-secondary text-[10px] uppercase">
               Driver type
               <select
@@ -274,47 +274,47 @@ export function PreferencesModal({ onClose }: { onClose: () => void }) {
                 })
               }
             >
-              Apply audio
-            </button>
-            </section>
+                  Apply audio
+                </button>
+              </section>
 
-            <section className="space-y-3 border-t border-white/10 pt-4">
-            <h3 className="text-[10px] uppercase tracking-wider text-text-secondary">
-              OSC Host
-            </h3>
-            <label className="flex items-center gap-2 text-text-primary">
-              <input
-                type="checkbox"
-                checked={oscEn}
-                onChange={(e) => setOscEn(e.target.checked)}
-              />
-              Enable OSC Server
-            </label>
-            <label className="block text-text-secondary text-[10px] uppercase">
-              Port
-              <input
-                type="number"
-                className="mt-1 w-full bg-pressed rounded px-2 py-1.5 text-text-primary border border-white/5"
-                value={oscPort}
-                onChange={(e) => setOscPort(Number(e.target.value))}
-              />
-            </label>
-            <button
-              type="button"
-              className="w-full py-2 rounded bg-elevated shadow-neu-raised text-text-primary text-[11px] font-bold uppercase tracking-wide"
-              onClick={() =>
-                void nativeOscApplyHost({ enabled: oscEn, port: oscPort })
-              }
-            >
-              Apply OSC Settings
-            </button>
-            </section>
+              <section className="space-y-3 border-t border-white/10 pt-4">
+                <h3 className="text-[10px] uppercase tracking-wider text-text-secondary">
+                  OSC Host
+                </h3>
+                <label className="flex items-center gap-2 text-text-primary">
+                  <input
+                    type="checkbox"
+                    checked={oscEn}
+                    onChange={(e) => setOscEn(e.target.checked)}
+                  />
+                  Enable OSC Server
+                </label>
+                <label className="block text-text-secondary text-[10px] uppercase">
+                  Port
+                  <input
+                    type="number"
+                    className="mt-1 w-full bg-pressed rounded px-2 py-1.5 text-text-primary border border-white/5"
+                    value={oscPort}
+                    onChange={(e) => setOscPort(Number(e.target.value))}
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="w-full py-2 rounded bg-elevated shadow-neu-raised text-text-primary text-[11px] font-bold uppercase tracking-wide"
+                  onClick={() =>
+                    void nativeOscApplyHost({ enabled: oscEn, port: oscPort })
+                  }
+                >
+                  Apply OSC Settings
+                </button>
+              </section>
             </>
           )}
 
           {/* MIDI Tab */}
           {activeTab === "midi" && (
-          <section className="space-y-4">
+            <section className="space-y-4">
             <h3 className="text-[11px] uppercase tracking-wider text-text-secondary font-bold">
               MIDI Devices
             </h3>
@@ -370,12 +370,12 @@ export function PreferencesModal({ onClose }: { onClose: () => void }) {
             >
               Apply MIDI Settings
             </button>
-          </section>
+            </section>
           )}
 
           {/* Plugins Tab */}
           {activeTab === "plugins" && (
-          <section className="space-y-4">
+            <section className="space-y-4">
             <h3 className="text-[11px] uppercase tracking-wider text-text-secondary font-bold">
               Plugin Search Paths
             </h3>
@@ -449,12 +449,12 @@ export function PreferencesModal({ onClose }: { onClose: () => void }) {
                 Apply Plugin Settings
               </button>
             </div>
-          </section>
+            </section>
           )}
 
           {/* Canvas Tab */}
           {activeTab === "canvas" && (
-          <section className="space-y-4">
+            <section className="space-y-4">
             <h3 className="text-[11px] uppercase tracking-wider text-text-secondary font-bold">
               Canvas Settings
             </h3>
@@ -484,14 +484,14 @@ export function PreferencesModal({ onClose }: { onClose: () => void }) {
                 void nativeGraphSetCanvasOptions(snapGrid, gridSize)
               }
             >
-              Apply Canvas Settings
+                Apply Canvas Settings
             </button>
-          </section>
+            </section>
           )}
 
           {/* Mapping Tab */}
           {activeTab === "mapping" && (
-          <section className="space-y-4">
+            <section className="space-y-4">
             <h3 className="text-[11px] uppercase tracking-wider text-text-secondary font-bold">
               MIDI Controller Mapping
             </h3>
@@ -584,10 +584,10 @@ export function PreferencesModal({ onClose }: { onClose: () => void }) {
                 className="w-full py-2 rounded bg-pressed text-text-secondary text-[11px] uppercase"
                 onClick={() => void nativeWebDismissOverlay()}
               >
-                Dismiss Host Overlay
+                  Dismiss Host Overlay
               </button>
             </div>
-          </section>
+            </section>
           )}
         </div>
       </div>
