@@ -315,278 +315,278 @@ export function PreferencesModal({ onClose }: { onClose: () => void }) {
           {/* MIDI Tab */}
           {activeTab === "midi" && (
             <section className="space-y-4">
-            <h3 className="text-[11px] uppercase tracking-wider text-text-secondary font-bold">
-              MIDI Devices
-            </h3>
-            
-            <div className="space-y-2">
-              <span className="text-[10px] text-text-secondary uppercase">Input Devices</span>
-              <div className="space-y-1.5">
-                {midiInputs.map((device) => (
-                  <label key={device} className="flex items-center gap-2 p-2 rounded bg-pressed border border-white/5">
-                    <input
-                      type="checkbox"
-                      checked={enabledMidiInputs.has(device)}
-                      onChange={() => toggleMidiInput(device)}
-                    />
-                    <span className="text-[11px] text-text-primary">{device}</span>
-                  </label>
-                ))}
+              <h3 className="text-[11px] uppercase tracking-wider text-text-secondary font-bold">
+                MIDI Devices
+              </h3>
+              
+              <div className="space-y-2">
+                <span className="text-[10px] text-text-secondary uppercase">Input Devices</span>
+                <div className="space-y-1.5">
+                  {midiInputs.map((device) => (
+                    <label key={device} className="flex items-center gap-2 p-2 rounded bg-pressed border border-white/5">
+                      <input
+                        type="checkbox"
+                        checked={enabledMidiInputs.has(device)}
+                        onChange={() => toggleMidiInput(device)}
+                      />
+                      <span className="text-[11px] text-text-primary">{device}</span>
+                    </label>
+                  ))}
+                </div>
               </div>
-            </div>
 
-            <div className="space-y-2">
-              <span className="text-[10px] text-text-secondary uppercase">Output Devices</span>
-              <div className="space-y-1.5">
-                {midiOutputs.map((device) => (
-                  <label key={device} className="flex items-center gap-2 p-2 rounded bg-pressed border border-white/5">
-                    <input
-                      type="checkbox"
-                      checked={enabledMidiOutputs.has(device)}
-                      onChange={() => toggleMidiOutput(device)}
-                    />
-                    <span className="text-[11px] text-text-primary">{device}</span>
-                  </label>
+              <div className="space-y-2">
+                <span className="text-[10px] text-text-secondary uppercase">Output Devices</span>
+                <div className="space-y-1.5">
+                  {midiOutputs.map((device) => (
+                    <label key={device} className="flex items-center gap-2 p-2 rounded bg-pressed border border-white/5">
+                      <input
+                        type="checkbox"
+                        checked={enabledMidiOutputs.has(device)}
+                        onChange={() => toggleMidiOutput(device)}
+                      />
+                      <span className="text-[11px] text-text-primary">{device}</span>
+                    </label>
                 ))}
+                </div>
               </div>
-            </div>
 
-            <div className="space-y-2 border-t border-white/10 pt-4">
-              <span className="text-[10px] text-text-secondary uppercase">Clock Sync</span>
-              <select
-                className="w-full bg-pressed rounded px-2 py-1.5 text-text-primary border border-white/5"
-                value={midiClockSource}
-                onChange={(e) => setMidiClockSource(e.target.value)}
+              <div className="space-y-2 border-t border-white/10 pt-4">
+                <span className="text-[10px] text-text-secondary uppercase">Clock Sync</span>
+                <select
+                  className="w-full bg-pressed rounded px-2 py-1.5 text-text-primary border border-white/5"
+                  value={midiClockSource}
+                  onChange={(e) => setMidiClockSource(e.target.value)}
+                >
+                  <option value="internal">Internal (Master)</option>
+                  <option value="external">External MIDI Clock</option>
+                  <option value="host">Host DAW (Plugin mode)</option>
+                </select>
+              </div>
+
+              <button
+                type="button"
+                className="w-full py-2 rounded bg-generator text-canvas text-[11px] font-bold uppercase tracking-wide"
               >
-                <option value="internal">Internal (Master)</option>
-                <option value="external">External MIDI Clock</option>
-                <option value="host">Host DAW (Plugin mode)</option>
-              </select>
-            </div>
-
-            <button
-              type="button"
-              className="w-full py-2 rounded bg-generator text-canvas text-[11px] font-bold uppercase tracking-wide"
-            >
-              Apply MIDI Settings
-            </button>
+                Apply MIDI Settings
+              </button>
             </section>
           )}
 
           {/* Plugins Tab */}
           {activeTab === "plugins" && (
             <section className="space-y-4">
-            <h3 className="text-[11px] uppercase tracking-wider text-text-secondary font-bold">
-              Plugin Search Paths
-            </h3>
-            
-            <div className="space-y-2">
-              {vstPaths.map((path, i) => (
-                <div key={i} className="flex items-center gap-2 p-2 rounded bg-pressed border border-white/5">
-                  <span className="flex-1 text-[11px] text-text-primary truncate" title={path}>
-                    {path}
-                  </span>
-                  <button
-                    type="button"
-                    className="text-[10px] text-error hover:underline"
-                    onClick={() => removePluginPath(path)}
-                  >
-                    Remove
-                  </button>
-                </div>
-              ))}
-            </div>
+              <h3 className="text-[11px] uppercase tracking-wider text-text-secondary font-bold">
+                Plugin Search Paths
+              </h3>
+              
+              <div className="space-y-2">
+                {vstPaths.map((path, i) => (
+                  <div key={i} className="flex items-center gap-2 p-2 rounded bg-pressed border border-white/5">
+                    <span className="flex-1 text-[11px] text-text-primary truncate" title={path}>
+                      {path}
+                    </span>
+                    <button
+                      type="button"
+                      className="text-[10px] text-error hover:underline"
+                      onClick={() => removePluginPath(path)}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
 
-            <div className="flex gap-2">
-              <input
-                type="text"
-                placeholder="Add plugin path..."
-                value={newPath}
-                onChange={(e) => setNewPath(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && addPluginPath()}
-                className="flex-1 bg-pressed rounded px-2 py-1.5 text-text-primary border border-white/5 text-[11px]"
-              />
-              <button
-                type="button"
-                className="px-3 py-1.5 rounded bg-elevated text-text-primary text-[11px] font-bold"
-                onClick={addPluginPath}
-              >
-                Add
-              </button>
-            </div>
-
-            <div className="space-y-2 border-t border-white/10 pt-4">
-              <span className="text-[10px] text-text-secondary uppercase">Scan Options</span>
-              <label className="flex items-center gap-2 p-2 rounded bg-pressed border border-white/5">
+              <div className="flex gap-2">
                 <input
-                  type="checkbox"
-                  checked={scanOnStartup}
-                  onChange={(e) => setScanOnStartup(e.target.checked)}
+                  type="text"
+                  placeholder="Add plugin path..."
+                  value={newPath}
+                  onChange={(e) => setNewPath(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && addPluginPath()}
+                  className="flex-1 bg-pressed rounded px-2 py-1.5 text-text-primary border border-white/5 text-[11px]"
                 />
-                <span className="text-[11px] text-text-primary">Scan plugins on startup</span>
-              </label>
-              <label className="flex items-center gap-2 p-2 rounded bg-pressed border border-white/5">
-                <input
-                  type="checkbox"
-                  checked={sandboxPlugins}
-                  onChange={(e) => setSandboxPlugins(e.target.checked)}
-                />
-                <span className="text-[11px] text-text-primary">Run plugins in sandbox (recommended)</span>
-              </label>
-            </div>
+                <button
+                  type="button"
+                  className="px-3 py-1.5 rounded bg-elevated text-text-primary text-[11px] font-bold"
+                  onClick={addPluginPath}
+                >
+                  Add
+                </button>
+              </div>
 
-            <div className="flex gap-2">
-              <button
-                type="button"
-                className="flex-1 py-2 rounded bg-elevated text-text-primary text-[11px] font-bold uppercase tracking-wide"
-              >
-                Rescan All Plugins
-              </button>
-              <button
-                type="button"
-                className="flex-1 py-2 rounded bg-generator text-canvas text-[11px] font-bold uppercase tracking-wide"
-              >
-                Apply Plugin Settings
-              </button>
-            </div>
+              <div className="space-y-2 border-t border-white/10 pt-4">
+                <span className="text-[10px] text-text-secondary uppercase">Scan Options</span>
+                <label className="flex items-center gap-2 p-2 rounded bg-pressed border border-white/5">
+                  <input
+                    type="checkbox"
+                    checked={scanOnStartup}
+                    onChange={(e) => setScanOnStartup(e.target.checked)}
+                  />
+                  <span className="text-[11px] text-text-primary">Scan plugins on startup</span>
+                </label>
+                <label className="flex items-center gap-2 p-2 rounded bg-pressed border border-white/5">
+                  <input
+                    type="checkbox"
+                    checked={sandboxPlugins}
+                    onChange={(e) => setSandboxPlugins(e.target.checked)}
+                  />
+                  <span className="text-[11px] text-text-primary">Run plugins in sandbox (recommended)</span>
+                </label>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="flex-1 py-2 rounded bg-elevated text-text-primary text-[11px] font-bold uppercase tracking-wide"
+                >
+                  Rescan All Plugins
+                </button>
+                <button
+                  type="button"
+                  className="flex-1 py-2 rounded bg-generator text-canvas text-[11px] font-bold uppercase tracking-wide"
+                >
+                  Apply Plugin Settings
+                </button>
+              </div>
             </section>
           )}
 
           {/* Canvas Tab */}
           {activeTab === "canvas" && (
             <section className="space-y-4">
-            <h3 className="text-[11px] uppercase tracking-wider text-text-secondary font-bold">
-              Canvas Settings
-            </h3>
-            <label className="flex items-center gap-2 text-text-primary p-2 rounded bg-pressed border border-white/5">
-              <input
-                type="checkbox"
-                checked={snapGrid}
-                onChange={(e) => setSnapGrid(e.target.checked)}
-              />
-              <span className="text-[11px]">Snap to grid</span>
-            </label>
-            <label className="block text-text-secondary text-[10px] uppercase">
-              Grid size (px)
-              <input
-                type="number"
-                min={4}
-                max={128}
-                className="mt-1 w-full bg-pressed rounded px-2 py-1.5 text-text-primary border border-white/5"
-                value={gridSize}
-                onChange={(e) => setGridSize(Number(e.target.value))}
-              />
-            </label>
-            <button
-              type="button"
-              className="w-full py-2 rounded bg-generator text-canvas text-[11px] font-bold uppercase tracking-wide"
-              onClick={() =>
-                void nativeGraphSetCanvasOptions(snapGrid, gridSize)
-              }
-            >
+              <h3 className="text-[11px] uppercase tracking-wider text-text-secondary font-bold">
+                Canvas Settings
+              </h3>
+              <label className="flex items-center gap-2 text-text-primary p-2 rounded bg-pressed border border-white/5">
+                <input
+                  type="checkbox"
+                  checked={snapGrid}
+                  onChange={(e) => setSnapGrid(e.target.checked)}
+                />
+                <span className="text-[11px]">Snap to grid</span>
+              </label>
+              <label className="block text-text-secondary text-[10px] uppercase">
+                Grid size (px)
+                <input
+                  type="number"
+                  min={4}
+                  max={128}
+                  className="mt-1 w-full bg-pressed rounded px-2 py-1.5 text-text-primary border border-white/5"
+                  value={gridSize}
+                  onChange={(e) => setGridSize(Number(e.target.value))}
+                />
+              </label>
+              <button
+                type="button"
+                className="w-full py-2 rounded bg-generator text-canvas text-[11px] font-bold uppercase tracking-wide"
+                onClick={() =>
+                  void nativeGraphSetCanvasOptions(snapGrid, gridSize)
+                }
+              >
                 Apply Canvas Settings
-            </button>
+              </button>
             </section>
           )}
 
           {/* Mapping Tab */}
           {activeTab === "mapping" && (
             <section className="space-y-4">
-            <h3 className="text-[11px] uppercase tracking-wider text-text-secondary font-bold">
-              MIDI Controller Mapping
-            </h3>
-            <button
-              type="button"
-              className={`w-full py-2.5 rounded text-[11px] font-bold uppercase tracking-wide ${
-                learning
-                  ? "bg-modifier text-canvas"
-                  : "bg-elevated shadow-neu-raised text-text-primary"
-              }`}
-              onClick={() => {
-                void nativeMappingSetLearning(!learning);
-              }}
-            >
-              {learning ? "Stop MIDI Learn" : "Start MIDI Learn"}
-            </button>
-            {midiMapping.maps.length > 0 ? (
-              <div className="max-h-64 overflow-y-auto rounded border border-white/10 bg-pressed text-[10px]">
-                <table className="w-full text-left border-collapse">
-                  <thead className="text-text-dim uppercase tracking-wider sticky top-0 bg-pressed">
-                    <tr>
-                      <th className="p-2 font-normal">Device</th>
-                      <th className="p-2 font-normal">Control</th>
-                      <th className="p-2 font-normal">Block</th>
-                      <th className="p-2 font-normal w-14"> </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {midiMapping.maps.map((row) => (
-                      <tr
-                        key={`${row.index}-${row.nodeId}-${row.parameterIndex}`}
-                        className={
-                          row.valid
-                            ? "border-t border-white/5"
-                            : "border-t border-modifier/30 opacity-70"
-                        }
-                      >
-                        <td className="p-2 align-top truncate max-w-[100px]">
-                          {row.deviceName || "—"}
-                        </td>
-                        <td className="p-2 align-top truncate max-w-[80px]">
-                          {row.controlName || "—"}
-                        </td>
-                        <td className="p-2 align-top truncate max-w-[100px]">
-                          {row.nodeName || row.nodeId || "—"}
-                          <span className="block text-text-dim tabular">
-                            param {row.parameterIndex}
-                          </span>
-                        </td>
-                        <td className="p-2 align-top">
-                          <button
-                            type="button"
-                            className="text-error hover:underline uppercase"
-                            onClick={() =>
-                              void nativeMappingRemoveMap(row.index)
-                            }
-                          >
-                            Remove
-                          </button>
-                        </td>
+              <h3 className="text-[11px] uppercase tracking-wider text-text-secondary font-bold">
+                MIDI Controller Mapping
+              </h3>
+              <button
+                type="button"
+                className={`w-full py-2.5 rounded text-[11px] font-bold uppercase tracking-wide ${
+                  learning
+                    ? "bg-modifier text-canvas"
+                    : "bg-elevated shadow-neu-raised text-text-primary"
+                }`}
+                onClick={() => {
+                  void nativeMappingSetLearning(!learning);
+                }}
+              >
+                {learning ? "Stop MIDI Learn" : "Start MIDI Learn"}
+              </button>
+              {midiMapping.maps.length > 0 ? (
+                <div className="max-h-64 overflow-y-auto rounded border border-white/10 bg-pressed text-[10px]">
+                  <table className="w-full text-left border-collapse">
+                    <thead className="text-text-dim uppercase tracking-wider sticky top-0 bg-pressed">
+                      <tr>
+                        <th className="p-2 font-normal">Device</th>
+                        <th className="p-2 font-normal">Control</th>
+                        <th className="p-2 font-normal">Block</th>
+                        <th className="p-2 font-normal w-14"> </th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <p className="text-[10px] text-text-dim p-4 text-center bg-pressed rounded border border-white/5">
-                No controller mappings yet. Click "Start MIDI Learn", then move a MIDI control and click a parameter.
-              </p>
-            )}
+                    </thead>
+                    <tbody>
+                      {midiMapping.maps.map((row) => (
+                        <tr
+                          key={`${row.index}-${row.nodeId}-${row.parameterIndex}`}
+                          className={
+                            row.valid
+                              ? "border-t border-white/5"
+                              : "border-t border-modifier/30 opacity-70"
+                          }
+                        >
+                          <td className="p-2 align-top truncate max-w-[100px]">
+                            {row.deviceName || "—"}
+                          </td>
+                          <td className="p-2 align-top truncate max-w-[80px]">
+                            {row.controlName || "—"}
+                          </td>
+                          <td className="p-2 align-top truncate max-w-[100px]">
+                            {row.nodeName || row.nodeId || "—"}
+                            <span className="block text-text-dim tabular">
+                              param {row.parameterIndex}
+                            </span>
+                          </td>
+                          <td className="p-2 align-top">
+                            <button
+                              type="button"
+                              className="text-error hover:underline uppercase"
+                              onClick={() =>
+                                void nativeMappingRemoveMap(row.index)
+                              }
+                            >
+                              Remove
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="text-[10px] text-text-dim p-4 text-center bg-pressed rounded border border-white/5">
+                  No controller mappings yet. Click "Start MIDI Learn", then move a MIDI control and click a parameter.
+                </p>
+              )}
 
-            <div className="space-y-2 border-t border-white/10 pt-4">
-              <span className="text-[10px] text-text-secondary uppercase">Host Tools</span>
-              <button
-                type="button"
-                className="w-full py-2 rounded bg-pressed text-text-primary text-[11px] uppercase"
-                onClick={() => void nativeOpenLuaConsole()}
-              >
-                Open Lua Console
-              </button>
-              <button
-                type="button"
-                className="w-full py-2 rounded bg-pressed text-text-primary text-[11px] uppercase"
-                onClick={() => void nativeOpenGraphMixer()}
-              >
-                Open Graph Mixer
-              </button>
-              <button
-                type="button"
-                className="w-full py-2 rounded bg-pressed text-text-secondary text-[11px] uppercase"
-                onClick={() => void nativeWebDismissOverlay()}
-              >
+              <div className="space-y-2 border-t border-white/10 pt-4">
+                <span className="text-[10px] text-text-secondary uppercase">Host Tools</span>
+                <button
+                  type="button"
+                  className="w-full py-2 rounded bg-pressed text-text-primary text-[11px] uppercase"
+                  onClick={() => void nativeOpenLuaConsole()}
+                >
+                  Open Lua Console
+                </button>
+                <button
+                  type="button"
+                  className="w-full py-2 rounded bg-pressed text-text-primary text-[11px] uppercase"
+                  onClick={() => void nativeOpenGraphMixer()}
+                >
+                  Open Graph Mixer
+                </button>
+                <button
+                  type="button"
+                  className="w-full py-2 rounded bg-pressed text-text-secondary text-[11px] uppercase"
+                  onClick={() => void nativeWebDismissOverlay()}
+                >
                   Dismiss Host Overlay
-              </button>
-            </div>
+                </button>
+              </div>
             </section>
           )}
         </div>
