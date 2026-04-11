@@ -57,6 +57,17 @@ interface HostExtrasState {
   midiMapping: { learning: boolean; maps: MidiMapRow[] };
   activeGraphOutline: GraphOutlineNode[];
   logLines: string[];
+  // Undo/Redo depth counters
+  undoDepth: number;
+  redoDepth: number;
+  // External sync indicator
+  externalSync: boolean;
+  // Time signature string (e.g. "4/4")
+  timeSig: string;
+  // Spatial bookmarks (0-9) - viewport positions
+  spatialBookmarks: Record<string, { x: number; y: number; zoom: number }>;
+  setSpatialBookmark: (slot: string, viewport: { x: number; y: number; zoom: number }) => void;
+  getSpatialBookmark: (slot: string) => { x: number; y: number; zoom: number } | null;
   hydrateFromSnapshot: (data: {
     audioSetup?: Partial<AudioSetupSnapshot>;
     oscHost?: Partial<OscHostSnapshot>;
@@ -77,6 +88,10 @@ interface HostExtrasState {
       maps?: Array<Partial<MidiMapRow> & { index?: number }>;
     };
     activeGraphOutline?: GraphOutlineNode[];
+    undoDepth?: number;
+    redoDepth?: number;
+    externalSync?: boolean;
+    timeSig?: string;
   }) => void;
   setLogLines: (lines: string[]) => void;
 }
@@ -96,6 +111,21 @@ export const useHostExtrasStore = create<HostExtrasState>()((set) => ({
   midiMapping: { learning: false, maps: [] },
   activeGraphOutline: [],
   logLines: [],
+  undoDepth: 0,
+  redoDepth: 0,
+  externalSync: false,
+  timeSig: "4/4",
+  spatialBookmarks: {},
+  
+  setSpatialBookmark: (slot, viewport) =>
+    set((s) => ({
+      spatialBookmarks: { ...s.spatialBookmarks, [slot]: viewport },
+    })),
+    
+  getSpatialBookmark: (slot) => {
+    const bm = useHostExtrasStore.getState().spatialBookmarks[slot];
+    return bm ?? null;
+  },
 
   hydrateFromSnapshot: (data) =>
     set((s) => {
@@ -212,6 +242,14 @@ export const useHostExtrasStore = create<HostExtrasState>()((set) => ({
       }
       if (data.activeGraphOutline != null)
         next.activeGraphOutline = data.activeGraphOutline;
+      if (typeof data.undoDepth === "number")
+        next.undoDepth = Math.max(0, data.undoDepth);
+      if (typeof data.redoDepth === "number")
+        next.redoDepth = Math.max(0, data.redoDepth);
+      if (typeof data.externalSync === "boolean")
+        next.externalSync = data.externalSync;
+      if (typeof data.timeSig === "string" && data.timeSig.length > 0)
+        next.timeSig = data.timeSig;
       return next;
     }),
 

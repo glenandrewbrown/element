@@ -9,6 +9,16 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { NeuInput } from "../neu";
 import { useGraphStore } from "../../stores/useGraphStore";
+import { useAppStore } from "../../stores/useAppStore";
+import { usePluginBrowserStore } from "../../stores/usePluginBrowserStore";
+import { usePerformStore } from "../../stores/usePerformStore";
+import {
+  nativeUndo,
+  nativeRedo,
+  nativeGraphAddPlugin,
+  nativeGraphCommentAdd,
+} from "../../bridge/nativeGraph";
+import { nativeSessionSave } from "../../bridge/nativeSession";
 
 // ── Result types ──
 
@@ -151,25 +161,73 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const nodes = useGraphStore((s) => s.nodes);
+  const toggleMinimap = useGraphStore((s) => s.toggleMinimap);
+  const selectNode = useGraphStore((s) => s.selectNode);
+  const toggleMode = useAppStore((s) => s.toggleMode);
+  const nativePlugins = usePluginBrowserStore((s) => s.plugins);
+  const scenes = usePerformStore((s) => s.scenes);
+  const setActiveScene = useAppStore((s) => s.setScene);
 
-  // Build results from blocks on canvas + statics
+  // Build results from blocks on canvas + statics + real plugins
   const allResults: PaletteResult[] = useMemo(() => {
-    const noop = () => onClose();
+    const close = () => onClose();
+    
+    // Canvas blocks - selecting focuses them
     const blockResults: PaletteResult[] = nodes.map((n) => ({
       id: `block-${n.id}`,
       label: n.name,
       category: "block" as const,
       hint: `${n.category} · ${n.format}`,
-      onSelect: noop,
+      onSelect: () => {
+        selectNode(n.id);
+        onClose();
+      },
     }));
-    return [
-      ...staticActions.map((a) => ({ ...a, onSelect: noop })),
-      ...blockResults,
-      ...staticPlugins.map((p) => ({ ...p, onSelect: noop })),
-      ...staticScenes.map((s) => ({ ...s, onSelect: noop })),
-      ...staticSettings.map((s) => ({ ...s, onSelect: noop })),
+
+    // Actions with real handlers
+    const actionResults: PaletteResult[] = [
+      { id: "act-undo", label: "Undo", category: "action", hint: "Cmd+Z", onSelect: () => { void nativeUndo(); close(); } },
+      { id: "act-redo", label: "Redo", category: "action", hint: "Cmd+Shift+Z", onSelect: () => { void nativeRedo(); close(); } },
+      { id: "act-save", label: "Save Project", category: "action", hint: "Cmd+S", onSelect: () => { void nativeSessionSave(); close(); } },
+      { id: "act-toggle-mode", label: "Toggle Edit / Perform", category: "action", hint: "Cmd+Shift+M", onSelect: () => { toggleMode(); close(); } },
+      { id: "act-minimap", label: "Toggle Minimap", category: "action", hint: "Shift+M", onSelect: () => { toggleMinimap(); close(); } },
+      { id: "act-comment", label: "Create Comment Box", category: "action", hint: "Shift+C", onSelect: () => { void nativeGraphCommentAdd(200, 200); close(); } },
     ];
-  }, [nodes, onClose]);
+
+    // Real plugins from native bridge
+    const pluginResults: PaletteResult[] = nativePlugins.slice(0, 30).map((p) => ({
+      id: `plug-${p.identifier}`,
+      label: p.name,
+      category: "plugin" as const,
+      hint: p.formatName || p.blockCategory,
+      onSelect: () => {
+        void nativeGraphAddPlugin(p.identifier);
+        onClose();
+      },
+    }));
+
+    // Scenes
+    const sceneResults: PaletteResult[] = scenes.map((s, idx) => ({
+      id: `scene-${idx}`,
+      label: `Scene: ${s.name}`,
+      category: "scene" as const,
+      onSelect: () => {
+        setActiveScene(idx);
+        onClose();
+      },
+    }));
+
+    // Settings (still placeholders for now)
+    const settingResults: PaletteResult[] = staticSettings.map((s) => ({ ...s, onSelect: close }));
+
+    return [
+      ...actionResults,
+      ...blockResults,
+      ...pluginResults,
+      ...sceneResults,
+      ...settingResults,
+    ];
+  }, [nodes, nativePlugins, scenes, onClose, selectNode, toggleMode, toggleMinimap, setActiveScene]);
 
   // Filter
   const filtered = useMemo(() => {
