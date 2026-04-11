@@ -125,6 +125,61 @@ export function LiveHealth() {
           </div>
         </div>
 
+        {/* Global BPM / Clock */}
+        <div className="p-3 bg-surface border border-white/5 rounded space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-text-secondary uppercase font-bold">Global BPM</span>
+            <span className="text-lg font-bold text-modifier tabular">124.00</span>
+          </div>
+          <div className="text-[9px] text-logic">BPM / LOCKED</div>
+          <div className="flex items-center gap-2 text-[10px] text-text-secondary">
+            <svg width={12} height={12} viewBox="0 0 24 24" fill="currentColor" className="text-text-dim">
+              <path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z" />
+            </svg>
+            <span className="font-bold tabular">{health.timecode || "00:42:15:12"}</span>
+          </div>
+        </div>
+
+        {/* VU Meters */}
+        <div className="p-3 bg-surface border border-white/5 rounded space-y-2">
+          <div className="text-[10px] text-text-secondary uppercase font-bold mb-2">MASTER</div>
+          <div className="flex gap-2 items-end h-20">
+            {/* Left channel */}
+            <div className="flex-1 flex gap-0.5 justify-center items-end h-full">
+              {[-48, -36, -24, -12, -6, 0].map((db, i) => (
+                <div key={db} className="flex flex-col items-center gap-0.5 h-full justify-end">
+                  <div
+                    className={`w-2 rounded-sm transition-all ${
+                      i < 4 ? "bg-logic" : i < 5 ? "bg-modifier" : "bg-error"
+                    }`}
+                    style={{ height: `${Math.max(10, (i + 1) * 16)}%` }}
+                  />
+                </div>
+              ))}
+            </div>
+            {/* Right channel */}
+            <div className="flex-1 flex gap-0.5 justify-center items-end h-full">
+              {[-48, -36, -24, -12, -6, 0].map((db, i) => (
+                <div key={db} className="flex flex-col items-center gap-0.5 h-full justify-end">
+                  <div
+                    className={`w-2 rounded-sm transition-all ${
+                      i < 4 ? "bg-logic" : i < 5 ? "bg-modifier" : "bg-error"
+                    }`}
+                    style={{ height: `${Math.max(10, (i + 1) * 14)}%` }}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="flex justify-between text-[8px] text-text-dim tabular px-2">
+            <span>-INF</span>
+            <span>-18</span>
+            <span>-12</span>
+            <span>-6</span>
+            <span>0</span>
+          </div>
+        </div>
+
         {/* Alerts */}
         {alerts.map((alert) => (
           <div

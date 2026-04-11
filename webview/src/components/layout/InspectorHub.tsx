@@ -78,6 +78,65 @@ function formatParamDisplay(p: NodeParameterRow): string {
   return `${(p.value * 100).toFixed(1)}%`;
 }
 
+function IOResponseCurve() {
+  return (
+    <div className="space-y-2">
+      <div className="text-[10px] font-bold text-text-secondary uppercase tracking-widest">
+        I/O Response
+      </div>
+      <div className="h-32 bg-pressed rounded-lg shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] border border-white/5 relative overflow-hidden">
+        {/* Grid lines */}
+        <div className="absolute inset-0 opacity-20">
+          {[...Array(5)].map((_, i) => (
+            <div
+              key={`h-${i}`}
+              className="absolute w-full h-px bg-white/20"
+              style={{ top: `${(i + 1) * 20}%` }}
+            />
+          ))}
+          {[...Array(5)].map((_, i) => (
+            <div
+              key={`v-${i}`}
+              className="absolute h-full w-px bg-white/20"
+              style={{ left: `${(i + 1) * 20}%` }}
+            />
+          ))}
+        </div>
+        {/* Curve */}
+        <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+          <path
+            d="M0,100 Q20,98 40,70 T70,40 T100,5"
+            fill="none"
+            stroke="rgba(74,144,217,0.8)"
+            strokeWidth="2"
+            vectorEffect="non-scaling-stroke"
+          />
+          <path
+            d="M0,100 Q20,98 40,70 T70,40 T100,5 L100,100 Z"
+            fill="url(#curveGradient)"
+            opacity="0.3"
+          />
+          <defs>
+            <linearGradient id="curveGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="rgba(74,144,217,0.4)" />
+              <stop offset="100%" stopColor="rgba(74,144,217,0)" />
+            </linearGradient>
+          </defs>
+        </svg>
+        {/* Input/Output markers */}
+        <div className="absolute bottom-2 left-2 flex gap-2 text-[8px]">
+          <span className="text-generator">IN</span>
+          <span className="w-1 h-1 rounded-full bg-generator mt-1" />
+        </div>
+        <div className="absolute top-2 right-2 flex gap-2 text-[8px]">
+          <span className="w-1 h-1 rounded-full bg-modifier mt-1" />
+          <span className="text-modifier">OUT</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function BlockMetrics({ block }: { block: BlockData }) {
   const rows = [
     { label: "CPU (est.)", value: `${block.cpuLoad.toFixed(1)}%` },
@@ -434,6 +493,71 @@ export function InspectorHub() {
               <>
                 <BlockHeader block={selectedBlock} />
 
+                {/* Quick controls - knobs row */}
+                <div className="flex justify-around py-3 bg-pressed rounded-lg shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4)] border border-white/5">
+                  {[
+                    { label: "FREQ", value: "440.0 Hz", color: "text-generator" },
+                    { label: "RESO", value: "0.42", color: "text-modifier" },
+                    { label: "DETUNE", value: "+12.0", color: "text-logic" },
+                  ].map((ctrl) => (
+                    <div key={ctrl.label} className="flex flex-col items-center gap-2">
+                      <div className="w-12 h-12 rounded-full bg-surface shadow-[-2px_-2px_6px_rgba(255,255,255,0.04),2px_2px_8px_rgba(0,0,0,0.35)] border border-white/10 flex items-center justify-center">
+                        <div className="w-8 h-8 rounded-full bg-pressed shadow-[inset_1px_1px_3px_rgba(0,0,0,0.3)] relative">
+                          <div className="absolute top-1 left-1/2 w-0.5 h-2 bg-white/40 -translate-x-1/2 rounded-full" />
+                        </div>
+                      </div>
+                      <span className="text-[9px] text-text-secondary uppercase">{ctrl.label}</span>
+                      <span className={`text-[10px] font-bold tabular ${ctrl.color}`}>{ctrl.value}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Gain/Pan row */}
+                <div className="flex gap-4">
+                  <div className="flex-1 space-y-1">
+                    <div className="flex justify-between text-[9px]">
+                      <span className="text-text-secondary">GAIN</span>
+                      <span className="text-modifier font-bold">+2.4 dB</span>
+                    </div>
+                    <div className="h-2 bg-pressed rounded-full shadow-[inset_1px_1px_3px_rgba(0,0,0,0.4)] relative overflow-hidden">
+                      <div className="h-full w-3/4 bg-modifier rounded-full" />
+                      <div className="absolute right-2 top-0 h-full w-1 bg-surface/80" />
+                    </div>
+                  </div>
+                  <div className="flex-1 space-y-1">
+                    <div className="flex justify-between text-[9px]">
+                      <span className="text-text-secondary">PAN</span>
+                      <span className="text-text-primary font-bold">L 0.4</span>
+                    </div>
+                    <div className="h-2 bg-pressed rounded-full shadow-[inset_1px_1px_3px_rgba(0,0,0,0.4)] relative overflow-hidden">
+                      <div className="absolute left-1/2 h-full w-px bg-white/20" />
+                      <div className="absolute left-1/4 w-1/4 h-full bg-white/40 rounded-full" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Bypass / Solo row */}
+                <div className="grid grid-cols-2 gap-2">
+                  <NeuButton
+                    variant={selectedBlock.bypassed ? "active" : "default"}
+                    size="sm"
+                    onClick={() => toggleBypass(selectedBlock.id)}
+                    className={selectedBlock.bypassed ? "!text-generator" : ""}
+                  >
+                    <span className={`w-2 h-2 rounded-full mr-2 ${selectedBlock.bypassed ? "bg-generator" : "bg-white/20"}`} />
+                    {selectedBlock.bypassed ? "BYPASSED" : "BYPASS"}
+                  </NeuButton>
+                  <NeuButton
+                    variant={selectedBlock.muted ? "active" : "default"}
+                    size="sm"
+                    onClick={() => toggleMute(selectedBlock.id)}
+                  >
+                    SOLO
+                  </NeuButton>
+                </div>
+
+                <IOResponseCurve />
+
                 <div className="p-3 bg-pressed rounded-lg shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] space-y-3">
                   <BlockParameterList nodeId={selectedBlock.id} />
                 </div>
@@ -444,13 +568,6 @@ export function InspectorHub() {
                 />
 
                 <div className="grid grid-cols-1 gap-2">
-                  <NeuButton
-                    variant={selectedBlock.bypassed ? "active" : "default"}
-                    size="sm"
-                    onClick={() => toggleBypass(selectedBlock.id)}
-                  >
-                    {selectedBlock.bypassed ? "BYPASSED" : "BYPASS"}
-                  </NeuButton>
                   <NeuButton
                     variant={selectedBlock.muted ? "active" : "default"}
                     size="sm"

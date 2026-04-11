@@ -17,3 +17,29 @@ export async function nativePerformCaptureScene(): Promise<boolean> {
   const r = await invokeElementNative("elementPerformCaptureScene", []);
   return r === true;
 }
+
+export async function nativePerformRemoveScene(index: number): Promise<boolean> {
+  const r = await invokeElementNative("elementPerformRemoveScene", [index]);
+  return r === true;
+}
+
+export async function nativePerformRenameScene(
+  index: number,
+  name: string,
+): Promise<boolean> {
+  const r = await invokeElementNative("elementPerformRenameScene", [index, name]);
+  return r === true;
+}
+
+export async function nativePerformDuplicateScene(index: number): Promise<boolean> {
+  const r = await invokeElementNative("elementPerformDuplicateScene", [index]);
+  return r === true;
+}
+
+export async function nativePerformMoveScene(
+  fromIndex: number,
+  toIndex: number,
+): Promise<boolean> {
+  const r = await invokeElementNative("elementPerformMoveScene", [fromIndex, toIndex]);
+  return r === true;
+}
