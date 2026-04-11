@@ -8,6 +8,7 @@
 #include <element/node.hpp>
 #include <element/plugins.hpp>
 #include <element/ui/commands.hpp>
+#include <element/graph.hpp>
 #include <element/ui/content.hpp>
 #include <element/ui/style.hpp>
 
@@ -454,5 +455,11 @@ void Content::stabilizeViews() {}
 void Content::saveState (PropertiesFile*) {}
 void Content::restoreState (PropertiesFile*) {}
 void Content::setCurrentNode (const Node& node) { ignoreUnused (node); }
+
+void Content::setExtraView (Component*) {}
+
+Component* Content::extraView() { return nullptr; }
+
+void Content::setupPluginEditorWithGraph (Graph&) {}
 
 } // namespace element

@@ -3,12 +3,13 @@ import {
   useRef,
   useEffect,
   useCallback,
+  useMemo,
   type KeyboardEvent,
 } from "react";
 import { NeuInput } from "../neu";
 import type { BlockCategory } from "../../data/types";
-
-// ── Plugin entries (same data as ToolPalette) ──
+import { usePluginBrowserStore } from "../../stores/usePluginBrowserStore";
+import { nativeGraphAddPlugin } from "../../bridge/nativeGraph";
 
 interface PluginEntry {
   id: string;
@@ -16,20 +17,12 @@ interface PluginEntry {
   category: BlockCategory;
 }
 
-const plugins: PluginEntry[] = [
+const demoPlugins: PluginEntry[] = [
   { id: "osc-core", name: "OSCILLATOR_CORE_V3", category: "generator" },
   { id: "wave-gen", name: "WAVETABLE_GEN", category: "generator" },
   { id: "ladder-filt", name: "LADDER_FILTER_24DB", category: "modifier" },
   { id: "peak-lim", name: "PEAK_LIMITER", category: "modifier" },
-  { id: "audio-in", name: "Audio Input", category: "generator" },
-  { id: "audio-out", name: "Audio Output", category: "modifier" },
-  { id: "midi-router", name: "MIDI Router", category: "logic" },
-  { id: "proq3", name: "FabFilter Pro-Q 3", category: "modifier" },
-  { id: "valhalla", name: "Valhalla Room", category: "modifier" },
-  { id: "lfo-tool", name: "LFO Tool", category: "logic" },
 ];
-
-// ── Category dot ──
 
 const catDot: Record<string, string> = {
   generator: "w-1.5 h-1.5 rounded-full bg-[#4A90D9]",
@@ -37,36 +30,46 @@ const catDot: Record<string, string> = {
   logic: "w-1.5 h-1.5 bg-[#2BC4C4]",
 };
 
-// ── Props ──
-
 interface QuickAddPopupProps {
   x: number;
   y: number;
   onClose: () => void;
-  onInsert?: (pluginId: string) => void;
 }
 
-export function QuickAddPopup({ x, y, onClose, onInsert }: QuickAddPopupProps) {
+export function QuickAddPopup({ x, y, onClose }: QuickAddPopupProps) {
   const [search, setSearch] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
+  const nativePlugins = usePluginBrowserStore((s) => s.plugins);
+  const refreshPlugins = usePluginBrowserStore((s) => s.refresh);
+
+  useEffect(() => {
+    void refreshPlugins();
+  }, [refreshPlugins]);
+
+  const plugins = useMemo((): PluginEntry[] => {
+    if (nativePlugins.length === 0) return demoPlugins;
+    return nativePlugins.map((p) => ({
+      id: p.identifier,
+      name: p.name,
+      category: p.blockCategory,
+    }));
+  }, [nativePlugins]);
+
   const filtered = plugins.filter((p) =>
     p.name.toLowerCase().includes(search.toLowerCase()),
   );
 
-  // Auto-focus on mount
   useEffect(() => {
     requestAnimationFrame(() => inputRef.current?.focus());
   }, []);
 
-  // Reset selection when filter changes
   useEffect(() => {
     setActiveIndex(0);
   }, [search]);
 
-  // Scroll active item into view
   useEffect(() => {
     const list = listRef.current;
     if (!list) return;
@@ -76,10 +79,10 @@ export function QuickAddPopup({ x, y, onClose, onInsert }: QuickAddPopupProps) {
 
   const handleSelect = useCallback(
     (id: string) => {
-      onInsert?.(id);
+      void nativeGraphAddPlugin(id);
       onClose();
     },
-    [onInsert, onClose],
+    [onClose],
   );
 
   const handleKeyDown = useCallback(
@@ -108,7 +111,6 @@ export function QuickAddPopup({ x, y, onClose, onInsert }: QuickAddPopupProps) {
     [filtered, activeIndex, handleSelect, onClose],
   );
 
-  // Clamp position so popup doesn't overflow viewport
   const popupW = 224;
   const popupMaxH = 320;
   const clampedX = Math.min(x, window.innerWidth - popupW - 8);
@@ -116,10 +118,8 @@ export function QuickAddPopup({ x, y, onClose, onInsert }: QuickAddPopupProps) {
 
   return (
     <>
-      {/* Click-away backdrop */}
       <div className="fixed inset-0 z-40" onClick={onClose} />
 
-      {/* Popup */}
       <div
         className="fixed z-50"
         style={{ left: clampedX, top: clampedY }}
@@ -133,7 +133,6 @@ export function QuickAddPopup({ x, y, onClose, onInsert }: QuickAddPopupProps) {
             outline: "1px solid rgba(139, 145, 156, 0.15)",
           }}
         >
-          {/* Search */}
           <div className="p-2">
             <NeuInput
               ref={inputRef}
@@ -143,7 +142,6 @@ export function QuickAddPopup({ x, y, onClose, onInsert }: QuickAddPopupProps) {
             />
           </div>
 
-          {/* Results */}
           <div
             ref={listRef}
             className="max-h-52 overflow-y-auto px-1 pb-1.5 space-y-px"
@@ -156,6 +154,7 @@ export function QuickAddPopup({ x, y, onClose, onInsert }: QuickAddPopupProps) {
             {filtered.map((plugin, i) => (
               <button
                 key={plugin.id}
+                type="button"
                 onClick={() => handleSelect(plugin.id)}
                 onMouseEnter={() => setActiveIndex(i)}
                 className={[

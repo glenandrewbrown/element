@@ -1,0 +1,28 @@
+---
+description: Element webview — design tokens, neumorphism, npm commands
+globs: webview/**
+alwaysApply: false
+---
+
+# Webview (React / Tailwind)
+
+Follow [CLAUDE.md](CLAUDE.md) “WebView Frontend” and [docs/ELEMENT_UNIFIED_BLUEPRINT.md](docs/ELEMENT_UNIFIED_BLUEPRINT.md).
+
+## Visual language
+
+- **Neumorphism** on a continuous dark chassis — not glassmorphism (no heavy blur/transparency-as-chrome).
+- Semantic colours: audio blue `#4A90D9`, MIDI teal `#2BC4C4`, value/CV orange `#E8A838`; surface tokens as in CLAUDE.
+
+## Commands
+
+```bash
+cd webview
+npm install
+npm run dev      # dev server (e.g. localhost:5173)
+npx tsc -b       # typecheck
+npm run build    # production → webview/dist/
+```
+
+## Layout reference
+
+See CLAUDE “Frontend Architecture” (`webview/src/components/neu`, `layout`, `canvas`, stores, `index.css`).

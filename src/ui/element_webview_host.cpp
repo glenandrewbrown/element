@@ -1,0 +1,2479 @@
+// Copyright 2026 Kushview, LLC
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+#include <element/context.hpp>
+#include <element/devices.hpp>
+#include <element/graph.hpp>
+#include <element/settings.hpp>
+#include <juce_audio_processors/juce_audio_processors.h>
+#include <element/plugins.hpp>
+#include <element/porttype.hpp>
+#include <element/processor.hpp>
+#include <element/session.hpp>
+#include <element/tags.hpp>
+#include <element/ui/element_webview_host.hpp>
+#include <element/ui.hpp>
+#include <element/version.hpp>
+
+#include <element/element_webview_dist.hpp>
+
+#include "engine/midipanic.hpp"
+#include "log.hpp"
+#include "messages.hpp"
+#include <element/ui.hpp>
+#include <element/controller.hpp>
+#include <element/datapath.hpp>
+#include "../services/deviceservice.hpp"
+#include "../services/mappingservice.hpp"
+#include "../services/oscservice.hpp"
+#include "../services/sessionservice.hpp"
+#include <element/ui/web_content.hpp>
+#include "ui/graphmixerview.hpp"
+#include "ui/pluginwindow.hpp"
+#include "ui/luaconsoleview.hpp"
+#include "ui/moleculemanager.hpp"
+#include "ui/pluginusagetracker.hpp"
+#include "appinfo.hpp"
+
+#include <algorithm>
+#include <cstdlib>
+#include <cstring>
+#include <vector>
+
+namespace element {
+
+#if JUCE_WEB_BROWSER
+
+class ElementWebViewHost;
+
+struct ElementWebViewLogForwarder : Log::Listener
+{
+    ElementWebViewHost& owner;
+    explicit ElementWebViewLogForwarder (ElementWebViewHost& o) : owner (o) {}
+    void messageLogged (const String&) override;
+};
+
+namespace {
+ValueTree ensureGraphUiRoot (Graph& G)
+{
+    ValueTree ui = G.getUIValueTree();
+    if (! ui.isValid())
+    {
+        ui = ValueTree (tags::ui);
+        G.data().addChild (ui, -1, nullptr);
+    }
+    return ui;
+}
+
+ValueTree ensureCommentBoxesContainer (Graph& G)
+{
+    ValueTree ui = ensureGraphUiRoot (G);
+    ValueTree boxes = ui.getChildWithName ("CommentBoxes");
+    if (! boxes.isValid())
+    {
+        boxes = ValueTree ("CommentBoxes");
+        ui.addChild (boxes, -1, nullptr);
+    }
+    return boxes;
+}
+
+ValueTree ensureWebCanvasInGraph (Graph& G)
+{
+    ValueTree ui = ensureGraphUiRoot (G);
+    ValueTree wc = ui.getChildWithName ("WebCanvas");
+    if (! wc.isValid())
+    {
+        wc = ValueTree ("WebCanvas");
+        wc.setProperty ("snapToGrid", false, nullptr);
+        wc.setProperty ("gridSize", 8, nullptr);
+        ui.addChild (wc, -1, nullptr);
+    }
+    return wc;
+}
+
+bool vtIsUnderSessionRoot (const ValueTree& t, const ValueTree& sessionRoot)
+{
+    for (ValueTree x = t; x.isValid(); x = x.getParent())
+        if (x == sessionRoot)
+            return true;
+    return false;
+}
+
+String commentBoxUuid (const ValueTree& box)
+{
+    String u = box.getProperty ("uuid").toString();
+    if (u.isNotEmpty())
+        return u;
+    return box.getProperty ("id").toString();
+}
+
+int findCommentBoxIndexByUuid (const ValueTree& boxes, const String& uuid)
+{
+    if (uuid.isEmpty())
+        return -1;
+    for (int i = 0; i < boxes.getNumChildren(); ++i)
+        if (commentBoxUuid (boxes.getChild (i)) == uuid)
+            return i;
+    return -1;
+}
+} // namespace
+
+static const char* portTypeToSignalString (const PortType& pt)
+{
+    switch (pt.id())
+    {
+        case PortType::Audio:
+            return "audio";
+        case PortType::Midi:
+        case PortType::Atom:
+        case PortType::Event:
+            return "midi";
+        case PortType::Control:
+        case PortType::CV:
+            return "value";
+        default:
+            return "audio";
+    }
+}
+
+static int parsePortHandleIndex (const String& handle, const String& expectedPrefix)
+{
+    if (! handle.startsWith (expectedPrefix))
+        return -1;
+    return handle.substring (expectedPrefix.length()).getIntValue();
+}
+
+static const PluginDescription* findKnownPluginByIdentifier (const KnownPluginList& list, const String& identifier)
+{
+    for (const auto& desc : list.getTypes())
+        if (desc.createIdentifierString() == identifier)
+            return &desc;
+    return nullptr;
+}
+
+static String nodeUuidFromGraphNodeId (const Graph& g, uint32_t nid)
+{
+    for (int i = 0; i < g.getNumNodes(); ++i)
+    {
+        const Node n (g.getNode (i));
+        if (n.getNodeId() == nid)
+            return n.getUuidString();
+    }
+    return {};
+}
+
+static Node findNodeByUuidInGraph (const Graph& g, const String& uuid)
+{
+    for (int i = 0; i < g.getNumNodes(); ++i)
+    {
+        const Node n (g.getNode (i));
+        if (n.getUuidString() == uuid)
+            return n;
+    }
+    return {};
+}
+
+static const Identifier paramStateJsonId ("paramStateJson");
+
+static int countWebSceneChildren (const ValueTree& wp)
+{
+    int n = 0;
+    for (int i = 0; i < wp.getNumChildren(); ++i)
+        if (wp.getChild (i).hasType ("WebScene"))
+            ++n;
+    return n;
+}
+
+static ValueTree getWebSceneAtFilteredIndex (const ValueTree& wp, int filteredIndex)
+{
+    int seen = 0;
+    for (int i = 0; i < wp.getNumChildren(); ++i)
+    {
+        ValueTree c = wp.getChild (i);
+        if (c.hasType ("WebScene"))
+        {
+            if (seen == filteredIndex)
+                return c;
+            ++seen;
+        }
+    }
+    return {};
+}
+
+static String captureGraphParameterStateJson (const Graph& G)
+{
+    DynamicObject::Ptr root (new DynamicObject());
+    for (int i = 0; i < G.getNumNodes(); ++i)
+    {
+        const Node n (G.getNode (i));
+        if (! n.isValid())
+            continue;
+        if (auto* obj = n.getObject())
+            if (auto* proc = obj->getAudioProcessor())
+            {
+                auto& params = proc->getParameters();
+                Array<var> vals;
+                for (int pi = 0; pi < params.size(); ++pi)
+                {
+                    if (auto* p = params[pi])
+                        vals.add (var (p->getValue()));
+                    else
+                        vals.add (var (0.0f));
+                }
+                root->setProperty (n.getUuidString(), var (vals));
+            }
+    }
+    return JSON::toString (var (root.get()));
+}
+
+static bool applyGraphParameterStateJson (Context& ctx, const String& json)
+{
+    if (json.isEmpty())
+        return true;
+    const var parsed (JSON::parse (json));
+    auto* dyn = parsed.getDynamicObject();
+    if (dyn == nullptr)
+        return false;
+
+    auto sess = ctx.session();
+    if (sess == nullptr)
+        return false;
+    const Graph G (sess->getCurrentGraph());
+    if (! G.isGraph())
+        return false;
+
+    for (const auto& nv : dyn->getProperties())
+    {
+        const String uuid (nv.name.toString());
+        const var& v = nv.value;
+        const Array<var>* arr = v.getArray();
+        if (arr == nullptr)
+            continue;
+
+        const Node n = findNodeByUuidInGraph (G, uuid);
+        if (! n.isValid())
+            continue;
+        if (auto* nodeObj = n.getObject())
+            if (auto* proc = nodeObj->getAudioProcessor())
+            {
+                auto& params = proc->getParameters();
+                for (int pi = 0; pi < arr->size() && isPositiveAndBelow (pi, params.size()); ++pi)
+                {
+                    if (auto* p = params[pi])
+                    {
+                        const float fv = static_cast<float> (static_cast<double> (arr->getReference (pi)));
+                        p->setValueNotifyingHost (jlimit (0.0f, 1.0f, fv));
+                    }
+                }
+            }
+    }
+
+    return true;
+}
+
+static String buildSessionBrowserEntriesJson()
+{
+    struct Entry
+    {
+        File file;
+        Time modified;
+    };
+    std::vector<Entry> all;
+
+    auto addFromDir = [&all] (const File& dir, bool recursive)
+    {
+        if (! dir.isDirectory())
+            return;
+        for (const auto& entry :
+             RangedDirectoryIterator (dir, recursive, "*.els;*.elg;*.eln;*.elpreset;*.elc",
+                                      File::findFiles))
+        {
+            const File f = entry.getFile();
+            all.push_back ({ f, f.getLastModificationTime() });
+        }
+    };
+
+    addFromDir (DataPath::defaultSessionDir(), true);
+    addFromDir (DataPath::defaultGraphDir(), true);
+    addFromDir (DataPath::defaultControllersDir(), true);
+
+    const File userRoot = DataPath::defaultLocation();
+    for (const auto& entry : RangedDirectoryIterator (userRoot, false, "*.els;*.elg", File::findFiles))
+    {
+        const File f = entry.getFile();
+        bool dup = false;
+        for (const auto& e : all)
+            if (e.file == f)
+            {
+                dup = true;
+                break;
+            }
+        if (! dup)
+            all.push_back ({ f, f.getLastModificationTime() });
+    }
+
+    std::sort (all.begin(), all.end(), [] (const Entry& a, const Entry& b)
+               { return a.modified > b.modified; });
+
+    Array<var> rows;
+    const int cap = jmin (500, (int) all.size());
+    for (int i = 0; i < cap; ++i)
+    {
+        const File& f = all[(size_t) i].file;
+        DynamicObject::Ptr o (new DynamicObject());
+        o->setProperty ("path", f.getFullPathName());
+        o->setProperty ("name", f.getFileNameWithoutExtension());
+        o->setProperty ("ext", f.getFileExtension().toLowerCase());
+        o->setProperty ("modifiedMs", (int64) all[(size_t) i].modified.toMilliseconds());
+        rows.add (var (o.get()));
+    }
+
+    DynamicObject::Ptr root (new DynamicObject());
+    root->setProperty ("entries", var (rows));
+    return JSON::toString (var (root.get()));
+}
+
+static void appendMidiMappingJson (Context& ctx, DynamicObject::Ptr root)
+{
+    DynamicObject::Ptr mm (new DynamicObject());
+    bool learning = false;
+    if (auto* ms = ctx.services().find<MappingService>())
+        learning = ms->isLearning();
+    mm->setProperty ("learning", learning);
+
+    Array<var> mapsVar;
+    if (auto sess = ctx.session())
+    {
+        for (int i = 0; i < sess->getNumControllerMaps(); ++i)
+        {
+            ControllerMapObjects objs (sess, sess->getControllerMap (i));
+            DynamicObject::Ptr row (new DynamicObject());
+            row->setProperty ("index", i);
+            row->setProperty ("deviceName", objs.device.getName());
+            row->setProperty ("controlName", objs.control.getName());
+            row->setProperty ("nodeName", objs.node.getName());
+            row->setProperty ("nodeId", objs.node.getUuidString());
+            row->setProperty ("parameterIndex", objs.controllerMap.getParameterIndex());
+            row->setProperty ("valid", objs.isValid());
+            mapsVar.add (var (row.get()));
+        }
+    }
+    mm->setProperty ("maps", var (mapsVar));
+    root->setProperty ("midiMapping", var (mm.get()));
+}
+
+/** Match classic ArcComponent::updateSignalActivity (grapheditorcomponent.cpp). */
+static float cableSignalLevelForArc (const Graph& G, const ValueTree& a)
+{
+    const auto sn = (uint32_t) (int64) a.getProperty (tags::sourceNode);
+    const auto dn = (uint32_t) (int64) a.getProperty (tags::destNode);
+    const int spi = (int) a.getProperty (tags::sourcePort, 0);
+
+    const Node srcNode = G.getNodeById (sn);
+    if (! srcNode.isValid())
+        return 0.f;
+    auto* proc = srcNode.getObject();
+    if (proc == nullptr)
+        return 0.f;
+    if (! isPositiveAndBelow (spi, srcNode.getNumPorts()))
+        return 0.f;
+
+    const Port srcPort = srcNode.getPort (spi);
+    const PortType pt = srcPort.getType();
+
+    if (pt.isAudio() || pt.isCv())
+    {
+        const int channel = srcPort.channel();
+        const int numOutputs = proc->getNumAudioOutputs();
+        float newActivity = 0.f;
+        if (channel >= 0 && channel < numOutputs)
+            newActivity = proc->getOutputRMS (channel);
+        else if (numOutputs > 0)
+        {
+            float total = 0.f;
+            for (int i = 0; i < numOutputs; ++i)
+                total += proc->getOutputRMS (i);
+            newActivity = total / (float) numOutputs;
+        }
+        return jmin (1.0f, newActivity * 3.0f);
+    }
+
+    if (pt.isMidi() || pt.isAtom())
+    {
+        bool active = proc->hasMidiOutputActivity();
+        if (dn != 0)
+        {
+            const Node dstNode = G.getNodeById (dn);
+            if (dstNode.isValid())
+                if (auto* dstProc = dstNode.getObject())
+                    active = active || dstProc->hasMidiInputActivity();
+        }
+        return active ? 0.75f : 0.f;
+    }
+
+    return 0.f;
+}
+
+static void appendAudioSetupJson (Context& ctx, DynamicObject::Ptr root)
+{
+    auto& devs = ctx.devices();
+    AudioDeviceManager::AudioDeviceSetup setup;
+    devs.getAudioDeviceSetup (setup);
+
+    DynamicObject::Ptr audio (new DynamicObject());
+    audio->setProperty ("outputDeviceName", setup.outputDeviceName);
+    audio->setProperty ("inputDeviceName", setup.inputDeviceName);
+    audio->setProperty ("sampleRate", setup.sampleRate);
+    audio->setProperty ("bufferSize", setup.bufferSize);
+    String currentTypeName;
+    if (auto* cur = devs.getCurrentDeviceTypeObject())
+        currentTypeName = cur->getTypeName();
+    audio->setProperty ("audioDeviceType", currentTypeName);
+
+    Array<var> typeNames;
+    for (auto* t : devs.getAvailableDeviceTypes())
+        if (t != nullptr)
+            typeNames.add (var (t->getTypeName()));
+    audio->setProperty ("deviceTypes", var (typeNames));
+
+    Array<var> outDevs, inDevs, bufSizes, rates;
+    for (auto* t : devs.getAvailableDeviceTypes())
+    {
+        if (t != nullptr && t->getTypeName() == currentTypeName)
+        {
+            {
+                const StringArray outs (t->getDeviceNames (false));
+                for (int i = 0; i < outs.size(); ++i)
+                    outDevs.add (var (outs[i]));
+            }
+            {
+                const StringArray ins (t->getDeviceNames (true));
+                for (int i = 0; i < ins.size(); ++i)
+                    inDevs.add (var (ins[i]));
+            }
+            break;
+        }
+    }
+
+    if (auto* device = devs.getCurrentAudioDevice())
+    {
+        for (auto bs : device->getAvailableBufferSizes())
+            bufSizes.add (var ((int) bs));
+        for (double sr : device->getAvailableSampleRates())
+            rates.add (var (sr));
+    }
+
+    audio->setProperty ("outputDevices", var (outDevs));
+    audio->setProperty ("inputDevices", var (inDevs));
+    audio->setProperty ("bufferSizes", var (bufSizes));
+    audio->setProperty ("sampleRates", var (rates));
+    root->setProperty ("audioSetup", var (audio.get()));
+}
+
+static void appendOscHostJson (Context& ctx, DynamicObject::Ptr root)
+{
+    DynamicObject::Ptr osc (new DynamicObject());
+    auto& st = ctx.settings();
+    osc->setProperty ("enabled", st.isOscHostEnabled());
+    osc->setProperty ("port", st.getOscHostPort());
+    root->setProperty ("oscHost", var (osc.get()));
+}
+
+static void appendMoleculesJson (DynamicObject::Ptr root)
+{
+    MoleculeLibrary lib;
+    lib.refresh();
+    Array<var> mols;
+    for (const auto& m : lib.getMolecules())
+    {
+        DynamicObject::Ptr o (new DynamicObject());
+        o->setProperty ("name", m.getName());
+        o->setProperty ("description", m.getDescription());
+        mols.add (var (o.get()));
+    }
+    root->setProperty ("molecules", var (mols));
+}
+
+static void appendCanvasJson (const Node& graphNode, const Graph& G, DynamicObject::Ptr root)
+{
+    DynamicObject::Ptr canvas (new DynamicObject());
+    bool snap = false;
+    int grid = 8;
+    double viewportX = 0.0, viewportY = 0.0, zoom = 1.0;
+    ValueTree ui = graphNode.getUIValueTree();
+    if (ui.isValid())
+    {
+        ValueTree wc = ui.getChildWithName ("WebCanvas");
+        if (wc.isValid())
+        {
+            snap = (bool) wc.getProperty ("snapToGrid", false);
+            grid = jlimit (4, 128, (int) wc.getProperty ("gridSize", 8));
+            viewportX = (double) wc.getProperty ("viewportX", 0.0);
+            viewportY = (double) wc.getProperty ("viewportY", 0.0);
+            zoom = (double) wc.getProperty ("zoom", 1.0);
+            if (zoom <= 0.0 || zoom > 100.0)
+                zoom = 1.0;
+        }
+    }
+    canvas->setProperty ("snapToGrid", snap);
+    canvas->setProperty ("gridSize", grid);
+    {
+        DynamicObject::Ptr vp (new DynamicObject());
+        vp->setProperty ("x", viewportX);
+        vp->setProperty ("y", viewportY);
+        vp->setProperty ("zoom", zoom);
+        canvas->setProperty ("viewport", var (vp.get()));
+    }
+    {
+        double minX = 0, minY = 0, maxX = 800, maxY = 600;
+        bool anyPos = false;
+        constexpr double kNodeW = 200.0;
+        constexpr double kNodeH = 100.0;
+        for (int i = 0; i < G.getNumNodes(); ++i)
+        {
+            const Node n (G.getNode (i));
+            double x = 0, y = 0;
+            n.getPosition (x, y);
+            if (! anyPos)
+            {
+                minX = x;
+                minY = y;
+                maxX = x + kNodeW;
+                maxY = y + kNodeH;
+                anyPos = true;
+            }
+            else
+            {
+                minX = jmin (minX, x);
+                minY = jmin (minY, y);
+                maxX = jmax (maxX, x + kNodeW);
+                maxY = jmax (maxY, y + kNodeH);
+            }
+        }
+        DynamicObject::Ptr gb (new DynamicObject());
+        gb->setProperty ("minX", minX);
+        gb->setProperty ("minY", minY);
+        gb->setProperty ("maxX", maxX);
+        gb->setProperty ("maxY", maxY);
+        canvas->setProperty ("graphBounds", var (gb.get()));
+    }
+    root->setProperty ("canvas", var (canvas.get()));
+}
+
+static var buildGraphOutlineRecursive (const Node& n)
+{
+    DynamicObject::Ptr o (new DynamicObject());
+    o->setProperty ("id", n.getUuidString());
+    o->setProperty ("name", n.getName());
+    const bool container = n.isGraph();
+    o->setProperty ("isContainer", container);
+    if (container)
+    {
+        Graph inner (n);
+        Array<var> kids;
+        for (int i = 0; i < inner.getNumNodes(); ++i)
+            kids.add (buildGraphOutlineRecursive (inner.getNode (i)));
+        o->setProperty ("children", var (kids));
+    }
+    return var (o.get());
+}
+
+static void appendActiveGraphOutlineJson (const Graph& G, DynamicObject::Ptr root)
+{
+    Array<var> outline;
+    for (int i = 0; i < G.getNumNodes(); ++i)
+        outline.add (buildGraphOutlineRecursive (G.getNode (i)));
+    root->setProperty ("activeGraphOutline", var (outline));
+}
+
+static ValueTree ensureWebPerformMutable (Session& sess)
+{
+    ValueTree root = sess.getValueTree();
+    ValueTree wp = root.getChildWithName ("webPerform");
+    if (! wp.isValid())
+    {
+        wp = ValueTree ("webPerform");
+        wp.setProperty ("activeIndex", 0, nullptr);
+        root.addChild (wp, -1, nullptr);
+        ValueTree mainScene ("WebScene");
+        mainScene.setProperty ("id", String ("default"), nullptr);
+        mainScene.setProperty ("name", String ("Main"), nullptr);
+        wp.addChild (mainScene, -1, nullptr);
+    }
+    return wp;
+}
+
+static void appendPerformJson (Session& sess, DynamicObject::Ptr root)
+{
+    DynamicObject::Ptr perform (new DynamicObject());
+    Array<var> scenesVar;
+    int activeIdx = 0;
+    ValueTree wp = sess.getValueTree().getChildWithName ("webPerform");
+    if (wp.isValid())
+    {
+        activeIdx = (int) wp.getProperty ("activeIndex", 0);
+        for (int i = 0; i < wp.getNumChildren(); ++i)
+        {
+            ValueTree sc = wp.getChild (i);
+            if (! sc.hasType ("WebScene"))
+                continue;
+            DynamicObject::Ptr row (new DynamicObject());
+            const int idx = scenesVar.size();
+            row->setProperty ("id", sc.getProperty ("id", "").toString());
+            row->setProperty ("name", sc.getProperty ("name", "Scene").toString());
+            row->setProperty ("index", idx);
+            row->setProperty ("active", idx == activeIdx);
+            row->setProperty ("hasCapture", sc.getProperty (paramStateJsonId).toString().isNotEmpty());
+            scenesVar.add (var (row.get()));
+        }
+    }
+
+    if (scenesVar.isEmpty())
+    {
+        DynamicObject::Ptr sc (new DynamicObject());
+        sc->setProperty ("id", String ("default"));
+        sc->setProperty ("name", String ("Main"));
+        sc->setProperty ("index", 0);
+        sc->setProperty ("active", true);
+        sc->setProperty ("hasCapture", false);
+        scenesVar.add (var (sc.get()));
+        activeIdx = 0;
+    }
+    else
+    {
+        activeIdx = jlimit (0, scenesVar.size() - 1, activeIdx);
+        for (int i = 0; i < scenesVar.size(); ++i)
+            if (auto* obj = scenesVar.getReference (i).getDynamicObject())
+                obj->setProperty ("active", i == activeIdx);
+    }
+
+    perform->setProperty ("scenes", var (scenesVar));
+    perform->setProperty ("activeSceneIndex", activeIdx);
+    root->setProperty ("perform", var (perform.get()));
+}
+
+static std::optional<WebBrowserComponent::Resource> makeWebAsset (const File& root, String reqPath)
+{
+    if (reqPath.isEmpty() || reqPath == "/")
+        reqPath = "/index.html";
+
+    while (reqPath.startsWithChar ('/'))
+        reqPath = reqPath.substring (1);
+
+    const File file (root.getChildFile (reqPath).getLinkedTarget());
+
+    if (! file.existsAsFile() || ! file.isAChildOf (root))
+    {
+        if (reqPath.equalsIgnoreCase ("index.html") || reqPath.isEmpty())
+        {
+            String stub;
+            stub << "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Element</title></head>"
+                    "<body style='background:#1e1e22;color:#e5e5ea;font-family:system-ui,sans-serif;padding:24px'>"
+                    "<h2>Web UI bundle not found</h2>"
+                    "<p>Run <code style='background:#252529;padding:4px 8px;border-radius:4px'>cd webview &amp;&amp; npm install &amp;&amp; npm run build</code> "
+                    "then restart Element.</p>"
+                    "<p>Dist path: <code style='background:#252529;padding:4px 8px;border-radius:4px'>"
+                 << root.getFullPathName() << "</code></p>"
+                    "</body></html>";
+            WebBrowserComponent::Resource r;
+            r.mimeType = "text/html";
+            const char* raw = stub.toRawUTF8();
+            const size_t numBytes = stub.getNumBytesAsUTF8();
+            r.data.assign ((const std::byte*) raw,
+                           (const std::byte*) raw + numBytes);
+            return r;
+        }
+        return std::nullopt;
+    }
+
+    WebBrowserComponent::Resource r;
+    const String fname (file.getFileName());
+    if (fname.endsWithIgnoreCase (".html")) r.mimeType = "text/html";
+    else if (fname.endsWithIgnoreCase (".js")) r.mimeType = "text/javascript";
+    else if (fname.endsWithIgnoreCase (".css")) r.mimeType = "text/css";
+    else if (fname.endsWithIgnoreCase (".svg")) r.mimeType = "image/svg+xml";
+    else if (fname.endsWithIgnoreCase (".json")) r.mimeType = "application/json";
+    else if (fname.endsWithIgnoreCase (".woff2")) r.mimeType = "font/woff2";
+    else if (fname.endsWithIgnoreCase (".png")) r.mimeType = "image/png";
+    else
+        r.mimeType = "application/octet-stream";
+
+    MemoryBlock mb;
+    if (! file.loadFileAsData (mb))
+        return std::nullopt;
+    r.data.resize (mb.getSize());
+    memcpy (r.data.data(), mb.getData(), mb.getSize());
+    return r;
+}
+
+//==============================================================================
+ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
+{
+    logForwarder = std::make_unique<ElementWebViewLogForwarder> (*this);
+    context.logger().addListener (logForwarder.get());
+
+    const File distRoot (element::webview_dist::kDistPath);
+
+    const char* devUrlEnv = nullptr;
+   #if JUCE_DEBUG
+    devUrlEnv = std::getenv ("ELEMENT_WEBVIEW_DEV_URL");
+   #endif
+    const String devUrl = devUrlEnv != nullptr ? String (devUrlEnv) : String();
+    const bool useDevServer = devUrl.isNotEmpty();
+
+    WebBrowserComponent::Options opts;
+
+   #if JUCE_WINDOWS
+    opts = opts.withBackend (WebBrowserComponent::Options::Backend::webview2);
+    {
+        WebBrowserComponent::Options::WinWebView2 wv2;
+        wv2 = wv2.withBackgroundColour (juce::Colour (0xff1e1e22));
+        opts = opts.withWinWebView2Options (wv2);
+    }
+   #endif
+
+    opts = opts.withNativeIntegrationEnabled (true)
+              .withInitialisationData ("elementVersion", ELEMENT_VERSION_STRING)
+              .withInitialisationData (
+                  "webviewMode",
+                  var (useDevServer ? "dev" : "production"));
+
+    if (! useDevServer)
+    {
+       #if JUCE_WEB_BROWSER_RESOURCE_PROVIDER_AVAILABLE
+        const File distRootForProvider (distRoot);
+        opts = opts.withResourceProvider (
+            [distRootForProvider] (const String& path) { return makeWebAsset (distRootForProvider, path); },
+            std::nullopt);
+       #endif
+    }
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementGetGraphState"),
+        [this] (const Array<var>&, auto completion) {
+            const String j (buildActiveGraphJson());
+            MessageManager::callAsync ([completion, j] { completion (var (j)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementGetPluginList"),
+        [this] (const Array<var>&, auto completion) {
+            const String j (buildPluginListJson());
+            MessageManager::callAsync ([completion, j] { completion (var (j)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementGetNodeParameters"),
+        [this] (const Array<var>& args, auto completion) {
+            String uuid;
+            if (args.size() > 0)
+                uuid = args[0].toString();
+            const String j (buildNodeParametersJson (uuid));
+            MessageManager::callAsync ([completion, j] { completion (var (j)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementSetNodeParameter"),
+        [this] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 3)
+            {
+                const String uuid (args[0].toString());
+                const int idx = (int) args[1];
+                const float v = (float) args[2];
+                ok = setNodeParameterValue (uuid, idx, v);
+            }
+            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementGraphAddPlugin"),
+        [this] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 1)
+            {
+                const String identifier (args[0].toString());
+                if (const auto* desc = findKnownPluginByIdentifier (context.plugins().getKnownPlugins(), identifier))
+                {
+                    auto sess = context.session();
+                    const Node graph (sess != nullptr ? sess->getCurrentGraph() : Node());
+                    if (graph.isGraph())
+                    {
+                        context.services().postMessage (new AddPluginMessage (graph, *desc, true));
+                        ok = true;
+                    }
+                }
+            }
+            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementGraphRemoveNode"),
+        [this] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 1)
+            {
+                if (auto sess = context.session())
+                {
+                    const Graph G (sess->getCurrentGraph());
+                    if (G.isGraph())
+                    {
+                        const Node n = findNodeByUuidInGraph (G, args[0].toString());
+                        if (n.isValid())
+                        {
+                            context.services().postMessage (new RemoveNodeMessage (n));
+                            ok = true;
+                        }
+                    }
+                }
+            }
+            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementGraphConnect"),
+        [this] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 4)
+            {
+                if (auto sess = context.session())
+                {
+                    const Graph G (sess->getCurrentGraph());
+                    if (G.isGraph())
+                    {
+                        const Node src = findNodeByUuidInGraph (G, args[0].toString());
+                        const Node dst = findNodeByUuidInGraph (G, args[2].toString());
+                        const int sp = parsePortHandleIndex (args[1].toString(), "out-");
+                        const int dp = parsePortHandleIndex (args[3].toString(), "in-");
+                        if (src.isValid() && dst.isValid() && sp >= 0 && dp >= 0)
+                        {
+                            context.services().postMessage (
+                                new AddConnectionMessage ((uint32_t) src.getNodeId(), (uint32_t) sp, (uint32_t) dst.getNodeId(), (uint32_t) dp, G));
+                            ok = true;
+                        }
+                    }
+                }
+            }
+            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementGraphDisconnect"),
+        [this] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 4)
+            {
+                if (auto sess = context.session())
+                {
+                    const Graph G (sess->getCurrentGraph());
+                    if (G.isGraph())
+                    {
+                        const Node src = findNodeByUuidInGraph (G, args[0].toString());
+                        const Node dst = findNodeByUuidInGraph (G, args[2].toString());
+                        const int sp = parsePortHandleIndex (args[1].toString(), "out-");
+                        const int dp = parsePortHandleIndex (args[3].toString(), "in-");
+                        if (src.isValid() && dst.isValid() && sp >= 0 && dp >= 0)
+                        {
+                            context.services().postMessage (
+                                new RemoveConnectionMessage ((uint32_t) src.getNodeId(), (uint32_t) sp, (uint32_t) dst.getNodeId(), (uint32_t) dp, G));
+                            ok = true;
+                        }
+                    }
+                }
+            }
+            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementGraphMoveNodes"),
+        [this] (const Array<var>& args, auto completion) {
+            int count = 0;
+            if (args.size() >= 1)
+            {
+                const var& payload = args[0];
+                auto applyMove = [&] (const var& item) {
+                    if (auto* obj = item.getDynamicObject())
+                    {
+                        const String id = obj->getProperty ("id").toString();
+                        const double x = (double) obj->getProperty ("x");
+                        const double y = (double) obj->getProperty ("y");
+                        if (auto sess = context.session())
+                        {
+                            const Graph G (sess->getCurrentGraph());
+                            if (G.isGraph())
+                            {
+                                Node n = findNodeByUuidInGraph (G, id);
+                                if (n.isValid())
+                                {
+                                    n.setPosition (x, y);
+                                    ++count;
+                                }
+                            }
+                        }
+                    }
+                };
+
+                if (payload.isArray())
+                    for (const auto& m : *payload.getArray())
+                        applyMove (m);
+                else
+                    applyMove (payload);
+            }
+            MessageManager::callAsync ([completion, count] { completion (var (count)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementGraphSetBypass"),
+        [this] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 2)
+            {
+                if (auto sess = context.session())
+                {
+                    const Graph G (sess->getCurrentGraph());
+                    if (G.isGraph())
+                    {
+                        Node n = findNodeByUuidInGraph (G, args[0].toString());
+                        if (n.isValid())
+                        {
+                            const bool bypass = (bool) args[1];
+                            n.getPropertyAsValue (tags::bypass).setValue (bypass);
+                            if (auto* obj = n.getObject())
+                                if (obj->isSuspended() != bypass)
+                                    obj->suspendProcessing (bypass);
+                            ok = true;
+                        }
+                    }
+                }
+            }
+            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementGraphSetMute"),
+        [this] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 2)
+                if (auto sess = context.session())
+                {
+                    const Graph G (sess->getCurrentGraph());
+                    if (G.isGraph())
+                    {
+                        Node n = findNodeByUuidInGraph (G, args[0].toString());
+                        if (n.isValid())
+                        {
+                            n.setMuted ((bool) args[1]);
+                            ok = true;
+                        }
+                    }
+                }
+            if (ok)
+                pushGraphSnapshot();
+            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementGraphSetMuteInput"),
+        [this] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 2)
+                if (auto sess = context.session())
+                {
+                    const Graph G (sess->getCurrentGraph());
+                    if (G.isGraph())
+                    {
+                        Node n = findNodeByUuidInGraph (G, args[0].toString());
+                        if (n.isValid())
+                        {
+                            n.setMuteInput ((bool) args[1]);
+                            ok = true;
+                        }
+                    }
+                }
+            if (ok)
+                pushGraphSnapshot();
+            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementGraphSetCanvasOptions"),
+        [this] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 2)
+                if (auto sess = context.session())
+                {
+                    Graph G (sess->getCurrentGraph());
+                    if (G.isGraph())
+                    {
+                        ValueTree wc = ensureWebCanvasInGraph (G);
+                        wc.setProperty ("snapToGrid", (bool) args[0], nullptr);
+                        wc.setProperty ("gridSize", jlimit (4, 128, (int) args[1]), nullptr);
+                        ok = true;
+                    }
+                }
+            if (ok)
+                pushGraphSnapshot();
+            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementGraphSetViewport"),
+        [this] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 3)
+                if (auto sess = context.session())
+                {
+                    Graph G (sess->getCurrentGraph());
+                    if (G.isGraph())
+                    {
+                        ValueTree wc = ensureWebCanvasInGraph (G);
+                        wc.setProperty ("viewportX", (double) args[0], nullptr);
+                        wc.setProperty ("viewportY", (double) args[1], nullptr);
+                        wc.setProperty ("zoom", jlimit (0.05, 10.0, (double) args[2]), nullptr);
+                        ok = true;
+                    }
+                }
+            if (ok)
+                pushGraphSnapshot();
+            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementGraphDuplicateNode"),
+        [this] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 1)
+            {
+                if (auto sess = context.session())
+                {
+                    const Graph G (sess->getCurrentGraph());
+                    if (G.isGraph())
+                    {
+                        const Node n = findNodeByUuidInGraph (G, args[0].toString());
+                        if (n.isValid())
+                        {
+                            context.services().postMessage (new DuplicateNodeMessage (n));
+                            ok = true;
+                        }
+                    }
+                }
+            }
+            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementUndo"),
+        [this] (const Array<var>&, auto completion) {
+            if (auto* gui = context.services().find<GuiService>())
+                gui->performUndo();
+            MessageManager::callAsync ([completion] { completion (var (true)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementRedo"),
+        [this] (const Array<var>&, auto completion) {
+            if (auto* gui = context.services().find<GuiService>())
+                gui->performRedo();
+            MessageManager::callAsync ([completion] { completion (var (true)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementTransportPanic"),
+        [this] (const Array<var>&, auto completion) {
+            if (auto e = context.audio())
+                for (const auto& msg : MidiPanic::messages())
+                    e->addMidiMessage (msg);
+            MessageManager::callAsync ([completion] { completion (var (true)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementTransportTogglePlay"),
+        [this] (const Array<var>&, auto completion) {
+            if (auto e = context.audio())
+                e->togglePlayPause();
+            MessageManager::callAsync ([completion] { completion (var (true)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementGraphRenameNode"),
+        [this] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 2)
+            {
+                if (auto sess = context.session())
+                {
+                    const Graph G (sess->getCurrentGraph());
+                    if (G.isGraph())
+                    {
+                        Node n = findNodeByUuidInGraph (G, args[0].toString());
+                        if (n.isValid())
+                        {
+                            n.setProperty (tags::name, args[1].toString().trim());
+                            ok = true;
+                        }
+                    }
+                }
+            }
+            if (ok)
+                pushGraphSnapshot();
+            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementGraphDuplicateNodes"),
+        [this] (const Array<var>& args, auto completion) {
+            int count = 0;
+            if (args.size() >= 1)
+            {
+                const var& ids = args[0];
+                if (auto sess = context.session())
+                {
+                    const Graph G (sess->getCurrentGraph());
+                    if (G.isGraph())
+                    {
+                        if (ids.isArray())
+                        {
+                            for (const auto& idVar : *ids.getArray())
+                            {
+                                const Node n = findNodeByUuidInGraph (G, idVar.toString());
+                                if (n.isValid())
+                                {
+                                    context.services().postMessage (new DuplicateNodeMessage (n));
+                                    ++count;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if (count > 0)
+                scheduleGraphPush (40);
+            MessageManager::callAsync ([completion, count] { completion (var (count)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementGraphCopyNodes"),
+        [this] (const Array<var>& args, auto completion) {
+            int count = 0;
+            graphCopyPasteboard.clear();
+            if (args.size() >= 1)
+            {
+                const var& ids = args[0];
+                if (ids.isArray())
+                {
+                    for (const auto& idVar : *ids.getArray())
+                    {
+                        const String u (idVar.toString());
+                        if (u.isNotEmpty())
+                        {
+                            graphCopyPasteboard.addIfNotAlreadyThere (u);
+                            ++count;
+                        }
+                    }
+                }
+            }
+            MessageManager::callAsync ([completion, count] { completion (var (count)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementGraphPasteNodes"),
+        [this] (const Array<var>&, auto completion) {
+            int count = 0;
+            if (auto sess = context.session())
+            {
+                const Graph G (sess->getCurrentGraph());
+                if (G.isGraph())
+                {
+                    for (const auto& uuid : graphCopyPasteboard)
+                    {
+                        const Node n = findNodeByUuidInGraph (G, uuid);
+                        if (n.isValid())
+                        {
+                            context.services().postMessage (new DuplicateNodeMessage (n));
+                            ++count;
+                        }
+                    }
+                }
+            }
+            if (count > 0)
+                scheduleGraphPush (40);
+            MessageManager::callAsync ([completion, count] { completion (var (count)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementGraphCommentAdd"),
+        [this] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (auto sess = context.session())
+            {
+                Graph G (sess->getCurrentGraph());
+                if (G.isGraph())
+                {
+                    double x = 80, y = 80, w = 240, h = 160;
+                    if (args.size() >= 1)
+                        x = (double) args[0];
+                    if (args.size() >= 2)
+                        y = (double) args[1];
+                    if (args.size() >= 3)
+                        w = (double) args[2];
+                    if (args.size() >= 4)
+                        h = (double) args[3];
+                    ValueTree boxes = ensureCommentBoxesContainer (G);
+                    ValueTree box ("CommentBox");
+                    const String uid = Uuid().toString();
+                    box.setProperty ("uuid", uid, nullptr);
+                    box.setProperty ("title", String ("Comment"), nullptr);
+                    box.setProperty ("color", juce::Colour (0x40808080).toString(), nullptr);
+                    box.setProperty ("x", x, nullptr);
+                    box.setProperty ("y", y, nullptr);
+                    box.setProperty ("width", w, nullptr);
+                    box.setProperty ("height", h, nullptr);
+                    boxes.addChild (box, -1, nullptr);
+                    ok = true;
+                }
+            }
+            if (ok)
+                pushGraphSnapshot();
+            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementGraphCommentUpsert"),
+        [this] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 1)
+            {
+                const var parsed = JSON::parse (args[0].toString());
+                if (auto* obj = parsed.getDynamicObject())
+                {
+                    if (auto sess = context.session())
+                    {
+                        Graph G (sess->getCurrentGraph());
+                        if (G.isGraph())
+                        {
+                            ValueTree boxes = ensureCommentBoxesContainer (G);
+                            String id = obj->getProperty ("id").toString();
+                            if (id.isEmpty())
+                                id = obj->getProperty ("uuid").toString();
+
+                            ValueTree box;
+                            const int idx = findCommentBoxIndexByUuid (boxes, id);
+                            if (idx >= 0)
+                                box = boxes.getChild (idx);
+                            else
+                            {
+                                box = ValueTree ("CommentBox");
+                                const String uid = id.isNotEmpty() ? id : Uuid().toString();
+                                box.setProperty ("uuid", uid, nullptr);
+                                boxes.addChild (box, -1, nullptr);
+                            }
+
+                            if (obj->hasProperty ("title"))
+                                box.setProperty ("title", obj->getProperty ("title"), nullptr);
+                            if (obj->hasProperty ("color"))
+                                box.setProperty ("color", obj->getProperty ("color"), nullptr);
+                            if (obj->hasProperty ("x"))
+                                box.setProperty ("x", (double) obj->getProperty ("x"), nullptr);
+                            if (obj->hasProperty ("y"))
+                                box.setProperty ("y", (double) obj->getProperty ("y"), nullptr);
+                            if (obj->hasProperty ("width"))
+                                box.setProperty ("width", (double) obj->getProperty ("width"), nullptr);
+                            if (obj->hasProperty ("height"))
+                                box.setProperty ("height", (double) obj->getProperty ("height"), nullptr);
+                            ok = true;
+                        }
+                    }
+                }
+            }
+            if (ok)
+                pushGraphSnapshot();
+            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementGraphCommentDelete"),
+        [this] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 1)
+            {
+                const String id = args[0].toString();
+                if (auto sess = context.session())
+                {
+                    Graph G (sess->getCurrentGraph());
+                    if (G.isGraph())
+                    {
+                        ValueTree ui = G.getUIValueTree();
+                        if (ui.isValid())
+                        {
+                            ValueTree boxes = ui.getChildWithName ("CommentBoxes");
+                            if (boxes.isValid())
+                            {
+                                const int idx = findCommentBoxIndexByUuid (boxes, id);
+                                if (idx >= 0)
+                                {
+                                    boxes.removeChild (idx, nullptr);
+                                    ok = true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if (ok)
+                pushGraphSnapshot();
+            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementSessionNew"),
+        [this] (const Array<var>&, auto completion) {
+            if (auto* ss = context.services().find<SessionService>())
+            {
+                ss->newSession();
+                if (auto* gui = context.services().find<GuiService>())
+                    gui->stabilizeContent();
+            }
+            pushGraphSnapshot();
+            MessageManager::callAsync ([completion] { completion (var (true)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementSessionSave"),
+        [this] (const Array<var>&, auto completion) {
+            if (auto* ss = context.services().find<SessionService>())
+            {
+                ss->saveSession (false, true, true);
+                if (auto* gui = context.services().find<GuiService>())
+                    gui->stabilizeContent();
+            }
+            pushGraphSnapshot();
+            MessageManager::callAsync ([completion] { completion (var (true)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementSessionSaveAs"),
+        [this] (const Array<var>&, auto completion) {
+            if (auto* ss = context.services().find<SessionService>())
+            {
+                ss->saveSession (true, true, true);
+                if (auto* gui = context.services().find<GuiService>())
+                    gui->stabilizeContent();
+            }
+            pushGraphSnapshot();
+            MessageManager::callAsync ([completion] { completion (var (true)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementSessionOpen"),
+        [this] (const Array<var>&, auto completion) {
+            bool ok = false;
+            if (auto* ss = context.services().find<SessionService>())
+            {
+                File startDir (ss->getSessionFile().getParentDirectory());
+                if (! startDir.isDirectory())
+                    startDir = File();
+                FileChooser chooser ("Open Session", startDir, "*.els", true, false);
+                if (chooser.browseForFileToOpen())
+                {
+                    const File f (chooser.getResult());
+                    ss->openFile (f);
+                    if (auto* ui = context.services().find<GuiService>())
+                        ui->recentFiles().addFile (f);
+                    if (auto* gui = context.services().find<GuiService>())
+                        gui->stabilizeContent();
+                    ok = true;
+                }
+            }
+            if (ok)
+                pushGraphSnapshot();
+            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementSessionOpenPath"),
+        [this] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 1)
+            {
+                const File f (args[0].toString().trim());
+                if (f.existsAsFile() && f.hasFileExtension ("els"))
+                {
+                    if (auto* ss = context.services().find<SessionService>())
+                    {
+                        ss->openFile (f);
+                        if (auto* ui = context.services().find<GuiService>())
+                            ui->recentFiles().addFile (f);
+                        if (auto* gui = context.services().find<GuiService>())
+                            gui->stabilizeContent();
+                        ok = true;
+                    }
+                }
+            }
+            if (ok)
+                pushGraphSnapshot();
+            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementSessionSetActiveGraph"),
+        [this] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 1)
+            {
+                const int idx = (int) args[0];
+                if (auto sess = context.session())
+                {
+                    if (isPositiveAndBelow (idx, sess->getNumGraphs()))
+                    {
+                        sess->setActiveGraph (idx);
+                        if (auto* gui = context.services().find<GuiService>())
+                            gui->stabilizeContent();
+                        ok = true;
+                    }
+                }
+            }
+            if (ok)
+                pushGraphSnapshot();
+            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementSessionImportGraph"),
+        [this] (const Array<var>&, auto completion) {
+            bool ok = false;
+            if (auto* ss = context.services().find<SessionService>())
+            {
+                FileChooser chooser ("Import Graph", File(), "*.elg", true, false);
+                if (chooser.browseForFileToOpen())
+                {
+                    ss->importGraph (chooser.getResult());
+                    if (auto* gui = context.services().find<GuiService>())
+                        gui->stabilizeContent();
+                    ok = true;
+                }
+            }
+            if (ok)
+                pushGraphSnapshot();
+            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementSessionExportGraph"),
+        [this] (const Array<var>&, auto completion) {
+            bool ok = false;
+            if (auto sess = context.session())
+                if (auto* ss = context.services().find<SessionService>())
+                {
+                    auto node = sess->getCurrentGraph();
+                    node.savePluginState();
+                    File start (File::getSpecialLocation (File::userDocumentsDirectory)
+                                    .getChildFile (node.getName().isNotEmpty() ? node.getName() : "Graph")
+                                    .withFileExtension ("elg"));
+                    start = start.getNonexistentSibling();
+                    FileChooser chooser (TRANS ("Export Graph"), start, "*.elg");
+                    if (chooser.browseForFileToSave (true))
+                    {
+                        ss->exportGraph (node, chooser.getResult());
+                        if (auto* gui = context.services().find<GuiService>())
+                            gui->stabilizeContent();
+                        ok = true;
+                    }
+                }
+            if (ok)
+                pushGraphSnapshot();
+            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementAudioApplySetup"),
+        [this] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 1)
+                if (auto* dyn = args[0].getDynamicObject())
+                {
+                    AudioDeviceManager::AudioDeviceSetup setup;
+                    context.devices().getAudioDeviceSetup (setup);
+                    const var vType (dyn->getProperty ("audioDeviceType"));
+                    if (vType.isString())
+                    {
+                        const String tn (vType.toString());
+                        if (auto* cur = context.devices().getCurrentDeviceTypeObject())
+                            if (cur->getTypeName() != tn)
+                                context.devices().selectAudioDriver (tn);
+                    }
+                    const auto setStr = [&] (const char* key, String& dest) {
+                        const var v (dyn->getProperty (key));
+                        if (v.isString())
+                            dest = v.toString();
+                    };
+                    setStr ("outputDeviceName", setup.outputDeviceName);
+                    setStr ("inputDeviceName", setup.inputDeviceName);
+                    const var vSr (dyn->getProperty ("sampleRate"));
+                    if (vSr.isDouble() || vSr.isInt())
+                        setup.sampleRate = (double) vSr;
+                    const var vBuf (dyn->getProperty ("bufferSize"));
+                    if (vBuf.isInt() || vBuf.isDouble())
+                        setup.bufferSize = (int) vBuf;
+                    const String err (context.devices().setAudioDeviceSetup (setup, true));
+                    ok = err.isEmpty();
+                }
+            if (ok)
+                pushGraphSnapshot();
+            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementOscApplyHost"),
+        [this] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 2)
+            {
+                context.settings().setOscHostEnabled ((bool) args[0]);
+                context.settings().setOscHostPort ((int) args[1]);
+                if (auto* osc = context.services().find<OSCService>())
+                    osc->refreshWithSettings (false);
+                ok = true;
+            }
+            if (ok)
+                pushGraphSnapshot();
+            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementMappingSetLearning"),
+        [this] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 1)
+                if (auto* map = context.services().find<MappingService>())
+                {
+                    map->learn ((bool) args[0]);
+                    ok = true;
+                }
+            if (ok)
+                pushGraphSnapshot();
+            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementMappingRemoveMap"),
+        [this] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 1)
+                if (auto sess = context.session())
+                {
+                    const int idx = (int) args[0];
+                    if (isPositiveAndBelow (idx, sess->getNumControllerMaps()))
+                    {
+                        if (auto* mapSvc = context.services().find<MappingService>())
+                            mapSvc->remove (sess->getControllerMap (idx));
+                        if (auto* dev = context.services().find<DeviceService>())
+                            dev->refresh();
+                        ok = true;
+                    }
+                }
+            if (ok)
+                pushGraphSnapshot();
+            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementSessionListFiles"),
+        [] (const Array<var>&, auto completion) {
+            const String j (buildSessionBrowserEntriesJson());
+            MessageManager::callAsync ([completion, j] { completion (var (j)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementPluginEditorOpen"),
+        [this] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 5)
+            {
+                pluginEditorOpen (args[0].toString(), (int) args[1], (int) args[2], (int) args[3], (int) args[4]);
+                ok = pluginEmbedEditor != nullptr;
+            }
+            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementPluginEditorClose"),
+        [this] (const Array<var>&, auto completion) {
+            pluginEditorClose();
+            MessageManager::callAsync ([completion] { completion (var (true)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementPluginEditorSetBounds"),
+        [this] (const Array<var>& args, auto completion) {
+            if (args.size() >= 4)
+                pluginEditorSetBounds ((int) args[0], (int) args[1], (int) args[2], (int) args[3]);
+            MessageManager::callAsync ([completion] { completion (var (true)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementPluginEditorFloat"),
+        [this] (const Array<var>&, auto completion) {
+            pluginEditorFloat();
+            MessageManager::callAsync ([completion] { completion (var (true)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementWebDismissOverlay"),
+        [this] (const Array<var>&, auto completion) {
+            if (webShell != nullptr)
+                webShell->dismissPresentedView();
+            MessageManager::callAsync ([completion] { completion (var (true)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementOpenLuaConsole"),
+        [this] (const Array<var>&, auto completion) {
+            if (webShell != nullptr)
+                webShell->presentContentOverlay (std::make_unique<LuaConsoleView>());
+            MessageManager::callAsync ([completion] { completion (var (true)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementOpenGraphMixer"),
+        [this] (const Array<var>&, auto completion) {
+            if (webShell != nullptr)
+                webShell->presentContentOverlay (std::make_unique<GraphMixerView>());
+            MessageManager::callAsync ([completion] { completion (var (true)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementMoleculeInsert"),
+        [this] (const Array<var>& args, auto completion) {
+            int count = 0;
+            if (args.size() >= 1)
+                if (auto sess = context.session())
+                {
+                    Node graphNode = sess->getCurrentGraph();
+                    if (graphNode.isGraph())
+                    {
+                        const String molName = args[0].toString();
+                        const double insertX = args.size() > 1 ? (double) args[1] : 100.0;
+                        const double insertY = args.size() > 2 ? (double) args[2] : 100.0;
+                        MoleculeLibrary lib;
+                        lib.refresh();
+                        const Molecule mol (lib.getMolecule (molName));
+                        if (mol.isValid())
+                        {
+                            ValueTree nodesData = mol.data().getChildWithName (tags::nodes);
+                            for (int i = 0; i < nodesData.getNumChildren(); ++i)
+                            {
+                                ValueTree nodeData = nodesData.getChild (i).createCopy();
+                                double x = static_cast<double> (nodeData.getProperty (tags::x, 0.0)) + insertX;
+                                double y = static_cast<double> (nodeData.getProperty (tags::y, 0.0)) + insertY;
+                                nodeData.setProperty (tags::x, x, nullptr);
+                                nodeData.setProperty (tags::y, y, nullptr);
+                                String identifier = nodeData.getProperty (tags::identifier).toString();
+                                String formatName = nodeData.getProperty (tags::format).toString();
+                                if (identifier.isEmpty())
+                                    continue;
+                                PluginDescription desc;
+                                desc.fileOrIdentifier = identifier;
+                                desc.pluginFormatName = formatName.isEmpty() ? "Internal" : formatName;
+                                desc.name = nodeData.getProperty (tags::name).toString();
+                                context.services().postMessage (new AddPluginMessage (graphNode, desc, true));
+                                ++count;
+                            }
+                        }
+                    }
+                }
+            if (count > 0)
+                pushGraphSnapshot();
+            MessageManager::callAsync ([completion, count] { completion (var (count)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementPerformSetActiveScene"),
+        [this] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 1)
+                if (auto sess = context.session())
+                {
+                    ValueTree wp = ensureWebPerformMutable (*sess);
+                    const int n = countWebSceneChildren (wp);
+                    if (n > 0)
+                    {
+                        int idx = (int) args[0];
+                        idx = jlimit (0, n - 1, idx);
+                        wp.setProperty ("activeIndex", idx, nullptr);
+                        ValueTree sc = getWebSceneAtFilteredIndex (wp, idx);
+                        if (sc.isValid())
+                            applyGraphParameterStateJson (context, sc.getProperty (paramStateJsonId).toString());
+                        ok = true;
+                    }
+                }
+            if (ok)
+                pushGraphSnapshot();
+            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementPerformAddScene"),
+        [this] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (auto sess = context.session())
+            {
+                ValueTree wp = ensureWebPerformMutable (*sess);
+                const String name = args.size() >= 1 ? args[0].toString() : String ("Scene");
+                ValueTree sc ("WebScene");
+                sc.setProperty ("id", Uuid().toString(), nullptr);
+                sc.setProperty ("name", name.isEmpty() ? String ("Scene") : name, nullptr);
+                wp.addChild (sc, -1, nullptr);
+                wp.setProperty ("activeIndex", countWebSceneChildren (wp) - 1, nullptr);
+                ok = true;
+            }
+            if (ok)
+                pushGraphSnapshot();
+            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementPerformCaptureScene"),
+        [this] (const Array<var>&, auto completion) {
+            bool ok = false;
+            if (auto sess = context.session())
+            {
+                ValueTree wp = ensureWebPerformMutable (*sess);
+                const int n = countWebSceneChildren (wp);
+                if (n > 0)
+                {
+                    int idx = (int) wp.getProperty ("activeIndex", 0);
+                    idx = jlimit (0, n - 1, idx);
+                    ValueTree sc = getWebSceneAtFilteredIndex (wp, idx);
+                    const Graph G (sess->getCurrentGraph());
+                    if (sc.isValid() && G.isGraph())
+                    {
+                        sc.setProperty (paramStateJsonId, captureGraphParameterStateJson (G), nullptr);
+                        ok = true;
+                    }
+                }
+            }
+            if (ok)
+                pushGraphSnapshot();
+            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementAppGetAbout"),
+        [] (const Array<var>&, auto completion) {
+            DynamicObject::Ptr o (new DynamicObject());
+            o->setProperty ("name", String (EL_APP_NAME));
+            o->setProperty ("version", String (ELEMENT_VERSION_STRING));
+            o->setProperty ("copyright", String ("GPL-3.0-or-later"));
+            MessageManager::callAsync ([completion, o] { completion (var (o.get())); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementAppCheckForUpdates"),
+        [this] (const Array<var>&, auto completion) {
+            if (auto* gui = context.services().find<GuiService>())
+                gui->checkUpdates (false);
+            MessageManager::callAsync ([completion] { completion (var (true)); });
+        });
+
+    browser = std::make_unique<WebBrowserComponent> (opts);
+    addAndMakeVisible (*browser);
+
+    attachSessionListener();
+    startTimerHz (60);
+
+    if (useDevServer)
+        browser->goToURL (devUrl);
+    else
+       #if JUCE_WEB_BROWSER_RESOURCE_PROVIDER_AVAILABLE
+        browser->goToURL (WebBrowserComponent::getResourceProviderRoot());
+       #else
+        jassertfalse;
+       #endif
+}
+
+ElementWebViewHost::~ElementWebViewHost()
+{
+    stopTimer();
+    detachSessionListener();
+    pluginEditorClose();
+    if (logForwarder != nullptr)
+    {
+        context.logger().removeListener (logForwarder.get());
+        logForwarder.reset();
+    }
+}
+
+void ElementWebViewLogForwarder::messageLogged (const String&) { owner.logPushPending = true; }
+
+void ElementWebViewHost::attachSessionListener()
+{
+    if (listenerAttached)
+        return;
+    if (auto s = context.session())
+    {
+        attachedSessionRoot = s->getValueTree();
+        attachedSessionRoot.addListener (this);
+        listenerAttached = true;
+    }
+}
+
+void ElementWebViewHost::detachSessionListener()
+{
+    if (! listenerAttached)
+        return;
+    attachedSessionRoot.removeListener (this);
+    attachedSessionRoot = {};
+    listenerAttached = false;
+}
+
+void ElementWebViewHost::rebuildPluginEmbedLayout()
+{
+    if (pluginEmbedEditor != nullptr && ! pluginEmbedBounds.isEmpty())
+        pluginEmbedEditor->setBounds (pluginEmbedBounds);
+}
+
+void ElementWebViewHost::resized()
+{
+    if (browser != nullptr)
+        browser->setBounds (getLocalBounds());
+    rebuildPluginEmbedLayout();
+    if (pluginEmbedEditor != nullptr)
+        pluginEmbedEditor->toFront (false);
+}
+
+void ElementWebViewHost::pluginEditorClose()
+{
+    pluginEmbedEditor.reset();
+    pluginEmbedBounds = {};
+    pluginEmbedNodeUuid = {};
+}
+
+void ElementWebViewHost::pluginEditorOpen (const String& nodeUuid, int x, int y, int w, int h)
+{
+    pluginEditorClose();
+    auto sess = context.session();
+    if (sess == nullptr || nodeUuid.isEmpty())
+        return;
+
+    const Graph G (sess->getCurrentGraph());
+    const Node n = findNodeByUuidInGraph (G, nodeUuid);
+    if (! n.isValid())
+        return;
+
+    auto* gui = context.services().find<GuiService>();
+    if (gui == nullptr)
+        return;
+
+    pluginEmbedNodeUuid = nodeUuid;
+    pluginEmbedBounds = Rectangle<int> (x, y, jmax (120, w), jmax (80, h));
+    pluginEmbedEditor = createPluginEditorPanel (*gui, n);
+    if (pluginEmbedEditor == nullptr)
+    {
+        pluginEmbedBounds = {};
+        pluginEmbedNodeUuid = {};
+        return;
+    }
+
+    addAndMakeVisible (*pluginEmbedEditor);
+    rebuildPluginEmbedLayout();
+    pluginEmbedEditor->toFront (false);
+}
+
+void ElementWebViewHost::pluginEditorSetBounds (int x, int y, int w, int h)
+{
+    pluginEmbedBounds = Rectangle<int> (x, y, jmax (60, w), jmax (60, h));
+    rebuildPluginEmbedLayout();
+}
+
+void ElementWebViewHost::pluginEditorFloat()
+{
+    if (pluginEmbedNodeUuid.isEmpty())
+        return;
+
+    auto sess = context.session();
+    auto* gui = context.services().find<GuiService>();
+    if (sess == nullptr || gui == nullptr)
+        return;
+
+    const Graph G (sess->getCurrentGraph());
+    const Node n = findNodeByUuidInGraph (G, pluginEmbedNodeUuid);
+    if (n.isValid())
+        gui->presentPluginWindow (n, true);
+
+    pluginEditorClose();
+}
+
+void ElementWebViewHost::visibilityChanged()
+{
+    if (isShowing())
+        attachSessionListener();
+}
+
+void ElementWebViewHost::timerCallback()
+{
+    if (browser == nullptr)
+        return;
+
+    if (auto peak = metering.popLatestPeak())
+    {
+        const String js = "window.__elementNative && window.__elementNative.onMetering("
+                            + String (*peak, 6) + ");";
+        evalInBrowser (js);
+    }
+
+    {
+        const String cableJson (buildCableLevelsJson());
+        evalInBrowser ("window.__elementNative && window.__elementNative.onCableLevels && window.__elementNative.onCableLevels("
+                       + cableJson + ");");
+    }
+
+    if (logPushPending && browser != nullptr)
+    {
+        const auto lines = context.logger().getHistory();
+        Array<var> logArr;
+        for (int i = 0; i < lines.size(); ++i)
+            logArr.add (var (lines[i]));
+        evalInBrowser ("window.__elementNative && window.__elementNative.onLogHistory && window.__elementNative.onLogHistory("
+                       + JSON::toString (var (logArr)) + ");");
+        logPushPending = false;
+        lastLogHistorySize = lines.size();
+    }
+
+    if (graphPushPendingMs > 0)
+    {
+        graphPushPendingMs -= (1000 / 60);
+        if (graphPushPendingMs <= 0)
+            pushGraphSnapshot();
+    }
+
+    // Session dirty flag is not on ValueTree — poll ~2 Hz so the Web toolbar can show save state.
+    if (++dirtyPollCounter >= 30)
+    {
+        dirtyPollCounter = 0;
+        if (auto* ss = context.services().find<SessionService>())
+        {
+            const bool d = ss->hasSessionChanged();
+            if (d != lastPushedSessionDirty)
+            {
+                lastPushedSessionDirty = d;
+                pushGraphSnapshot();
+            }
+        }
+    }
+}
+
+void ElementWebViewHost::scheduleGraphPush (int debounceMs)
+{
+    graphPushPendingMs = jmax (graphPushPendingMs, debounceMs);
+}
+
+bool ElementWebViewHost::isUnderActiveGraph (const ValueTree& start) const
+{
+    auto sess = context.session();
+    if (sess == nullptr)
+        return false;
+    const Node ag (sess->getActiveGraph());
+    if (! ag.isValid())
+        return false;
+    const ValueTree activeRoot = ag.data();
+    ValueTree t = start;
+    while (t.isValid())
+    {
+        if (t == activeRoot)
+            return true;
+        t = t.getParent();
+    }
+    return false;
+}
+
+bool ElementWebViewHost::shouldIgnoreSessionRootProperty (const Identifier& prop) const
+{
+    return prop != tags::tempo && prop != tags::name;
+}
+
+void ElementWebViewHost::valueTreePropertyChanged (ValueTree& tree, const Identifier& prop)
+{
+    auto sess = context.session();
+    if (sess == nullptr)
+        return;
+
+    const ValueTree sessionRoot = sess->getValueTree();
+    if (tree == sessionRoot)
+    {
+        if (! shouldIgnoreSessionRootProperty (prop))
+            scheduleGraphPush (40);
+        return;
+    }
+
+    if (vtIsUnderSessionRoot (tree, sessionRoot))
+        scheduleGraphPush (40);
+}
+
+void ElementWebViewHost::valueTreeChildAdded (ValueTree& parent, ValueTree&)
+{
+    auto sess = context.session();
+    if (sess == nullptr)
+        return;
+    const ValueTree sessionRoot = sess->getValueTree();
+    if (parent == sessionRoot)
+    {
+        scheduleGraphPush (40);
+        return;
+    }
+    const ValueTree graphs = sessionRoot.getChildWithName (tags::graphs);
+    if (parent == graphs || isUnderActiveGraph (parent))
+        scheduleGraphPush (40);
+}
+
+void ElementWebViewHost::valueTreeChildRemoved (ValueTree& parent, ValueTree&, int)
+{
+    auto sess = context.session();
+    if (sess == nullptr)
+        return;
+    const ValueTree sessionRoot = sess->getValueTree();
+    if (parent == sessionRoot)
+    {
+        scheduleGraphPush (40);
+        return;
+    }
+    const ValueTree graphs = sessionRoot.getChildWithName (tags::graphs);
+    if (parent == graphs || isUnderActiveGraph (parent))
+        scheduleGraphPush (40);
+}
+
+void ElementWebViewHost::valueTreeChildOrderChanged (ValueTree& parent, int, int)
+{
+    auto sess = context.session();
+    if (sess == nullptr)
+        return;
+    const ValueTree sessionRoot = sess->getValueTree();
+    if (parent == sessionRoot)
+    {
+        scheduleGraphPush (40);
+        return;
+    }
+    const ValueTree graphs = sessionRoot.getChildWithName (tags::graphs);
+    if (parent == graphs || isUnderActiveGraph (parent))
+        scheduleGraphPush (40);
+}
+
+void ElementWebViewHost::valueTreeParentChanged (ValueTree& tree)
+{
+    if (isUnderActiveGraph (tree))
+        scheduleGraphPush (40);
+}
+
+void ElementWebViewHost::valueTreeRedirected (ValueTree& tree)
+{
+    auto sess = context.session();
+    if (sess != nullptr && tree == sess->getValueTree())
+    {
+        scheduleGraphPush (40);
+        return;
+    }
+    if (isUnderActiveGraph (tree))
+        scheduleGraphPush (40);
+}
+
+void ElementWebViewHost::pushGraphSnapshot()
+{
+    graphPushPendingMs = 0;
+    const String json (buildActiveGraphJson());
+    evalInBrowser ("window.__elementNative && window.__elementNative.onGraphState(" + json + ");");
+    if (auto* ss = context.services().find<SessionService>())
+        lastPushedSessionDirty = ss->hasSessionChanged();
+}
+
+void ElementWebViewHost::pushMeteringIfNeeded()
+{
+    if (auto peak = metering.popLatestPeak())
+        evalInBrowser ("window.__elementNative && window.__elementNative.onMetering("
+                        + String (*peak, 6) + ");");
+}
+
+void ElementWebViewHost::evalInBrowser (const String& js)
+{
+    if (browser != nullptr)
+        browser->evaluateJavascript (js, nullptr);
+}
+
+String ElementWebViewHost::buildActiveGraphJson() const
+{
+    DynamicObject::Ptr root (new DynamicObject());
+    root->setProperty ("schema", 2);
+    root->setProperty ("schemaVersion", 2);
+
+    auto sess = context.session();
+    if (sess == nullptr)
+        return JSON::toString (var (root.get()));
+
+    DynamicObject::Ptr sessionObj (new DynamicObject());
+    sessionObj->setProperty ("name", sess->getName());
+    sessionObj->setProperty ("tempo", sess->getValueTree().getProperty (tags::tempo, 120.0));
+    sessionObj->setProperty ("timeSigNumerator", 4);
+    sessionObj->setProperty ("timeSigDenominator", 4);
+    if (auto* ss = context.services().find<SessionService>())
+    {
+        const File sf (ss->getSessionFile());
+        sessionObj->setProperty ("filePath", sf.getFullPathName());
+        sessionObj->setProperty ("dirty", ss->hasSessionChanged());
+    }
+    else
+    {
+        sessionObj->setProperty ("filePath", String());
+        sessionObj->setProperty ("dirty", false);
+    }
+    {
+        Array<var> recentVar;
+        if (auto* gui = context.services().find<GuiService>())
+        {
+            auto& rf = gui->recentFiles();
+            const int n = jmin (rf.getNumFiles(), 12);
+            for (int i = 0; i < n; ++i)
+                recentVar.add (var (rf.getFile (i).getFullPathName()));
+        }
+        sessionObj->setProperty ("recentFiles", var (recentVar));
+    }
+    root->setProperty ("session", var (sessionObj.get()));
+
+    {
+        Array<var> graphsVar;
+        const int activeIdx = sess->getActiveGraphIndex();
+        for (int i = 0; i < sess->getNumGraphs(); ++i)
+        {
+            const Node gn (sess->getGraph (i));
+            DynamicObject::Ptr go (new DynamicObject());
+            go->setProperty ("id", gn.getUuidString());
+            go->setProperty ("name", gn.getName());
+            go->setProperty ("index", i);
+            go->setProperty ("active", i == activeIdx);
+            graphsVar.add (var (go.get()));
+        }
+        root->setProperty ("graphs", var (graphsVar));
+    }
+
+    appendAudioSetupJson (context, root);
+    appendOscHostJson (context, root);
+    appendMoleculesJson (root);
+    appendPerformJson (*sess, root);
+    appendMidiMappingJson (context, root);
+
+    const Node gn (sess->getCurrentGraph());
+    if (! gn.isGraph())
+    {
+        DynamicObject::Ptr canvas (new DynamicObject());
+        canvas->setProperty ("snapToGrid", false);
+        canvas->setProperty ("gridSize", 8);
+        {
+            DynamicObject::Ptr vp (new DynamicObject());
+            vp->setProperty ("x", 0.0);
+            vp->setProperty ("y", 0.0);
+            vp->setProperty ("zoom", 1.0);
+            canvas->setProperty ("viewport", var (vp.get()));
+        }
+        {
+            DynamicObject::Ptr gb (new DynamicObject());
+            gb->setProperty ("minX", 0.0);
+            gb->setProperty ("minY", 0.0);
+            gb->setProperty ("maxX", 800.0);
+            gb->setProperty ("maxY", 600.0);
+            canvas->setProperty ("graphBounds", var (gb.get()));
+        }
+        root->setProperty ("canvas", var (canvas.get()));
+        root->setProperty ("activeGraphOutline", var (Array<var>()));
+        return JSON::toString (var (root.get()));
+    }
+
+    const Graph G (gn);
+    root->setProperty ("activeGraphId", gn.getUuidString());
+    root->setProperty ("activeGraphIndex", sess->getActiveGraphIndex());
+
+    Array<var> breadcrumbs;
+    breadcrumbs.add (var (sess->getName()));
+    breadcrumbs.add (var (gn.getName()));
+    root->setProperty ("breadcrumbs", var (breadcrumbs));
+
+    DynamicObject::Ptr engine (new DynamicObject());
+    if (auto e = context.audio())
+        if (auto mon = e->getTransportMonitor())
+            engine->setProperty ("isPlaying", (bool) mon->playing.get());
+    if (auto* dev = context.devices().getCurrentAudioDevice())
+    {
+        engine->setProperty ("deviceName", dev->getName());
+        engine->setProperty ("sampleRate", dev->getCurrentSampleRate());
+        engine->setProperty ("bufferSize", dev->getCurrentBufferSizeSamples());
+        engine->setProperty ("inputLatencySamples", dev->getInputLatencyInSamples());
+        engine->setProperty ("outputLatencySamples", dev->getOutputLatencyInSamples());
+    }
+    root->setProperty ("engine", var (engine.get()));
+
+    appendCanvasJson (gn, G, root);
+    appendActiveGraphOutlineJson (G, root);
+
+    Array<var> blocks;
+    for (int i = 0; i < G.getNumNodes(); ++i)
+    {
+        const Node n (G.getNode (i));
+        DynamicObject::Ptr b (new DynamicObject());
+        b->setProperty ("id", n.getUuidString());
+        b->setProperty ("name", n.getName());
+        double x = 0, y = 0;
+        n.getPosition (x, y);
+        b->setProperty ("x", x);
+        b->setProperty ("y", y);
+        b->setProperty ("bypassed", n.isBypassed());
+        b->setProperty ("muted", n.isMuted());
+        b->setProperty ("muteInput", n.isMutingInputs());
+        b->setProperty ("isContainer", n.isGraph());
+        if (n.isGraph())
+        {
+            const Graph sub (n);
+            b->setProperty ("containerNodeCount", sub.getNumNodes());
+        }
+        b->setProperty ("color", n.getColor().toString());
+
+        Array<var> portsVar;
+        for (int pi = 0; pi < n.getNumPorts(); ++pi)
+        {
+            const Port p = n.getPort (pi);
+            DynamicObject::Ptr po (new DynamicObject());
+            const bool isIn = p.isInput();
+            po->setProperty ("id", String (isIn ? "in-" : "out-") + String ((int) p.index()));
+            po->setProperty ("label", p.getName());
+            po->setProperty ("direction", isIn ? "input" : "output");
+            po->setProperty ("type", p.getType().getSlug());
+            po->setProperty ("signalType", portTypeToSignalString (p.getType()));
+            portsVar.add (var (po.get()));
+        }
+        b->setProperty ("ports", var (portsVar));
+
+        blocks.add (var (b.get()));
+    }
+
+    Array<var> cables;
+    const ValueTree arcs (G.getArcsValueTree());
+    for (int i = 0; i < arcs.getNumChildren(); ++i)
+    {
+        const auto a = arcs.getChild (i);
+        const auto sn = (uint32_t) (int64) a.getProperty (tags::sourceNode);
+        const auto dn = (uint32_t) (int64) a.getProperty (tags::destNode);
+        const String su = nodeUuidFromGraphNodeId (G, sn);
+        const String du = nodeUuidFromGraphNodeId (G, dn);
+        if (su.isEmpty() || du.isEmpty())
+            continue;
+
+        const int spi = (int) a.getProperty (tags::sourcePort, 0);
+        const int dpi = (int) a.getProperty (tags::destPort, 0);
+        const Node srcNode = G.getNodeById (sn);
+        String signal = "audio";
+        if (srcNode.isValid() && isPositiveAndBelow (spi, srcNode.getNumPorts()))
+            signal = portTypeToSignalString (srcNode.getPort (spi).getType());
+
+        DynamicObject::Ptr c (new DynamicObject());
+        c->setProperty ("id", "cable_" + su + "_" + String (spi) + "_" + du + "_" + String (dpi) + "_" + String (i));
+        c->setProperty ("source", su);
+        c->setProperty ("target", du);
+        c->setProperty ("sourceHandle", "out-" + String (spi));
+        c->setProperty ("targetHandle", "in-" + String (dpi));
+        c->setProperty ("signalType", signal);
+        c->setProperty ("channelCount", signal == String ("audio") ? 2 : 1);
+        c->setProperty ("isSidechain", false);
+        cables.add (var (c.get()));
+    }
+
+    Array<var> commentBoxes;
+    {
+        ValueTree uiData = gn.getUIValueTree();
+        ValueTree boxesData = uiData.getChildWithName ("CommentBoxes");
+        if (boxesData.isValid())
+        {
+            for (int i = 0; i < boxesData.getNumChildren(); ++i)
+            {
+                ValueTree box = boxesData.getChild (i);
+                if (! box.hasType ("CommentBox"))
+                    continue;
+                DynamicObject::Ptr cb (new DynamicObject());
+                const String cid = commentBoxUuid (box);
+                cb->setProperty ("id", cid.isNotEmpty() ? cid : String ("comment_legacy_") + String (i));
+                cb->setProperty ("title", box.getProperty ("title", "Comment").toString());
+                cb->setProperty ("color", box.getProperty ("color", "").toString());
+                cb->setProperty ("x", (double) box.getProperty ("x", 0.0));
+                cb->setProperty ("y", (double) box.getProperty ("y", 0.0));
+                cb->setProperty ("width", (double) box.getProperty ("width", 200.0));
+                cb->setProperty ("height", (double) box.getProperty ("height", 150.0));
+                commentBoxes.add (var (cb.get()));
+            }
+        }
+    }
+    root->setProperty ("commentBoxes", var (commentBoxes));
+
+    root->setProperty ("blocks", var (blocks));
+    root->setProperty ("cables", var (cables));
+    return JSON::toString (var (root.get()));
+}
+
+String ElementWebViewHost::buildCableLevelsJson() const
+{
+    Array<var> items;
+    auto sess = context.session();
+    if (sess == nullptr)
+        return JSON::toString (var (items));
+
+    const Node gn (sess->getCurrentGraph());
+    if (! gn.isGraph())
+        return JSON::toString (var (items));
+
+    const Graph G (gn);
+    const ValueTree arcs (G.getArcsValueTree());
+    for (int i = 0; i < arcs.getNumChildren(); ++i)
+    {
+        const auto a = arcs.getChild (i);
+        const auto sn = (uint32_t) (int64) a.getProperty (tags::sourceNode);
+        const auto dn = (uint32_t) (int64) a.getProperty (tags::destNode);
+        const String su = nodeUuidFromGraphNodeId (G, sn);
+        const String du = nodeUuidFromGraphNodeId (G, dn);
+        if (su.isEmpty() || du.isEmpty())
+            continue;
+
+        const int spi = (int) a.getProperty (tags::sourcePort, 0);
+        const int dpi = (int) a.getProperty (tags::destPort, 0);
+        const String cableId = "cable_" + su + "_" + String (spi) + "_" + du + "_" + String (dpi) + "_" + String (i);
+
+        DynamicObject::Ptr row (new DynamicObject());
+        row->setProperty ("id", cableId);
+        row->setProperty ("level", cableSignalLevelForArc (G, a));
+        items.add (var (row.get()));
+    }
+
+    return JSON::toString (var (items));
+}
+
+String ElementWebViewHost::buildPluginListJson() const
+{
+    DynamicObject::Ptr root (new DynamicObject());
+    Array<var> plugins;
+
+    const auto& list = context.plugins().getKnownPlugins();
+    for (const auto& desc : list.getTypes())
+    {
+        DynamicObject::Ptr o (new DynamicObject());
+        o->setProperty ("name", desc.name);
+        o->setProperty ("descriptiveName", desc.descriptiveName);
+        o->setProperty ("manufacturer", desc.manufacturerName);
+        o->setProperty ("version", desc.version);
+        o->setProperty ("format", desc.pluginFormatName);
+        const String category (desc.category.isNotEmpty() ? desc.category : String ("Uncategorised"));
+        o->setProperty ("category", category);
+        o->setProperty ("identifier", desc.createIdentifierString());
+        plugins.add (var (o.get()));
+    }
+
+    root->setProperty ("plugins", var (plugins));
+
+    {
+        auto& tracker = context.plugins().getUsageTracker();
+        Array<var> fav, recent;
+        for (const auto& id : tracker.getFavoriteIdentifiers())
+            fav.add (var (id));
+        for (const auto& id : tracker.getRecentlyUsedIdentifiers (16))
+            recent.add (var (id));
+        root->setProperty ("favoriteIdentifiers", var (fav));
+        root->setProperty ("recentIdentifiers", var (recent));
+    }
+
+    return JSON::toString (var (root.get()));
+}
+
+String ElementWebViewHost::buildNodeParametersJson (const String& nodeUuid) const
+{
+    DynamicObject::Ptr root (new DynamicObject());
+    Array<var> params;
+
+    auto sess = context.session();
+    if (sess == nullptr || nodeUuid.isEmpty())
+    {
+        root->setProperty ("parameters", var (params));
+        return JSON::toString (var (root.get()));
+    }
+
+    const Graph G (sess->getCurrentGraph());
+    if (! G.isGraph())
+    {
+        root->setProperty ("parameters", var (params));
+        return JSON::toString (var (root.get()));
+    }
+
+    const Node n = findNodeByUuidInGraph (G, nodeUuid);
+    if (! n.isValid())
+    {
+        root->setProperty ("parameters", var (params));
+        return JSON::toString (var (root.get()));
+    }
+
+    if (auto* obj = n.getObject())
+        if (auto* proc = obj->getAudioProcessor())
+        {
+            int paramIndex = 0;
+            for (auto* par : proc->getParameters())
+            {
+                if (par == nullptr)
+                    continue;
+                DynamicObject::Ptr p (new DynamicObject());
+                p->setProperty ("index", paramIndex++);
+                p->setProperty ("name", par->getName (64));
+                p->setProperty ("value", par->getValue());
+                p->setProperty ("defaultValue", par->getDefaultValue());
+                p->setProperty ("label", par->getLabel());
+                if (auto* fp = dynamic_cast<juce::AudioParameterFloat*> (par))
+                {
+                    p->setProperty ("min", (double) fp->range.start);
+                    p->setProperty ("max", (double) fp->range.end);
+                }
+                else if (auto* ip = dynamic_cast<juce::AudioParameterInt*> (par))
+                {
+                    p->setProperty ("min", (int) ip->getRange().getStart());
+                    p->setProperty ("max", (int) ip->getRange().getEnd());
+                    p->setProperty ("stepped", true);
+                }
+                else if (dynamic_cast<juce::AudioParameterBool*> (par) != nullptr)
+                    p->setProperty ("boolean", true);
+                params.add (var (p.get()));
+            }
+        }
+
+    root->setProperty ("parameters", var (params));
+    return JSON::toString (var (root.get()));
+}
+
+bool ElementWebViewHost::setNodeParameterValue (const String& nodeUuid, int paramIndex, float value)
+{
+    auto sess = context.session();
+    if (sess == nullptr || nodeUuid.isEmpty())
+        return false;
+
+    const Graph G (sess->getCurrentGraph());
+    if (! G.isGraph())
+        return false;
+
+    const Node n = findNodeByUuidInGraph (G, nodeUuid);
+    if (! n.isValid())
+        return false;
+
+    if (auto* obj = n.getObject())
+        if (auto* proc = obj->getAudioProcessor())
+        {
+            auto& params = proc->getParameters();
+            if (isPositiveAndBelow (paramIndex, params.size()))
+                if (auto* pars = params[paramIndex])
+                {
+                    pars->setValueNotifyingHost (value);
+                    return true;
+                }
+        }
+
+    return false;
+}
+
+#endif // JUCE_WEB_BROWSER
+
+} // namespace element

@@ -23,6 +23,12 @@ export interface BlockData {
   cpuLoad: number;
   latencyMs: number;
   bypassed: boolean;
+  /** Host node mute (output) */
+  muted?: boolean;
+  /** Host input mute */
+  muteInput?: boolean;
+  /** JUCE Colour::toString from graph model */
+  hostColor?: string;
   error: boolean;
   isMacroTagged: boolean;
   /** Number of child nodes inside a Container block */
@@ -47,6 +53,8 @@ export interface SceneData {
   name: string;
   index: number;
   active: boolean;
+  /** Host has a stored parameter snapshot for this scene */
+  hasCapture?: boolean;
 }
 
 export interface MacroControl {

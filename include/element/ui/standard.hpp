@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <element/graph.hpp>
 #include <element/juce/core.hpp>
 #include <element/juce/gui_basics.hpp>
 #include <element/ui/content.hpp>
@@ -82,8 +83,10 @@ public:
     void setMainView (ContentView* v);
 
     //==========================================================================
-    void setExtraView (juce::Component*);
-    Component* extraView() { return _extra.get(); }
+    void setExtraView (juce::Component*) override;
+    juce::Component* extraView() override { return _extra.get(); }
+
+    void setupPluginEditorWithGraph (Graph&) override;
 
 protected:
     virtual ContentView* createContentView (const juce::String&) { return nullptr; }

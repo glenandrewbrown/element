@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Element — Perform mode (reference)</title>
+  <style>
+    :root {
+      --canvas: #1e1e22;
+      --panel: #222226;
+      --surface: #252529;
+      --text: #e5e5ea;
+      --muted: #8e8e93;
+      --logic: #2bc4c4;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, sans-serif;
+      background: var(--canvas);
+      color: var(--text);
+      height: 100vh;
+      display: grid;
+      grid-template-rows: 40px 1fr 120px;
+      grid-template-areas: "t" "m" "d";
+    }
+    header {
+      grid-area: t;
+      background: var(--panel);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      color: var(--logic);
+    }
+    .stage {
+      grid-area: m;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 24px;
+      flex-wrap: wrap;
+      padding: 24px;
+    }
+    .macro {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      background: var(--surface);
+      border: 1px solid rgba(255,255,255,0.06);
+      box-shadow: -2px -2px 8px rgba(255,255,255,0.04), 2px 2px 8px rgba(0,0,0,0.35);
+    }
+    .dashboard {
+      grid-area: d;
+      background: var(--panel);
+      border-top: 1px solid rgba(255,255,255,0.06);
+      padding: 12px 16px;
+      font-size: 10px;
+      color: var(--muted);
+      display: flex;
+      gap: 16px;
+      align-items: center;
+    }
+    .scene-pill {
+      padding: 6px 12px;
+      background: var(--surface);
+      border-radius: 6px;
+      font-weight: 700;
+      color: var(--text);
+      box-shadow: inset 2px 2px 6px rgba(0,0,0,0.35);
+    }
+  </style>
+</head>
+<body>
+  <header>PERFORM · STAGE</header>
+  <div class="stage">
+    <div class="macro" title="Knob"></div>
+    <div class="macro" title="Knob"></div>
+    <div class="macro" title="Knob"></div>
+  </div>
+  <div class="dashboard">
+    <span class="scene-pill">Scene A</span>
+    <span class="scene-pill" style="opacity:0.5">Scene B</span>
+    <span>CPU / transport / health — live data from <code>usePerformStore</code></span>
+  </div>
+</body>
+</html>

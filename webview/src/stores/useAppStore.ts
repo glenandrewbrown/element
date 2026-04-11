@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { AppMode } from "../data/types";
+import { usePerformStore } from "./usePerformStore";
 
 type PanelId = "left" | "right" | "bottom";
 
@@ -47,7 +48,10 @@ export const useAppStore = create<AppStore>()((set) => ({
       }
     }),
 
-  setScene: (index) => set({ activeScene: index }),
+  setScene: (index) => {
+    set({ activeScene: index });
+    usePerformStore.getState().activateScene(index);
+  },
 
   openBlockTab: (blockId) =>
     set((s) =>

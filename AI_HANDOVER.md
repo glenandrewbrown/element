@@ -1,83 +1,83 @@
-# AI Handover — Element
+# AI Handover — Element (project status log)
 
-**Last Updated:** 2026-03-30T20:55:00Z
-**Agent:** Claude Opus 4.6 (1M context)
-**Session Type:** Deep Stability Audit + UX Feature Implementation
-**Branch:** `local-enhancements`
+**This file is a dated status log for multi-agent / session context parity. It is not design authority.** If anything here disagrees with [docs/ELEMENT_UNIFIED_BLUEPRINT.md](docs/ELEMENT_UNIFIED_BLUEPRINT.md), [docs/ELEMENT_FEATURE_INVENTORY.md](docs/ELEMENT_FEATURE_INVENTORY.md), or [docs/ELEMENT_LLM_AGENT_BRIEFING.md](docs/ELEMENT_LLM_AGENT_BRIEFING.md), **the docs win**.
 
-## Work Verified Complete
+---
 
-### Stability Fixes (30 bugs, 10 files)
-- [x] Dangling raw pointers → SafePointer (`graphtoolbar.hpp:208`, `nodesearchcomponent.hpp:171`)
-- [x] Lambda callback lifetime (`grapheditorview.cpp` destructor clears `onZoomChanged`, `onBreadcrumbClicked`)
-- [x] Null dereference guards in `didBecomeActive`, `stabilizeContent`, `onNodeSelected`, `StandardContent` constructor
-- [x] Missing `stopTimer()` in `PluginsPanelView::~PluginsPanelView()`
-- [x] Missing `removeAllChangeListeners()` in `PluginUsageTracker::~PluginUsageTracker()`
-- [x] Navigation panel: null guards in `showPanel()`, `resized()`, icon callback clearing in destructor
-- [x] Session browser: by-value `FileEntry` params, `moveToTrash()` instead of `deleteFile()`, drag type fix
-- [x] Missing `break` in switch (`standard.cpp` showSessionConfig falls through to showGraphConfig)
-- [x] `ContentContainer` fixed: was adding `primary` twice instead of `secondary`
-- [x] Re-entrancy guard on `refreshContent()`, thread safety on `changeListenerCallback`
-- [x] Plugin scanner UI freeze: `runDispatchLoopUntil(4)` in polling loop
-- [x] Scanner worker: `cancelPendingUpdate()` + safe logger cleanup in `handleConnectionLost`
-- [x] Breadcrumb: nodeIndex field prevents index mismatch after collapse
-- [x] WCAG AA contrast: breadcrumb `#9ca3af`, star `#777777`, badge white, icon `#9ca3af`
+## Canonical agent preamble (onboarding)
 
-### UX Features (10 items)
-- [x] Tooltips on sidebar icons (TooltipClient on IconButton)
-- [x] Keyboard shortcuts: Cmd+1-4 panels, Cmd+±  zoom, Cmd+0 fit (via ApplicationCommandManager)
-- [x] Manufacturer name in plugin flat list rows
-- [x] Session browser hover states (hoveredRow pattern)
-- [x] Real fit-to-view: bounding box zoom with 0.85 padding, 0.1-2.0 clamp
-- [x] Bypass toggle: power icon on node blocks, dimmed when bypassed
-- [x] Small window mode: minimap auto-hide <600px, search popup viewport clamping
-- [x] QuickAddComponent: right-click canvas → search popup → Enter inserts at cursor
-- [x] Port tooltips: already existed in PortComponent constructor (verified)
-- [x] Drag type: session browser uses "session-file" not "plugin"
+You are working on the Element audio plugin host UI/UX overhaul.
 
-### Documentation
-- [x] `docs/plans/2026-03-30-ui-ux-improvement-plan.md` — Gemini-reviewed v2 plan
-- [x] `docs/plans/2026-03-30-p0-p1-implementation-design.md` — implementation specs
-- [x] `docs/plans/2026-03-30-ui-ux-design.md` — original 4-phase design (pre-existing)
+**CRITICAL CONTEXT:** Load and read `docs/ELEMENT_UNIFIED_BLUEPRINT.md` before doing anything. This is the single source of truth. V3.0 — the Instrument Paradigm.
 
-### New Files
-- `src/ui/quickaddcomponent.hpp` — inline plugin search popup for graph canvas
+**KEY FACTS:**
 
-## Work Pending
+- Element is a modular audio plugin host (VST3/AU/LV2/CLAP) built with JUCE 8 / C++20
+- UI: React/Tailwind frontend hosted in JUCE's `WebBrowserComponent`
+- Graph engine: `@xyflow/react` (React Flow v12) with aggressive memoisation
+- Bridge: `window.__JUCE__` API for C++ ↔ JS communication
+- State: `juce::ValueTree` single source of truth, synced to React via ~60Hz timer
+- Three signal types: Audio (blue), MIDI (teal), Value/CV (orange)
 
-- [ ] **CRITICAL: Full backend/engine code audit** — User reports app still crashes frequently. Need comprehensive review of engine/, services/, nodes/, and remaining UI code NOT touched in this session
-- [ ] **Third-party UI/UX design** — User commissioning professional design. All UI work paused pending external blueprint
-- [ ] **Code foundation document** — Create comprehensive architecture doc for third-party designer
-- [ ] Commit this session's changes (16 files modified, 1 new file, +492/-64 lines)
+**DESIGN PARADIGM — THE INSTRUMENT:**  
+Element is a precision creative instrument for expert users in flow state. NOT for beginners. Technical depth surfaced beautifully. Speed of iteration is the supreme metric. Information density IS the beauty. One unified dark palette. No mode-switching colour gimmicks.
 
-## Critical Warnings
+**VISUAL LANGUAGE — NEUMORPHISM (NOT glass):**  
+No glassmorphism. No backdrop-blur. No transparency. The entire UI is one continuous dark chassis with controls extruded from or pressed into the surface via paired soft shadows. Narrow tonal range between surfaces (critical for the “same material” illusion):
 
-1. **App is still unstable** — The 30 fixes address bugs found in the 18 files changed by the UI/UX overhaul. The broader codebase (engine, services, nodes, scripting) has NOT been audited. User reports frequent crashes beyond what was fixed.
+- Canvas: `#1E1E22`, Panel: `#222226`, Surface: `#252529`, Elevated: `#2A2A2E`, Pressed: `#1A1A1E`
+- Raised: light shadow top-left `rgba(255,255,255,0.05)` + dark bottom-right `rgba(0,0,0,0.4)`, 8px blur min
+- Pressed: inner shadows inverted. Buttons press INTO the surface on click.
+- Micro-glow: 4px outer glow of semantic hue at 25% opacity on active elements
 
-2. **UI design is being externally commissioned** — Do NOT make further UI/UX changes. All visual design work is frozen pending third-party blueprint. Focus exclusively on backend stability and code quality.
+**SEMANTIC COLOURS (colour-blind safe, each with shape indicator):**
 
-3. **build-merged directory is root-owned** — Cannot write to it. Use `build-bugfix` for all builds. The `build/` directory has a stale CMakeCache from a different path.
+- Generators: `#4A90D9` Blue + Circle
+- Modifiers: `#E8A838` Orange + Diamond
+- Logic: `#2BC4C4` Teal + Triangle
+- Text: `#E5E5EA` primary, `#8E8E93` secondary
 
-4. **Gemini API quota exhausted** — Free tier daily limit hit for all Pro models. Will reset at 8pm Europe/London.
+**SPEED-FIRST NAVIGATION:**
 
-5. **`using namespace juce;` banned in headers** — Qualify with `juce::` prefix. Allowed in `.cpp` files only.
+- Double-click Block = dive into nested Board (150ms)
+- Double-click empty canvas = navigate UP one level (150ms)
+- Cmd+K = command palette (search everything)
+- Right-click canvas = QuickAdd at cursor
+- Ctrl+0–9 / Shift+0–9 = spatial bookmarks
+- Tab = jump to next block in signal chain
+- Escape = deselect / close / back out one level
 
-6. **New .cpp files require cmake reconfigure** — Sources use `file(GLOB_RECURSE)`.
+**KEY FEATURES:**  
+Edit Mode (workshop) / Perform Mode (stage) — structural change, NOT palette change. Dashboard Builder in Perform Mode. Scene/Preset system. Panic button (red, always visible). Value Events as third signal type.
 
-## Next Steps (Priority Order)
+**TERMINOLOGY (mandatory):** Project, Board, Block, Cable, Snippet, Container, Portal, Scene.
 
-1. **Commit current changes** — 16 files with stability fixes + features, all tests green
-2. **Deep backend audit** — Review engine/, services/, nodes/ for crash-causing bugs
-3. **Create code foundation doc** — Architecture, threading model, lifecycle, API surface for third-party designer
-4. **Address remaining crash reports** — Run with debug builds, capture crash logs, fix root causes
+---
 
-## Session Stats
+## Log (newest first)
 
-- 16 files modified, 1 new file
-- +492 / -64 lines changed
-- 30 stability bugs fixed
-- 10 UX features implemented
-- 33/33 unit tests pass
-- 3 parallel expert reviews conducted
-- 1 Gemini second opinion obtained
-- Build: clean, 0 errors, 0 warnings
+### 2026-04-01 (later) — plan closure pass
+
+- **`docs/stitch-reference/`** added (`DESIGN.md`, `edit-mode.html`, `perform-mode.html`) for blueprint-aligned static layout QA.
+- **Copy/paste:** `elementGraphCopyNodes` / `elementGraphPasteNodes` + host `graphCopyPasteboard`; Web **Cmd+C** / **Cmd+V**; duplicates via `DuplicateNodeMessage` (undo path matches legacy duplicate).
+- **`WebContent::presentView`** documented as v1 no-op (floating plugin windows); inventory + LLM briefing updated (session file = File menu).
+- **Docs:** `WEBVIEW_QA.md` blueprint audit table; `AGENTS.md` / `element-project.mdc` stitch-reference wording.
+
+### 2026-04-01 — macOS DAW release plan implementation (agent session)
+
+- **Docs:** `AI_HANDOVER` reframed as status log; `AGENTS.md` and `.cursor/rules/element-project.mdc` point at blueprint-first + this log. `docs/WEBVIEW_QA.md` extended (Logic AU ×3, Nuendo VST3, UI completion, signing notes).
+- **WebView host:** `ELEMENT_WEBVIEW_DEV_URL` honored **only in debug builds**; release builds always use embedded `webview/dist`. Native bridge: `elementGraphRenameNode`, `elementGraphCommentAdd` / `elementGraphCommentUpsert` / `elementGraphCommentDelete`, `elementGraphDuplicateNodes`; comment boxes carry stable `id` in ValueTree; graph JSON includes `perform` stub for scenes; audio parameters JSON includes `index` for `elementSetNodeParameter`.
+- **Web:** `nativeGraph*` wrappers; perform store hydrates from engine/session (no demo data when native feeds state); inspector shows real plugin parameters when available; comment frames on canvas with native sync; `ProjectOverview` uses live block/edge counts and engine hints.
+- **Stability (spot check):** `PluginEditor` teardown path still clears `GuiService` content before hierarchy removal (VST3 safety). Broader engine/services audit remains ongoing; treat crash reports with repro as P0.
+- **Follow-up (same day):** Web `InspectorHub` uses native parameter JSON + bypass; `QuickAccess` drops `demoPerform` for live graph + perform snapshot; `useKeyboard` wires comment add/delete, rename, and duplicate batch; `usePerformStore` adds `sessionName` / `sampleRateLabel`; `buildNodeParametersJson` brace cleanup in `element_webview_host.cpp`. `npx tsc -b` + `npm run build` under `webview/` verified green.
+
+### 2026-03-30 (historical)
+
+- Stability batch (30 fixes) and UX items landed in legacy JUCE graph paths; see git history for file list. Web parity work continued in `element_webview_host.cpp` / `webview/`.
+
+---
+
+## Operational notes
+
+- **Build dirs:** Prefer `build-merged` (VS Code tasks). If not writable, use `build-bugfix` or another tree and sync `compile_commands.json`.
+- **Hooks:** Cursor does not run Claude Code PostToolUse hooks — after `test/**` edits run `ctest --output-on-failure` from the build directory manually.

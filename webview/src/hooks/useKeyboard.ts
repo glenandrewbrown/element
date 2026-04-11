@@ -2,6 +2,22 @@ import { useEffect, useCallback } from "react";
 import { useReactFlow } from "@xyflow/react";
 import { useGraphStore } from "../stores/useGraphStore";
 import { useAppStore } from "../stores/useAppStore";
+import {
+  nativeGraphCommentAdd,
+  nativeGraphCommentDelete,
+  nativeGraphCopyNodes,
+  nativeGraphDuplicateNode,
+  nativeGraphDuplicateNodes,
+  nativeGraphPasteNodes,
+  nativeGraphRemoveNode,
+  nativeGraphRenameNode,
+  nativeRedo,
+  nativeUndo,
+} from "../bridge/nativeGraph";
+import {
+  nativeSessionSave,
+  nativeSessionSaveAs,
+} from "../bridge/nativeSession";
 
 interface UseKeyboardOptions {
   onToggleCommandPalette: () => void;
@@ -58,26 +74,63 @@ export function useKeyboard({ onToggleCommandPalette }: UseKeyboardOptions) {
             return;
           }
 
+          case "s": {
+            e.preventDefault();
+            if (e.shiftKey) void nativeSessionSaveAs();
+            else void nativeSessionSave();
+            return;
+          }
+
           case "z": {
             e.preventDefault();
-            if (shift) {
-              // Redo — stub: log for now
-              console.debug("[keyboard] redo");
-            } else {
-              // Undo — stub: log for now
-              console.debug("[keyboard] undo");
-            }
+            if (shift) void nativeRedo();
+            else void nativeUndo();
+            return;
+          }
+
+          case "c": {
+            e.preventDefault();
+            const { selectedNodeId, nodes, commentBoxes } =
+              useGraphStore.getState();
+            if (!selectedNodeId) return;
+            if (commentBoxes.some((c) => c.id === selectedNodeId)) return;
+            if (!nodes.some((n) => n.id === selectedNodeId)) return;
+            void nativeGraphCopyNodes([selectedNodeId]);
+            return;
+          }
+
+          case "v": {
+            e.preventDefault();
+            void nativeGraphPasteNodes();
             return;
           }
 
           case "d": {
             e.preventDefault();
-            const { selectedNodeId, nodes } = useGraphStore.getState();
+            const { selectedNodeId, nodes, commentBoxes } =
+              useGraphStore.getState();
             if (!selectedNodeId) return;
+            if (commentBoxes.some((c) => c.id === selectedNodeId)) return;
             const original = nodes.find((n) => n.id === selectedNodeId);
             if (!original) return;
-            // Stub duplication: log the intent
-            console.debug("[keyboard] duplicate block:", original.name);
+            void nativeGraphDuplicateNodes([selectedNodeId]).then((n) => {
+              if (n === 0) void nativeGraphDuplicateNode(selectedNodeId);
+            });
+            return;
+          }
+
+          case "r":
+          case "R": {
+            e.preventDefault();
+            const { selectedNodeId, nodes, commentBoxes } =
+              useGraphStore.getState();
+            if (!selectedNodeId) return;
+            if (commentBoxes.some((c) => c.id === selectedNodeId)) return;
+            const blk = nodes.find((n) => n.id === selectedNodeId);
+            if (!blk) return;
+            const name = window.prompt("Rename block", blk.name);
+            if (name != null && name.trim().length > 0)
+              void nativeGraphRenameNode(selectedNodeId, name.trim());
             return;
           }
 
@@ -124,15 +177,17 @@ export function useKeyboard({ onToggleCommandPalette }: UseKeyboardOptions) {
         switch (key) {
           case "C": {
             e.preventDefault();
-            console.debug("[keyboard] create comment box at viewport center");
+            const p = reactFlow.screenToFlowPosition({
+              x: window.innerWidth / 2,
+              y: window.innerHeight / 2,
+            });
+            void nativeGraphCommentAdd(p.x - 120, p.y - 80);
             return;
           }
 
           case "M": {
             e.preventDefault();
-            // Toggle minimap — React Flow's MiniMap doesn't expose a toggle,
-            // so this would need state. Stub for now.
-            console.debug("[keyboard] toggle minimap");
+            useGraphStore.getState().toggleMinimap();
             return;
           }
         }
@@ -164,10 +219,14 @@ export function useKeyboard({ onToggleCommandPalette }: UseKeyboardOptions) {
 
         case "Delete":
         case "Backspace": {
-          const { selectedNodeId } = useGraphStore.getState();
+          const { selectedNodeId, nodes, commentBoxes } =
+            useGraphStore.getState();
           if (!selectedNodeId) return;
-          // Stub deletion: log the intent
-          console.debug("[keyboard] delete block:", selectedNodeId);
+          e.preventDefault();
+          const isComment = commentBoxes.some((c) => c.id === selectedNodeId);
+          if (isComment) void nativeGraphCommentDelete(selectedNodeId);
+          else if (nodes.some((n) => n.id === selectedNodeId))
+            void nativeGraphRemoveNode(selectedNodeId);
           return;
         }
       }

@@ -9,6 +9,7 @@ on:
       paths:
         - 'src/**'
         - 'include/**'
+        - 'webview/**'
         - '**/*.cmake'
         - 'CMakeLists.txt'
         - '**/CMakeLists.txt'
@@ -128,6 +129,19 @@ jobs:
         key: ${{ matrix.os }}-ccache-${{ github.sha }}
         restore-keys: |
           ${{ matrix.os }}-ccache-
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: webview/package-lock.json
+
+    - name: Build webview bundle (Vite)
+      run: |
+        cd webview
+        npm ci
+        npm run build
     
     - name: Configure CMake (Windows)
       if: runner.os == 'Windows'

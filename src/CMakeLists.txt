@@ -59,7 +59,7 @@ endif()
 target_compile_definitions(element
     PUBLIC
         JUCE_MODAL_LOOPS_PERMITTED=1
-        JUCE_WEB_BROWSER=0
+        JUCE_WEB_BROWSER=1
         JUCE_USE_CURL=1
         JUCE_USE_XRENDER=1
         JUCE_LOAD_CURL_SYMBOLS_LAZILY=1
@@ -67,6 +67,10 @@ target_compile_definitions(element
         JUCE_PLUGINHOST_VST3=1
         JUCE_PLUGINHOST_AU=1
         JUCE_VST3_CAN_REPLACE_VST2=0)
+
+if(WIN32)
+    target_compile_definitions(element PUBLIC JUCE_USE_WIN_WEBVIEW2_WITH_STATIC_LINKING=1)
+endif()
 
 target_link_libraries(element
     PUBLIC

@@ -1,0 +1,48 @@
+{
+  "Name": "Element",
+  "Version": "2.2.0",
+  "Factory Info": {
+    "Vendor": "Kushview",
+    "URL": "https://kushview.net",
+    "E-Mail": "support@kushview.net",
+    "Flags": {
+      "Unicode": true,
+      "Classes Discardable": false,
+      "Component Non Discardable": false,
+    },
+  },
+  "Classes": [
+    {
+      "CID": "ABCDEF019182FAEB4B736856456C6D74",
+      "Category": "Audio Module Class",
+      "Name": "Element",
+      "Vendor": "Kushview",
+      "Version": "2.2.0",
+      "SDKVersion": "VST 3.8.0",
+      "Sub Categories": [
+        "Instrument",
+        "Synth",
+      ],
+      "Class Flags": 2,
+      "Cardinality": 2147483647,
+      "Snapshots": [
+      ],
+    },
+    {
+      "CID": "ABCDEF011234ABCD4B736856456C6D74",
+      "Category": "Component Controller Class",
+      "Name": "Element",
+      "Vendor": "Kushview",
+      "Version": "2.2.0",
+      "SDKVersion": "VST 3.8.0",
+      "Sub Categories": [
+        "Instrument",
+        "Synth",
+      ],
+      "Class Flags": 2,
+      "Cardinality": 2147483647,
+      "Snapshots": [
+      ],
+    },
+  ],
+}

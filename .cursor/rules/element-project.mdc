@@ -1,0 +1,51 @@
+---
+description: Element project — source of truth, handover constraints, build dirs, workflows
+alwaysApply: true
+---
+
+# Element (Cursor)
+
+## Source of truth
+
+- **[docs/ELEMENT_UNIFIED_BLUEPRINT.md](docs/ELEMENT_UNIFIED_BLUEPRINT.md)** — product + UI spec (V3.0). Read before **visual / UX / webview** work.
+- **[CLAUDE.md](CLAUDE.md)** — build commands, architecture, terminology, patterns.
+- **[AI_HANDOVER.md](AI_HANDOVER.md)** — opens with the **canonical agent preamble** and a **dated project status log** for multi-agent context; **not** design authority (specs win on conflict).
+- **[docs/ELEMENT_FEATURE_INVENTORY.md](docs/ELEMENT_FEATURE_INVENTORY.md)**, **[docs/ELEMENT_LLM_AGENT_BRIEFING.md](docs/ELEMENT_LLM_AGENT_BRIEFING.md)**, **`docs/stitch-reference/`** — coverage + static layout reference (with the blueprint).
+- Historical context (fixes, audits): [HANDOVER_2025-12-15.md](HANDOVER_2025-12-15.md), [CODE_REVIEW_REPORT.md](CODE_REVIEW_REPORT.md) — background only; do not duplicate long excerpts into chat.
+
+## Web UI
+
+- **Full port target:** User-facing features must eventually live in the Web shell + bridge — see [docs/WEBVIEW_HYBRID_POLICY.md](docs/WEBVIEW_HYBRID_POLICY.md). Do not treat classic JUCE-only panels as permanent.
+
+## Engineering constraints
+
+- Broader **engine / services / nodes / scripting** paths benefit from careful stability review; prefer repro + tests for crash fixes.
+- Prefer a dedicated dev build tree: **`build-merged`** (see VS Code tasks and [`.claude/skills/element-build-and-package/SKILL.md`](.claude/skills/element-build-and-package/SKILL.md)). If your machine cannot write there (e.g. permissions), use **`build-bugfix`** or another writable dir and point `compile_commands.json` / tasks to match.
+- Avoid assuming **`build/`** is fresh; it may be a stale CMake tree from another path.
+- **Never use `using namespace juce;` in headers** — use `juce::` (allowed in `.cpp` only per project convention).
+- **New `.cpp` files**: CMake uses `file(GLOB_RECURSE)` — reconfigure after adding sources.
+
+## Workflows (read skills on demand)
+
+| Task | Doc |
+|------|-----|
+| Configure / build / test / packaging | [`.claude/skills/element-build-and-package/SKILL.md`](.claude/skills/element-build-and-package/SKILL.md) |
+| New processor node | [`.claude/skills/add-node/SKILL.md`](.claude/skills/add-node/SKILL.md) |
+| macOS AX UI verification | [`.claude/skills/verify-element-ui/SKILL.md`](.claude/skills/verify-element-ui/SKILL.md) |
+| Inspect accessibility tree | [`.claude/skills/inspect-ax-tree/SKILL.md`](.claude/skills/inspect-ax-tree/SKILL.md) |
+| Sign / notarize release | [`.claude/skills/release-sign-notarize/SKILL.md`](.claude/skills/release-sign-notarize/SKILL.md) |
+
+## Claude Code hook parity (manual)
+
+[`.claude/settings.local.json`](.claude/settings.local.json) runs PostToolUse hooks in Claude Code; **Cursor does not.** After edits:
+
+- Under `test/**`: run `ctest --output-on-failure` from your build directory.
+- Under `src/engine/**` or `src/nodes/**`: follow realtime-safety guidance in [element-audio-path.mdc](element-audio-path.mdc).
+
+## compile_commands
+
+Generate with CMake, e.g.:
+
+`cmake -B build-merged -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0`
+
+(Adjust the build directory if you use `build-bugfix`.)

@@ -1,6 +1,7 @@
 import { memo } from "react";
 import { BaseEdge, getSmoothStepPath, type EdgeProps } from "@xyflow/react";
 import type { CableData } from "../../data/types";
+import { useCableMeterStore } from "../../stores/useCableMeterStore";
 
 // ── Signal type → stroke colour ──
 
@@ -33,6 +34,10 @@ function CableComponent({
   const color = signalColor[d?.signalType ?? "audio"];
   const width = channelWidth[d?.channelCount ?? 2];
   const isSidechain = d?.isSidechain ?? false;
+  const level = useCableMeterStore((s) => s.levels[id] ?? 0);
+  const amp = Math.min(1, Math.max(0, level));
+  const strokeOpacity = selected ? 1 : 0.38 + amp * 0.62;
+  const glowOpacity = 0.08 + amp * 0.35;
 
   const [edgePath] = getSmoothStepPath({
     sourceX,
@@ -47,29 +52,29 @@ function CableComponent({
   return (
     <>
       {/* Selection glow */}
-      {selected && (
+      {(selected || amp > 0.02) && (
         <BaseEdge
           id={`${id}-glow`}
           path={edgePath}
           style={{
             stroke: color,
-            strokeWidth: width + 6,
-            opacity: 0.12,
+            strokeWidth: width + 6 + amp * 4,
+            opacity: glowOpacity,
           }}
         />
       )}
 
-      {/* Main cable path */}
+      {/* Main cable path — intensity follows engine RMS / MIDI activity (§2.4) */}
       <BaseEdge
         id={id}
         path={edgePath}
         style={{
           stroke: color,
-          strokeWidth: width,
+          strokeWidth: width + amp * 1.5,
           strokeDasharray: isSidechain ? "6 3" : undefined,
           strokeLinecap: "round",
-          opacity: selected ? 1 : 0.7,
-          filter: "drop-shadow(0 0 1px rgba(0,0,0,0.5))",
+          opacity: strokeOpacity,
+          filter: `drop-shadow(0 0 ${1 + amp * 3}px ${color}55)`,
         }}
       />
     </>

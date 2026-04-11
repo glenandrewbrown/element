@@ -15,6 +15,7 @@ namespace element {
 class Context;
 class Settings;
 class RootGraph;
+class WebMeteringFifo;
 
 class AudioEngine final : public juce::ReferenceCountedObject {
 public:
@@ -96,6 +97,11 @@ public:
 
     LevelMeterPtr getLevelMeter (int channel, bool input);
     int getNumChannels (bool input) const noexcept;
+
+#if JUCE_WEB_BROWSER
+    /** Install a lock-free sink for master output peak (audio thread → Web UI). Pass nullptr to detach. */
+    void setWebPeakMeterFifo (WebMeteringFifo* fifo) noexcept;
+#endif
 
 private:
     class Private;

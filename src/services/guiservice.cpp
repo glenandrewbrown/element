@@ -8,6 +8,8 @@
 #include <element/settings.hpp>
 #include <element/version.hpp>
 
+#include <cstdlib>
+
 #include <element/ui.hpp>
 #include <element/ui/commands.hpp>
 #include <element/ui/content.hpp>
@@ -16,6 +18,10 @@
 #include <element/ui/standard.hpp>
 #include <element/ui/style.hpp>
 #include <element/ui/updater.hpp>
+
+#if JUCE_WEB_BROWSER
+ #include <element/ui/web_content.hpp>
+#endif
 
 #include "appinfo.hpp"
 #include "engine/midipanic.hpp"
@@ -44,7 +50,16 @@ public:
 
     std::unique_ptr<Content> createMainContent (const String& type) override
     {
+       #if JUCE_WEB_BROWSER
+        const char* stdEnv = std::getenv ("ELEMENT_STANDARD_CONTENT");
+        const bool forceStandard = stdEnv != nullptr && String (stdEnv).trim() == "1";
+        if (type == "standard" || forceStandard)
+            return std::make_unique<StandardContent> (context);
+        return std::make_unique<WebContent> (context);
+       #else
+        ignoreUnused (type);
         return std::make_unique<StandardContent> (context);
+       #endif
     }
 
     std::unique_ptr<Preferences> createPreferences() override
@@ -1001,6 +1016,26 @@ bool GuiService::perform (const InvocationInfo& info)
     }
 
     return result;
+}
+
+void GuiService::performUndo()
+{
+    auto& undo = impl->undo;
+    if (undo.canUndo())
+        undo.undo();
+    if (auto* cc = content())
+        cc->stabilizeViews();
+    refreshMainMenu();
+}
+
+void GuiService::performRedo()
+{
+    auto& undo = impl->undo;
+    if (undo.canRedo())
+        undo.redo();
+    if (auto* cc = content())
+        cc->stabilizeViews();
+    refreshMainMenu();
 }
 
 void GuiService::stabilizeContent()

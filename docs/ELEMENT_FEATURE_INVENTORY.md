@@ -343,7 +343,7 @@ These features are documented in the project's CLAUDE.md but may not yet be full
 | Minimap component | Implemented | minimapcomponent.hpp | Bird's-eye navigation |
 | Node search component | Implemented | nodesearchcomponent.hpp | Cmd+F search overlay |
 | AX-based UI verification | Implemented | tools/automation/ | Automated UI testing via Accessibility API |
-| WebView bridge | PLANNED | [New] | React frontend via WebBrowserComponent |
+| WebView bridge | In progress (full port target) | element_webview_host.cpp, webview/ | **Policy:** [WEBVIEW_HYBRID_POLICY.md](WEBVIEW_HYBRID_POLICY.md) — every user-facing feature must eventually ship in the Web shell + bridge; classic-only paths are **stopgaps**. Schema v2 graph JSON; graph mutations (add/remove/connect/move/bypass/duplicate batch), rename, comment CRUD (`CommentBoxes`), copy/paste (`elementGraphCopyNodes` / `elementGraphPasteNodes`), undo/redo, transport/panic; plugin list + node parameters; Inspector uses `elementGetNodeParameters` / `elementSetNodeParameter` + bypass; Quick Access + perform health from snapshot; keyboard: Shift+C, Delete, Cmd+C/V/D/R, etc.; **session** New/Open/Save/Save As/recents/active graph via `elementSession*` + toolbar/palette; **release** ignores `ELEMENT_WEBVIEW_DEV_URL`. **Nested plugin GUI:** floating window = interim; **must** embed in Web. **Preferences, mapping, Lua console, OSC app UI, meter bridge, graph mixer** — port queue, not exempt. Legacy `StandardContent` when factory uses `"standard"`. |
 
 ---
 

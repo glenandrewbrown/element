@@ -94,3 +94,8 @@ installer/pkg-build/
 installer/pkg_root/
 installer/resources/
 installer/staging/
+
+# Repomix packed output (large; regenerate with: npx repomix@latest)
+repomix-output.md
+repomix-output.xml
+repomix-output.*.md

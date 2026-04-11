@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { AlertData, MacroControl, SceneData } from "../data/types";
-import { demoPerform } from "../data/demoPerform";
+import { nativePerformSetActiveScene } from "../bridge/nativePerform";
 
 interface LiveHealth {
   cpu: number;
@@ -9,11 +9,14 @@ interface LiveHealth {
   clock: string;
   bpm: number;
   timecode: string;
+  /** Host sample rate label, e.g. "48.0 kHz" */
+  sampleRateLabel: string;
   alerts: AlertData[];
   ioActivity: "nominal" | "warning" | "critical";
 }
 
 interface PerformState {
+  sessionName: string;
   macros: MacroControl[];
   scenes: SceneData[];
   liveHealth: LiveHealth;
@@ -24,23 +27,41 @@ interface PerformActions {
   updateMacro: (macroId: string, value: number) => void;
   activateScene: (sceneIndex: number) => void;
   toggleMapMode: () => void;
+  /** Hydrate from native graph snapshot (`perform` + `session` + `engine`). */
+  hydrateFromEngine: (data: {
+    sessionName?: string;
+    scenes?: SceneData[];
+    activeSceneIndex?: number;
+    bpm?: number;
+    buffer?: number;
+    clock?: string;
+    timecode?: string;
+    sampleRateLabel?: string;
+    cpu?: number;
+    /** Round-trip device latency (ms) from host audio device. */
+    latencyMs?: number;
+  }) => void;
 }
 
 type PerformStore = PerformState & PerformActions;
 
+const defaultHealth: LiveHealth = {
+  cpu: 0,
+  buffer: 0,
+  latency: 0,
+  clock: "—",
+  bpm: 120,
+  timecode: "—",
+  sampleRateLabel: "—",
+  alerts: [],
+  ioActivity: "nominal",
+};
+
 export const usePerformStore = create<PerformStore>()((set) => ({
-  macros: demoPerform.macros,
-  scenes: demoPerform.scenes,
-  liveHealth: {
-    cpu: demoPerform.health.cpuPercent,
-    buffer: demoPerform.health.bufferSize,
-    latency: demoPerform.health.latencyMs,
-    clock: demoPerform.health.clockSource,
-    bpm: demoPerform.health.bpm,
-    timecode: demoPerform.health.timecode,
-    alerts: demoPerform.alerts,
-    ioActivity: demoPerform.health.ioActivity,
-  },
+  sessionName: "Project",
+  macros: [],
+  scenes: [],
+  liveHealth: { ...defaultHealth },
   mapModeActive: false,
 
   updateMacro: (macroId, value) =>
@@ -48,19 +69,51 @@ export const usePerformStore = create<PerformStore>()((set) => ({
       macros: s.macros.map((m) => (m.id === macroId ? { ...m, value } : m)),
     })),
 
-  activateScene: (sceneIndex) =>
+  activateScene: (sceneIndex) => {
+    void nativePerformSetActiveScene(sceneIndex);
     set((s) => ({
-      scenes: s.scenes.map((sc) => ({
+      scenes: s.scenes.map((sc, i) => ({
         ...sc,
-        active: sc.index === sceneIndex,
+        active: i === sceneIndex,
       })),
-    })),
+    }));
+  },
 
   toggleMapMode: () => set((s) => ({ mapModeActive: !s.mapModeActive })),
+
+  hydrateFromEngine: (data) =>
+    set((s) => {
+      let scenes = s.scenes;
+      if (data.scenes != null && data.scenes.length > 0) {
+        const idx = data.activeSceneIndex ?? 0;
+        scenes = data.scenes.map((sc, i) => ({
+          ...sc,
+          active: sc.index === idx || i === idx,
+        }));
+      }
+      return {
+        sessionName: data.sessionName ?? s.sessionName,
+        scenes,
+        liveHealth: {
+          ...s.liveHealth,
+          bpm: data.bpm ?? s.liveHealth.bpm,
+          buffer: data.buffer ?? s.liveHealth.buffer,
+          clock: data.clock ?? s.liveHealth.clock,
+          timecode: data.timecode ?? s.liveHealth.timecode,
+          sampleRateLabel: data.sampleRateLabel ?? s.liveHealth.sampleRateLabel,
+          cpu: data.cpu ?? s.liveHealth.cpu,
+          latency:
+            typeof data.latencyMs === "number" && !Number.isNaN(data.latencyMs)
+              ? data.latencyMs
+              : s.liveHealth.latency,
+        },
+      };
+    }),
 }));
 
 // ── Selectors ──
 
+export const selectSessionName = (s: PerformStore) => s.sessionName;
 export const selectMacros = (s: PerformStore) => s.macros;
 export const selectScenes = (s: PerformStore) => s.scenes;
 export const selectLiveHealth = (s: PerformStore) => s.liveHealth;
