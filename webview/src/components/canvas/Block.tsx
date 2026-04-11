@@ -273,9 +273,29 @@ function BlockComponent({ data, selected }: NodeProps) {
         .filter(Boolean)
         .join(" ")}
     >
+      {/* Processing load state glow */}
+      {d.cpuLoad > 50 && !d.error && (
+        <div 
+          className="absolute inset-0 rounded-lg pointer-events-none animate-pulse"
+          style={{ boxShadow: "0 0 8px rgba(239,68,68,0.5), inset 0 0 4px rgba(239,68,68,0.2)" }}
+        />
+      )}
+      {d.cpuLoad > 25 && d.cpuLoad <= 50 && !d.error && (
+        <div 
+          className="absolute inset-0 rounded-lg pointer-events-none"
+          style={{ boxShadow: "0 0 6px rgba(232,168,56,0.4)" }}
+        />
+      )}
+      {d.cpuLoad > 0 && d.cpuLoad <= 25 && !d.error && !d.bypassed && (
+        <div 
+          className="absolute inset-0 rounded-lg pointer-events-none"
+          style={{ boxShadow: "0 0 4px rgba(43,196,196,0.25)" }}
+        />
+      )}
+
       {/* Error pulsing border */}
       {d.error && (
-        <div className="absolute inset-0 rounded-lg ring-1 ring-error/60 pointer-events-none" />
+        <div className="absolute inset-0 rounded-lg ring-2 ring-error/60 pointer-events-none animate-pulse" />
       )}
 
       {/* Bypass stripe overlay */}
@@ -286,26 +306,46 @@ function BlockComponent({ data, selected }: NodeProps) {
       {/* Top colour stripe */}
       <div className={`h-1 ${cat.bg} rounded-t-lg`} />
 
-      {/* Header — 24px, semantic bg */}
+      {/* Header — 24px, semantic bg + CPU meter */}
       <div
         className="px-2 py-1 bg-[#2A2A2E] flex items-center justify-between"
         style={{ opacity: d.bypassed ? 0.6 : 1 }}
       >
         <div className="flex items-center gap-1.5 min-w-0">
+          {/* Bypass indicator dot */}
+          {d.bypassed && (
+            <div className="w-1.5 h-1.5 rounded-full bg-generator shrink-0" title="Bypassed" />
+          )}
+          {d.muted && !d.bypassed && (
+            <div className="w-1.5 h-1.5 rounded-full bg-error shrink-0" title="Muted" />
+          )}
           <div className={cat.shape} />
           <span className="text-[10px] font-bold text-white/90 truncate">
             {d.name}
           </span>
         </div>
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0">
           {d.muteInput ? (
             <span className="text-[8px] font-black text-modifier uppercase px-1 rounded bg-modifier/15">
               M in
             </span>
           ) : null}
+          {/* Mini CPU meter bar */}
+          {d.cpuLoad > 0 && (
+            <div className="flex items-center gap-0.5" title={`CPU: ${d.cpuLoad.toFixed(1)}%`}>
+              <div className="w-6 h-1.5 rounded-full bg-[#1A1A1E] overflow-hidden">
+                <div 
+                  className={`h-full rounded-full transition-all ${
+                    d.cpuLoad > 50 ? "bg-error" : d.cpuLoad > 25 ? "bg-modifier" : "bg-logic"
+                  }`}
+                  style={{ width: `${Math.min(100, d.cpuLoad)}%` }}
+                />
+              </div>
+            </div>
+          )}
           <span
-            className="text-[10px] font-bold"
-            style={{ color: `${cat.hex}CC` }}
+            className="text-[9px] font-bold"
+            style={{ color: `${cat.hex}99` }}
           >
             {d.format}
           </span>

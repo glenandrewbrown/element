@@ -10,6 +10,8 @@ import {
 import {
   nativeTransportPanic,
   nativeTransportTogglePlay,
+  nativeUndo,
+  nativeRedo,
 } from "../../bridge/nativeGraph";
 import {
   nativeSessionNew,
@@ -19,13 +21,14 @@ import {
   nativeSessionSetActiveGraph,
 } from "../../bridge/nativeSession";
 import { useSessionStore } from "../../stores/useSessionStore";
-import { useState } from "react";
+import { useState, useRef, useCallback } from "react";
 import { PreferencesModal } from "./PreferencesModal";
 import { AboutModal } from "./AboutModal";
 import {
   nativePerformAddScene,
   nativePerformCaptureScene,
 } from "../../bridge/nativePerform";
+import { useHostExtrasStore } from "../../stores/useHostExtrasStore";
 
 // ── SVG icon helpers (inline to avoid icon-font dependency) ──
 
@@ -60,12 +63,15 @@ const ICON_LAYERS =
   "M11.99 18.54l-7.37-5.73L3 14.07l9 7 9-7-1.63-1.27zM12 16l7.36-5.73L21 9l-9-7-9 7 1.63 1.27L12 16z";
 const ICON_SETTINGS =
   "M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.49.49 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 00-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1115.6 12 3.61 3.61 0 0112 15.6z";
-const ICON_POWER =
-  "M13 3h-2v10h2V3zm4.83 2.17l-1.42 1.42A6.92 6.92 0 0119 12c0 3.87-3.13 7-7 7s-7-3.13-7-7c0-2.27 1.08-4.28 2.59-5.59L6.17 5.17A8.93 8.93 0 003 12a9 9 0 0018 0c0-2.74-1.23-5.18-3.17-6.83z";
 const ICON_ARROW_LEFT = "M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z";
 const ICON_ARROW_RIGHT = "M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z";
 const ICON_SCHEDULE =
   "M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z";
+const ICON_UNDO = "M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z";
+const ICON_REDO = "M18.4 10.6C16.55 8.99 14.15 8 11.5 8c-4.65 0-8.58 3.03-9.96 7.22L3.9 16c1.05-3.19 4.05-5.5 7.6-5.5 1.95 0 3.73.72 5.12 1.88L13 16h9V7l-3.6 3.6z";
+const ICON_PANIC = "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z";
+const ICON_SYNC = "M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46A7.93 7.93 0 0020 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74A7.93 7.93 0 004 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z";
+const ICON_TAP = "M8 11h2v10H8zm4-4h2v14h-2zm4-2h2v16h-2z";
 
 // ── Toolbar component ──
 
@@ -93,6 +99,34 @@ export function Toolbar() {
   const filePath = useSessionStore((s) => s.filePath);
   const dirty = useSessionStore((s) => s.dirty);
   const sessionGraphs = useSessionStore((s) => s.graphs);
+  const undoDepth = useHostExtrasStore((s) => s.undoDepth);
+  const redoDepth = useHostExtrasStore((s) => s.redoDepth);
+  const externalSync = useHostExtrasStore((s) => s.externalSync);
+  const timeSig = useHostExtrasStore((s) => s.timeSig);
+
+  // TAP tempo logic
+  const tapTimesRef = useRef<number[]>([]);
+  const [lastTapBpm, setLastTapBpm] = useState<number | null>(null);
+
+  const handleTap = useCallback(() => {
+    const now = performance.now();
+    const taps = tapTimesRef.current;
+    taps.push(now);
+    // Keep only taps within last 3 seconds
+    const cutoff = now - 3000;
+    while (taps.length > 0 && taps[0] < cutoff) taps.shift();
+    if (taps.length >= 2) {
+      const intervals = [];
+      for (let i = 1; i < taps.length; i++) {
+        intervals.push(taps[i] - taps[i - 1]);
+      }
+      const avgInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
+      const tapBpm = 60000 / avgInterval;
+      if (tapBpm > 30 && tapBpm < 300) {
+        setLastTapBpm(Math.round(tapBpm * 10) / 10);
+      }
+    }
+  }, []);
 
   const isEdit = mode === "edit";
   const sceneCount = Math.max(1, scenes.length);
@@ -225,9 +259,9 @@ export function Toolbar() {
           )}
         </div>
 
-        {/* ── Center: Transport + Metrics + Mode Toggle (Edit only) ── */}
+        {/* ── Center: Transport + Tempo + Undo/Redo + PANIC + Mode Toggle ── */}
         {isEdit && (
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-4">
             {/* Transport */}
             <div className="flex items-center gap-1 bg-pressed px-2 py-0.5 rounded shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)]">
               <button className="text-text-secondary hover:text-text-primary transition-colors p-0.5">
@@ -246,33 +280,72 @@ export function Toolbar() {
               </button>
             </div>
 
-            {/* Metrics */}
-            <div className="flex gap-4 text-text-secondary">
+            {/* BPM + Time Sig + TAP */}
+            <div className="flex items-center gap-2 text-text-secondary">
               <div className="flex flex-col items-center">
-                <span className="text-[10px] opacity-50">BPM</span>
-                <span className="text-modifier font-bold tabular">
-                  {bpm.toFixed(2)}
+                <span className="text-modifier font-bold tabular text-[13px]">
+                  {lastTapBpm ?? bpm.toFixed(2)}
+                </span>
+                <span className="text-[8px] opacity-50">BPM</span>
+              </div>
+              <div className="flex flex-col items-center px-1">
+                <span className="text-text-primary font-bold tabular text-[12px]">
+                  {timeSig || "4/4"}
                 </span>
               </div>
-              <div className="flex flex-col items-center">
-                <span className="text-[10px] opacity-50">BUFFER</span>
-                <span className="text-text-primary font-bold tabular">
-                  {live.buffer > 0 ? `${live.buffer}` : "—"}
-                </span>
-              </div>
-              <div className="flex flex-col items-center">
-                <span className="text-[10px] opacity-50">SAMPLE</span>
-                <span className="text-text-primary font-bold tabular">
-                  {live.timecode || "—"}
-                </span>
-              </div>
-              <div className="flex flex-col items-center">
-                <span className="text-[10px] opacity-50">LATENCY</span>
-                <span className="text-logic font-bold tabular">
-                  {live.latency > 0 ? `${live.latency.toFixed(1)} ms` : "—"}
-                </span>
-              </div>
+              <button
+                type="button"
+                onClick={handleTap}
+                className="px-2 py-1 text-[9px] font-bold uppercase rounded bg-surface shadow-[-2px_-2px_6px_rgba(255,255,255,0.04),2px_2px_6px_rgba(0,0,0,0.35)] hover:bg-elevated active:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4)] border border-white/5 text-text-secondary hover:text-text-primary"
+              >
+                TAP
+              </button>
+              {/* EXT sync indicator */}
+              {externalSync && (
+                <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-logic/20 border border-logic/30">
+                  <Icon d={ICON_SYNC} size={12} className="text-logic" />
+                  <span className="text-[9px] font-bold text-logic">EXT</span>
+                </div>
+              )}
             </div>
+
+            {/* Undo/Redo */}
+            <div className="flex items-center gap-1 bg-pressed px-2 py-0.5 rounded shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)]">
+              <button
+                type="button"
+                onClick={() => void nativeUndo()}
+                disabled={undoDepth === 0}
+                className="text-text-secondary hover:text-text-primary transition-colors p-0.5 disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-0.5"
+                title={`Undo (${undoDepth})`}
+              >
+                <Icon d={ICON_UNDO} size={16} />
+                {undoDepth > 0 && (
+                  <span className="text-[9px] tabular text-generator">{undoDepth}</span>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => void nativeRedo()}
+                disabled={redoDepth === 0}
+                className="text-text-secondary hover:text-text-primary transition-colors p-0.5 disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-0.5"
+                title={`Redo (${redoDepth})`}
+              >
+                <Icon d={ICON_REDO} size={16} />
+                {redoDepth > 0 && (
+                  <span className="text-[9px] tabular text-logic">{redoDepth}</span>
+                )}
+              </button>
+            </div>
+
+            {/* PANIC button - RED, always visible, prominent */}
+            <button
+              type="button"
+              onClick={() => void nativeTransportPanic()}
+              className="px-3 py-1 rounded-full bg-error/20 border-2 border-error/50 text-error font-black text-[10px] uppercase tracking-wider shadow-[-2px_-2px_6px_rgba(255,255,255,0.04),2px_2px_8px_rgba(0,0,0,0.35)] hover:bg-error/30 hover:border-error active:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4)] transition-all"
+              aria-label="MIDI panic - send all notes off"
+            >
+              PANIC
+            </button>
 
             {/* Mode toggle */}
             <button
@@ -374,6 +447,16 @@ export function Toolbar() {
             </>
           ) : (
             <>
+              {/* PANIC button - prominent in Perform mode, essential for live safety */}
+              <button
+                type="button"
+                onClick={() => void nativeTransportPanic()}
+                className="px-4 py-1.5 rounded-full bg-error/30 border-2 border-error text-error font-black text-[11px] uppercase tracking-wider shadow-[-2px_-2px_6px_rgba(255,255,255,0.04),2px_2px_8px_rgba(0,0,0,0.35)] hover:bg-error/50 active:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4)] transition-all"
+                aria-label="MIDI panic - send all notes off"
+              >
+                PANIC
+              </button>
+
               {/* Engine status */}
               <div className="flex items-center gap-2 px-3 py-1 bg-pressed rounded-sm text-logic border border-white/5">
                 <span className="w-2 h-2 rounded-full bg-logic animate-pulse" />
@@ -389,7 +472,7 @@ export function Toolbar() {
                 </span>
               )}
 
-              {/* Settings + Power */}
+              {/* Settings */}
               <button
                 type="button"
                 className="text-[10px] uppercase tracking-wide text-text-secondary hover:text-text-primary px-1"
@@ -404,9 +487,6 @@ export function Toolbar() {
                 onClick={() => setPrefsOpen(true)}
               >
                 <Icon d={ICON_SETTINGS} size={18} />
-              </button>
-              <button className="text-text-secondary hover:text-error transition-colors">
-                <Icon d={ICON_POWER} size={18} />
               </button>
             </>
           )}

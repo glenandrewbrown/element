@@ -2,6 +2,7 @@ import { useEffect, useCallback } from "react";
 import { useReactFlow } from "@xyflow/react";
 import { useGraphStore } from "../stores/useGraphStore";
 import { useAppStore } from "../stores/useAppStore";
+import { useHostExtrasStore } from "../stores/useHostExtrasStore";
 import {
   nativeGraphCommentAdd,
   nativeGraphCommentDelete,
@@ -155,22 +156,31 @@ export function useKeyboard({ onToggleCommandPalette }: UseKeyboardOptions) {
         }
       }
 
-      // ── Ctrl+0-9: save spatial bookmark (stub) ──
+      // ── Ctrl+0-9: save spatial bookmark ──
 
       if (e.ctrlKey && !e.metaKey && key >= "0" && key <= "9") {
         e.preventDefault();
         const viewport = reactFlow.getViewport();
-        console.debug(`[keyboard] save bookmark ${key}:`, viewport);
+        useHostExtrasStore.getState().setSpatialBookmark(key, viewport);
+        // Visual feedback - brief flash
+        const overlay = document.createElement("div");
+        overlay.className = "fixed inset-0 bg-generator/10 pointer-events-none z-[9999]";
+        overlay.style.animation = "fadeOut 300ms ease-out forwards";
+        document.body.appendChild(overlay);
+        setTimeout(() => overlay.remove(), 300);
         return;
       }
 
       // ── Shift combos (no meta) ──
 
       if (shift && !meta) {
-        // Shift+0-9: recall spatial bookmark (stub)
+        // Shift+0-9: recall spatial bookmark
         if (key >= "0" && key <= "9") {
           e.preventDefault();
-          console.debug(`[keyboard] recall bookmark ${key}`);
+          const bookmark = useHostExtrasStore.getState().getSpatialBookmark(key);
+          if (bookmark) {
+            reactFlow.setViewport(bookmark, { duration: 150 });
+          }
           return;
         }
 

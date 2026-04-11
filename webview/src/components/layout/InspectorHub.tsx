@@ -454,9 +454,124 @@ function PluginEditorControls({ block }: { block: BlockData }) {
   );
 }
 
+// ── Cable Inspector (shows when a cable is selected) ──
+
+function CableInspector({ cableId }: { cableId: string }) {
+  const edges = useGraphStore(selectEdges);
+  const nodes = useGraphStore(selectNodes);
+  const cable = edges.find((e) => e.id === cableId);
+  const level = useCableMeterStore((s) => s.levels[cableId] ?? 0);
+
+  if (!cable) {
+    return (
+      <div className="text-[10px] text-text-dim text-center py-4">
+        Cable not found
+      </div>
+    );
+  }
+
+  const sourceNode = nodes.find((n) => n.id === cable.source);
+  const targetNode = nodes.find((n) => n.id === cable.target);
+  const signalType = cable.signalType || "audio";
+  const channelCount = cable.channelCount || 2;
+
+  const signalColor =
+    signalType === "audio"
+      ? "text-generator"
+      : signalType === "midi"
+        ? "text-logic"
+        : "text-modifier";
+
+  return (
+    <div className="space-y-4">
+      <div className="text-[11px] font-bold text-text-secondary uppercase tracking-widest">
+        Cable Properties
+      </div>
+
+      {/* Source → Target */}
+      <div className="bg-surface rounded-lg p-3 space-y-2">
+        <div className="flex items-center gap-2 text-[10px]">
+          <span className="text-text-secondary">From:</span>
+          <span className="font-bold text-text-primary">{sourceNode?.name || "Unknown"}</span>
+          <span className="text-text-dim">({cable.sourcePort})</span>
+        </div>
+        <div className="flex items-center justify-center text-text-dim">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M16.01 11H4v2h12.01v3L20 12l-3.99-4z" />
+          </svg>
+        </div>
+        <div className="flex items-center gap-2 text-[10px]">
+          <span className="text-text-secondary">To:</span>
+          <span className="font-bold text-text-primary">{targetNode?.name || "Unknown"}</span>
+          <span className="text-text-dim">({cable.targetPort})</span>
+        </div>
+      </div>
+
+      {/* Signal info */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="bg-pressed rounded-lg p-2 text-center">
+          <div className="text-[9px] text-text-secondary uppercase">Type</div>
+          <div className={`text-[11px] font-bold ${signalColor} uppercase`}>
+            {signalType}
+          </div>
+        </div>
+        <div className="bg-pressed rounded-lg p-2 text-center">
+          <div className="text-[9px] text-text-secondary uppercase">Channels</div>
+          <div className="text-[11px] font-bold text-text-primary">
+            {channelCount === 1 ? "Mono" : channelCount === 2 ? "Stereo" : `${channelCount}ch`}
+          </div>
+        </div>
+      </div>
+
+      {/* Live level */}
+      <div className="bg-pressed rounded-lg p-3 space-y-2">
+        <div className="text-[9px] text-text-secondary uppercase">Signal Level</div>
+        <div className="h-3 bg-[#131317] rounded-full overflow-hidden">
+          <div 
+            className={`h-full rounded-full transition-all ${
+              level > 0.8 ? "bg-error" : level > 0.5 ? "bg-modifier" : "bg-logic"
+            }`}
+            style={{ width: `${level * 100}%` }}
+          />
+        </div>
+        <div className="text-[10px] font-bold text-text-primary tabular text-center">
+          {(level * 100).toFixed(0)}%
+        </div>
+      </div>
+
+      {cable.isSidechain && (
+        <div className="flex items-center gap-2 px-3 py-2 bg-modifier/10 rounded border border-modifier/30">
+          <span className="text-[10px] font-bold text-modifier uppercase">Sidechain</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Notes field for blocks ──
+
+function BlockNotesField({ nodeId }: { nodeId: string }) {
+  const [notes, setNotes] = useState("");
+  
+  return (
+    <div className="space-y-2">
+      <div className="text-[10px] font-bold text-text-secondary uppercase tracking-widest">
+        Notes
+      </div>
+      <textarea
+        value={notes}
+        onChange={(e) => setNotes(e.target.value)}
+        placeholder="Add notes about this block..."
+        className="w-full h-20 px-3 py-2 text-[10px] text-text-primary bg-pressed rounded-lg shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] border border-white/5 resize-none focus:outline-none focus:border-generator/30"
+      />
+    </div>
+  );
+}
+
 export function InspectorHub() {
   const [activeTab, setActiveTab] = useState<Tab>("inspector");
   const selectedBlock = useGraphStore(selectSelectedNode);
+  const selectedEdgeId = useGraphStore((s) => s.selectedEdgeId);
   const toggleBypass = useGraphStore((s) => s.toggleBypass);
   const toggleMute = useGraphStore((s) => s.toggleMute);
   const toggleMuteInput = useGraphStore((s) => s.toggleMuteInput);
@@ -585,7 +700,11 @@ export function InspectorHub() {
                 </div>
 
                 <BlockMetrics block={selectedBlock} />
+
+                <BlockNotesField nodeId={selectedBlock.id} />
               </>
+            ) : selectedEdgeId ? (
+              <CableInspector cableId={selectedEdgeId} />
             ) : (
               <ProjectOverview />
             )}
