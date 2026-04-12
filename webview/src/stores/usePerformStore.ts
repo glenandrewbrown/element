@@ -1,6 +1,10 @@
 import { create } from "zustand";
 import type { AlertData, MacroControl, SceneData } from "../data/types";
 import { nativePerformSetActiveScene } from "../bridge/nativePerform";
+import { demoGraph } from "../data/demoGraph";
+
+/** Standalone Vite: `VITE_USE_DEMO_GRAPH=1 npm run dev` seeds the demo board. */
+const useDemoSeed = import.meta.env.VITE_USE_DEMO_GRAPH === "1";
 
 interface LiveHealth {
   cpu: number;
@@ -58,9 +62,9 @@ const defaultHealth: LiveHealth = {
 };
 
 export const usePerformStore = create<PerformStore>()((set) => ({
-  sessionName: "Project",
-  macros: [],
-  scenes: [],
+  sessionName: useDemoSeed ? "Demo Session" : "Project",
+  macros: useDemoSeed ? demoGraph.macros : [],
+  scenes: useDemoSeed ? demoGraph.scenes : [],
   liveHealth: { ...defaultHealth },
   mapModeActive: false,
 
