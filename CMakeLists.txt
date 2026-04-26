@@ -110,6 +110,20 @@ if(APPLE)
             INSTALL_RPATH "@executable_path/../Frameworks"
         )
     endif()
+    # Bundle the WebView production assets into the .app's Resources directory
+    # so the host can find them when installed (e.g. via the .pkg installer)
+    # without depending on the source tree path baked in at configure time.
+    add_custom_command(TARGET element_app POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E rm -rf
+                "$<TARGET_BUNDLE_CONTENT_DIR:element_app>/Resources/webview"
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+                "$<TARGET_BUNDLE_CONTENT_DIR:element_app>/Resources/webview"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+                "${CMAKE_SOURCE_DIR}/webview/dist"
+                "$<TARGET_BUNDLE_CONTENT_DIR:element_app>/Resources/webview"
+        COMMENT "Bundling WebView production assets into Element.app/Contents/Resources/webview"
+        VERBATIM)
+
     install(TARGETS element_app
         BUNDLE DESTINATION "Applications"
         COMPONENT "Standalone")

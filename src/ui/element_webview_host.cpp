@@ -707,13 +707,39 @@ static std::optional<WebBrowserComponent::Resource> makeWebAsset (const File& ro
     return r;
 }
 
+// Resolve the WebView production bundle root. Prefers a bundle-relative location
+// inside the host (.app / .vst3 / .component / .clap), so installed packages work
+// on any machine. Falls back to the configure-time dev tree path for hot-reload
+// during development.
+static File resolveWebviewDistRoot()
+{
+    using juce::File;
+
+   #if JUCE_MAC
+    // <Bundle>/Contents/MacOS/<binary>  -->  <Bundle>/Contents/Resources/webview
+    const auto exe = File::getSpecialLocation (File::currentExecutableFile);
+    const auto contents = exe.getParentDirectory().getParentDirectory();
+    const auto bundled = contents.getChildFile ("Resources").getChildFile ("webview");
+    if (bundled.getChildFile ("index.html").existsAsFile())
+        return bundled;
+   #else
+    // Bundled next to the executable on Linux/Windows
+    const auto exe = File::getSpecialLocation (File::currentExecutableFile);
+    const auto bundled = exe.getParentDirectory().getChildFile ("webview");
+    if (bundled.getChildFile ("index.html").existsAsFile())
+        return bundled;
+   #endif
+
+    return File (element::webview_dist::kDistPath);
+}
+
 //==============================================================================
 ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
 {
     logForwarder = std::make_unique<ElementWebViewLogForwarder> (*this);
     context.logger().addListener (logForwarder.get());
 
-    const File distRoot (element::webview_dist::kDistPath);
+    const File distRoot = resolveWebviewDistRoot();
 
     const char* devUrlEnv = nullptr;
    #if JUCE_DEBUG
