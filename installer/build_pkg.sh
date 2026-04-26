@@ -310,6 +310,38 @@ exit 0
 EOF
 chmod +x "$PKG_SCRIPTS/postinstall"
 
+# ---- Refresh WebView assets in every bundle ----
+# CMake's POST_BUILD copy in element_setup_plugin() runs only when the format
+# target is actually re-linked. If only webview/dist changed (no C++ change),
+# CMake skips link → POST_BUILD doesn't fire → bundles ship a stale webview.
+# Workaround: rsync the latest webview/dist into every bundle in pkg_root
+# right before signing/packaging, then re-apply ad-hoc signatures.
+WEBVIEW_DIST="$PROJECT_ROOT/webview/dist"
+if [ -d "$WEBVIEW_DIST/assets" ] && [ -f "$WEBVIEW_DIST/index.html" ]; then
+    echo ""
+    echo "=== Refreshing WebView assets in pkg_root bundles ==="
+    BUNDLES_REFRESHED=0
+    while IFS= read -r bundle; do
+        target="$bundle/Contents/Resources/webview"
+        rm -rf "$target"
+        mkdir -p "$target"
+        cp -R "$WEBVIEW_DIST/." "$target/"
+        BUNDLES_REFRESHED=$((BUNDLES_REFRESHED + 1))
+    done < <(find "$PKG_ROOT" \( -name "*.app" -o -name "*.component" -o -name "*.vst3" -o -name "*.clap" \) -type d -prune)
+    echo "Refreshed WebView in $BUNDLES_REFRESHED bundles."
+
+    # Re-apply ad-hoc signatures since we modified bundle contents.
+    # (Real Developer ID signing happens later if DEVELOPER_ID_APP is set.)
+    if [ -z "${DEVELOPER_ID_APP:-}" ]; then
+        echo "Re-applying ad-hoc signatures after WebView refresh..."
+        while IFS= read -r bundle; do
+            codesign --force --sign - --deep --timestamp=none "$bundle" >/dev/null 2>&1 || true
+        done < <(find "$PKG_ROOT" \( -name "*.app" -o -name "*.component" -o -name "*.vst3" -o -name "*.clap" \) -type d -prune)
+    fi
+elif [ -d "$WEBVIEW_DIST" ]; then
+    echo "WARNING: $WEBVIEW_DIST exists but is missing index.html or assets/; skipping WebView refresh."
+fi
+
 # ---- Code Signing ----
 # If DEVELOPER_ID_APP is set, sign all binaries before packaging.
 # This ensures the PKG contains properly signed, hardened-runtime bundles.
