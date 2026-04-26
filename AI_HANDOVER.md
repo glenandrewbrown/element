@@ -56,6 +56,47 @@ Edit Mode (workshop) / Perform Mode (stage) — structural change, NOT palette c
 
 ## Log (newest first)
 
+### 2026-04-26 (latest) — Phase B kickoff: P1-14 + installer hardening
+
+**HEAD:** `61120677` (was `84e95629`)
+
+Two more commits on top of Phase A:
+
+5. `c00b0658` **feat(P1-14): per-block user note field in Inspector**
+   - Per blueprint §7.4.11. Inspector now has a debounced (400ms) textarea
+     that persists into the Node ValueTree as `userNote`, round-trips through
+     `pushGraphSnapshot()`, and survives `.elg` save/load.
+   - C++: new `elementGraphSetNodeNote(nodeId, note)` bridge + `userNote`
+     property serialized into block snapshot JSON.
+   - JS: optional `note?: string` on `BlockData`, `nativeGraphSetNodeNote`
+     wrapper, `BlockNoteEditor` component plugged into `InspectorHub.tsx`
+     between metrics and bypass buttons.
+
+6. `61120677` **fix(installer): always refresh WebView in pkg_root before packaging**
+   - Discovered while shipping P1-14: CMake's `POST_BUILD` copy in
+     `element_setup_plugin()` only fires when the format target re-links.
+     Pure webview-only changes leave plugin bundles with stale assets.
+   - `installer/build_pkg.sh` now rsyncs `webview/dist` into every bundle
+     under `pkg_root/` right before `pkgbuild`, then re-applies ad-hoc
+     signatures (file additions invalidate them).
+   - Net: pipeline is decoupled from CMake dependency-tracking quirks. As
+     long as the webview build is current, the `.pkg` ships current WebView.
+
+**Phase B status:** 1/20 P1 items shipped (P1-14). Two were investigated and
+deferred this session because they're more architecture than spec implied:
+- **P1-1 Dashboard layout persistence** — `useDashboardStore` already uses
+  `persist` middleware → localStorage works. The actual gap is *per-project*
+  persistence via Session ValueTree, which is an architecture decision (does
+  every project carry a dashboard? does it override the global default?).
+- **P1-6 Wireless bus CRUD** — `useBusStore` *derives* buses from cable
+  assignments. Adding explicit bus CRUD means promoting buses to first-class
+  entities. That's a schema change, not just a bridge add.
+
+Both deferrals documented; recommend a focused interview before reopening.
+
+**Build artifacts updated:** `Element-2.2.0.16.{pkg,dmg}` rebuilt with
+P1-14 + all 7 plugin bundles carrying the new WebView (`index-CqwGo_QI.js`).
+
 ### 2026-04-26 (late) — Audit + Phase A landed; Phase B queued
 
 **Session:** ultraqa → deep-dive → autopilot Phase A
