@@ -1268,6 +1268,33 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
         });
 
+    // Per-block user note (Inspector textarea). Persisted as a "userNote"
+    // ValueTree property on the Node so it survives session save/load.
+    opts = opts.withNativeFunction (
+        Identifier ("elementGraphSetNodeNote"),
+        [this] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 2)
+            {
+                if (auto sess = context.session())
+                {
+                    const Graph G (sess->getCurrentGraph());
+                    if (G.isGraph())
+                    {
+                        Node n = findNodeByUuidInGraph (G, args[0].toString());
+                        if (n.isValid())
+                        {
+                            n.setProperty (Identifier ("userNote"), args[1].toString());
+                            ok = true;
+                        }
+                    }
+                }
+            }
+            if (ok)
+                pushGraphSnapshot();
+            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+        });
+
     opts = opts.withNativeFunction (
         Identifier ("elementGraphDuplicateNodes"),
         [this] (const Array<var>& args, auto completion) {
@@ -2742,6 +2769,7 @@ String ElementWebViewHost::buildActiveGraphJson() const
             b->setProperty ("containerNodeCount", sub.getNumNodes());
         }
         b->setProperty ("color", n.getColor().toString());
+        b->setProperty ("note", n.getProperty (Identifier ("userNote"), "").toString());
 
         Array<var> portsVar;
         for (int pi = 0; pi < n.getNumPorts(); ++pi)

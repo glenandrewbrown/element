@@ -165,6 +165,19 @@ export async function nativeGraphRenameNode(
   return r === true;
 }
 
+/**
+ * Update a block's free-form user note (Inspector textarea).
+ * Persists in the Node ValueTree as the "userNote" property so it survives
+ * project save/load. Blueprint §7.4.11.
+ */
+export async function nativeGraphSetNodeNote(
+  nodeId: string,
+  note: string,
+): Promise<boolean> {
+  const r = await invokeElementNative("elementGraphSetNodeNote", [nodeId, note]);
+  return r === true;
+}
+
 export async function nativeGraphCommentAdd(
   x: number,
   y: number,

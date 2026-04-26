@@ -34,6 +34,11 @@ export interface BlockData {
   /** Number of child nodes inside a Container block */
   containerNodeCount?: number;
   isPortal?: boolean;
+  /**
+   * Free-form user note (per blueprint §7.4.11). Edited in the Inspector,
+   * persists in the Node ValueTree as "userNote" so it survives save/load.
+   */
+  note?: string;
 }
 
 export interface CableData {

@@ -209,6 +209,10 @@ function mapBlock(b: EngineBlock): BlockData {
     isMacroTagged: false,
     containerNodeCount: b.containerNodeCount,
     isPortal: false,
+    note:
+      typeof (b as { note?: unknown }).note === "string"
+        ? ((b as { note?: string }).note as string)
+        : undefined,
   };
 }
 

@@ -20,6 +20,7 @@ import { NeuButton, NeuDisplay } from "../neu";
 import type { BlockData } from "../../data/types";
 import {
   nativeGetNodeParameters,
+  nativeGraphSetNodeNote,
   nativeSetNodeParameter,
   type NodeParameterRow,
 } from "../../bridge/nativeGraph";
@@ -110,6 +111,60 @@ function BlockMetrics({ block }: { block: BlockData }) {
         </div>
       ))}
     </NeuDisplay>
+  );
+}
+
+/**
+ * Free-form per-block note (blueprint §7.4.11).
+ * Edits flush to the engine ~400ms after the user stops typing so we don't
+ * spam the bridge on every keystroke. Re-syncs from the upstream `block.note`
+ * on selection change so the field always reflects engine truth.
+ */
+function BlockNoteEditor({ block }: { block: BlockData }) {
+  const [draft, setDraft] = useState<string>(block.note ?? "");
+  const lastUpstream = useRef<string>(block.note ?? "");
+  const flushTimer = useRef<number | null>(null);
+
+  // Re-hydrate when the selected block changes OR the engine pushes a new note.
+  useEffect(() => {
+    const upstream = block.note ?? "";
+    if (upstream !== lastUpstream.current) {
+      lastUpstream.current = upstream;
+      setDraft(upstream);
+    }
+  }, [block.id, block.note]);
+
+  // Debounce-flush to engine.
+  useEffect(() => {
+    if (draft === lastUpstream.current) return;
+    if (flushTimer.current != null) window.clearTimeout(flushTimer.current);
+    flushTimer.current = window.setTimeout(() => {
+      void nativeGraphSetNodeNote(block.id, draft);
+      lastUpstream.current = draft;
+      flushTimer.current = null;
+    }, 400);
+    return () => {
+      if (flushTimer.current != null) {
+        window.clearTimeout(flushTimer.current);
+        flushTimer.current = null;
+      }
+    };
+  }, [draft, block.id]);
+
+  return (
+    <div className="space-y-1">
+      <label className="text-[10px] font-bold text-text-secondary uppercase tracking-widest">
+        Notes
+      </label>
+      <textarea
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        placeholder="Add a note for this block…"
+        rows={3}
+        className="w-full text-[11px] bg-pressed text-text-primary rounded-md p-2 outline-none border border-white/5 focus:border-generator/40 placeholder-text-secondary/60 resize-y shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)]"
+        spellCheck={false}
+      />
+    </div>
   );
 }
 
@@ -493,6 +548,8 @@ export function InspectorHub() {
                 </div>
 
                 <BlockMetrics block={selectedBlock} />
+
+                <BlockNoteEditor block={selectedBlock} />
               </>
             ) : (
               <div className="space-y-6">
