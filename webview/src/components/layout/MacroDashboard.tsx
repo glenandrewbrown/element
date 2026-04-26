@@ -5,7 +5,11 @@ import {
   selectLiveHealth,
   selectMapMode,
 } from "../../stores/usePerformStore";
+import { useGraphStore } from "../../stores/useGraphStore";
 import { NeuKnob, NeuFader, NeuToggle } from "../neu";
+import { SceneLauncher } from "./SceneLauncher";
+import { nativeTransportPanic } from "../../bridge/nativeGraph";
+import type { BlockCategory } from "../../data/types";
 
 // ── Icons ──
 
@@ -48,6 +52,21 @@ function Icon({
 
 type DashTab = "macros" | "scenes" | "fx";
 
+// ── Category colour helpers ──
+
+const CATEGORY_BORDER: Record<BlockCategory, string> = {
+  generator: "border-l-generator",
+  modifier: "border-l-modifier",
+  logic: "border-l-logic",
+};
+
+const CATEGORY_DOT: Record<BlockCategory, string> = {
+  generator: "bg-generator",
+  modifier: "bg-modifier",
+  logic: "bg-logic",
+};
+
+
 // ── VU Meter ──
 
 function VuMeter({ level }: { level: number }) {
@@ -69,6 +88,9 @@ export function MacroDashboard() {
   const health = usePerformStore(selectLiveHealth);
   const mapMode = usePerformStore(selectMapMode);
   const toggleMapMode = usePerformStore((s) => s.toggleMapMode);
+  const allNodes = useGraphStore((s) => s.nodes);
+  const toggleBypass = useGraphStore((s) => s.toggleBypass);
+  const effectBlocks = allNodes.filter((n) => n.category !== "generator");
 
   const tabs: { id: DashTab; label: string; icon: string }[] = [
     { id: "macros", label: "Macro Controls", icon: ICON_TUNE },
@@ -104,12 +126,12 @@ export function MacroDashboard() {
 
         {/* Right controls */}
         <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 px-3 py-1 bg-surface rounded border border-white/5 hover:border-generator/50 cursor-pointer transition-colors">
+          <button type="button" onClick={toggleMapMode} className="flex items-center gap-2 px-3 py-1 bg-surface rounded border border-white/5 hover:border-generator/50 cursor-pointer transition-colors">
             <span className="text-[10px] font-black uppercase text-text-primary">
               Map Mode
             </span>
             <NeuToggle active={mapMode} onChange={toggleMapMode} color="blue" />
-          </div>
+          </button>
           <div className="h-6 w-px bg-white/10" />
           <button className="text-text-secondary">
             <Icon d={ICON_MORE} />
@@ -206,15 +228,61 @@ export function MacroDashboard() {
           </>
         )}
 
-        {activeTab === "scenes" && (
-          <div className="flex-1 flex items-center justify-center text-[10px] text-text-dim uppercase tracking-widest">
-            Scene Launch Grid
-          </div>
-        )}
+        {activeTab === "scenes" && <SceneLauncher />}
 
         {activeTab === "fx" && (
-          <div className="flex-1 flex items-center justify-center text-[10px] text-text-dim uppercase tracking-widest">
-            Performance FX
+          <div className="flex-1 overflow-y-auto">
+            {effectBlocks.length === 0 ? (
+              <div className="h-full flex items-center justify-center text-[10px] text-text-secondary uppercase tracking-widest">
+                No effects on the board
+              </div>
+            ) : (
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-3">
+                {effectBlocks.map((block) => (
+                  <div
+                    key={block.id}
+                    className={[
+                      "bg-surface rounded-lg p-3 border border-white/5 border-l-2 transition-opacity",
+                      CATEGORY_BORDER[block.category],
+                      block.bypassed ? "opacity-50" : "opacity-100",
+                    ].join(" ")}
+                  >
+                    {/* Header row */}
+                    <div className="flex items-center gap-2 mb-3">
+                      <span
+                        className={[
+                          "w-2 h-2 rounded-full shrink-0",
+                          CATEGORY_DOT[block.category],
+                        ].join(" ")}
+                      />
+                      <span
+                        className="text-[11px] font-bold text-text-primary truncate flex-1"
+                        title={block.name}
+                      >
+                        {block.name}
+                      </span>
+                    </div>
+                    {/* Bypass toggle row */}
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-text-secondary uppercase tracking-widest">
+                        {block.bypassed ? "Bypassed" : "Active"}
+                      </span>
+                      <NeuToggle
+                        active={!block.bypassed}
+                        onChange={() => toggleBypass(block.id)}
+                        color={
+                          block.category === "modifier"
+                            ? "orange"
+                            : block.category === "logic"
+                              ? "teal"
+                              : "blue"
+                        }
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -226,7 +294,10 @@ export function MacroDashboard() {
 
 export function PanicButton() {
   return (
-    <button className="absolute bottom-6 right-6 w-14 h-14 rounded-full bg-pressed shadow-[-2px_-2px_8px_rgba(255,255,255,0.04),2px_2px_8px_rgba(0,0,0,0.35)] border border-error/20 flex flex-col items-center justify-center active:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] active:translate-y-px group transition-all z-10">
+    <button
+      onClick={() => void nativeTransportPanic()}
+      className="absolute bottom-6 right-6 w-14 h-14 rounded-full bg-pressed shadow-[-2px_-2px_8px_rgba(255,255,255,0.04),2px_2px_8px_rgba(0,0,0,0.35)] border border-error/20 flex flex-col items-center justify-center active:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] active:translate-y-px group transition-all z-10"
+    >
       <Icon
         d={ICON_EMERGENCY}
         size={24}

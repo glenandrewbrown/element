@@ -10,14 +10,20 @@ import {
   nativeGraphDuplicateNodes,
   nativeGraphPasteNodes,
   nativeGraphRemoveNode,
-  nativeGraphRenameNode,
+  nativeGraphSetCableBus,
   nativeRedo,
   nativeUndo,
 } from "../bridge/nativeGraph";
 import {
+  deriveBuses,
+  suggestBusName,
+  useBusStore,
+} from "../stores/useBusStore";
+import {
   nativeSessionSave,
   nativeSessionSaveAs,
 } from "../bridge/nativeSession";
+import { EV_START_RENAME } from "../events";
 
 interface UseKeyboardOptions {
   onToggleCommandPalette: () => void;
@@ -126,11 +132,12 @@ export function useKeyboard({ onToggleCommandPalette }: UseKeyboardOptions) {
               useGraphStore.getState();
             if (!selectedNodeId) return;
             if (commentBoxes.some((c) => c.id === selectedNodeId)) return;
-            const blk = nodes.find((n) => n.id === selectedNodeId);
-            if (!blk) return;
-            const name = window.prompt("Rename block", blk.name);
-            if (name != null && name.trim().length > 0)
-              void nativeGraphRenameNode(selectedNodeId, name.trim());
+            if (!nodes.some((n) => n.id === selectedNodeId)) return;
+            window.dispatchEvent(
+              new CustomEvent(EV_START_RENAME, {
+                detail: { nodeId: selectedNodeId },
+              }),
+            );
             return;
           }
 
@@ -152,25 +159,38 @@ export function useKeyboard({ onToggleCommandPalette }: UseKeyboardOptions) {
             reactFlow.zoomOut({ duration: 150 });
             return;
           }
+
+          case "m":
+          case "M": {
+            if (shift) {
+              e.preventDefault();
+              useAppStore.getState().toggleMode();
+              return;
+            }
+            break;
+          }
         }
       }
 
-      // ── Ctrl+0-9: save spatial bookmark (stub) ──
+      // ── Ctrl+0-9: save spatial bookmark ──
 
       if (e.ctrlKey && !e.metaKey && key >= "0" && key <= "9") {
         e.preventDefault();
-        const viewport = reactFlow.getViewport();
-        console.debug(`[keyboard] save bookmark ${key}:`, viewport);
+        const vp = reactFlow.getViewport();
+        useAppStore.getState().saveSpatialBookmark(key, { x: vp.x, y: vp.y, zoom: vp.zoom });
         return;
       }
 
       // ── Shift combos (no meta) ──
 
       if (shift && !meta) {
-        // Shift+0-9: recall spatial bookmark (stub)
+        // Shift+0-9: recall spatial bookmark
         if (key >= "0" && key <= "9") {
           e.preventDefault();
-          console.debug(`[keyboard] recall bookmark ${key}`);
+          const bm = useAppStore.getState().getSpatialBookmark(key);
+          if (bm) {
+            reactFlow.setViewport({ x: bm.x, y: bm.y, zoom: bm.zoom }, { duration: 150 });
+          }
           return;
         }
 
@@ -188,6 +208,12 @@ export function useKeyboard({ onToggleCommandPalette }: UseKeyboardOptions) {
           case "M": {
             e.preventDefault();
             useGraphStore.getState().toggleMinimap();
+            return;
+          }
+
+          case "K": {
+            e.preventDefault();
+            useAppStore.getState().toggleVirtualKeyboard();
             return;
           }
         }
@@ -209,11 +235,24 @@ export function useKeyboard({ onToggleCommandPalette }: UseKeyboardOptions) {
 
         case "Tab": {
           e.preventDefault();
-          const { nodes, selectedNodeId } = useGraphStore.getState();
+          const { nodes, edges, selectedNodeId } = useGraphStore.getState();
           if (nodes.length === 0) return;
-          const currentIdx = nodes.findIndex((n) => n.id === selectedNodeId);
-          const nextIdx = (currentIdx + 1) % nodes.length;
-          useGraphStore.getState().selectNode(nodes[nextIdx].id);
+
+          // Build signal-chain order: nodes with fewer incoming edges first (sources),
+          // then by x-position left-to-right as tiebreaker
+          const inCount = new Map<string, number>();
+          nodes.forEach((n) => inCount.set(n.id, 0));
+          edges.forEach((e) => inCount.set(e.target, (inCount.get(e.target) ?? 0) + 1));
+
+          const sorted = [...nodes].sort((a, b) => {
+            const diff = (inCount.get(a.id) ?? 0) - (inCount.get(b.id) ?? 0);
+            return diff !== 0 ? diff : a.position.x - b.position.x;
+          });
+
+          // Find current position in sorted list
+          const currentIdx = sorted.findIndex((n) => n.id === selectedNodeId);
+          const nextIdx = shift ? (currentIdx - 1 + sorted.length) % sorted.length : (currentIdx + 1) % sorted.length;
+          useGraphStore.getState().selectNode(sorted[nextIdx].id);
           return;
         }
 
@@ -227,6 +266,29 @@ export function useKeyboard({ onToggleCommandPalette }: UseKeyboardOptions) {
           if (isComment) void nativeGraphCommentDelete(selectedNodeId);
           else if (nodes.some((n) => n.id === selectedNodeId))
             void nativeGraphRemoveNode(selectedNodeId);
+          return;
+        }
+
+        // Phase 5B — toggle wireless on the currently selected cable.
+        // First W on a wired cable assigns the next default bus name
+        // ("Bus 1", "Bus 2", …). W on a wireless cable converts back.
+        case "w":
+        case "W": {
+          const { selectedEdgeId, edges } = useGraphStore.getState();
+          if (!selectedEdgeId) return;
+          if (!edges.some((edge) => edge.id === selectedEdgeId)) return;
+          e.preventDefault();
+          const busState = useBusStore.getState();
+          const current = busState.cableBus[selectedEdgeId];
+          if (current) {
+            busState.setBusForCable(selectedEdgeId, undefined);
+            void nativeGraphSetCableBus(selectedEdgeId, "");
+          } else {
+            const buses = deriveBuses(edges, busState.cableBus);
+            const next = suggestBusName(buses.map((b) => b.name));
+            busState.setBusForCable(selectedEdgeId, next);
+            void nativeGraphSetCableBus(selectedEdgeId, next);
+          }
           return;
         }
       }

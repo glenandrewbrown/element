@@ -36,8 +36,8 @@ export function NeuToggle({
       className={[
         "relative w-6 h-3 rounded-full transition-colors duration-150",
         active
-          ? track
-          : "bg-[#1A1A1E] shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)]",
+          ? `${track} ${glow}`
+          : "bg-pressed neu-inset",
         "border border-white/5",
         className,
       ].join(" ")}
@@ -45,7 +45,7 @@ export function NeuToggle({
       <span
         className={[
           "absolute top-0.5 w-2 h-2 rounded-full bg-text-primary transition-all duration-150",
-          active ? `right-0.5 ${glow}` : "left-0.5",
+          active ? "right-0.5" : "left-0.5",
         ].join(" ")}
       />
     </button>

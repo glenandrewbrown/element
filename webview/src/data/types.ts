@@ -46,6 +46,13 @@ export interface CableData {
   signalType: SignalType;
   channelCount: 1 | 2 | 6;
   isSidechain: boolean;
+  /**
+   * Phase 5B — Wireless Patching (blueprint §7.2.8). When set, the cable is
+   * still connected in the engine but renders as a named bus badge on each
+   * end-port instead of as a drawn curve. Hydrated from the engine snapshot
+   * (Arc.busName ValueTree property); mutated client-side via useBusStore.
+   */
+  busName?: string;
 }
 
 export interface SceneData {

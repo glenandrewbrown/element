@@ -4,21 +4,38 @@ import { usePerformStore } from "./usePerformStore";
 
 type PanelId = "left" | "right" | "bottom";
 
+interface SpatialBookmark {
+  x: number;
+  y: number;
+  zoom: number;
+}
+
+/** Cable routing style — blueprint §7.2 calls for Manhattan by default with bezier toggle. */
+export type CableRouting = "manhattan" | "bezier";
+
 interface AppState {
   mode: AppMode;
   leftPanelOpen: boolean;
   rightPanelOpen: boolean;
   bottomPanelOpen: boolean;
+  virtualKeyboardOpen: boolean;
   activeScene: number;
   openBlockTabs: string[];
+  spatialBookmarks: Record<string, SpatialBookmark>;
+  cableRouting: CableRouting;
 }
 
 interface AppActions {
   toggleMode: () => void;
   togglePanel: (panel: PanelId) => void;
+  toggleVirtualKeyboard: () => void;
   setScene: (index: number) => void;
   openBlockTab: (blockId: string) => void;
   closeBlockTab: (blockId: string) => void;
+  saveSpatialBookmark: (slot: string, bookmark: SpatialBookmark) => void;
+  getSpatialBookmark: (slot: string) => SpatialBookmark | undefined;
+  toggleCableRouting: () => void;
+  setCableRouting: (routing: CableRouting) => void;
 }
 
 type AppStore = AppState & AppActions;
@@ -27,9 +44,12 @@ export const useAppStore = create<AppStore>()((set) => ({
   mode: "edit",
   leftPanelOpen: true,
   rightPanelOpen: true,
-  bottomPanelOpen: false,
+  bottomPanelOpen: true,
+  virtualKeyboardOpen: false,
   activeScene: 0,
   openBlockTabs: [],
+  spatialBookmarks: {},
+  cableRouting: "manhattan",
 
   toggleMode: () =>
     set((s) => ({
@@ -48,6 +68,9 @@ export const useAppStore = create<AppStore>()((set) => ({
       }
     }),
 
+  toggleVirtualKeyboard: () =>
+    set((s) => ({ virtualKeyboardOpen: !s.virtualKeyboardOpen })),
+
   setScene: (index) => {
     set({ activeScene: index });
     usePerformStore.getState().activateScene(index);
@@ -64,7 +87,24 @@ export const useAppStore = create<AppStore>()((set) => ({
     set((s) => ({
       openBlockTabs: s.openBlockTabs.filter((id) => id !== blockId),
     })),
+
+  saveSpatialBookmark: (slot, bookmark) =>
+    set((s) => ({
+      spatialBookmarks: { ...s.spatialBookmarks, [slot]: bookmark },
+    })),
+
+  getSpatialBookmark: (slot): SpatialBookmark | undefined =>
+    useAppStore.getState().spatialBookmarks[slot],
+
+  toggleCableRouting: () =>
+    set((s) => ({
+      cableRouting: s.cableRouting === "manhattan" ? "bezier" : "manhattan",
+    })),
+
+  setCableRouting: (routing) => set({ cableRouting: routing }),
 }));
+
+export const selectCableRouting = (s: AppStore) => s.cableRouting;
 
 // ── Selectors ──
 
@@ -74,5 +114,6 @@ export const selectIsPerformMode = (s: AppStore) => s.mode === "perform";
 export const selectLeftPanel = (s: AppStore) => s.leftPanelOpen;
 export const selectRightPanel = (s: AppStore) => s.rightPanelOpen;
 export const selectBottomPanel = (s: AppStore) => s.bottomPanelOpen;
+export const selectVirtualKeyboardOpen = (s: AppStore) => s.virtualKeyboardOpen;
 export const selectActiveScene = (s: AppStore) => s.activeScene;
 export const selectOpenBlockTabs = (s: AppStore) => s.openBlockTabs;

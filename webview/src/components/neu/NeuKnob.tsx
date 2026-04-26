@@ -1,3 +1,5 @@
+import { useState, useCallback, useRef } from "react";
+
 const colorHex = {
   blue: "#4A90D9",
   orange: "#E8A838",
@@ -29,6 +31,8 @@ interface NeuKnobProps {
   sourceLabel?: string;
   color?: "blue" | "orange" | "teal";
   size?: "sm" | "md" | "lg";
+  /** Called with new 0–100 value during drag */
+  onChange?: (value: number) => void;
   className?: string;
 }
 
@@ -38,11 +42,41 @@ export function NeuKnob({
   sourceLabel,
   color = "blue",
   size = "md",
+  onChange,
   className = "",
 }: NeuKnobProps) {
   const hex = colorHex[color];
   const { text, glow } = colorClasses[color];
   const dim = sizeMap[size];
+  const dragRef = useRef<{ startY: number; startValue: number } | null>(null);
+  const [dragging, setDragging] = useState(false);
+
+  const onPointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      if (!onChange) return;
+      e.preventDefault();
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      dragRef.current = { startY: e.clientY, startValue: value };
+      setDragging(true);
+    },
+    [onChange, value],
+  );
+
+  const onPointerMove = useCallback(
+    (e: React.PointerEvent) => {
+      if (!dragRef.current || !onChange) return;
+      const deltaY = dragRef.current.startY - e.clientY;
+      const sensitivity = e.shiftKey ? 0.2 : 0.6;
+      const newValue = Math.max(0, Math.min(100, dragRef.current.startValue + deltaY * sensitivity));
+      onChange(Math.round(newValue * 100) / 100);
+    },
+    [onChange],
+  );
+
+  const onPointerUp = useCallback(() => {
+    dragRef.current = null;
+    setDragging(false);
+  }, []);
 
   // Map 0–100 → -135° to +135° (270° sweep)
   const angle = (value / 100) * 270 - 135;
@@ -56,8 +90,15 @@ export function NeuKnob({
     <div className={`flex flex-col items-center gap-2 ${className}`}>
       {/* Knob body */}
       <div
-        className="relative flex items-center justify-center"
+        className={[
+          "relative flex items-center justify-center",
+          onChange ? "cursor-ns-resize" : "",
+          dragging ? "scale-[1.02]" : "",
+        ].join(" ")}
         style={{ width: dim.outer, height: dim.outer }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
       >
         {/* Progress ring (SVG) */}
         <svg
@@ -90,7 +131,7 @@ export function NeuKnob({
 
         {/* Raised outer body */}
         <div
-          className="rounded-full bg-[#252529] shadow-[-2px_-2px_8px_rgba(255,255,255,0.04),2px_2px_8px_rgba(0,0,0,0.35)] border border-white/5 flex items-center justify-center absolute"
+          className="rounded-full bg-surface shadow-[-2px_-2px_8px_rgba(255,255,255,0.04),2px_2px_8px_rgba(0,0,0,0.35)] border border-white/5 flex items-center justify-center absolute"
           style={{ width: dim.inner, height: dim.inner }}
         >
           {/* Inset track */}

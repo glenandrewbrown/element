@@ -800,7 +800,7 @@ Full Lua scripting (existing `el.Script`) is powerful but heavyweight. Expressio
 - [ ] Session Browser panel (file management)
 - [ ] Keyboard shortcut system (full mapping)
 - [ ] Quick-swap and replace-with functionality
-- [ ] Wireless Patching (Named Buses)
+- [x] Wireless Patching (Named Buses)
 - [ ] Manhattan routing with auto-avoidance
 - [ ] Reroute Pins
 - [ ] Performance optimisation (canvas virtualisation for 50+ node boards)

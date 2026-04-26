@@ -42,3 +42,23 @@ export async function nativeOpenLuaConsole(): Promise<void> {
 export async function nativeOpenGraphMixer(): Promise<void> {
   await invokeElementNative("elementOpenGraphMixer", []);
 }
+
+/**
+ * US-004: Hide (close visually) all open plugin editor windows.
+ * Maps to GuiService::closeAllPluginWindows(true) — state is preserved,
+ * windows can be re-opened from the node context menu.
+ */
+export async function nativeHideAllPluginWindows(): Promise<boolean> {
+  const r = await invokeElementNative("elementHideAllPluginWindows", []);
+  return r === true;
+}
+
+/**
+ * Re-open editor windows for every node in the active graph that has an editor.
+ * Iterates all nodes, calling GuiService::presentPluginWindow(node) for each
+ * node where node.hasEditor() is true. Returns false if no active graph.
+ */
+export async function nativeHostShowAllPluginWindows(): Promise<boolean> {
+  const r = await invokeElementNative("elementHostShowAllPluginWindows", []);
+  return r === true;
+}

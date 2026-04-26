@@ -1,4 +1,4 @@
-import { useAppStore } from "../../stores/useAppStore";
+import { useAppStore, selectCableRouting } from "../../stores/useAppStore";
 import { useGraphStore, selectBreadcrumbs } from "../../stores/useGraphStore";
 import {
   usePerformStore,
@@ -10,6 +10,7 @@ import {
 import {
   nativeTransportPanic,
   nativeTransportTogglePlay,
+  nativeTransportSetTempo,
 } from "../../bridge/nativeGraph";
 import {
   nativeSessionNew,
@@ -19,13 +20,14 @@ import {
   nativeSessionSetActiveGraph,
 } from "../../bridge/nativeSession";
 import { useSessionStore } from "../../stores/useSessionStore";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { PreferencesModal } from "./PreferencesModal";
 import { AboutModal } from "./AboutModal";
 import {
   nativePerformAddScene,
   nativePerformCaptureScene,
 } from "../../bridge/nativePerform";
+import { EV_OPEN_PREFERENCES } from "../../events";
 
 // ── SVG icon helpers (inline to avoid icon-font dependency) ──
 
@@ -64,8 +66,9 @@ const ICON_POWER =
   "M13 3h-2v10h2V3zm4.83 2.17l-1.42 1.42A6.92 6.92 0 0119 12c0 3.87-3.13 7-7 7s-7-3.13-7-7c0-2.27 1.08-4.28 2.59-5.59L6.17 5.17A8.93 8.93 0 003 12a9 9 0 0018 0c0-2.74-1.23-5.18-3.17-6.83z";
 const ICON_ARROW_LEFT = "M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z";
 const ICON_ARROW_RIGHT = "M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z";
-const ICON_SCHEDULE =
-  "M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z";
+const ICON_UNDO = "M9 14L4 9l5-5M4 9h11a5 5 0 110 10H7";
+const ICON_REDO = "M15 14l5-5-5-5M20 9H9a5 5 0 110 10h8";
+const ICON_SCHEDULE = "M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67V7z";
 
 // ── Toolbar component ──
 
@@ -81,6 +84,19 @@ export function Toolbar() {
   const [prefsOpen, setPrefsOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [captureBusy, setCaptureBusy] = useState(false);
+  const [editingBpm, setEditingBpm] = useState(false);
+  const [bpmInput, setBpmInput] = useState("");
+
+  useEffect(() => {
+    const handleOpenPreferences = () => setPrefsOpen(true);
+    window.addEventListener(EV_OPEN_PREFERENCES, handleOpenPreferences);
+    return () => {
+      window.removeEventListener(
+        EV_OPEN_PREFERENCES,
+        handleOpenPreferences,
+      );
+    };
+  }, []);
   const mode = useAppStore((s) => s.mode);
   const toggleMode = useAppStore((s) => s.toggleMode);
   const activeSceneIdx = useAppStore((s) => s.activeScene);
@@ -93,6 +109,9 @@ export function Toolbar() {
   const filePath = useSessionStore((s) => s.filePath);
   const dirty = useSessionStore((s) => s.dirty);
   const sessionGraphs = useSessionStore((s) => s.graphs);
+
+  const cableRouting = useAppStore(selectCableRouting);
+  const setCableRouting = useAppStore((s) => s.setCableRouting);
 
   const isEdit = mode === "edit";
   const sceneCount = Math.max(1, scenes.length);
@@ -217,9 +236,19 @@ export function Toolbar() {
         {/* ── Center: Transport + Metrics + Mode Toggle (Edit only) ── */}
         {isEdit && (
           <div className="flex items-center gap-6">
+            {/* Undo/Redo — Section 7.8 */}
+            <div className="flex items-center gap-1 bg-pressed px-1.5 py-0.5 rounded shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] border border-white/5">
+              <button className="text-text-secondary hover:text-text-primary p-1 flex items-center gap-1" title="Undo">
+                <Icon d={ICON_UNDO} size={14} />
+              </button>
+              <button className="text-text-secondary hover:text-text-primary p-1" title="Redo">
+                <Icon d={ICON_REDO} size={14} />
+              </button>
+            </div>
+
             {/* Transport */}
-            <div className="flex items-center gap-1 bg-pressed px-2 py-0.5 rounded shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)]">
-              <button className="text-text-secondary hover:text-text-primary transition-colors p-0.5">
+            <div className="flex items-center gap-1 bg-pressed px-2 py-0.5 rounded shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] border border-white/5">
+              <button className="text-text-secondary hover:text-text-primary transition-colors p-0.5" title="Rewind">
                 <Icon d={ICON_SKIP_PREV} size={16} />
               </button>
               <button
@@ -230,7 +259,7 @@ export function Toolbar() {
               >
                 <Icon d={ICON_PLAY} size={18} />
               </button>
-              <button className="text-text-secondary hover:text-text-primary transition-colors p-0.5">
+              <button className="text-text-secondary hover:text-text-primary transition-colors p-0.5" title="Stop">
                 <Icon d={ICON_STOP} size={16} />
               </button>
             </div>
@@ -238,27 +267,70 @@ export function Toolbar() {
             {/* Metrics */}
             <div className="flex gap-4 text-text-secondary">
               <div className="flex flex-col items-center">
-                <span className="text-[10px] opacity-50">BPM</span>
-                <span className="text-modifier font-bold tabular">
-                  {bpm.toFixed(2)}
-                </span>
+                <span className="text-[9px] opacity-40 font-bold uppercase tracking-tight">BPM</span>
+                <div className="flex items-center gap-1.5">
+                  {editingBpm ? (
+                    <input
+                      type="number"
+                      min="20"
+                      max="999"
+                      step="0.01"
+                      autoFocus
+                      value={bpmInput}
+                      className="bg-pressed text-text-primary text-[11px] tabular-nums w-14 text-center rounded border border-generator outline-none"
+                      onChange={(e) => setBpmInput(e.target.value)}
+                      onBlur={() => {
+                        const parsed = parseFloat(bpmInput);
+                        if (!isNaN(parsed)) {
+                          const clamped = Math.min(999, Math.max(20, parsed));
+                          void nativeTransportSetTempo(clamped);
+                        }
+                        setEditingBpm(false);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          const parsed = parseFloat(bpmInput);
+                          if (!isNaN(parsed)) {
+                            const clamped = Math.min(999, Math.max(20, parsed));
+                            void nativeTransportSetTempo(clamped);
+                          }
+                          setEditingBpm(false);
+                        } else if (e.key === "Escape") {
+                          setEditingBpm(false);
+                        }
+                      }}
+                    />
+                  ) : (
+                    <span
+                      className="text-modifier font-black tabular-nums text-[11px] cursor-pointer hover:text-modifier/80 transition-colors"
+                      title="Click to edit tempo"
+                      onClick={() => {
+                        setBpmInput(bpm.toFixed(2));
+                        setEditingBpm(true);
+                      }}
+                    >
+                      {bpm.toFixed(2)}
+                    </span>
+                  )}
+                  <button className="text-[8px] font-black px-1 py-0.5 bg-surface rounded hover:bg-elevated transition-colors text-text-dim hover:text-text-secondary">TAP</button>
+                </div>
               </div>
               <div className="flex flex-col items-center">
-                <span className="text-[10px] opacity-50">BUFFER</span>
-                <span className="text-text-primary font-bold tabular">
+                <span className="text-[9px] opacity-40 font-bold uppercase tracking-tight">BUFFER</span>
+                <span className="text-text-primary font-black tabular-nums text-[11px]">
                   {live.buffer > 0 ? `${live.buffer}` : "—"}
                 </span>
               </div>
               <div className="flex flex-col items-center">
-                <span className="text-[10px] opacity-50">SAMPLE</span>
-                <span className="text-text-primary font-bold tabular">
+                <span className="text-[9px] opacity-40 font-bold uppercase tracking-tight">SAMPLE</span>
+                <span className="text-text-primary font-black tabular-nums text-[11px]">
                   {live.timecode || "—"}
                 </span>
               </div>
               <div className="flex flex-col items-center">
-                <span className="text-[10px] opacity-50">LATENCY</span>
-                <span className="text-logic font-bold tabular">
-                  {live.latency > 0 ? `${live.latency.toFixed(1)} ms` : "—"}
+                <span className="text-[9px] opacity-40 font-bold uppercase tracking-tight">LATENCY</span>
+                <span className="text-logic font-black tabular-nums text-[11px]">
+                  {live.latency > 0 ? `${live.latency.toFixed(1)}ms` : "—"}
                 </span>
               </div>
             </div>
@@ -266,13 +338,13 @@ export function Toolbar() {
             {/* Mode toggle */}
             <button
               onClick={toggleMode}
-              className="flex items-center gap-1 bg-pressed px-3 py-1 rounded-full shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] border border-white/5"
+              className="flex items-center gap-1.5 bg-pressed px-3 py-1 rounded-full shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] border border-white/5 transition-all hover:border-white/10"
             >
-              <span className="text-[10px] text-generator font-bold">EDIT</span>
+              <span className="text-[9px] text-generator font-black tracking-widest">EDIT</span>
               <div className="w-6 h-3 bg-generator rounded-full relative">
-                <div className="absolute right-0.5 top-0.5 w-2 h-2 bg-text-primary rounded-full" />
+                <div className="absolute right-0.5 top-0.5 w-2 h-2 bg-text-primary rounded-full shadow-sm" />
               </div>
-              <span className="text-[10px] text-text-secondary">PERFORM</span>
+              <span className="text-[9px] text-text-secondary font-black tracking-widest">PERFORM</span>
             </button>
           </div>
         )}
@@ -281,8 +353,29 @@ export function Toolbar() {
         <div className="flex items-center gap-3">
           {isEdit ? (
             <>
+              {/* Cable routing toggle */}
+              <div className="flex items-center bg-pressed rounded shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] border border-white/5 overflow-hidden">
+                <button
+                  type="button"
+                  className={`px-2 py-0.5 text-[9px] font-black tracking-widest uppercase transition-colors ${cableRouting === "manhattan" ? "text-generator bg-surface shadow-[2px_2px_6px_rgba(0,0,0,0.4),-1px_-1px_4px_rgba(255,255,255,0.05)]" : "text-text-secondary hover:text-text-primary"}`}
+                  title="Manhattan (stepped) cable routing"
+                  onClick={() => setCableRouting("manhattan")}
+                >
+                  MAN
+                </button>
+                <div className="w-px h-3 bg-white/10" />
+                <button
+                  type="button"
+                  className={`px-2 py-0.5 text-[9px] font-black tracking-widest uppercase transition-colors ${cableRouting === "bezier" ? "text-generator bg-surface shadow-[2px_2px_6px_rgba(0,0,0,0.4),-1px_-1px_4px_rgba(255,255,255,0.05)]" : "text-text-secondary hover:text-text-primary"}`}
+                  title="Bezier (curved) cable routing"
+                  onClick={() => setCableRouting("bezier")}
+                >
+                  BEZ
+                </button>
+              </div>
+
               {/* Scene selector */}
-              <div className="flex items-center gap-2 bg-pressed px-2 py-0.5 rounded shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] text-text-secondary">
+              <div className="flex items-center gap-2 bg-pressed px-2 py-0.5 rounded shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] text-text-secondary border border-white/5">
                 <Icon d={ICON_LAYERS} size={16} />
                 <button
                   className="hover:text-text-primary transition-colors"
@@ -292,7 +385,7 @@ export function Toolbar() {
                 >
                   <Icon d={ICON_ARROW_LEFT} size={14} />
                 </button>
-                <span className="inline-flex items-center gap-1">
+                <span className="inline-flex items-center gap-1 tabular-nums font-bold">
                   {sceneLabel}
                   {activeSceneData?.hasCapture ? (
                     <span
@@ -308,41 +401,36 @@ export function Toolbar() {
                 >
                   <Icon d={ICON_ARROW_RIGHT} size={14} />
                 </button>
-                <button
-                  type="button"
-                  className="ml-1 px-1.5 py-0.5 rounded bg-surface text-[10px] text-generator font-bold hover:bg-elevated"
-                  title="Add perform scene (session)"
-                  onClick={() =>
-                    void nativePerformAddScene(`Scene ${sceneCount + 1}`)
-                  }
-                >
-                  +
-                </button>
-                <button
-                  type="button"
-                  disabled={captureBusy}
-                  className="ml-1 px-1.5 py-0.5 rounded bg-surface text-[9px] text-modifier font-bold hover:bg-elevated disabled:opacity-40"
-                  title="Capture current graph parameters into the active scene"
-                  onClick={() => {
-                    setCaptureBusy(true);
-                    void nativePerformCaptureScene().finally(() =>
-                      setCaptureBusy(false),
-                    );
-                  }}
-                >
-                  CAP
-                </button>
+                <div className="flex items-center gap-1 border-l border-white/10 ml-1 pl-1">
+                  <button
+                    type="button"
+                    className="px-1.5 py-0.5 rounded bg-surface text-[10px] text-generator font-bold hover:bg-elevated"
+                    title="Add perform scene (session)"
+                    onClick={() =>
+                      void nativePerformAddScene(`Scene ${sceneCount + 1}`)
+                    }
+                  >
+                    +
+                  </button>
+                  <button
+                    type="button"
+                    disabled={captureBusy}
+                    className="px-1.5 py-0.5 rounded bg-surface text-[9px] text-modifier font-bold hover:bg-elevated disabled:opacity-40"
+                    title="Capture current graph parameters into the active scene"
+                    onClick={() => {
+                      setCaptureBusy(true);
+                      void nativePerformCaptureScene().finally(() =>
+                        setCaptureBusy(false),
+                      );
+                    }}
+                  >
+                    CAP
+                  </button>
+                </div>
               </div>
 
-              {/* Settings + Power */}
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  className="text-[10px] uppercase tracking-wide text-text-secondary hover:text-text-primary px-1"
-                  onClick={() => setAboutOpen(true)}
-                >
-                  About
-                </button>
+              {/* Settings + Panic — Section 7.8 */}
+              <div className="flex items-center gap-3 ml-2">
                 <button
                   type="button"
                   className="text-text-secondary hover:text-text-primary transition-colors"
@@ -353,8 +441,9 @@ export function Toolbar() {
                 </button>
                 <button
                   type="button"
-                  className="text-text-secondary hover:text-error transition-colors"
+                  className="w-8 h-8 flex items-center justify-center rounded-full bg-error/10 text-error border border-error/20 hover:bg-error/20 hover:border-error/40 transition-all shadow-[0_0_8px_rgba(239,68,68,0.2)]"
                   aria-label="MIDI panic"
+                  title="PANIC - All Notes Off"
                   onClick={() => void nativeTransportPanic()}
                 >
                   <Icon d={ICON_POWER} size={18} />

@@ -84,12 +84,17 @@ export const usePerformStore = create<PerformStore>()((set) => ({
   hydrateFromEngine: (data) =>
     set((s) => {
       let scenes = s.scenes;
-      if (data.scenes != null && data.scenes.length > 0) {
-        const idx = data.activeSceneIndex ?? 0;
-        scenes = data.scenes.map((sc, i) => ({
-          ...sc,
-          active: sc.index === idx || i === idx,
-        }));
+      if (data.scenes != null) {
+        // Allow empty array to clear the store — handles "last scene deleted" case
+        if (data.scenes.length === 0) {
+          scenes = [];
+        } else {
+          const idx = data.activeSceneIndex ?? 0;
+          scenes = data.scenes.map((sc, i) => ({
+            ...sc,
+            active: sc.index === idx || i === idx,
+          }));
+        }
       }
       return {
         sessionName: data.sessionName ?? s.sessionName,

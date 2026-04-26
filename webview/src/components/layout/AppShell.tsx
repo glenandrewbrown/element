@@ -1,6 +1,7 @@
 import { type ReactNode } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAppStore } from "../../stores/useAppStore";
+import { usePerformStore, selectMapMode } from "../../stores/usePerformStore";
 import { Breadcrumb } from "./Breadcrumb";
 import { BlockTabStrip } from "./BlockTabStrip";
 
@@ -32,6 +33,7 @@ const RIGHT_W = 280;
 const RIGHT_COLLAPSED_W = 36;
 const BOTTOM_EDIT_H = 64;
 const BOTTOM_PERFORM_H = 180;
+const STATUS_H = 24;
 
 // ── Panel wrappers ──
 
@@ -79,7 +81,8 @@ function BottomSlot({
       animate={{ y: 0, opacity: 1, height }}
       exit={{ y: height, opacity: 0 }}
       transition={{ ease: EASE, duration: DURATION }}
-      className="fixed bottom-0 left-0 right-0 z-50 bg-panel border-t border-white/5 flex flex-col shadow-[0_-4px_12px_rgba(0,0,0,0.25)] overflow-hidden"
+      className="fixed left-0 right-0 z-50 bg-panel border-t border-white/5 flex flex-col shadow-[0_-4px_12px_rgba(0,0,0,0.25)] overflow-hidden"
+      style={{ bottom: STATUS_H }}
     >
       {children}
     </motion.footer>
@@ -97,7 +100,9 @@ function CollapsedRail({
 }) {
   const isLeft = side === "left";
   return (
-    <div
+    <button
+      type="button"
+      aria-label={`Expand ${side} panel`}
       className={[
         "fixed z-40 bg-panel flex flex-col items-center pt-3 cursor-pointer",
         isLeft
@@ -112,7 +117,7 @@ function CollapsedRail({
       onClick={onClick}
     >
       <div className="w-1 h-8 rounded-full bg-text-dim/30 hover:bg-text-secondary/50 transition-colors" />
-    </div>
+    </button>
   );
 }
 
@@ -138,6 +143,7 @@ interface AppShellProps {
   performLeftPanel?: ReactNode;
   performRightPanel?: ReactNode;
   performBottomPanel?: ReactNode;
+  statusBar?: ReactNode;
   children: ReactNode;
 }
 
@@ -149,6 +155,7 @@ export function AppShell({
   performLeftPanel,
   performRightPanel,
   performBottomPanel,
+  statusBar,
   children,
 }: AppShellProps) {
   const mode = useAppStore((s) => s.mode);
@@ -156,6 +163,7 @@ export function AppShell({
   const rightOpen = useAppStore((s) => s.rightPanelOpen);
   const bottomOpen = useAppStore((s) => s.bottomPanelOpen);
   const togglePanel = useAppStore((s) => s.togglePanel);
+  const mapMode = usePerformStore(selectMapMode);
 
   const isEdit = mode === "edit";
   const bottomH = isEdit ? BOTTOM_EDIT_H : BOTTOM_PERFORM_H;
@@ -163,7 +171,7 @@ export function AppShell({
   // Compute canvas insets
   const leftInset = leftOpen ? LEFT_W : LEFT_COLLAPSED_W;
   const rightInset = rightOpen ? RIGHT_W : RIGHT_COLLAPSED_W;
-  const bottomInset = bottomOpen ? bottomH : 0;
+  const bottomInset = (bottomOpen ? bottomH : 0) + STATUS_H;
 
   // Resolve panel content by mode
   const leftContent = isEdit
@@ -252,13 +260,26 @@ export function AppShell({
           className={[
             "flex-1 relative canvas-grid overflow-hidden",
             !isEdit && "perform-mode",
+            !isEdit && mapMode && "map-mode-active",
           ]
             .filter(Boolean)
             .join(" ")}
         >
+          {!isEdit && mapMode ? (
+            <div className="map-mode-banner">
+              MAP MODE — click parameter to assign macro
+            </div>
+          ) : null}
           {children}
         </div>
       </main>
+
+      <div
+        className="fixed left-0 right-0 bottom-0 z-50"
+        style={{ height: STATUS_H }}
+      >
+        {statusBar}
+      </div>
     </div>
   );
 }

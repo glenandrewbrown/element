@@ -1,3 +1,5 @@
+import { useState, useCallback, useRef } from "react";
+
 const colorHex = {
   blue: "#4A90D9",
   orange: "#E8A838",
@@ -10,6 +12,8 @@ interface NeuFaderProps {
   orientation?: "vertical" | "horizontal";
   label?: string;
   color?: "blue" | "orange" | "teal";
+  /** Called with new 0–100 value during drag */
+  onChange?: (value: number) => void;
   className?: string;
 }
 
@@ -18,20 +22,71 @@ export function NeuFader({
   orientation = "horizontal",
   label,
   color = "blue",
+  onChange,
   className = "",
 }: NeuFaderProps) {
   const hex = colorHex[color];
   const pct = `${Math.max(0, Math.min(100, value))}%`;
   const isVert = orientation === "vertical";
+  const trackRef = useRef<HTMLDivElement>(null);
+  const [dragging, setDragging] = useState(false);
+
+  const computeValue = useCallback(
+    (e: React.PointerEvent) => {
+      const track = trackRef.current;
+      if (!track || !onChange) return;
+      const rect = track.getBoundingClientRect();
+      let ratio: number;
+      if (isVert) {
+        ratio = 1 - (e.clientY - rect.top) / rect.height;
+      } else {
+        ratio = (e.clientX - rect.left) / rect.width;
+      }
+      onChange(Math.round(Math.max(0, Math.min(100, ratio * 100)) * 100) / 100);
+    },
+    [onChange, isVert],
+  );
+
+  const onPointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      if (!onChange) return;
+      e.preventDefault();
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      setDragging(true);
+      computeValue(e);
+    },
+    [onChange, computeValue],
+  );
+
+  const onPointerMove = useCallback(
+    (e: React.PointerEvent) => {
+      if (!dragging) return;
+      computeValue(e);
+    },
+    [dragging, computeValue],
+  );
+
+  const onPointerUp = useCallback(() => {
+    setDragging(false);
+  }, []);
 
   if (isVert) {
     return (
       <div className={`flex items-center gap-4 ${className}`}>
         {/* Track */}
-        <div className="w-8 h-28 bg-[#1A1A1E] shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] rounded-sm relative flex flex-col items-center py-2">
+        <div
+          ref={trackRef}
+          className={[
+            "w-8 h-28 bg-pressed neu-inset rounded-sm relative flex flex-col items-center py-2",
+            onChange ? "cursor-ns-resize" : "",
+          ].join(" ")}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+        >
           {/* Fill */}
           <div
-            className="absolute bottom-2 w-1.5 rounded-full opacity-20"
+            className="absolute bottom-2 w-1.5 rounded-full"
             style={{ height: pct, backgroundColor: hex }}
           />
           {/* Peak hold */}
@@ -52,7 +107,7 @@ export function NeuFader({
               {label}
             </span>
             <span
-              className="text-[10px] font-bold tabular"
+              className="text-[10px] font-bold tabular-nums"
               style={{ color: hex }}
             >
               {value}%
@@ -72,7 +127,16 @@ export function NeuFader({
         </span>
       )}
       {/* Track */}
-      <div className="flex-1 h-1.5 bg-[#131317] rounded-full relative overflow-visible">
+      <div
+        ref={trackRef}
+        className={[
+          "flex-1 h-1.5 bg-canvas rounded-full relative overflow-visible",
+          onChange ? "cursor-ew-resize" : "",
+        ].join(" ")}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+      >
         {/* Fill */}
         <div
           className="absolute left-0 top-0 h-full rounded-full"
@@ -90,7 +154,7 @@ export function NeuFader({
         />
       </div>
       <span
-        className="text-[10px] tabular font-bold w-12 text-right shrink-0"
+        className="text-[10px] tabular-nums font-bold w-12 text-right shrink-0"
         style={{ color: hex }}
       >
         {value}%

@@ -155,7 +155,7 @@ body {
 }
 
 .perform-mode .react-flow__edge {
-  opacity: 0.3;
+  opacity: 0.2;
   transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -169,6 +169,48 @@ body {
 
 .perform-mode .block-macro-strip {
   display: flex;
+}
+
+/* ── MAP MODE — perform-mode parameter mapping overlay ── */
+
+.map-mode-active .react-flow__node {
+  outline: 1px dashed rgba(74, 144, 217, 0.45);
+  outline-offset: -2px;
+  cursor: crosshair;
+  animation: mapModePulse 2.4s ease-in-out infinite;
+}
+
+.map-mode-active .react-flow__edge {
+  opacity: 0.08;
+}
+
+.map-mode-active .map-mapped {
+  outline-color: rgba(74, 144, 217, 0.95);
+  box-shadow: 0 0 8px rgba(74, 144, 217, 0.4);
+}
+
+@keyframes mapModePulse {
+  0%, 100% { outline-color: rgba(74, 144, 217, 0.45); }
+  50%      { outline-color: rgba(74, 144, 217, 0.7); }
+}
+
+.map-mode-banner {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  background: rgba(74, 144, 217, 0.18);
+  border: 1px solid rgba(74, 144, 217, 0.55);
+  color: #4A90D9;
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 600;
+  box-shadow: 0 0 12px rgba(74, 144, 217, 0.25);
+  pointer-events: none;
 }
 
 /* ── Reduced Motion ── */

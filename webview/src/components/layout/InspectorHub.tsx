@@ -32,7 +32,18 @@ import {
   nativePluginEditorSetBounds,
 } from "../../bridge/nativePluginEditor";
 
-type Tab = "inspector" | "log" | "meters";
+import { ConnectionEditor } from "./ConnectionEditor";
+import { ScriptEditor } from "../canvas/ScriptEditor";
+import { BusInspector } from "./BusInspector";
+
+type Tab = "inspector" | "script" | "log" | "meters" | "connections";
+
+function isScriptNode(block: BlockData): boolean {
+  return (
+    block.name?.toLowerCase().includes("script") === true ||
+    (block.format === "INT" && block.name === "Script")
+  );
+}
 
 function BlockHeader({ block }: { block: BlockData }) {
   const { name, category, format } = block;
@@ -265,7 +276,7 @@ function LogPanel() {
   const lines = useHostExtrasStore((s) => s.logLines);
   const tail = lines.slice(-300);
   return (
-    <div className="font-mono text-[9px] text-text-secondary max-h-[min(480px,60vh)] overflow-y-auto space-y-0.5 pr-1">
+    <div className="tabular text-[9px] text-text-secondary max-h-[min(480px,60vh)] overflow-y-auto space-y-0.5 pr-1">
       {tail.length === 0 ? (
         <div className="text-text-dim uppercase tracking-widest text-center pt-6">
           No log lines yet (hosted in Element)
@@ -402,11 +413,19 @@ export function InspectorHub() {
   const toggleMute = useGraphStore((s) => s.toggleMute);
   const toggleMuteInput = useGraphStore((s) => s.toggleMuteInput);
 
+  const showScriptTab = selectedBlock != null && isScriptNode(selectedBlock);
+
   const tabs: { id: Tab; label: string }[] = [
     { id: "inspector", label: "INSPECTOR" },
+    ...(showScriptTab ? [{ id: "script" as Tab, label: "SCRIPT" }] : []),
+    { id: "connections", label: "CABLES" },
     { id: "log", label: "LOG" },
     { id: "meters", label: "METERS" },
   ];
+
+  // If the script tab is active but the selected block is no longer a script node, reset
+  const effectiveTab: Tab =
+    activeTab === "script" && !showScriptTab ? "inspector" : activeTab;
 
   return (
     <div className="flex flex-col h-full">
@@ -417,7 +436,7 @@ export function InspectorHub() {
             onClick={() => setActiveTab(tab.id)}
             className={[
               "flex-1 py-3 text-center transition-colors",
-              activeTab === tab.id
+              effectiveTab === tab.id
                 ? "border-b-2 border-generator text-text-primary bg-surface"
                 : "hover:bg-white/5 cursor-pointer",
             ].join(" ")}
@@ -428,7 +447,13 @@ export function InspectorHub() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-6">
-        {activeTab === "inspector" && (
+        {effectiveTab === "script" && selectedBlock && (
+          <div className="h-full min-h-[400px]">
+            <ScriptEditor nodeId={selectedBlock.id} />
+          </div>
+        )}
+
+        {effectiveTab === "inspector" && (
           <>
             {selectedBlock ? (
               <>
@@ -470,14 +495,19 @@ export function InspectorHub() {
                 <BlockMetrics block={selectedBlock} />
               </>
             ) : (
-              <ProjectOverview />
+              <div className="space-y-6">
+                <ProjectOverview />
+                <BusInspector />
+              </div>
             )}
           </>
         )}
 
-        {activeTab === "log" && <LogPanel />}
+        {effectiveTab === "connections" && <ConnectionEditor />}
 
-        {activeTab === "meters" && <MetersPanel />}
+        {effectiveTab === "log" && <LogPanel />}
+
+        {effectiveTab === "meters" && <MetersPanel />}
       </div>
     </div>
   );

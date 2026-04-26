@@ -56,6 +56,33 @@ Edit Mode (workshop) / Perform Mode (stage) — structural change, NOT palette c
 
 ## Log (newest first)
 
+### 2026-04-26 — Phase 5B: Wireless Patching (Named Buses)
+
+- **Blueprint anchors**: §5/§7.2.8 (wireless badges replace drawn cables for named transmitter/receiver buses), §13 Phase 5 checklist item ✓.
+- **New front-end store**: `webview/src/stores/useBusStore.ts` — `cableId → busName` map plus `deriveBuses()` helper. Visual source of truth; survives engine snapshot rebuilds because cable ids are stable across `hydrateFromEngine`.
+- **New components**: `webview/src/components/canvas/EdgeContextMenu.tsx` (right-click cable → Make Wireless… / Rename Bus / Make Wired / Delete Cable, with autocomplete from existing buses), `webview/src/components/layout/BusInspector.tsx` (lists active buses with cable count + endpoint summary; mounted in Inspector empty state alongside ProjectOverview).
+- **Edits**: `Cable.tsx` suppresses curve when wireless (faint dotted ghost only when selected — Unreal Blueprints reroute pin pattern); `Block.tsx` renders inline `BusBadge` next to ports with wireless connections (signal-type colour, 9px pill, antenna glyph); `GraphCanvas.tsx` wires `onEdgeContextMenu`; `useKeyboard.ts` adds `W` to toggle wireless on the selected cable (auto-names "Bus 1", "Bus 2", …).
+- **Bridge**: New `nativeGraphSetCableBus(cableId, busName)` JS bridge + matching `elementGraphSetCableBus` C++ handler in `element_webview_host.cpp`. Persists to the matching Arc as a `busName` ValueTree property; snapshot builder surfaces it back so wireless state round-trips through session save/reload. Bus name is metadata only — engine routing is unchanged.
+- **Type model**: `CableData.busName?: string` added to `webview/src/data/types.ts`. `useGraphStore.hydrateFromEngine` now reseeds `useBusStore` from snapshot busName fields atomically (prevents stale leakage).
+- **Build**: TypeScript 0 errors, Vite production build clean (633 modules, 678 kB JS / 74 kB CSS, 433ms). C++ side compiled with the existing build tree on next reconfigure.
+- **Gap matrix**: §7.2.8 ✗ → ✓ in `.omc/autopilot/gap-matrix.md`. §7.2.9 (cable delete via right-click) also flipped ~ → ✓ as a side effect.
+- **Phase 5 progress**: 1/10 items closed (Wireless Patching). Remaining: Session Browser refresh, Manhattan routing, Reroute Pins, canvas virtualisation, cross-platform testing, startup-flash mitigation, ResourceProvider packaging, Quick-swap, Keyboard map.
+
+### 2026-04-15 — Phase 1 + Phase 2A-alpha: WebView UI/UX Overhaul (multi-agent session)
+
+- **Agent fleet**: 20+ invocations across Claude Opus 4.6, Claude Sonnet, Claude Haiku, OpenAI Codex (GPT-4.1), Gemini 2.5 Pro. 3 tmux CLI workers for parallel visual polish.
+- **C++ bridge**: 7 new `withNativeFunction` handlers in `element_webview_host.cpp`: `elementTransportSetRecording`, `elementTransportSetTempo`, `elementHideAllPluginWindows`, `elementPerformDeleteScene`, `elementPerformRenameScene`, `elementVirtualKeyboardNoteOn`, `elementVirtualKeyboardNoteOff`. Scene delete edge case fixed (empty scene list sync). Total: 59 JS↔C++ bridge functions, 1:1 match, 0 dead calls.
+- **New components**: `NodeContextMenu` (right-click block menu), `StatusBar` (device/engine/CPU/latency), `VirtualKeyboard` (2-octave piano, Shift+K), `SceneLauncher` (scene grid with delete/rename), `BlockEmbed` (embedded parameter strips, meters, spectrum), `events.ts` (shared DOM event constants), `nativeKeyboard.ts` (virtual keyboard bridge).
+- **Major rewrites**: `CommandPalette` (5-category search), `QuickAddPopup` (category icons, format badges, favorites), `SnippetShelf` (wired to molecule data), `MacroDashboard` (Performance FX tab with bypass toggles, PanicButton wired).
+- **Interactive controls**: `NeuKnob` and `NeuFader` now have drag interaction (were display-only). Spatial bookmarks (Ctrl+0-9 save, Shift+0-9 restore). Tab navigation follows signal chain order.
+- **Semantic zoom**: Compact mode (<0.5x), standard (0.5-0.8x), expanded (>0.8x with BlockEmbed).
+- **Port shapes**: SVG circles (audio), diamonds (MIDI), squares (CV) replacing border-radius hacks.
+- **Design fixes**: Semantic tokens (bg-surface/bg-pressed/bg-elevated), text-[9px]→10px minimum, font-mono→tabular, div→button accessibility, neumorphic shadow pairs on context menu.
+- **Build**: TypeScript 0 errors, Vite dist built, CMake 100% (app + VST3/AU/LV2/CLAP), 38/38 CTest passed.
+- **Plans**: Phase 2 depth-first plan approved via 3-agent ralplan consensus (Planner→Architect→Critic) at `.omc/plans/phase2-depth-first-plan.md`.
+- **Remaining**: Phase 2A-beta (parameter streaming channel), 2B (connection editor), 2C (inline scripting), 2D (perform mode completion). Dashboard Builder deferred to Phase 3.
+- **App launch**: Scan-on-startup disabled in Element.conf (was blocking main thread). Window visibility enabled. App launches and shows WebView UI.
+
 ### 2026-04-01 (later) — plan closure pass
 
 - **`docs/stitch-reference/`** added (`DESIGN.md`, `edit-mode.html`, `perform-mode.html`) for blueprint-aligned static layout QA.

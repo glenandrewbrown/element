@@ -90,6 +90,29 @@ export async function nativeGraphSetCanvasOptions(
   return r === true;
 }
 
+/**
+ * Phase 5B — wireless patching.
+ *
+ * Tag a cable (Arc) with a named transmitter/receiver bus. Pass `""` to
+ * clear and revert to a normal drawn cable. The engine still routes the
+ * underlying connection identically; the bus name is metadata only.
+ *
+ * Returns true if the host found and updated the matching Arc; false if
+ * the cable id no longer exists. Either way the front-end useBusStore
+ * remains the visual source of truth, so a `false` here does not block
+ * wireless rendering.
+ */
+export async function nativeGraphSetCableBus(
+  cableId: string,
+  busName: string,
+): Promise<boolean> {
+  const r = await invokeElementNative("elementGraphSetCableBus", [
+    cableId,
+    busName,
+  ]);
+  return r === true;
+}
+
 export async function nativeGraphSetViewport(
   x: number,
   y: number,
@@ -193,6 +216,38 @@ export async function nativeTransportTogglePlay(): Promise<void> {
   await invokeElementNative("elementTransportTogglePlay", []);
 }
 
+/** Stop transport playback. No-op if already stopped. Returns true. */
+export async function nativeTransportStop(): Promise<boolean> {
+  const r = await invokeElementNative("elementTransportStop", []);
+  return r === true;
+}
+
+/** Seek transport playhead to frame 0. Returns true. */
+export async function nativeTransportRewind(): Promise<boolean> {
+  const r = await invokeElementNative("elementTransportRewind", []);
+  return r === true;
+}
+
+/** US-002: Toggle recording state. C++ AudioEngine::setRecording(bool) confirmed. */
+export async function nativeTransportSetRecording(
+  recording: boolean,
+): Promise<boolean> {
+  const r = await invokeElementNative("elementTransportSetRecording", [
+    recording,
+  ]);
+  return r === true;
+}
+
+/**
+ * US-003: Set session tempo (BPM). Writes to session ValueTree tags::tempo;
+ * AudioEngine listens and calls transport.requestTempo() automatically.
+ * Current tempo is already available in every graph snapshot at `session.tempo`.
+ */
+export async function nativeTransportSetTempo(bpm: number): Promise<boolean> {
+  const r = await invokeElementNative("elementTransportSetTempo", [bpm]);
+  return r === true;
+}
+
 /** Row from `elementGetNodeParameters` (`value` is host-normalized 0–1). */
 export type NodeParameterRow = {
   index: number;
@@ -231,3 +286,90 @@ export async function nativeSetNodeParameter(
   ]);
   return r === true;
 }
+
+/** One entry in the session graph tree returned by nativeSessionGetGraphTree. */
+export type SessionGraphTreeNode = {
+  id: string;
+  name: string;
+  index: number;
+  active: boolean;
+  isContainer: boolean;
+  children: SessionGraphTreeNode[];
+};
+
+/**
+ * Return a flat-with-children array of all graphs in the current session.
+ * Top-level entries are session graphs; each may have nested container boards.
+ */
+export async function nativeSessionGetGraphTree(): Promise<
+  SessionGraphTreeNode[]
+> {
+  const r = await invokeElementNative("elementSessionGetGraphTree", []);
+  if (typeof r !== "string") return [];
+  try {
+    return JSON.parse(r) as SessionGraphTreeNode[];
+  } catch {
+    return [];
+  }
+}
+
+/** One cable entry returned by nativeGraphGetConnectionList. */
+export type ConnectionListEntry = {
+  id: string;
+  source: string;
+  sourcePort: string;
+  target: string;
+  targetPort: string;
+  signalType: string;
+  channelCount: number;
+};
+
+/**
+ * Return all cables in the currently active graph.
+ * Useful for a connection editor that needs to refresh independently
+ * of the full graph snapshot.
+ */
+export async function nativeGraphGetConnectionList(): Promise<
+  ConnectionListEntry[]
+> {
+  const r = await invokeElementNative("elementGraphGetConnectionList", []);
+  if (typeof r !== "string") return [];
+  try {
+    return JSON.parse(r) as ConnectionListEntry[];
+  } catch {
+    return [];
+  }
+}
+
+export async function nativeScriptGetSource(nodeId: string): Promise<string> {
+  const r = await invokeElementNative("elementScriptGetSource", [nodeId]);
+  return typeof r === "string" ? r : "";
+}
+
+export type ScriptCompileResult = { ok: boolean; error: string };
+
+export async function nativeScriptSetSource(
+  nodeId: string,
+  source: string,
+): Promise<ScriptCompileResult> {
+  const r = await invokeElementNative("elementScriptSetSource", [nodeId, source]);
+  if (typeof r !== "string") return { ok: false, error: "no response" };
+  try {
+    const o = JSON.parse(r) as Partial<ScriptCompileResult>;
+    return { ok: !!o.ok, error: typeof o.error === "string" ? o.error : "" };
+  } catch {
+    return { ok: false, error: "invalid response" };
+  }
+}
+
+export async function nativeScriptCompile(nodeId: string): Promise<ScriptCompileResult> {
+  const r = await invokeElementNative("elementScriptCompile", [nodeId]);
+  if (typeof r !== "string") return { ok: false, error: "no response" };
+  try {
+    const o = JSON.parse(r) as Partial<ScriptCompileResult>;
+    return { ok: !!o.ok, error: typeof o.error === "string" ? o.error : "" };
+  } catch {
+    return { ok: false, error: "invalid response" };
+  }
+}
+

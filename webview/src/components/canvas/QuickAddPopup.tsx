@@ -5,6 +5,7 @@ import {
   useCallback,
   useMemo,
   type KeyboardEvent,
+  type ReactElement,
 } from "react";
 import { NeuInput } from "../neu";
 import type { BlockCategory } from "../../data/types";
@@ -15,20 +16,102 @@ interface PluginEntry {
   id: string;
   name: string;
   category: BlockCategory;
+  format: string;
 }
 
 const demoPlugins: PluginEntry[] = [
-  { id: "osc-core", name: "OSCILLATOR_CORE_V3", category: "generator" },
-  { id: "wave-gen", name: "WAVETABLE_GEN", category: "generator" },
-  { id: "ladder-filt", name: "LADDER_FILTER_24DB", category: "modifier" },
-  { id: "peak-lim", name: "PEAK_LIMITER", category: "modifier" },
+  { id: "osc-core", name: "OSCILLATOR_CORE_V3", category: "generator", format: "INT" },
+  { id: "wave-gen", name: "WAVETABLE_GEN", category: "generator", format: "INT" },
+  { id: "ladder-filt", name: "LADDER_FILTER_24DB", category: "modifier", format: "INT" },
+  { id: "peak-lim", name: "PEAK_LIMITER", category: "modifier", format: "INT" },
 ];
 
-const catDot: Record<string, string> = {
-  generator: "w-1.5 h-1.5 rounded-full bg-[#4A90D9]",
-  modifier: "w-1.5 h-1.5 rotate-45 bg-[#E8A838]",
-  logic: "w-1.5 h-1.5 bg-[#2BC4C4]",
+/** Filled circle for Instrument/Generator (●) */
+function InstrumentDot() {
+  return (
+    <span
+      className="shrink-0 text-[10px] leading-none"
+      style={{ color: "#4A90D9" }}
+      aria-label="Instrument"
+    >
+      ●
+    </span>
+  );
+}
+
+/** Filled diamond for Effect/Modifier (◆) */
+function EffectDot() {
+  return (
+    <span
+      className="shrink-0 text-[10px] leading-none"
+      style={{ color: "#E8A838" }}
+      aria-label="Effect"
+    >
+      ◆
+    </span>
+  );
+}
+
+/** Filled triangle for MIDI/Logic (▲) */
+function MidiDot() {
+  return (
+    <span
+      className="shrink-0 text-[10px] leading-none"
+      style={{ color: "#2BC4C4" }}
+      aria-label="MIDI"
+    >
+      ▲
+    </span>
+  );
+}
+
+const CAT_ICON: Record<BlockCategory, () => ReactElement> = {
+  generator: InstrumentDot,
+  modifier: EffectDot,
+  logic: MidiDot,
 };
+
+function CategoryIcon({ category }: { category: BlockCategory }) {
+  const Icon = CAT_ICON[category] ?? EffectDot;
+  return <Icon />;
+}
+
+/** Small format pill badge */
+function FormatBadge({ format }: { format: string }) {
+  if (!format || format === "INT") return null;
+  return (
+    <span className="shrink-0 text-[8px] px-1 py-0.5 rounded bg-white/10 text-text-dim uppercase font-bold leading-none">
+      {format}
+    </span>
+  );
+}
+
+interface PluginRowProps {
+  plugin: PluginEntry;
+  isActive: boolean;
+  onSelect: (id: string) => void;
+  onHover: () => void;
+}
+
+function PluginRow({ plugin, isActive, onSelect, onHover }: PluginRowProps) {
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(plugin.id)}
+      onMouseEnter={onHover}
+      className={[
+        "w-full text-left px-2.5 py-1.5 text-[11px] rounded flex items-center gap-2 transition-colors",
+        isActive
+          ? "bg-elevated text-text-primary"
+          : "text-text-secondary hover:text-text-primary",
+      ].join(" ")}
+    >
+      <CategoryIcon category={plugin.category} />
+      <span className="truncate flex-1 min-w-0">{plugin.name}</span>
+      <FormatBadge format={plugin.format} />
+    </button>
+  );
+}
 
 interface QuickAddPopupProps {
   x: number;
@@ -43,6 +126,7 @@ export function QuickAddPopup({ x, y, onClose }: QuickAddPopupProps) {
   const listRef = useRef<HTMLDivElement>(null);
 
   const nativePlugins = usePluginBrowserStore((s) => s.plugins);
+  const favoriteIdentifiers = usePluginBrowserStore((s) => s.favoriteIdentifiers);
   const refreshPlugins = usePluginBrowserStore((s) => s.refresh);
 
   useEffect(() => {
@@ -55,11 +139,25 @@ export function QuickAddPopup({ x, y, onClose }: QuickAddPopupProps) {
       id: p.identifier,
       name: p.name,
       category: p.blockCategory,
+      format: p.format,
     }));
   }, [nativePlugins]);
 
-  const filtered = plugins.filter((p) =>
-    p.name.toLowerCase().includes(search.toLowerCase()),
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase();
+    return plugins.filter((p) => p.name.toLowerCase().includes(q));
+  }, [plugins, search]);
+
+  const { favorites, others } = useMemo(() => {
+    const favs = filtered.filter((p) => favoriteIdentifiers.has(p.id));
+    const rest = filtered.filter((p) => !favoriteIdentifiers.has(p.id));
+    return { favorites: favs, others: rest };
+  }, [filtered, favoriteIdentifiers]);
+
+  /** Flat ordered list used for keyboard navigation */
+  const flatList = useMemo(
+    () => [...favorites, ...others],
+    [favorites, others],
   );
 
   useEffect(() => {
@@ -90,7 +188,7 @@ export function QuickAddPopup({ x, y, onClose }: QuickAddPopupProps) {
       switch (e.key) {
         case "ArrowDown":
           e.preventDefault();
-          setActiveIndex((i) => Math.min(i + 1, filtered.length - 1));
+          setActiveIndex((i) => Math.min(i + 1, flatList.length - 1));
           break;
         case "ArrowUp":
           e.preventDefault();
@@ -98,8 +196,8 @@ export function QuickAddPopup({ x, y, onClose }: QuickAddPopupProps) {
           break;
         case "Enter":
           e.preventDefault();
-          if (filtered[activeIndex]) {
-            handleSelect(filtered[activeIndex].id);
+          if (flatList[activeIndex]) {
+            handleSelect(flatList[activeIndex].id);
           }
           break;
         case "Escape":
@@ -108,7 +206,7 @@ export function QuickAddPopup({ x, y, onClose }: QuickAddPopupProps) {
           break;
       }
     },
-    [filtered, activeIndex, handleSelect, onClose],
+    [flatList, activeIndex, handleSelect, onClose],
   );
 
   const popupW = 224;
@@ -129,7 +227,7 @@ export function QuickAddPopup({ x, y, onClose }: QuickAddPopupProps) {
           className="w-56 bg-panel rounded overflow-hidden"
           style={{
             boxShadow:
-              "-2px -2px 8px rgba(255,255,255,0.04), 2px 2px 8px rgba(0,0,0,0.35), 0 8px 32px rgba(0,0,0,0.5)",
+              "-4px -4px 8px rgba(255,255,255,0.04), 8px 8px 24px rgba(0,0,0,0.5)",
             outline: "1px solid rgba(139, 145, 156, 0.15)",
           }}
         >
@@ -144,30 +242,53 @@ export function QuickAddPopup({ x, y, onClose }: QuickAddPopupProps) {
 
           <div
             ref={listRef}
-            className="max-h-52 overflow-y-auto px-1 pb-1.5 space-y-px"
+            className="max-h-52 overflow-y-auto px-1 pb-1.5"
           >
-            {filtered.length === 0 && (
+            {flatList.length === 0 && (
               <div className="px-2 py-3 text-[10px] text-text-dim text-center uppercase tracking-widest">
                 No matches
               </div>
             )}
-            {filtered.map((plugin, i) => (
-              <button
-                key={plugin.id}
-                type="button"
-                onClick={() => handleSelect(plugin.id)}
-                onMouseEnter={() => setActiveIndex(i)}
-                className={[
-                  "w-full text-left px-2.5 py-1.5 text-[11px] rounded flex items-center gap-2.5 transition-colors",
-                  i === activeIndex
-                    ? "bg-elevated text-text-primary"
-                    : "text-text-secondary hover:text-text-primary",
-                ].join(" ")}
-              >
-                <div className={catDot[plugin.category] ?? catDot.generator} />
-                <span className="truncate">{plugin.name}</span>
-              </button>
-            ))}
+
+            {favorites.length > 0 && (
+              <>
+                <div className="px-2.5 pt-1 pb-0.5 text-[9px] uppercase tracking-widest text-text-dim">
+                  Favorites
+                </div>
+                <div className="space-y-px">
+                  {favorites.map((plugin, i) => (
+                    <PluginRow
+                      key={plugin.id}
+                      plugin={plugin}
+                      isActive={i === activeIndex}
+                      onSelect={handleSelect}
+                      onHover={() => setActiveIndex(i)}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
+
+            {favorites.length > 0 && others.length > 0 && (
+              <div className="mx-2 my-1 border-t border-white/5" />
+            )}
+
+            {others.length > 0 && (
+              <div className="space-y-px">
+                {others.map((plugin, i) => {
+                  const flatIndex = favorites.length + i;
+                  return (
+                    <PluginRow
+                      key={plugin.id}
+                      plugin={plugin}
+                      isActive={flatIndex === activeIndex}
+                      onSelect={handleSelect}
+                      onHover={() => setActiveIndex(flatIndex)}
+                    />
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       </div>

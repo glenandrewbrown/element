@@ -6,6 +6,7 @@ import {
   nativeGraphSetMute,
   nativeGraphSetMuteInput,
 } from "../bridge/nativeGraph";
+import { useBusStore } from "./useBusStore";
 
 /** Standalone Vite: `VITE_USE_DEMO_GRAPH=1 npm run dev` seeds the demo board. Hosted Element starts empty until snapshot arrives. */
 const useDemoSeed = import.meta.env.VITE_USE_DEMO_GRAPH === "1";
@@ -13,6 +14,20 @@ const useDemoSeed = import.meta.env.VITE_USE_DEMO_GRAPH === "1";
 const initialNodes = useDemoSeed ? demoGraph.blocks : [];
 const initialEdges = useDemoSeed ? demoGraph.cables : [];
 const initialComments = useDemoSeed ? demoGraph.commentBoxes : [];
+
+/** Zoom-level tier for semantic block rendering.
+ * - compact  (zoom < 0.5):  category dot + name only, no ports
+ * - standard (0.5–0.8):    current full block (ports visible)
+ * - expanded (zoom > 0.8): full block + embedded controls (BlockEmbed)
+ */
+export type ZoomTier = "compact" | "standard" | "expanded";
+
+/** Derive the tier from a raw React Flow zoom value. */
+export function zoomToTier(zoom: number): ZoomTier {
+  if (zoom < 0.5) return "compact";
+  if (zoom > 0.8) return "expanded";
+  return "standard";
+}
 
 interface GraphState {
   nodes: BlockData[];
@@ -23,6 +38,8 @@ interface GraphState {
   commentBoxes: CommentBoxData[];
   /** React Flow minimap visibility (Shift+M). */
   minimapVisible: boolean;
+  /** Current semantic zoom tier — updated from React Flow viewport zoom. */
+  zoomTier: ZoomTier;
 }
 
 interface GraphActions {
@@ -33,6 +50,8 @@ interface GraphActions {
   popBreadcrumb: () => void;
   navigateToBreadcrumb: (index: number) => void;
   toggleMinimap: () => void;
+  /** Update semantic zoom tier from React Flow viewport zoom value. */
+  setZoomTier: (tier: ZoomTier) => void;
   toggleBypass: (nodeId: string) => void;
   toggleMute: (nodeId: string) => void;
   toggleMuteInput: (nodeId: string) => void;
@@ -64,6 +83,7 @@ export const useGraphStore = create<GraphStore>()((set) => ({
   breadcrumbStack: ["Main Project"],
   commentBoxes: initialComments,
   minimapVisible: true,
+  zoomTier: "standard",
 
   selectNode: (id) => set({ selectedNodeId: id, selectedEdgeId: null }),
 
@@ -88,6 +108,8 @@ export const useGraphStore = create<GraphStore>()((set) => ({
     })),
 
   toggleMinimap: () => set((s) => ({ minimapVisible: !s.minimapVisible })),
+
+  setZoomTier: (tier) => set({ zoomTier: tier }),
 
   toggleBypass: (nodeId) =>
     set((s) => {
@@ -125,7 +147,18 @@ export const useGraphStore = create<GraphStore>()((set) => ({
       };
     }),
 
-  hydrateFromEngine: (data) =>
+  hydrateFromEngine: (data) => {
+    // Phase 5B — repopulate useBusStore from any busName fields the engine
+    // surfaced on the cables. The store is the visual source of truth, so
+    // we replace its map atomically rather than merging — stale entries
+    // for cables that no longer exist would otherwise leak forever.
+    const busSeed: Record<string, string> = {};
+    for (const edge of data.edges) {
+      if (typeof edge.busName === "string" && edge.busName.length > 0)
+        busSeed[edge.id] = edge.busName;
+    }
+    useBusStore.setState({ cableBus: busSeed });
+
     set({
       nodes: data.nodes,
       edges: data.edges,
@@ -136,7 +169,8 @@ export const useGraphStore = create<GraphStore>()((set) => ({
         data.breadcrumbs && data.breadcrumbs.length > 0
           ? data.breadcrumbs
           : ["Main Project"],
-    }),
+    });
+  },
 
   updateNodePositions: (updates) =>
     set((s) => {
@@ -171,6 +205,8 @@ export const selectSelectedNodeId = (s: GraphStore) => s.selectedNodeId;
 export const selectSelectedEdgeId = (s: GraphStore) => s.selectedEdgeId;
 export const selectBreadcrumbs = (s: GraphStore) => s.breadcrumbStack;
 export const selectCommentBoxes = (s: GraphStore) => s.commentBoxes;
+
+export const selectZoomTier = (s: GraphStore) => s.zoomTier;
 
 export const selectNodeById = (id: string) => (s: GraphStore) =>
   s.nodes.find((n) => n.id === id);

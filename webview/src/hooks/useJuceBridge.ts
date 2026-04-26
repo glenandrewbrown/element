@@ -16,6 +16,10 @@ import { usePluginBrowserStore } from "../stores/usePluginBrowserStore";
 import { useSessionStore } from "../stores/useSessionStore";
 import { useCableMeterStore } from "../stores/useCableMeterStore";
 import {
+  useParameterStore,
+  type ParameterDelta,
+} from "../stores/useParameterStore";
+import {
   useHostExtrasStore,
   type GraphOutlineNode,
 } from "../stores/useHostExtrasStore";
@@ -268,6 +272,9 @@ function applySnapshot(raw: unknown) {
     breadcrumbs,
   });
 
+  // Drop streamed parameter entries for nodes that no longer exist.
+  useParameterStore.getState().pruneNodes(blockList.map((b) => b.id));
+
   const tempo =
     s.session?.tempo != null && !Number.isNaN(Number(s.session.tempo))
       ? Number(s.session.tempo)
@@ -359,6 +366,8 @@ export type ElementNativeHooks = {
   onCableLevels?: (items: Array<{ id: string; level: number }>) => void;
   /** Main log history (from host Log::Listener). */
   onLogHistory?: (lines: string[]) => void;
+  /** ~15 Hz delta channel of changed AudioProcessorParameter values. */
+  onParameterUpdate?: (deltas: ParameterDelta[]) => void;
 };
 
 declare global {
@@ -407,6 +416,11 @@ export function useJuceBridge() {
         prev.onLogHistory?.(lines);
         if (Array.isArray(lines))
           useHostExtrasStore.getState().setLogLines(lines);
+      },
+      onParameterUpdate: (deltas: ParameterDelta[]) => {
+        prev.onParameterUpdate?.(deltas);
+        if (Array.isArray(deltas))
+          useParameterStore.getState().applyDeltas(deltas);
       },
     };
 

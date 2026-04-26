@@ -9,6 +9,25 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { NeuInput } from "../neu";
 import { useGraphStore } from "../../stores/useGraphStore";
+import { useAppStore } from "../../stores/useAppStore";
+import { usePerformStore, selectScenes } from "../../stores/usePerformStore";
+import { usePluginBrowserStore } from "../../stores/usePluginBrowserStore";
+import { useHostExtrasStore } from "../../stores/useHostExtrasStore";
+import {
+  nativeGraphAddPlugin,
+  nativeGraphSetBypass,
+  nativeRedo,
+  nativeTransportSetRecording,
+  nativeTransportTogglePlay,
+  nativeUndo,
+} from "../../bridge/nativeGraph";
+import { nativeSessionOpen, nativeSessionSave } from "../../bridge/nativeSession";
+import {
+  nativeHideAllPluginWindows,
+  nativeMappingSetLearning,
+  nativeOpenGraphMixer,
+  nativeOpenLuaConsole,
+} from "../../bridge/nativePrefs";
 
 // ── Result types ──
 
@@ -40,89 +59,11 @@ const categoryOrder: ResultCategory[] = [
   "setting",
 ];
 
-// ── Static action / plugin / scene / setting entries ──
-
-const staticActions: Omit<PaletteResult, "onSelect">[] = [
-  { id: "act-undo", label: "Undo", category: "action", hint: "Cmd+Z" },
-  { id: "act-redo", label: "Redo", category: "action", hint: "Cmd+Shift+Z" },
-  { id: "act-save", label: "Save Project", category: "action", hint: "Cmd+S" },
-  { id: "act-bypass-all", label: "Bypass All Blocks", category: "action" },
-  {
-    id: "act-fit",
-    label: "Fit Board to View",
-    category: "action",
-    hint: "Cmd+0",
-  },
-  {
-    id: "act-toggle-mode",
-    label: "Toggle Edit / Perform",
-    category: "action",
-    hint: "Cmd+Shift+M",
-  },
-  {
-    id: "act-minimap",
-    label: "Toggle Minimap",
-    category: "action",
-    hint: "Shift+M",
-  },
-  {
-    id: "act-comment",
-    label: "Create Comment Box",
-    category: "action",
-    hint: "Shift+C",
-  },
-];
-
-const staticPlugins: Omit<PaletteResult, "onSelect">[] = [
-  {
-    id: "plug-osc",
-    label: "OSCILLATOR_CORE_V3",
-    category: "plugin",
-    hint: "Generator",
-  },
-  {
-    id: "plug-wave",
-    label: "WAVETABLE_GEN",
-    category: "plugin",
-    hint: "Generator",
-  },
-  {
-    id: "plug-filt",
-    label: "LADDER_FILTER_24DB",
-    category: "plugin",
-    hint: "Modifier",
-  },
-  {
-    id: "plug-lim",
-    label: "PEAK_LIMITER",
-    category: "plugin",
-    hint: "Modifier",
-  },
-  {
-    id: "plug-proq",
-    label: "FabFilter Pro-Q 3",
-    category: "plugin",
-    hint: "VST3",
-  },
-  { id: "plug-val", label: "Valhalla Room", category: "plugin", hint: "VST3" },
-  { id: "plug-lfo", label: "LFO Tool", category: "plugin", hint: "CLAP" },
-];
-
-const staticScenes: Omit<PaletteResult, "onSelect">[] = [
-  { id: "scene-init", label: "Scene: Init", category: "scene" },
-  { id: "scene-verse", label: "Scene: Verse A", category: "scene" },
-  { id: "scene-chorus", label: "Scene: Chorus", category: "scene" },
-  { id: "scene-drop", label: "Scene: Drop", category: "scene" },
-];
-
-const staticSettings: Omit<PaletteResult, "onSelect">[] = [
-  { id: "set-audio", label: "Audio Device Settings", category: "setting" },
-  { id: "set-midi", label: "MIDI Device Settings", category: "setting" },
-  { id: "set-buffer", label: "Buffer Size", category: "setting" },
-  { id: "set-shortcuts", label: "Keyboard Shortcuts", category: "setting" },
-];
-
-// ── Motion config ──
+import {
+  EV_FIT_BOARD,
+  EV_CREATE_COMMENT,
+  EV_OPEN_PREFERENCES,
+} from "../../events";
 
 const EASE = [0.16, 1, 0.3, 1] as const;
 
@@ -138,8 +79,6 @@ const panelVariants = {
   exit: { opacity: 0, y: -8 },
 };
 
-// ── Props ──
-
 interface CommandPaletteProps {
   open: boolean;
   onClose: () => void;
@@ -150,53 +89,276 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
   const [activeIndex, setActiveIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+
   const nodes = useGraphStore((s) => s.nodes);
+  const selectNode = useGraphStore((s) => s.selectNode);
+  const toggleMinimap = useGraphStore((s) => s.toggleMinimap);
+  const openBlockTab = useAppStore((s) => s.openBlockTab);
+  const toggleMode = useAppStore((s) => s.toggleMode);
+  const setScene = useAppStore((s) => s.setScene);
+  const scenes = usePerformStore(selectScenes);
+  const nativePlugins = usePluginBrowserStore((s) => s.plugins);
+  const favoriteIdentifiers = usePluginBrowserStore((s) => s.favoriteIdentifiers);
+  const recentIdentifiers = usePluginBrowserStore((s) => s.recentIdentifiers);
+  const refreshPlugins = usePluginBrowserStore((s) => s.refresh);
+  const mappingLearning = useHostExtrasStore((s) => s.midiMapping.learning);
 
-  // Build results from blocks on canvas + statics
+  useEffect(() => {
+    if (open) {
+      void refreshPlugins();
+    }
+  }, [open, refreshPlugins]);
+
+  const runAndClose = useCallback(
+    (action: () => void | Promise<unknown>) => () => {
+      void action();
+      onClose();
+    },
+    [onClose],
+  );
+
+  const orderedPlugins = useMemo(() => {
+    if (nativePlugins.length === 0) return [];
+    const byRecent = new Map(recentIdentifiers.map((id, index) => [id, index]));
+    return [...nativePlugins].sort((a, b) => {
+      const aFav = favoriteIdentifiers.has(a.identifier) ? 0 : 1;
+      const bFav = favoriteIdentifiers.has(b.identifier) ? 0 : 1;
+      if (aFav !== bFav) return aFav - bFav;
+
+      const aRecent = byRecent.has(a.identifier)
+        ? byRecent.get(a.identifier) ?? Number.MAX_SAFE_INTEGER
+        : Number.MAX_SAFE_INTEGER;
+      const bRecent = byRecent.has(b.identifier)
+        ? byRecent.get(b.identifier) ?? Number.MAX_SAFE_INTEGER
+        : Number.MAX_SAFE_INTEGER;
+      if (aRecent !== bRecent) return aRecent - bRecent;
+
+      return a.name.localeCompare(b.name);
+    });
+  }, [nativePlugins, favoriteIdentifiers, recentIdentifiers]);
+
   const allResults: PaletteResult[] = useMemo(() => {
-    const noop = () => onClose();
-    const blockResults: PaletteResult[] = nodes.map((n) => ({
-      id: `block-${n.id}`,
-      label: n.name,
-      category: "block" as const,
-      hint: `${n.category} · ${n.format}`,
-      onSelect: noop,
-    }));
-    return [
-      ...staticActions.map((a) => ({ ...a, onSelect: noop })),
-      ...blockResults,
-      ...staticPlugins.map((p) => ({ ...p, onSelect: noop })),
-      ...staticScenes.map((s) => ({ ...s, onSelect: noop })),
-      ...staticSettings.map((s) => ({ ...s, onSelect: noop })),
+    const actionResults: PaletteResult[] = [
+      {
+        id: "act-undo",
+        label: "Undo",
+        category: "action",
+        hint: "Cmd+Z",
+        onSelect: runAndClose(() => nativeUndo()),
+      },
+      {
+        id: "act-redo",
+        label: "Redo",
+        category: "action",
+        hint: "Cmd+Shift+Z",
+        onSelect: runAndClose(() => nativeRedo()),
+      },
+      {
+        id: "act-save",
+        label: "Save Project",
+        category: "action",
+        hint: "Cmd+S",
+        onSelect: runAndClose(() => nativeSessionSave()),
+      },
+      {
+        id: "act-open",
+        label: "Open Project…",
+        category: "action",
+        hint: "File dialog",
+        onSelect: runAndClose(() => nativeSessionOpen()),
+      },
+      {
+        id: "act-play",
+        label: "Play / Pause Engine",
+        category: "action",
+        hint: "Transport",
+        onSelect: runAndClose(() => nativeTransportTogglePlay()),
+      },
+      {
+        id: "act-bypass-all",
+        label: "Bypass All Blocks",
+        category: "action",
+        hint: `${nodes.length} blocks`,
+        onSelect: runAndClose(async () => {
+          await Promise.all(
+            nodes
+              .filter((node) => !node.bypassed)
+              .map((node) => nativeGraphSetBypass(node.id, true)),
+          );
+        }),
+      },
+      {
+        id: "act-fit",
+        label: "Fit Board to View",
+        category: "action",
+        hint: "Cmd+0",
+        onSelect: runAndClose(() => {
+          window.dispatchEvent(new CustomEvent(EV_FIT_BOARD));
+        }),
+      },
+      {
+        id: "act-toggle-mode",
+        label: "Toggle Edit / Perform",
+        category: "action",
+        hint: "Mode switch",
+        onSelect: runAndClose(() => {
+          toggleMode();
+        }),
+      },
+      {
+        id: "act-minimap",
+        label: "Toggle Minimap",
+        category: "action",
+        hint: "Shift+M",
+        onSelect: runAndClose(() => {
+          toggleMinimap();
+        }),
+      },
+      {
+        id: "act-comment",
+        label: "Create Comment Box",
+        category: "action",
+        hint: "Shift+C",
+        onSelect: runAndClose(() => {
+          window.dispatchEvent(new CustomEvent(EV_CREATE_COMMENT));
+        }),
+      },
+      // US-002: Record toggle
+      {
+        id: "act-record-on",
+        label: "Start Recording",
+        category: "action",
+        hint: "Transport",
+        onSelect: runAndClose(() => nativeTransportSetRecording(true)),
+      },
+      {
+        id: "act-record-off",
+        label: "Stop Recording",
+        category: "action",
+        hint: "Transport",
+        onSelect: runAndClose(() => nativeTransportSetRecording(false)),
+      },
+      // US-004: Plugin windows
+      {
+        id: "act-hide-plugin-windows",
+        label: "Hide All Plugin Windows",
+        category: "action",
+        hint: "Plugin editors",
+        onSelect: runAndClose(() => nativeHideAllPluginWindows()),
+      },
+      {
+        id: "act-virtual-keyboard",
+        label: "Toggle Virtual Keyboard",
+        category: "action",
+        hint: "MIDI input · Shift+K",
+        onSelect: runAndClose(() => useAppStore.getState().toggleVirtualKeyboard()),
+      },
     ];
-  }, [nodes, onClose]);
 
-  // Filter
+    const blockResults: PaletteResult[] = nodes.map((node) => ({
+      id: `block-${node.id}`,
+      label: node.name,
+      category: "block",
+      hint: `${node.category} · ${node.format}`,
+      onSelect: runAndClose(() => {
+        selectNode(node.id);
+        openBlockTab(node.id);
+      }),
+    }));
+
+    const pluginResults: PaletteResult[] = orderedPlugins.map((plugin) => ({
+      id: `plugin-${plugin.identifier}`,
+      label: plugin.name,
+      category: "plugin",
+      hint: [plugin.manufacturer, plugin.format].filter(Boolean).join(" · "),
+      onSelect: runAndClose(() => nativeGraphAddPlugin(plugin.identifier)),
+    }));
+
+    const sceneResults: PaletteResult[] = scenes.map((scene) => ({
+      id: `scene-${scene.id}`,
+      label: `Scene: ${scene.name}`,
+      category: "scene",
+      hint: scene.active ? "Active" : `Slot ${scene.index + 1}`,
+      onSelect: runAndClose(() => {
+        setScene(scene.index);
+      }),
+    }));
+
+    const settingResults: PaletteResult[] = [
+      {
+        id: "set-preferences",
+        label: "Open Preferences",
+        category: "setting",
+        hint: "Host settings",
+        onSelect: runAndClose(() => {
+          window.dispatchEvent(new CustomEvent(EV_OPEN_PREFERENCES));
+        }),
+      },
+      {
+        id: "set-lua-console",
+        label: "Open Lua Console",
+        category: "setting",
+        hint: "Native panel",
+        onSelect: runAndClose(() => nativeOpenLuaConsole()),
+      },
+      {
+        id: "set-graph-mixer",
+        label: "Open Graph Mixer",
+        category: "setting",
+        hint: "Native panel",
+        onSelect: runAndClose(() => nativeOpenGraphMixer()),
+      },
+      {
+        id: "set-midi-learn",
+        label: mappingLearning ? "Stop MIDI Learn" : "Start MIDI Learn",
+        category: "setting",
+        hint: mappingLearning ? "Active" : "Mappings",
+        onSelect: runAndClose(() => nativeMappingSetLearning(!mappingLearning)),
+      },
+    ];
+
+    return [
+      ...actionResults,
+      ...blockResults,
+      ...pluginResults,
+      ...sceneResults,
+      ...settingResults,
+    ];
+  }, [
+    nodes,
+    openBlockTab,
+    orderedPlugins,
+    runAndClose,
+    scenes,
+    selectNode,
+    setScene,
+    toggleMinimap,
+    toggleMode,
+    mappingLearning,
+  ]);
+
   const filtered = useMemo(() => {
-    if (!search) return allResults.slice(0, 12);
+    if (!search) return allResults.slice(0, 16);
     const q = search.toLowerCase();
     return allResults.filter(
-      (r) =>
-        r.label.toLowerCase().includes(q) ||
-        r.hint?.toLowerCase().includes(q) ||
-        r.category.includes(q),
+      (result) =>
+        result.label.toLowerCase().includes(q) ||
+        result.hint?.toLowerCase().includes(q) ||
+        result.category.includes(q),
     );
   }, [search, allResults]);
 
-  // Group by category in display order
   const grouped = useMemo(() => {
     const groups: { category: ResultCategory; items: PaletteResult[] }[] = [];
-    for (const cat of categoryOrder) {
-      const items = filtered.filter((r) => r.category === cat);
-      if (items.length > 0) groups.push({ category: cat, items });
+    for (const category of categoryOrder) {
+      const items = filtered.filter((result) => result.category === category);
+      if (items.length > 0) groups.push({ category, items });
     }
     return groups;
   }, [filtered]);
 
-  // Flat list for keyboard nav
-  const flatList = useMemo(() => grouped.flatMap((g) => g.items), [grouped]);
+  const flatList = useMemo(() => grouped.flatMap((group) => group.items), [grouped]);
 
-  // Reset on open/search change
   useEffect(() => {
     setActiveIndex(0);
   }, [search]);
@@ -209,31 +371,30 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
     }
   }, [open]);
 
-  // Scroll into view
   useEffect(() => {
-    const el = listRef.current?.querySelector(
+    const element = listRef.current?.querySelector(
       "[data-active='true']",
     ) as HTMLElement | null;
-    el?.scrollIntoView({ block: "nearest" });
+    element?.scrollIntoView({ block: "nearest" });
   }, [activeIndex]);
 
   const handleKeyDown = useCallback(
-    (e: KeyboardEvent) => {
-      switch (e.key) {
+    (event: KeyboardEvent) => {
+      switch (event.key) {
         case "ArrowDown":
-          e.preventDefault();
-          setActiveIndex((i) => Math.min(i + 1, flatList.length - 1));
+          event.preventDefault();
+          setActiveIndex((index) => Math.min(index + 1, flatList.length - 1));
           break;
         case "ArrowUp":
-          e.preventDefault();
-          setActiveIndex((i) => Math.max(i - 1, 0));
+          event.preventDefault();
+          setActiveIndex((index) => Math.max(index - 1, 0));
           break;
         case "Enter":
-          e.preventDefault();
+          event.preventDefault();
           flatList[activeIndex]?.onSelect();
           break;
         case "Escape":
-          e.preventDefault();
+          event.preventDefault();
           onClose();
           break;
       }
@@ -247,7 +408,6 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
     <AnimatePresence>
       {open && (
         <>
-          {/* Backdrop */}
           <motion.div
             className="fixed inset-0 z-[60] bg-canvas/80"
             variants={overlayVariants}
@@ -258,7 +418,6 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
             onClick={onClose}
           />
 
-          {/* Panel */}
           <motion.div
             className="fixed z-[61] left-1/2 -translate-x-1/2"
             style={{ top: "40%" }}
@@ -276,18 +435,16 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
                   "0 16px 64px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.05)",
               }}
             >
-              {/* Search */}
               <div className="p-3 border-b border-white/5">
                 <NeuInput
                   ref={inputRef}
-                  placeholder="Search plugins, actions, blocks, scenes..."
+                  placeholder="Search commands, plugins, blocks, scenes..."
                   value={search}
                   onChange={setSearch}
                   className="!text-[13px] !py-2.5 !px-4"
                 />
               </div>
 
-              {/* Results */}
               <div ref={listRef} className="flex-1 overflow-y-auto py-2">
                 {flatList.length === 0 && (
                   <div className="px-4 py-8 text-[11px] text-text-dim text-center uppercase tracking-widest">
@@ -315,9 +472,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
                               : "text-text-secondary",
                           ].join(" ")}
                         >
-                          <span className="text-[12px] truncate">
-                            {result.label}
-                          </span>
+                          <span className="text-[12px] truncate">{result.label}</span>
                           {result.hint && (
                             <span className="text-[10px] text-text-dim shrink-0 tabular">
                               {result.hint}
@@ -330,7 +485,6 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
                 ))}
               </div>
 
-              {/* Footer hint */}
               <div className="px-4 py-2 border-t border-white/5 flex items-center gap-4 text-[10px] text-text-dim">
                 <span>
                   <kbd className="px-1 py-0.5 bg-pressed rounded text-[10px]">

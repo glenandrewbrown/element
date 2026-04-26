@@ -1,43 +1,214 @@
-import { memo } from "react";
+import { memo, useMemo, useState } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import type { BlockData } from "../../data/types";
+import type { BlockData, CableData } from "../../data/types";
+import {
+  useGraphStore,
+  selectZoomTier,
+  selectEdges,
+} from "../../stores/useGraphStore";
+import { useBusStore } from "../../stores/useBusStore";
+import { BlockEmbed } from "./BlockEmbed";
 
 // ── Category config ──
 
 const catConfig: Record<
   string,
-  { hex: string; bg: string; shape: string; glowShadow: string }
+  { hex: string; bg: string; shape: string; glowClass: string }
 > = {
   generator: {
     hex: "#4A90D9",
     bg: "bg-[#4A90D9]",
     shape: "w-1.5 h-1.5 rounded-full bg-[#4A90D9]",
-    glowShadow: "0 0 6px rgba(74,144,217,0.4)",
+    glowClass: "glow-blue",
   },
   modifier: {
     hex: "#E8A838",
     bg: "bg-[#E8A838]",
     shape: "w-1.5 h-1.5 rotate-45 bg-[#E8A838]",
-    glowShadow: "0 0 6px rgba(232,168,56,0.4)",
+    glowClass: "glow-orange",
   },
   logic: {
     hex: "#2BC4C4",
     bg: "bg-[#2BC4C4]",
     shape: "w-1.5 h-1.5 bg-[#2BC4C4]",
-    glowShadow: "0 0 6px rgba(43,196,196,0.4)",
+    glowClass: "glow-teal",
   },
 };
 
-// ── Port colour / shape ──
+// ── Port colour map ──
 
-const portStyle: Record<
-  string,
-  { hex: string; radius: string; rotate: boolean }
-> = {
-  audio: { hex: "#4A90D9", radius: "50%", rotate: false },
-  midi: { hex: "#2BC4C4", radius: "50%", rotate: true },
-  value: { hex: "#E8A838", radius: "2px", rotate: false },
+const portColor: Record<string, string> = {
+  audio: "#4A90D9",
+  midi: "#2BC4C4",
+  value: "#E8A838",
 };
+
+// ── SVG shape for each signal type ──
+
+function PortShape({
+  type,
+  connected,
+  hovered,
+}: {
+  type: string;
+  connected: boolean;
+  hovered: boolean;
+}) {
+  const color = portColor[type] ?? portColor.audio;
+  const scale = hovered ? 1.25 : 1;
+  const glow = hovered ? `0 0 6px ${color}80` : connected ? `0 0 4px ${color}40` : "none";
+
+  const sharedProps = {
+    fill: connected ? color : "none",
+    stroke: color,
+    strokeWidth: connected ? 0 : 1.5,
+  };
+
+  let shape: React.ReactNode;
+  if (type === "audio") {
+    shape = <circle cx="6" cy="6" r="5" {...sharedProps} />;
+  } else if (type === "midi") {
+    shape = <polygon points="6,1 11,6 6,11 1,6" {...sharedProps} />;
+  } else {
+    // value / CV
+    shape = <rect x="1" y="1" width="10" height="10" {...sharedProps} />;
+  }
+
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 12 12"
+      style={{
+        transform: `scale(${scale})`,
+        transition: "transform 120ms ease, filter 120ms ease",
+        filter: glow !== "none" ? `drop-shadow(${glow})` : undefined,
+        display: "block",
+      }}
+    >
+      {shape}
+    </svg>
+  );
+}
+
+// ── BusBadge — wireless port label (Phase 5B §7.2.8) ──
+//
+// Rendered next to a port whenever the cable attached to that port has been
+// flagged wireless via useBusStore. Replaces the curve that would otherwise
+// be drawn across the canvas. Colour matches the port's signal type so a
+// "Reverb Send A" audio bus and a "Reverb Send A" MIDI bus stay visually
+// distinct.
+
+const portColorMap: Record<string, string> = {
+  audio: "#4A90D9",
+  midi: "#2BC4C4",
+  value: "#E8A838",
+};
+
+function BusBadge({
+  busName,
+  signalType,
+  side,
+}: {
+  busName: string;
+  signalType: string;
+  side: "left" | "right";
+}) {
+  const color = portColorMap[signalType] ?? portColorMap.audio;
+  const sideStyle: React.CSSProperties =
+    side === "left"
+      ? { right: "calc(100% + 6px)", textAlign: "right" }
+      : { left: "calc(100% + 6px)", textAlign: "left" };
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        top: "50%",
+        transform: "translateY(-50%)",
+        ...sideStyle,
+        pointerEvents: "none",
+      }}
+    >
+      <span
+        className="px-1.5 py-[1px] rounded-[3px] text-[9px] font-bold uppercase tracking-tight whitespace-nowrap"
+        style={{
+          background: `${color}1F`,
+          color,
+          border: `1px solid ${color}55`,
+          boxShadow: `0 0 4px ${color}40`,
+          letterSpacing: "0.04em",
+        }}
+      >
+        {/* Antenna glyph — small radio icon distinguishes from regular labels */}
+        <span style={{ marginRight: 4, opacity: 0.9 }}>⟪</span>
+        {busName}
+      </span>
+    </div>
+  );
+}
+
+// ── PortHandle — transparent React Flow Handle + SVG visual overlay ──
+
+interface PortHandleProps {
+  portId: string;
+  portType: string;
+  connected: boolean;
+  handleType: "source" | "target";
+  position: Position;
+  topPercent: number;
+  /** Phase 5B — when set, the connected cable is rendered as a wireless bus
+   *  badge instead of a drawn curve. */
+  busName?: string;
+}
+
+function PortHandle({
+  portId,
+  portType,
+  connected,
+  handleType,
+  position,
+  topPercent,
+  busName,
+}: PortHandleProps) {
+  const [hovered, setHovered] = useState(false);
+
+  // Offset the 24px hitbox so it's centred on the block edge
+  const translateX =
+    position === Position.Left ? "-50%" : "50%";
+
+  return (
+    <Handle
+      id={portId}
+      type={handleType}
+      position={position}
+      style={{
+        top: `${topPercent}%`,
+        width: 24,
+        height: 24,
+        background: "transparent",
+        border: "none",
+        borderRadius: 0,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        transform: `translateX(${translateX}) translateY(-50%)`,
+        cursor: "crosshair",
+      }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <PortShape type={portType} connected={connected} hovered={hovered} />
+      {busName ? (
+        <BusBadge
+          busName={busName}
+          signalType={portType}
+          side={position === Position.Left ? "left" : "right"}
+        />
+      ) : null}
+    </Handle>
+  );
+}
 
 // ── Mini waveform (generator viz) ──
 
@@ -50,7 +221,7 @@ function MiniWaveform({ color }: { color: string }) {
     { h: 8, o: 0.4 },
   ];
   return (
-    <div className="h-6 bg-[#1A1A1E] rounded shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] flex items-center justify-around px-1">
+    <div className="h-6 bg-pressed neu-inset rounded flex items-center justify-around px-1">
       {bars.map((b, i) => (
         <div
           key={i}
@@ -66,6 +237,12 @@ function MiniWaveform({ color }: { color: string }) {
   );
 }
 
+// ── Neumorphic shadow constants ──
+
+const shadowRaised =
+  "4px 4px 12px rgba(0,0,0,0.4), -2px -2px 8px rgba(255,255,255,0.05)";
+const shadowPressed =
+  "inset 2px 2px 6px rgba(0,0,0,0.4), inset -1px -1px 4px rgba(255,255,255,0.05)";
 // ── Bypass stripe overlay ──
 
 const bypassOverlay: React.CSSProperties = {
@@ -101,9 +278,27 @@ function BlockComponent({ data, selected }: NodeProps) {
   const cat = catConfig[d.category] ?? catConfig.generator;
   const isContainer = d.containerNodeCount != null;
   const isPortal = d.isPortal ?? false;
+  const zoomTier = useGraphStore(selectZoomTier);
 
   const inputPorts = d.ports.filter((p) => p.direction === "input");
   const outputPorts = d.ports.filter((p) => p.direction === "output");
+
+  // ── Phase 5B — derive port→busName map for this block ──
+  // We look at every cable that touches this block; if useBusStore has the
+  // cable flagged wireless, the corresponding port gets a bus badge. A port
+  // with multiple wireless cables shows the most recent name (rare).
+  const edges = useGraphStore(selectEdges);
+  const cableBus = useBusStore((s) => s.cableBus);
+  const portBusMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const edge of edges as CableData[]) {
+      const bus = cableBus[edge.id];
+      if (!bus) continue;
+      if (edge.target === d.id) map.set(edge.targetPort, bus);
+      if (edge.source === d.id) map.set(edge.sourcePort, bus);
+    }
+    return map;
+  }, [edges, cableBus, d.id]);
 
   // ── Portal: distinct treatment ──
   if (isPortal) {
@@ -118,50 +313,30 @@ function BlockComponent({ data, selected }: NodeProps) {
         <span className="text-[11px] text-white/70 mt-0.5">{d.name}</span>
 
         {/* Ports */}
-        {inputPorts.map((port, i) => {
-          const ps = portStyle[port.type] ?? portStyle.audio;
-          return (
-            <Handle
-              key={port.id}
-              id={port.id}
-              type="target"
-              position={Position.Left}
-              style={{
-                top: `${40 + i * 20}%`,
-                width: 12,
-                height: 12,
-                background: port.connected ? ps.hex : "#1A1A1E",
-                border: `2px solid ${ps.hex}`,
-                borderRadius: ps.radius,
-                transform: ps.rotate
-                  ? "translateX(-50%) rotate(45deg)"
-                  : "translateX(-50%)",
-              }}
-            />
-          );
-        })}
-        {outputPorts.map((port, i) => {
-          const ps = portStyle[port.type] ?? portStyle.audio;
-          return (
-            <Handle
-              key={port.id}
-              id={port.id}
-              type="source"
-              position={Position.Right}
-              style={{
-                top: `${40 + i * 20}%`,
-                width: 12,
-                height: 12,
-                background: port.connected ? ps.hex : "#1A1A1E",
-                border: `2px solid ${ps.hex}`,
-                borderRadius: ps.radius,
-                transform: ps.rotate
-                  ? "translateX(50%) rotate(45deg)"
-                  : "translateX(50%)",
-              }}
-            />
-          );
-        })}
+        {inputPorts.map((port, i) => (
+          <PortHandle
+            key={port.id}
+            portId={port.id}
+            portType={port.type}
+            connected={port.connected}
+            handleType="target"
+            position={Position.Left}
+            topPercent={40 + i * 20}
+            busName={portBusMap.get(port.id)}
+          />
+        ))}
+        {outputPorts.map((port, i) => (
+          <PortHandle
+            key={port.id}
+            portId={port.id}
+            portType={port.type}
+            connected={port.connected}
+            handleType="source"
+            position={Position.Right}
+            topPercent={40 + i * 20}
+            busName={portBusMap.get(port.id)}
+          />
+        ))}
       </div>
     );
   }
@@ -170,8 +345,8 @@ function BlockComponent({ data, selected }: NodeProps) {
   if (isContainer) {
     return (
       <div
-        style={{ contain: "content" }}
-        className="w-[280px] bg-[#1A1A1E] shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] border border-white/5 rounded-xl p-3"
+        style={{ contain: "content", boxShadow: shadowPressed }}
+        className="w-[280px] bg-pressed border border-white/5 rounded-xl p-3"
       >
         <div className="flex items-center justify-between mb-3">
           <span className="text-[10px] font-bold text-white/30 uppercase tracking-tighter">
@@ -186,7 +361,8 @@ function BlockComponent({ data, selected }: NodeProps) {
             (_, i) => (
               <div
                 key={i}
-                className="h-14 rounded bg-[#252529] shadow-[-2px_-2px_8px_rgba(255,255,255,0.04),2px_2px_8px_rgba(0,0,0,0.35)] opacity-40 border border-dashed border-white/10 flex items-center justify-center text-[10px] text-text-secondary"
+                className="h-14 rounded bg-[#252529] opacity-40 border border-dashed border-white/10 flex items-center justify-center text-[10px] text-text-secondary"
+                style={{ boxShadow: shadowRaised }}
               >
                 NODE_{String.fromCharCode(65 + i)}
               </div>
@@ -195,59 +371,48 @@ function BlockComponent({ data, selected }: NodeProps) {
         </div>
 
         {/* Ports */}
-        {inputPorts.map((port, i) => {
-          const ps = portStyle[port.type] ?? portStyle.audio;
-          return (
-            <Handle
-              key={port.id}
-              id={port.id}
-              type="target"
-              position={Position.Left}
-              style={{
-                top: `${35 + i * 20}%`,
-                width: 12,
-                height: 12,
-                background: port.connected ? ps.hex : "#1A1A1E",
-                border: `2px solid ${ps.hex}`,
-                borderRadius: ps.radius,
-                transform: ps.rotate
-                  ? "translateX(-50%) rotate(45deg)"
-                  : "translateX(-50%)",
-              }}
-            />
-          );
-        })}
-        {outputPorts.map((port, i) => {
-          const ps = portStyle[port.type] ?? portStyle.audio;
-          return (
-            <Handle
-              key={port.id}
-              id={port.id}
-              type="source"
-              position={Position.Right}
-              style={{
-                top: `${35 + i * 20}%`,
-                width: 12,
-                height: 12,
-                background: port.connected ? ps.hex : "#1A1A1E",
-                border: `2px solid ${ps.hex}`,
-                borderRadius: ps.radius,
-                transform: ps.rotate
-                  ? "translateX(50%) rotate(45deg)"
-                  : "translateX(50%)",
-              }}
-            />
-          );
-        })}
+        {inputPorts.map((port, i) => (
+          <PortHandle
+            key={port.id}
+            portId={port.id}
+            portType={port.type}
+            connected={port.connected}
+            handleType="target"
+            position={Position.Left}
+            topPercent={35 + i * 20}
+            busName={portBusMap.get(port.id)}
+          />
+        ))}
+        {outputPorts.map((port, i) => (
+          <PortHandle
+            key={port.id}
+            portId={port.id}
+            portType={port.type}
+            connected={port.connected}
+            handleType="source"
+            position={Position.Right}
+            topPercent={35 + i * 20}
+            busName={portBusMap.get(port.id)}
+          />
+        ))}
+      </div>
+    );
+  }
+
+  // ── Compact mode (semantic zoom) ──
+
+  if (zoomTier === "compact") {
+    return (
+      <div style={{ contain: "content" }} className="w-[100px] bg-surface rounded-lg p-2 border border-white/5">
+        <div className="flex items-center gap-1.5">
+          <div className={`w-2 h-2 rounded-full ${cat.bg}`} />
+          <span className="text-[10px] font-bold text-text-primary truncate">{d.name}</span>
+        </div>
       </div>
     );
   }
 
   // ── Standard block ──
-
-  const selectedShadow = selected
-    ? "-2px -2px 8px rgba(255,255,255,0.08), 2px 2px 8px rgba(0,0,0,0.5)"
-    : "-2px -2px 8px rgba(255,255,255,0.04), 2px 2px 8px rgba(0,0,0,0.35)";
 
   const hostOutline = hostColourOutline(d.hostColor);
 
@@ -255,19 +420,12 @@ function BlockComponent({ data, selected }: NodeProps) {
     <div
       style={{
         contain: "content",
-        boxShadow: selectedShadow,
-        ...(hostOutline
-          ? {
-              outlineWidth: 2,
-              outlineColor: hostOutline,
-              outlineStyle: "solid",
-            }
-          : {}),
+        boxShadow: shadowRaised,
+        ...(hostOutline ? { borderColor: hostOutline } : {}),
       }}
       className={[
-        "w-48 bg-[#252529] rounded-lg overflow-visible flex flex-col relative",
-        "outline outline-1",
-        selected ? "outline-white/10" : "outline-[rgba(139,145,156,0.15)]",
+        "w-48 bg-[#252529] rounded-lg overflow-visible flex flex-col relative transition-shadow duration-150",
+        selected && cat.glowClass,
         d.error && "animate-pulse",
       ]
         .filter(Boolean)
@@ -288,12 +446,12 @@ function BlockComponent({ data, selected }: NodeProps) {
 
       {/* Header — 24px, semantic bg */}
       <div
-        className="px-2 py-1 bg-[#2A2A2E] flex items-center justify-between"
+        className="px-2 py-1 bg-[#2A2A2E] flex items-center justify-between h-6"
         style={{ opacity: d.bypassed ? 0.6 : 1 }}
       >
         <div className="flex items-center gap-1.5 min-w-0">
           <div className={cat.shape} />
-          <span className="text-[10px] font-bold text-white/90 truncate">
+          <span className="text-[11px] font-bold text-white/90 truncate uppercase tracking-tight">
             {d.name}
           </span>
         </div>
@@ -304,7 +462,7 @@ function BlockComponent({ data, selected }: NodeProps) {
             </span>
           ) : null}
           <span
-            className="text-[10px] font-bold"
+            className="text-[10px] font-bold tabular-nums"
             style={{ color: `${cat.hex}CC` }}
           >
             {d.format}
@@ -322,22 +480,22 @@ function BlockComponent({ data, selected }: NodeProps) {
         {d.category === "generator" && <MiniWaveform color={cat.hex} />}
 
         {d.category === "modifier" && (
-          <div className="text-[10px] text-white/30 tracking-widest text-center uppercase">
+          <div className="text-[9px] text-white/30 tracking-widest text-center uppercase font-medium">
             Signal Processing
           </div>
         )}
 
         {d.category === "logic" && (
-          <div className="text-[10px] text-white/30 tracking-widest text-center uppercase">
+          <div className="text-[9px] text-white/30 tracking-widest text-center uppercase font-medium">
             Routing
           </div>
         )}
 
         {/* Latency readout */}
         {d.latencyMs > 0 && (
-          <div className="flex justify-between items-center text-[10px] text-text-secondary">
+          <div className="flex justify-between items-center text-[10px] text-text-secondary font-medium uppercase tracking-tighter">
             <span>LATENCY</span>
-            <span className="tabular" style={{ color: cat.hex }}>
+            <span className="tabular-nums" style={{ color: cat.hex }}>
               {d.latencyMs}ms
             </span>
           </div>
@@ -346,7 +504,7 @@ function BlockComponent({ data, selected }: NodeProps) {
         {/* CPU readout — tiny, bottom-right */}
         {d.cpuLoad > 0 && (
           <div className="text-right">
-            <span className="text-[10px] tabular text-text-dim">
+            <span className="text-[10px] tabular-nums text-text-dim font-medium">
               {d.cpuLoad.toFixed(1)}ms
             </span>
           </div>
@@ -370,59 +528,38 @@ function BlockComponent({ data, selected }: NodeProps) {
         </div>
       )}
 
+      {/* ── Expanded embed (semantic zoom) ── */}
+      {zoomTier === "expanded" && (
+        <BlockEmbed nodeId={d.id} category={d.category} />
+      )}
+
       {/* ── Input handles (left side) ── */}
-      {inputPorts.map((port, i) => {
-        const ps = portStyle[port.type] ?? portStyle.audio;
-        return (
-          <Handle
-            key={port.id}
-            id={port.id}
-            type="target"
-            position={Position.Left}
-            style={{
-              top: `${30 + ((i + 1) / (inputPorts.length + 1)) * 60}%`,
-              width: 12,
-              height: 12,
-              background: port.connected ? ps.hex : "#1A1A1E",
-              border: `2px solid ${port.connected ? ps.hex : "rgba(255,255,255,0.2)"}`,
-              borderRadius: ps.radius,
-              boxShadow: port.connected
-                ? catConfig[d.category]?.glowShadow
-                : "none",
-              transform: ps.rotate
-                ? "translateX(-50%) rotate(45deg)"
-                : "translateX(-50%)",
-            }}
-          />
-        );
-      })}
+      {inputPorts.map((port, i) => (
+        <PortHandle
+          key={port.id}
+          portId={port.id}
+          portType={port.type}
+          connected={port.connected}
+          handleType="target"
+          position={Position.Left}
+          topPercent={30 + ((i + 1) / (inputPorts.length + 1)) * 60}
+          busName={portBusMap.get(port.id)}
+        />
+      ))}
 
       {/* ── Output handles (right side) ── */}
-      {outputPorts.map((port, i) => {
-        const ps = portStyle[port.type] ?? portStyle.audio;
-        return (
-          <Handle
-            key={port.id}
-            id={port.id}
-            type="source"
-            position={Position.Right}
-            style={{
-              top: `${30 + ((i + 1) / (outputPorts.length + 1)) * 60}%`,
-              width: 12,
-              height: 12,
-              background: port.connected ? ps.hex : "#1A1A1E",
-              border: `2px solid ${ps.hex}`,
-              borderRadius: ps.radius,
-              boxShadow: port.connected
-                ? catConfig[d.category]?.glowShadow
-                : "none",
-              transform: ps.rotate
-                ? "translateX(50%) rotate(45deg)"
-                : "translateX(50%)",
-            }}
-          />
-        );
-      })}
+      {outputPorts.map((port, i) => (
+        <PortHandle
+          key={port.id}
+          portId={port.id}
+          portType={port.type}
+          connected={port.connected}
+          handleType="source"
+          position={Position.Right}
+          topPercent={30 + ((i + 1) / (outputPorts.length + 1)) * 60}
+          busName={portBusMap.get(port.id)}
+        />
+      ))}
     </div>
   );
 }

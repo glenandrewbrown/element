@@ -1,9 +1,9 @@
 import { type ReactNode } from "react";
 
 const variantStyles = {
-  default: "bg-[#252529] text-text-primary border-white/5 hover:bg-[#2A2A2E]",
-  active: "bg-[#252529] text-logic border-white/5",
-  panic: "bg-[#252529] text-error border-error/20",
+  default: "bg-surface text-text-primary border-white/5 hover:bg-elevated",
+  active: "bg-surface text-logic border-white/5",
+  panic: "bg-surface text-error border-error/20",
 } as const;
 
 const sizeStyles = {

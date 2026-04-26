@@ -1,9 +1,9 @@
 const colorMap = {
-  blue: { bg: "bg-generator/20", text: "text-generator" },
-  orange: { bg: "bg-modifier/20", text: "text-modifier" },
-  teal: { bg: "bg-logic/20", text: "text-logic" },
-  purple: { bg: "bg-badge-au/20", text: "text-badge-au" },
-  grey: { bg: "bg-badge-lv2/20", text: "text-badge-lv2" },
+  blue: { border: "border-generator", text: "text-generator" },
+  orange: { border: "border-modifier", text: "text-modifier" },
+  teal: { border: "border-logic", text: "text-logic" },
+  purple: { border: "border-badge-au", text: "text-badge-au" },
+  grey: { border: "border-badge-lv2", text: "text-badge-lv2" },
 } as const;
 
 interface NeuBadgeProps {
@@ -17,14 +17,14 @@ export function NeuBadge({
   color = "blue",
   className = "",
 }: NeuBadgeProps) {
-  const { bg, text: textColor } = colorMap[color];
+  const { border, text: textColor } = colorMap[color];
 
   return (
     <span
       className={[
         "inline-flex items-center px-1.5 py-0.5 rounded-sm text-[10px] font-bold uppercase tracking-wide",
-        "shadow-[-1px_-1px_4px_rgba(255,255,255,0.02),1px_1px_4px_rgba(0,0,0,0.25)]",
-        bg,
+        "bg-pressed border neu-raised",
+        border,
         textColor,
         className,
       ].join(" ")}
