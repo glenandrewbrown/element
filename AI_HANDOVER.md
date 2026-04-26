@@ -56,6 +56,39 @@ Edit Mode (workshop) / Perform Mode (stage) — structural change, NOT palette c
 
 ## Log (newest first)
 
+### 2026-04-26 (late) — Audit + Phase A landed; Phase B queued
+
+**Session:** ultraqa → deep-dive → autopilot Phase A
+**Branch:** `local-enhancements` (HEAD `11158adc`)
+**Build artifacts:** `installer/output/Element-2.2.0.16.{pkg,dmg}` (130 / 129 MB) — fully portable, ad-hoc signed.
+
+**Commits this session (oldest first):**
+1. `c6181785` chore(backend+infra): 9 new C++ nodes (Constant, Math, MIDI Channel Filter / Transpose / Velocity Amp, Pack/Unpack MIDI, Readout, Trigger), +532 lines bridge expansion in `element_webview_host.cpp`, untrack ~8.9k lines of installer/output build artifacts via .gitignore
+2. `0f1772a1` feat(webview): Phase 5B + V3.0 UI parity — DashboardBuilder (673 LOC), CommandPalette (Cmd+K, 514 LOC), VirtualKeyboard (Shift+K), BusInspector, ConnectionEditor, SessionTree, SceneLauncher, BlockEmbed, Edge/Node context menus, StatusBar, full keyboard handler. 46 files, +5706/-530.
+3. `5f6bf47b` fix(webview): bundle dist into Element.app/Contents/Resources/webview (POST_BUILD copy + runtime path resolution).
+4. `11158adc` feat(phase-A): bundle WebView into all plugin formats + Lua sandbox tests. 7 plugin bundles (3 AU + 2 VST3 + 2 CLAP) now ship Resources/webview. New `LuaSandboxTests` (18 cases, all green). Reconciled prior "Lua RCE" finding as inaccurate — sandbox at `bindings.cpp:413-446` was already locked down.
+
+**Audit + plan persisted at:** [`.omc/specs/unimplemented-features-audit.md`](.omc/specs/unimplemented-features-audit.md) — 5 P0s + 20 P1s + 25+ P2s with files / effort / acceptance criteria. **Treat as the source of truth for what's left to ship.**
+
+**Phase A status (2 of 5 P0 done):**
+- ✅ P0-1 Lua sandbox — verified + regression-tested
+- ✅ P0-2 Plugin WebView bundling — all formats except LV2 (deferred; needs separate mechanism)
+- ⏸ P0-3 Sandboxed plugin parameter forwarding (L) — `sandboxedprocessor.hpp:333` TODO; needs IPC protocol extension
+- ⏸ P0-4 Remove `using namespace juce;` from `include/element/juce.hpp:24` — 23 direct includers + transitive blast radius; needs focused PR with clang-tidy auto-qualification
+- ⏸ P0-5 Service-layer baseline tests — 7 files × ~5 cases each; pure scaffolding work, parallelizable
+
+**Phase B (V3.0 contract completion — 20 P1 items, queued):**
+Highest-leverage starts (per audit doc): P1-1 Dashboard layout *project-level* persistence (note: localStorage already works via persist middleware in `useDashboardStore.ts`; ValueTree round-trip is the actual gap), P1-6 Wireless bus CRUD, P1-14 Per-block comment field, P1-8 Session autosave. Bridge work concentrates in `src/ui/element_webview_host.cpp`.
+
+**How to resume:** Re-invoke `/oh-my-claudecode:autopilot` with the audit spec path. Autopilot will skip Phase 0 (spec exists) and Phase 1 (plan is in the spec), starting at execution.
+
+**Important reconciliations from this session (don't trust stale claims):**
+- Dashboard Builder is **shipped**, not "not implemented" (gap matrix was stale)
+- Portal node is **shipped** (gap matrix self-contradicted)
+- Snap-to-grid is **implemented in Preferences**, exposure-only gap
+- Lua sandbox is **already locked down** (Lane 2 audit was inaccurate; verified at `bindings.cpp:413-446`)
+- Bridge function count: **68 C++ / 66 JS** (was 57/56), 1:1 match for wrapped, 2 intentionally unwrapped
+
 ### 2026-04-26 — Phase 5B: Wireless Patching (Named Buses)
 
 - **Blueprint anchors**: §5/§7.2.8 (wireless badges replace drawn cables for named transmitter/receiver buses), §13 Phase 5 checklist item ✓.

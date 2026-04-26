@@ -104,6 +104,8 @@ repomix-output_*.md
 
 # Tooling state (oh-my-claudecode autopilot artifacts, playwright, sisyphus, etc.)
 /.omc/
+!/.omc/specs/
+!/.omc/specs/**
 /.playwright-mcp/
 /.sisyphus/
 /.claude/scheduled_tasks.lock
