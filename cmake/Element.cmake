@@ -117,6 +117,26 @@ function(element_setup_plugin tgt)
         if(TARGET ${tgt}_VST)
             target_link_options(${tgt}_VST PRIVATE "LINKER:-exported_symbol,_VSTPluginMain")
         endif()
+
+        # Bundle the WebView production assets into each plugin format's
+        # Resources directory so the host can find them when the .pkg is
+        # installed (or the plugin is moved). dladdr() at runtime resolves
+        # the bundle path from inside the plugin binary.
+        # LV2 omitted: not a real macOS bundle; needs separate handling.
+        foreach(fmt AU CLAP VST3)
+            if(TARGET ${tgt}_${fmt})
+                add_custom_command(TARGET ${tgt}_${fmt} POST_BUILD
+                    COMMAND ${CMAKE_COMMAND} -E rm -rf
+                            "$<TARGET_BUNDLE_CONTENT_DIR:${tgt}_${fmt}>/Resources/webview"
+                    COMMAND ${CMAKE_COMMAND} -E make_directory
+                            "$<TARGET_BUNDLE_CONTENT_DIR:${tgt}_${fmt}>/Resources/webview"
+                    COMMAND ${CMAKE_COMMAND} -E copy_directory
+                            "${CMAKE_SOURCE_DIR}/webview/dist"
+                            "$<TARGET_BUNDLE_CONTENT_DIR:${tgt}_${fmt}>/Resources/webview"
+                    COMMENT "Bundling WebView assets into ${tgt}_${fmt}"
+                    VERBATIM)
+            endif()
+        endforeach()
     endif()
 endfunction()
 

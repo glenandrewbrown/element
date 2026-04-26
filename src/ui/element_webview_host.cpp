@@ -707,29 +707,66 @@ static std::optional<WebBrowserComponent::Resource> makeWebAsset (const File& ro
     return r;
 }
 
+#if JUCE_MAC || JUCE_LINUX
+ #include <dlfcn.h>
+#endif
+
 // Resolve the WebView production bundle root. Prefers a bundle-relative location
 // inside the host (.app / .vst3 / .component / .clap), so installed packages work
 // on any machine. Falls back to the configure-time dev tree path for hot-reload
 // during development.
+//
+// IMPORTANT: For plugins loaded into a DAW, juce::File::currentExecutableFile
+// returns the DAW's executable, NOT the plugin binary. To find the plugin's own
+// bundle we use dladdr() with the address of a function we know lives in this
+// translation unit — that gives us the path to libelement.a's enclosing binary,
+// which on macOS is inside the plugin bundle (KV-Element.vst3/Contents/MacOS/KV-Element).
 static File resolveWebviewDistRoot()
 {
     using juce::File;
 
-   #if JUCE_MAC
-    // <Bundle>/Contents/MacOS/<binary>  -->  <Bundle>/Contents/Resources/webview
-    const auto exe = File::getSpecialLocation (File::currentExecutableFile);
-    const auto contents = exe.getParentDirectory().getParentDirectory();
-    const auto bundled = contents.getChildFile ("Resources").getChildFile ("webview");
-    if (bundled.getChildFile ("index.html").existsAsFile())
-        return bundled;
-   #else
-    // Bundled next to the executable on Linux/Windows
-    const auto exe = File::getSpecialLocation (File::currentExecutableFile);
-    const auto bundled = exe.getParentDirectory().getChildFile ("webview");
-    if (bundled.getChildFile ("index.html").existsAsFile())
-        return bundled;
+   #if JUCE_MAC || JUCE_LINUX
+    // dladdr-based resolution works in both standalone and plugin contexts.
+    Dl_info info {};
+    if (dladdr (reinterpret_cast<const void*> (&resolveWebviewDistRoot), &info) != 0
+        && info.dli_fname != nullptr)
+    {
+        const File binary (info.dli_fname);
+       #if JUCE_MAC
+        // <Bundle>/Contents/MacOS/<binary>  -->  <Bundle>/Contents/Resources/webview
+        const auto contents = binary.getParentDirectory().getParentDirectory();
+        const auto bundled = contents.getChildFile ("Resources").getChildFile ("webview");
+        if (bundled.getChildFile ("index.html").existsAsFile())
+            return bundled;
+       #else
+        // Linux: bundled next to the binary
+        const auto bundled = binary.getParentDirectory().getChildFile ("webview");
+        if (bundled.getChildFile ("index.html").existsAsFile())
+            return bundled;
+       #endif
+    }
    #endif
 
+   #if JUCE_MAC
+    // Standalone-app fallback: walk up from the running executable.
+    {
+        const auto exe = File::getSpecialLocation (File::currentExecutableFile);
+        const auto contents = exe.getParentDirectory().getParentDirectory();
+        const auto bundled = contents.getChildFile ("Resources").getChildFile ("webview");
+        if (bundled.getChildFile ("index.html").existsAsFile())
+            return bundled;
+    }
+   #elif JUCE_WINDOWS
+    // Windows: bundled next to the executable (or use dladdr equivalent if needed).
+    {
+        const auto exe = File::getSpecialLocation (File::currentExecutableFile);
+        const auto bundled = exe.getParentDirectory().getChildFile ("webview");
+        if (bundled.getChildFile ("index.html").existsAsFile())
+            return bundled;
+    }
+   #endif
+
+    // Final fallback: compile-time dev tree path (hot-reload during development).
     return File (element::webview_dist::kDistPath);
 }
 

@@ -54,3 +54,4 @@ add_test(NAME "SharedAudioBufferTests" COMMAND test_element --run_test=SharedAud
 add_test(NAME "SandboxProtocolTests" COMMAND test_element --run_test=SandboxProtocolTests)
 add_test(NAME "SettingsCredentialTests" COMMAND test_element --run_test=SettingsCredentialTests)
 add_test(NAME "AtomicRenderSwapTests" COMMAND test_element --run_test=AtomicRenderSwapTests)
+add_test(NAME "LuaSandboxTests" COMMAND test_element --run_test=LuaSandboxTests)
