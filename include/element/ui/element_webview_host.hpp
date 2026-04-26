@@ -9,6 +9,8 @@
 #include <element/web_metering_fifo.hpp>
 
 #include <memory>
+#include <unordered_map>
+#include <string>
 
 namespace element {
 
@@ -80,6 +82,14 @@ private:
     juce::String buildNodeParametersJson (const juce::String& nodeUuid) const;
     bool setNodeParameterValue (const juce::String& nodeUuid, int paramIndex, float value);
 
+    /** Push 15Hz delta of changed AudioProcessorParameter values to the WebView.
+        Walks the active graph, polls all node parameters, diffs against the cached
+        last-pushed value (epsilon 1e-4f), and emits a compact JSON array via
+        `window.__elementNative.onParameterUpdate(...)`. Called from `timerCallback`
+        every 4th tick. Cache is pruned of stale node entries on each push so it
+        cannot grow unbounded across session changes. */
+    void pushParameterUpdates();
+
     void evalInBrowser (const juce::String& js);
 
     Context& context;
@@ -98,6 +108,11 @@ private:
     /** Last `SessionService::hasSessionChanged()` pushed to the Web snapshot (for ~2Hz dirty refresh). */
     bool lastPushedSessionDirty = false;
     int dirtyPollCounter = 0;
+
+    /** 15Hz parameter delta channel: counter ticks every 60Hz callback, push every 4th. */
+    int parameterPushCounter = 0;
+    /** Cache of last-pushed parameter values keyed by "<uuid>:<paramIndex>". */
+    std::unordered_map<std::string, float> lastPushedParamValues;
 
     bool logPushPending = false;
     int lastLogHistorySize = 0;

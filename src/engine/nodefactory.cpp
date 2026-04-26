@@ -18,6 +18,17 @@
 #include "nodes/scriptnode.hpp"
 #include "engine/graphnode.hpp"
 
+// Tier-1 blueprint §9 nodes
+#include "nodes/midichannelfilter.hpp"
+#include "nodes/miditranspose.hpp"
+#include "nodes/midivelocityamp.hpp"
+#include "nodes/packmidi.hpp"
+#include "nodes/unpackmidi.hpp"
+#include "nodes/constantnode.hpp"
+#include "nodes/mathnodes.hpp"
+#include "nodes/triggernode.hpp"
+#include "nodes/readoutnode.hpp"
+
 #include "engine/audioprocessorfactory.hpp"
 #include "engine/internalformat.hpp"
 
@@ -121,6 +132,20 @@ NodeFactory::NodeFactory()
 #if ! JUCE_DEBUG
     hideType ("el.MCU");
 #endif
+
+    // ── Tier-1 blueprint §9 nodes ──
+    add (new SingleNodeProvider<MidiChannelFilterNode> ("element.midiChannelFilter"));
+    add (new SingleNodeProvider<MidiTransposeNode>     ("element.midiTranspose"));
+    add (new SingleNodeProvider<MidiVelocityAmpNode>   ("element.midiVelocityAmp"));
+    add (new SingleNodeProvider<PackMidiNode>          ("element.packMidi"));
+    add (new SingleNodeProvider<UnpackMidiNode>        ("element.unpackMidi"));
+    add (new SingleNodeProvider<ConstantNode>          ("element.constant"));
+    add (new SingleNodeProvider<AddNode>               ("element.add"));
+    add (new SingleNodeProvider<SubtractNode>          ("element.subtract"));
+    add (new SingleNodeProvider<MultiplyNode>          ("element.multiply"));
+    add (new SingleNodeProvider<DivideNode>            ("element.divide"));
+    add (new SingleNodeProvider<TriggerNode>           ("element.trigger"));
+    add (new SingleNodeProvider<ReadoutNode>           ("element.readout"));
 }
 
 NodeFactory::~NodeFactory()

@@ -34,6 +34,7 @@
 #include "ui/moleculemanager.hpp"
 #include "ui/pluginusagetracker.hpp"
 #include "appinfo.hpp"
+#include "nodes/scriptnode.hpp"
 
 #include <algorithm>
 #include <cstdlib>
@@ -784,6 +785,91 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
                 ok = setNodeParameterValue (uuid, idx, v);
             }
             MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementScriptGetSource"),
+        [this] (const Array<var>& args, auto completion) {
+            String source;
+            if (args.size() >= 1)
+            {
+                if (auto sess = context.session())
+                {
+                    const Graph G (sess->getCurrentGraph());
+                    if (G.isGraph())
+                    {
+                        const Node n = findNodeByUuidInGraph (G, args[0].toString());
+                        if (n.isValid())
+                        {
+                            if (auto* script = dynamic_cast<ScriptNode*> (n.getObject()))
+                                source = script->getCodeDocument (false).getAllContent();
+                        }
+                    }
+                }
+            }
+            MessageManager::callAsync ([completion, source] { completion (var (source)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementScriptSetSource"),
+        [this] (const Array<var>& args, auto completion) {
+            String json;
+            if (args.size() >= 2)
+            {
+                if (auto sess = context.session())
+                {
+                    const Graph G (sess->getCurrentGraph());
+                    if (G.isGraph())
+                    {
+                        const Node n = findNodeByUuidInGraph (G, args[0].toString());
+                        if (n.isValid())
+                        {
+                            if (auto* script = dynamic_cast<ScriptNode*> (n.getObject()))
+                            {
+                                const Result r = script->loadScript (args[1].toString());
+                                if (r.wasOk())
+                                    json = "{\"ok\":true,\"error\":\"\"}";
+                                else
+                                    json = "{\"ok\":false,\"error\":" + JSON::toString (r.getErrorMessage()) + "}";
+                            }
+                        }
+                    }
+                }
+            }
+            if (json.isEmpty())
+                json = "{\"ok\":false,\"error\":\"node not found or not a script node\"}";
+            MessageManager::callAsync ([completion, json] { completion (var (json)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementScriptCompile"),
+        [this] (const Array<var>& args, auto completion) {
+            String json;
+            if (args.size() >= 1)
+            {
+                if (auto sess = context.session())
+                {
+                    const Graph G (sess->getCurrentGraph());
+                    if (G.isGraph())
+                    {
+                        const Node n = findNodeByUuidInGraph (G, args[0].toString());
+                        if (n.isValid())
+                        {
+                            if (auto* script = dynamic_cast<ScriptNode*> (n.getObject()))
+                            {
+                                const Result r = script->loadScript (script->getCodeDocument (false).getAllContent());
+                                if (r.wasOk())
+                                    json = "{\"ok\":true,\"error\":\"\"}";
+                                else
+                                    json = "{\"ok\":false,\"error\":" + JSON::toString (r.getErrorMessage()) + "}";
+                            }
+                        }
+                    }
+                }
+            }
+            if (json.isEmpty())
+                json = "{\"ok\":false,\"error\":\"node not found or not a script node\"}";
+            MessageManager::callAsync ([completion, json] { completion (var (json)); });
         });
 
     opts = opts.withNativeFunction (
@@ -1757,6 +1843,143 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
         });
 
+    // ── US-002: Transport – record toggle ──────────────────────────────────────
+    // AudioEngine::setRecording(bool) confirmed in include/element/audioengine.hpp
+    opts = opts.withNativeFunction (
+        Identifier ("elementTransportSetRecording"),
+        [this] (const Array<var>& args, auto completion) {
+            if (auto e = context.audio())
+                e->setRecording (args.size() >= 1 ? (bool) args[0] : false);
+            MessageManager::callAsync ([completion] { completion (var (true)); });
+        });
+
+    // ── US-003: BPM/Tempo ──────────────────────────────────────────────────────
+    // Tempo is stored in session ValueTree (tags::tempo). AudioEngine listens to
+    // that Value and calls transport.requestTempo() automatically when it changes.
+    // The current tempo is already pushed to JS via session.tempo in every
+    // pushGraphSnapshot() call, so no separate "get" bridge is needed.
+    opts = opts.withNativeFunction (
+        Identifier ("elementTransportSetTempo"),
+        [this] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 1)
+            {
+                const double bpm = jlimit (20.0, 999.0, (double) args[0]);
+                if (auto sess = context.session())
+                {
+                    sess->getValueTree().setProperty (tags::tempo, bpm, nullptr);
+                    ok = true;
+                }
+            }
+            if (ok)
+                pushGraphSnapshot();
+            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+        });
+
+    // ── US-004: Plugin Windows ─────────────────────────────────────────────────
+    // GuiService::closeAllPluginWindows(bool windowVisible) confirmed in ui.hpp.
+    // "Show all" has no counterpart method — individual windows are opened via
+    // presentPluginWindow(node). elementShowAllPluginWindows is intentionally
+    // omitted because no engine method exists to show ALL windows at once.
+    opts = opts.withNativeFunction (
+        Identifier ("elementHideAllPluginWindows"),
+        [this] (const Array<var>&, auto completion) {
+            if (auto* gui = context.services().find<GuiService>())
+                gui->closeAllPluginWindows (true); // true = keep state, just hide
+            MessageManager::callAsync ([completion] { completion (var (true)); });
+        });
+
+    // ── US-005: Scene delete / rename ──────────────────────────────────────────
+    opts = opts.withNativeFunction (
+        Identifier ("elementPerformDeleteScene"),
+        [this] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 1)
+                if (auto sess = context.session())
+                {
+                    ValueTree wp = ensureWebPerformMutable (*sess);
+                    const int filteredIdx = (int) args[0];
+                    ValueTree sc = getWebSceneAtFilteredIndex (wp, filteredIdx);
+                    if (sc.isValid())
+                    {
+                        wp.removeChild (sc, nullptr);
+                        // Clamp activeIndex to new count; reset to -1 when empty
+                        const int newCount = countWebSceneChildren (wp);
+                        if (newCount > 0)
+                        {
+                            int active = (int) wp.getProperty ("activeIndex", 0);
+                            if (active >= newCount)
+                                wp.setProperty ("activeIndex", newCount - 1, nullptr);
+                        }
+                        else
+                        {
+                            wp.setProperty ("activeIndex", -1, nullptr);
+                        }
+                        ok = true;
+                    }
+                }
+            if (ok)
+                pushGraphSnapshot();
+            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementPerformRenameScene"),
+        [this] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 2)
+                if (auto sess = context.session())
+                {
+                    ValueTree wp = ensureWebPerformMutable (*sess);
+                    ValueTree sc = getWebSceneAtFilteredIndex (wp, (int) args[0]);
+                    if (sc.isValid())
+                    {
+                        const String newName = args[1].toString().trim();
+                        if (newName.isNotEmpty())
+                        {
+                            sc.setProperty ("name", newName, nullptr);
+                            ok = true;
+                        }
+                    }
+                }
+            if (ok)
+                pushGraphSnapshot();
+            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+        });
+
+    // ── US-006: Virtual Keyboard ───────────────────────────────────────────────
+    // AudioEngine::getKeyboardState() returns juce::MidiKeyboardState&
+    // confirmed in include/element/audioengine.hpp line 67.
+    // noteOn/noteOff on MidiKeyboardState inject MIDI into the engine graph.
+    opts = opts.withNativeFunction (
+        Identifier ("elementVirtualKeyboardNoteOn"),
+        [this] (const Array<var>& args, auto completion) {
+            // args: [note (0-127), velocity (0.0-1.0), channel (1-16)]
+            if (args.size() >= 3)
+                if (auto e = context.audio())
+                {
+                    const int note     = jlimit (0, 127, (int) args[0]);
+                    const float vel    = jlimit (0.0f, 1.0f, (float) args[1]);
+                    const int channel  = jlimit (1, 16, (int) args[2]);
+                    e->getKeyboardState().noteOn (channel, note, vel);
+                }
+            MessageManager::callAsync ([completion] { completion (var (true)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementVirtualKeyboardNoteOff"),
+        [this] (const Array<var>& args, auto completion) {
+            // args: [note (0-127), channel (1-16)]
+            if (args.size() >= 2)
+                if (auto e = context.audio())
+                {
+                    const int note    = jlimit (0, 127, (int) args[0]);
+                    const int channel = jlimit (1, 16, (int) args[1]);
+                    e->getKeyboardState().noteOff (channel, note, 0.0f);
+                }
+            MessageManager::callAsync ([completion] { completion (var (true)); });
+        });
+
     opts = opts.withNativeFunction (
         Identifier ("elementAppGetAbout"),
         [] (const Array<var>&, auto completion) {
@@ -1773,6 +1996,224 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             if (auto* gui = context.services().find<GuiService>())
                 gui->checkUpdates (false);
             MessageManager::callAsync ([completion] { completion (var (true)); });
+        });
+
+    // ── Transport Stop / Rewind ────────────────────────────────────────────────
+    opts = opts.withNativeFunction (
+        Identifier ("elementTransportStop"),
+        [this] (const Array<var>&, auto completion) {
+            if (auto e = context.audio())
+            {
+                if (auto mon = e->getTransportMonitor())
+                    if (mon->playing.get())
+                        e->setPlaying (false);
+            }
+            MessageManager::callAsync ([completion] { completion (var (true)); });
+        });
+
+    opts = opts.withNativeFunction (
+        Identifier ("elementTransportRewind"),
+        [this] (const Array<var>&, auto completion) {
+            if (auto e = context.audio())
+                e->seekToAudioFrame (0);
+            else
+                Logger::writeToLog ("elementTransportRewind: no audio engine");
+            MessageManager::callAsync ([completion] { completion (var (true)); });
+        });
+
+    // ── Show All Plugin Windows ───────────────────────────────────────────────
+    opts = opts.withNativeFunction (
+        Identifier ("elementHostShowAllPluginWindows"),
+        [this] (const Array<var>&, auto completion) {
+            bool ok = false;
+            if (auto sess = context.session())
+            {
+                const Node gn (sess->getCurrentGraph());
+                if (gn.isGraph())
+                {
+                    const Graph G (gn);
+                    if (auto* gui = context.services().find<GuiService>())
+                    {
+                        for (int i = 0; i < G.getNumNodes(); ++i)
+                        {
+                            const Node n (G.getNode (i));
+                            if (n.hasEditor())
+                                gui->presentPluginWindow (n, false);
+                        }
+                        ok = true;
+                    }
+                }
+            }
+            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+        });
+
+    // ── Session Graph Tree ────────────────────────────────────────────────────
+    opts = opts.withNativeFunction (
+        Identifier ("elementSessionGetGraphTree"),
+        [this] (const Array<var>&, auto completion) {
+            Array<var> graphsVar;
+            if (auto sess = context.session())
+            {
+                const int activeIdx = sess->getActiveGraphIndex();
+                for (int i = 0; i < sess->getNumGraphs(); ++i)
+                {
+                    const Node gn (sess->getGraph (i));
+                    DynamicObject::Ptr go (new DynamicObject());
+                    go->setProperty ("id", gn.getUuidString());
+                    go->setProperty ("name", gn.getName());
+                    go->setProperty ("index", i);
+                    go->setProperty ("active", i == activeIdx);
+                    go->setProperty ("isContainer", gn.isGraph());
+
+                    Array<var> children;
+                    if (gn.isGraph())
+                    {
+                        const Graph sub (gn);
+                        for (int j = 0; j < sub.getNumNodes(); ++j)
+                        {
+                            const Node child (sub.getNode (j));
+                            if (child.isGraph())
+                            {
+                                DynamicObject::Ptr co (new DynamicObject());
+                                co->setProperty ("id", child.getUuidString());
+                                co->setProperty ("name", child.getName());
+                                co->setProperty ("index", j);
+                                co->setProperty ("active", false);
+                                co->setProperty ("isContainer", true);
+                                co->setProperty ("children", var (Array<var>()));
+                                children.add (var (co.get()));
+                            }
+                        }
+                    }
+                    go->setProperty ("children", var (children));
+                    graphsVar.add (var (go.get()));
+                }
+            }
+            const String json (JSON::toString (var (graphsVar)));
+            MessageManager::callAsync ([completion, json] { completion (var (json)); });
+        });
+
+    // ── Wireless Patching: cable bus name ─────────────────────────────────────
+    // Phase 5B (blueprint §5/§7.2.8). Tag a cable Arc with a named bus so the
+    // front-end can render it as a wireless transmitter/receiver pair instead
+    // of a drawn curve. Best-effort persistence: the front-end useBusStore is
+    // the visual source of truth; this just round-trips the name so it
+    // survives session save/reload via the ValueTree.
+    opts = opts.withNativeFunction (
+        Identifier ("elementGraphSetCableBus"),
+        [this] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 2)
+            {
+                const String cableId = args[0].toString();
+                const String busName = args[1].toString();
+
+                // Cable id format from buildGraphSnapshotJson:
+                //   cable_<srcUuid>_<srcPort>_<dstUuid>_<dstPort>_<arcIndex>
+                // The trailing arcIndex is volatile, so we key on the four
+                // route components only.
+                if (cableId.startsWith ("cable_"))
+                {
+                    const String body = cableId.substring (6);
+                    // UUIDs are 36 chars (8-4-4-4-12).
+                    if (body.length() > 36 + 1 + 1 + 1 + 36 + 1 + 1)
+                    {
+                        const String srcUuid = body.substring (0, 36);
+                        const String rest1 = body.substring (37); // after '_'
+                        const int us1 = rest1.indexOfChar ('_');
+                        if (us1 > 0 && rest1.length() > us1 + 1 + 36)
+                        {
+                            const int srcPort = rest1.substring (0, us1).getIntValue();
+                            const String rest2 = rest1.substring (us1 + 1);
+                            const String dstUuid = rest2.substring (0, 36);
+                            const String rest3 = rest2.substring (37);
+                            const int us2 = rest3.indexOfChar ('_');
+                            const int dstPort = us2 > 0 ? rest3.substring (0, us2).getIntValue()
+                                                        : rest3.getIntValue();
+
+                            if (auto sess = context.session())
+                            {
+                                const Node gn (sess->getCurrentGraph());
+                                if (gn.isGraph())
+                                {
+                                    const Graph G (gn);
+                                    const Node srcN = findNodeByUuidInGraph (G, srcUuid);
+                                    const Node dstN = findNodeByUuidInGraph (G, dstUuid);
+                                    if (srcN.isValid() && dstN.isValid())
+                                    {
+                                        const auto srcId = (uint32_t) srcN.getNodeId();
+                                        const auto dstId = (uint32_t) dstN.getNodeId();
+                                        ValueTree arcs (G.getArcsValueTree());
+                                        for (int i = 0; i < arcs.getNumChildren(); ++i)
+                                        {
+                                            ValueTree a = arcs.getChild (i);
+                                            const auto sn = (uint32_t) (int64) a.getProperty (tags::sourceNode);
+                                            const auto dn = (uint32_t) (int64) a.getProperty (tags::destNode);
+                                            const int sp = (int) a.getProperty (tags::sourcePort, 0);
+                                            const int dp = (int) a.getProperty (tags::destPort, 0);
+                                            if (sn == srcId && dn == dstId && sp == srcPort && dp == dstPort)
+                                            {
+                                                if (busName.isEmpty())
+                                                    a.removeProperty ("busName", nullptr);
+                                                else
+                                                    a.setProperty ("busName", busName, nullptr);
+                                                ok = true;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+        });
+
+    // ── Graph Connection List ─────────────────────────────────────────────────
+    opts = opts.withNativeFunction (
+        Identifier ("elementGraphGetConnectionList"),
+        [this] (const Array<var>&, auto completion) {
+            Array<var> cables;
+            if (auto sess = context.session())
+            {
+                const Node gn (sess->getCurrentGraph());
+                if (gn.isGraph())
+                {
+                    const Graph G (gn);
+                    const ValueTree arcs (G.getArcsValueTree());
+                    for (int i = 0; i < arcs.getNumChildren(); ++i)
+                    {
+                        const auto a = arcs.getChild (i);
+                        const auto sn = (uint32_t) (int64) a.getProperty (tags::sourceNode);
+                        const auto dn = (uint32_t) (int64) a.getProperty (tags::destNode);
+                        const String su = nodeUuidFromGraphNodeId (G, sn);
+                        const String du = nodeUuidFromGraphNodeId (G, dn);
+                        if (su.isEmpty() || du.isEmpty())
+                            continue;
+
+                        const int spi = (int) a.getProperty (tags::sourcePort, 0);
+                        const int dpi = (int) a.getProperty (tags::destPort, 0);
+                        const Node srcNode = G.getNodeById (sn);
+                        String signal = "audio";
+                        if (srcNode.isValid() && isPositiveAndBelow (spi, srcNode.getNumPorts()))
+                            signal = portTypeToSignalString (srcNode.getPort (spi).getType());
+
+                        DynamicObject::Ptr c (new DynamicObject());
+                        c->setProperty ("id", "cable_" + su + "_" + String (spi) + "_" + du + "_" + String (dpi) + "_" + String (i));
+                        c->setProperty ("source", su);
+                        c->setProperty ("sourcePort", "out-" + String (spi));
+                        c->setProperty ("target", du);
+                        c->setProperty ("targetPort", "in-" + String (dpi));
+                        c->setProperty ("signalType", signal);
+                        c->setProperty ("channelCount", signal == String ("audio") ? 2 : 1);
+                        cables.add (var (c.get()));
+                    }
+                }
+            }
+            const String json (JSON::toString (var (cables)));
+            MessageManager::callAsync ([completion, json] { completion (var (json)); });
         });
 
     browser = std::make_unique<WebBrowserComponent> (opts);
@@ -1944,6 +2385,13 @@ void ElementWebViewHost::timerCallback()
         graphPushPendingMs -= (1000 / 60);
         if (graphPushPendingMs <= 0)
             pushGraphSnapshot();
+    }
+
+    // 15Hz parameter delta channel — every 4th 60Hz tick.
+    if (++parameterPushCounter >= 4)
+    {
+        parameterPushCounter = 0;
+        pushParameterUpdates();
     }
 
     // Session dirty flag is not on ValueTree — poll ~2 Hz so the Web toolbar can show save state.
@@ -2278,6 +2726,11 @@ String ElementWebViewHost::buildActiveGraphJson() const
         c->setProperty ("signalType", signal);
         c->setProperty ("channelCount", signal == String ("audio") ? 2 : 1);
         c->setProperty ("isSidechain", false);
+        // Phase 5B: surface wireless bus name (if any) so the front end can
+        // repopulate useBusStore on hydrate.
+        const String busName = a.getProperty ("busName", "").toString();
+        if (busName.isNotEmpty())
+            c->setProperty ("busName", busName);
         cables.add (var (c.get()));
     }
 
@@ -2443,6 +2896,85 @@ String ElementWebViewHost::buildNodeParametersJson (const String& nodeUuid) cons
 
     root->setProperty ("parameters", var (params));
     return JSON::toString (var (root.get()));
+}
+
+void ElementWebViewHost::pushParameterUpdates()
+{
+    if (browser == nullptr)
+        return;
+
+    auto sess = context.session();
+    if (sess == nullptr)
+        return;
+
+    const Graph G (sess->getCurrentGraph());
+    if (! G.isGraph())
+        return;
+
+    constexpr float kEpsilon = 1.0e-4f;
+    Array<var> entries;
+    std::unordered_map<std::string, float> seen;
+    seen.reserve (lastPushedParamValues.size());
+
+    for (int i = 0; i < G.getNumNodes(); ++i)
+    {
+        const Node n (G.getNode (i));
+        if (! n.isValid())
+            continue;
+        const String uuid = n.getUuidString();
+        if (uuid.isEmpty())
+            continue;
+
+        auto* obj = n.getObject();
+        if (obj == nullptr)
+            continue;
+        auto* proc = obj->getAudioProcessor();
+        if (proc == nullptr)
+            continue;
+
+        Array<var> changedParams;
+        const auto& params = proc->getParameters();
+        for (int p = 0; p < params.size(); ++p)
+        {
+            auto* par = params[p];
+            if (par == nullptr)
+                continue;
+            const float v = par->getValue();
+            std::string key = uuid.toStdString();
+            key.push_back (':');
+            key += std::to_string (p);
+
+            seen[key] = v;
+            auto it = lastPushedParamValues.find (key);
+            const bool isFirst = (it == lastPushedParamValues.end());
+            if (isFirst || std::fabs (it->second - v) > kEpsilon)
+            {
+                DynamicObject::Ptr pv (new DynamicObject());
+                pv->setProperty ("i", p);
+                pv->setProperty ("v", (double) v);
+                changedParams.add (var (pv.get()));
+            }
+        }
+
+        if (! changedParams.isEmpty())
+        {
+            DynamicObject::Ptr row (new DynamicObject());
+            row->setProperty ("nodeId", uuid);
+            row->setProperty ("params", var (changedParams));
+            entries.add (var (row.get()));
+        }
+    }
+
+    // Replace the cache wholesale with what we just observed: stale entries
+    // (nodes that have been deleted) are dropped automatically.
+    lastPushedParamValues = std::move (seen);
+
+    if (entries.isEmpty())
+        return;
+
+    const String json = JSON::toString (var (entries));
+    evalInBrowser ("window.__elementNative && window.__elementNative.onParameterUpdate && window.__elementNative.onParameterUpdate("
+                   + json + ");");
 }
 
 bool ElementWebViewHost::setNodeParameterValue (const String& nodeUuid, int paramIndex, float value)

@@ -99,3 +99,15 @@ installer/staging/
 repomix-output.md
 repomix-output.xml
 repomix-output.*.md
+repomix-output_*.md
+/command-palette-before.md
+
+# Tooling state (oh-my-claudecode autopilot artifacts, playwright, sisyphus, etc.)
+/.omc/
+/.playwright-mcp/
+/.sisyphus/
+/.claude/scheduled_tasks.lock
+/.scheduled_tasks/
+
+# Installer build output (regenerated each run by installer/build_pkg.sh)
+/installer/output/
