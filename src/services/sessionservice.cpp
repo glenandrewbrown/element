@@ -42,10 +42,13 @@ void SessionService::activate()
     document.reset (new SessionDocument (currentSession));
     changeResetter.reset (new ChangeResetter (*this));
     document->setFile (DataPath::defaultSessionDir());
+    startAutosave();
 }
 
 void SessionService::deactivate()
 {
+    stopAutosave();
+
     auto& world = context();
     auto& settings (world.settings());
     auto* props = settings.getUserSettings();
@@ -119,6 +122,14 @@ void SessionService::openFile (const File& file)
     }
     else if (file.hasFileExtension ("els"))
     {
+        // Check whether a newer autosave exists and log it for the user.
+        {
+            const File autosaveFile = file.getSiblingFile (
+                file.getFileNameWithoutExtension() + ".autosave.elg");
+            if (autosaveFile.existsAsFile() && autosaveFile.getLastModificationTime() > file.getLastModificationTime())
+                DBG ("[SessionService] autosave available: " + autosaveFile.getFullPathName());
+        }
+
         document->saveIfNeededAndUserAgrees();
         Session::ScopedFrozenLock freeze (*currentSession);
         Result result = document->loadFrom (file, true);
@@ -321,6 +332,43 @@ void SessionService::refreshOtherControllers()
     if (auto* ps = sibling<PresetService>())
         ps->refresh();
     sigSessionLoaded();
+}
+
+void SessionService::startAutosave (int intervalSeconds)
+{
+    const int ms = jmax (1, intervalSeconds) * 1000;
+    startTimer (ms);
+}
+
+void SessionService::stopAutosave()
+{
+    stopTimer();
+}
+
+File SessionService::getAutosaveFile() const
+{
+    const File sessionFile = getSessionFile();
+    if (sessionFile.existsAsFile())
+        return sessionFile.getSiblingFile (
+            sessionFile.getFileNameWithoutExtension() + ".autosave.elg");
+
+    // No file set yet — use a timestamped name in the default session dir.
+    const String timestamp = Time::getCurrentTime().formatted ("%Y%m%d_%H%M%S");
+    return DataPath::defaultSessionDir().getChildFile ("autosave_" + timestamp + ".elg");
+}
+
+void SessionService::timerCallback()
+{
+    if (! hasSessionChanged())
+        return;
+
+    const File sessionFile = getSessionFile();
+    if (! sessionFile.existsAsFile())
+        return;
+
+    const File autosaveFile = getAutosaveFile();
+    if (! sessionFile.copyFileTo (autosaveFile))
+        DBG ("[SessionService] autosave write failed: " + autosaveFile.getFullPathName());
 }
 
 } // namespace element

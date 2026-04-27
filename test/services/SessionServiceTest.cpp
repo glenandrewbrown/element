@@ -70,4 +70,33 @@ BOOST_AUTO_TEST_CASE (hasSessionChanged_clears_after_resetChanges)
     BOOST_CHECK (! svc->hasSessionChanged());
 }
 
+BOOST_AUTO_TEST_CASE (autosave_start_stop_no_crash)
+{
+    auto* svc = test::getService<SessionService>();
+    BOOST_REQUIRE (svc != nullptr);
+    // Calling start/stop in various combinations must not crash.
+    BOOST_CHECK_NO_THROW (svc->startAutosave (10));
+    BOOST_CHECK_NO_THROW (svc->stopAutosave());
+    BOOST_CHECK_NO_THROW (svc->stopAutosave()); // double-stop is safe
+    BOOST_CHECK_NO_THROW (svc->startAutosave (5));
+    BOOST_CHECK_NO_THROW (svc->startAutosave (5)); // re-start is safe
+    BOOST_CHECK_NO_THROW (svc->stopAutosave());
+}
+
+BOOST_AUTO_TEST_CASE (autosave_file_path_no_session_file)
+{
+    // When no session file is set, getAutosaveFile() should return a file
+    // inside the default session directory with the "autosave_" prefix.
+    auto* svc = test::getService<SessionService>();
+    BOOST_REQUIRE (svc != nullptr);
+
+    // Ensure the document has no real file by resetting to a default state.
+    svc->resetChanges (true); // clears the document file
+
+    const juce::File autosaveFile = svc->getAutosaveFile();
+    // Must be non-empty and in the default session dir (or a descendant).
+    BOOST_CHECK (autosaveFile != juce::File());
+    BOOST_CHECK (autosaveFile.getFileName().startsWith ("autosave_"));
+}
+
 BOOST_AUTO_TEST_SUITE_END()

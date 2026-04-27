@@ -289,6 +289,28 @@ set(ELEMENT_GENERATOR ${CPACK_GENERATOR})
 set(CPACK_PACKAGE_FILE_NAME "${PROJECT_NAME}-${CPACK_PACKAGE_VERSION}-${ELEMENT_SYSTEM_NAME}-${ELEMENT_PROCESSOR}")
 include(CPack)
 
+# Sanitizer support
+# Usage: cmake -DELEMENT_ENABLE_SANITIZER=address|undefined|thread|none
+set(ELEMENT_ENABLE_SANITIZER "none" CACHE STRING "Enable sanitizer: address, undefined, thread, or none")
+set_property(CACHE ELEMENT_ENABLE_SANITIZER PROPERTY STRINGS "none" "address" "undefined" "thread")
+
+if (NOT ELEMENT_ENABLE_SANITIZER STREQUAL "none")
+    if (MSVC)
+        message(WARNING "ELEMENT_ENABLE_SANITIZER is not supported on MSVC; ignoring.")
+    else()
+        if (ELEMENT_ENABLE_SANITIZER STREQUAL "thread")
+            # TSan requires Debug; warn if building Release
+            if (CMAKE_BUILD_TYPE STREQUAL "Release")
+                message(WARNING "ThreadSanitizer is intended for Debug builds. Consider -DCMAKE_BUILD_TYPE=Debug.")
+            endif()
+        endif()
+        set(_san_flags -fsanitize=${ELEMENT_ENABLE_SANITIZER} -fno-omit-frame-pointer -g)
+        add_compile_options(${_san_flags})
+        add_link_options(${_san_flags})
+        message(STATUS "Sanitizer enabled: ${ELEMENT_ENABLE_SANITIZER}")
+    endif()
+endif()
+
 # Clean CPack staging directory before and after packaging to prevent macOS relocation issues
 add_custom_target(installer
     COMMAND ${CMAKE_COMMAND} -E rm -rf "${PROJECT_BINARY_DIR}/_CPack_Packages"
