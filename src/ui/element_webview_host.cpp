@@ -935,6 +935,160 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion, json] { completion (var (json)); });
         });
 
+    // elementScriptGetRuntimeState
+    //   Input:  args[0] = nodeId: String
+    //   Output: { ok: true, vars: [ { name: String, type: String, value: String } ] }
+    //         | { ok: false, error: String }
+    //   Effect: snapshots ScriptNode::getLuaState().globals() on the message thread.
+    //           Filters out Lua/sol2 built-ins (math, string, table, os, io, coroutine,
+    //           package, _G, _VERSION, print, type, tostring, tonumber, pairs, ipairs,
+    //           ipairsaux, next, rawget, rawset, rawequal, rawlen, select, unpack,
+    //           pcall, xpcall, error, assert, getmetatable, setmetatable, collectgarbage,
+    //           require, dofile, load, loadstring, loadfile, debug, _ENV) plus anything
+    //           starting with "_" or "sol.".
+    //           For each remaining global, emits { name, type, value }:
+    //             number / boolean / string -> stringified directly (max 100 chars)
+    //             function / table / userdata / thread -> value = "[<type>]" (no expansion)
+    //             nil -> skipped
+    //           Cap at 64 entries to avoid runaway state.
+    //           NOTE: Only the message-thread Lua state is inspected; the audio-thread
+    //           DSPScript runtime has its own environment that is not surfaced here yet.
+    opts = opts.withNativeFunction (
+        Identifier ("elementScriptGetRuntimeState"),
+        [this] (const Array<var>& args, auto completion) {
+            String json;
+            if (args.size() >= 1)
+            {
+                if (auto sess = context.session())
+                {
+                    const Graph G (sess->getCurrentGraph());
+                    if (G.isGraph())
+                    {
+                        const Node n = findNodeByUuidInGraph (G, args[0].toString());
+                        if (n.isValid())
+                        {
+                            if (auto* script = dynamic_cast<ScriptNode*> (n.getObject()))
+                            {
+                                static const std::unordered_set<std::string> kBuiltins {
+                                    "math", "string", "table", "os", "io", "coroutine",
+                                    "package", "_G", "_VERSION", "print", "type",
+                                    "tostring", "tonumber", "pairs", "ipairs", "ipairsaux",
+                                    "next", "rawget", "rawset", "rawequal", "rawlen",
+                                    "select", "unpack", "pcall", "xpcall", "error",
+                                    "assert", "getmetatable", "setmetatable",
+                                    "collectgarbage", "require", "dofile", "load",
+                                    "loadstring", "loadfile", "debug", "_ENV"
+                                };
+
+                                auto& lua = script->getLuaState();
+                                juce::String varsJson = "[";
+                                bool first = true;
+                                int count = 0;
+
+                                try
+                                {
+                                    for (auto& kv : lua.globals())
+                                    {
+                                        if (count >= 64)
+                                            break;
+
+                                        sol::object key = kv.first;
+                                        sol::object val = kv.second;
+
+                                        if (key.get_type() != sol::type::string)
+                                            continue;
+                                        if (val.get_type() == sol::type::lua_nil
+                                            || val.get_type() == sol::type::none)
+                                            continue;
+
+                                        std::string rawName;
+                                        try { rawName = key.as<std::string>(); }
+                                        catch (...) { continue; }
+
+                                        if (rawName.empty())
+                                            continue;
+                                        if (rawName[0] == '_')
+                                            continue;
+                                        if (rawName.rfind ("sol.", 0) == 0)
+                                            continue;
+                                        if (kBuiltins.count (rawName) > 0)
+                                            continue;
+
+                                        juce::String name = juce::String (rawName);
+                                        juce::String typeName;
+                                        juce::String value;
+
+                                        switch (val.get_type())
+                                        {
+                                            case sol::type::number:
+                                                typeName = "number";
+                                                try
+                                                {
+                                                    double d = val.as<double>();
+                                                    value = juce::String (d);
+                                                }
+                                                catch (...) { value = "[number]"; }
+                                                break;
+                                            case sol::type::boolean:
+                                                typeName = "boolean";
+                                                try
+                                                {
+                                                    value = val.as<bool>() ? "true" : "false";
+                                                }
+                                                catch (...) { value = "[boolean]"; }
+                                                break;
+                                            case sol::type::string:
+                                                typeName = "string";
+                                                try
+                                                {
+                                                    juce::String s = juce::String (val.as<std::string>());
+                                                    value = s.substring (0, 100);
+                                                }
+                                                catch (...) { value = "[string]"; }
+                                                break;
+                                            case sol::type::function:
+                                                typeName = "function";
+                                                value = "[function]";
+                                                break;
+                                            case sol::type::table:
+                                                typeName = "table";
+                                                value = "[table]";
+                                                break;
+                                            case sol::type::userdata:
+                                                typeName = "userdata";
+                                                value = "[userdata]";
+                                                break;
+                                            case sol::type::thread:
+                                                typeName = "thread";
+                                                value = "[thread]";
+                                                break;
+                                            default:
+                                                continue;
+                                        }
+
+                                        if (! first)
+                                            varsJson += ",";
+                                        varsJson += "{\"name\":" + JSON::toString (name)
+                                                    + ",\"type\":" + JSON::toString (typeName)
+                                                    + ",\"value\":" + JSON::toString (value) + "}";
+                                        first = false;
+                                        ++count;
+                                    }
+                                }
+                                catch (...) {}
+
+                                varsJson += "]";
+                                json = "{\"ok\":true,\"vars\":" + varsJson + "}";
+                            }
+                        }
+                    }
+                }
+            }
+            if (json.isEmpty())
+                json = "{\"ok\":false,\"error\":\"node not found or not a script node\"}";
+            MessageManager::callAsync ([completion, json] { completion (var (json)); });
+        });
+
     opts = opts.withNativeFunction (
         Identifier ("elementGraphAddPlugin"),
         [this] (const Array<var>& args, auto completion) {

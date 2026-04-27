@@ -4,8 +4,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   nativeScriptGetSource,
+  nativeScriptGetRuntimeState,
   nativeScriptSetSource,
   type ScriptCompileResult,
+  type ScriptRuntimeVar,
 } from "../../bridge/nativeGraph";
 
 const MONO_FONT =
@@ -26,6 +28,7 @@ export function ScriptEditor({ nodeId, onClose }: Props) {
   const [loading, setLoading] = useState(true);
   const [result, setResult] = useState<ScriptCompileResult | null>(null);
   const [saving, setSaving] = useState(false);
+  const [vars, setVars] = useState<ScriptRuntimeVar[]>([]);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const lineNumRef = useRef<HTMLDivElement>(null);
@@ -37,6 +40,20 @@ export function ScriptEditor({ nodeId, onClose }: Props) {
       setSource(src);
       setLoading(false);
     });
+  }, [nodeId]);
+
+  // Poll runtime state at ~1Hz while editor is active
+  useEffect(() => {
+    let alive = true;
+    const tick = async () => {
+      if (!alive) return;
+      const r = await nativeScriptGetRuntimeState(nodeId);
+      if (!alive) return;
+      setVars(r.ok && r.vars ? r.vars : []);
+    };
+    void tick();
+    const id = setInterval(() => { void tick(); }, 1000);
+    return () => { alive = false; clearInterval(id); };
   }, [nodeId]);
 
   // Sync line numbers scroll with textarea scroll
@@ -174,6 +191,19 @@ export function ScriptEditor({ nodeId, onClose }: Props) {
           </>
         )}
       </div>
+
+      {/* Variables strip */}
+      {vars.length > 0 && (
+        <div className="px-3 py-1.5 bg-surface border-t border-white/5 shrink-0 max-h-32 overflow-y-auto" style={{ fontFamily: MONO_FONT }}>
+          <div className="text-[9px] font-bold text-text-secondary uppercase tracking-widest mb-1">Variables</div>
+          {vars.slice(0, 8).map(v => (
+            <div key={v.name} className="text-[10px] text-text-primary truncate">
+              <span className="text-text-secondary">{v.name}</span> = <span>{v.value.slice(0, 40)}</span>
+              <span className="text-text-dim ml-2">[{v.type}]</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Bottom hint */}
       <div className="px-3 py-1 text-[9px] text-text-dim border-t border-white/5 shrink-0 tabular-nums">

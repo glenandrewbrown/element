@@ -386,3 +386,26 @@ export async function nativeScriptCompile(nodeId: string): Promise<ScriptCompile
   }
 }
 
+export interface ScriptRuntimeVar {
+  name: string;
+  type: string;
+  value: string;
+}
+
+export interface ScriptRuntimeState {
+  ok: boolean;
+  vars?: ScriptRuntimeVar[];
+  error?: string;
+}
+
+export async function nativeScriptGetRuntimeState(
+  nodeId: string,
+): Promise<ScriptRuntimeState> {
+  const raw = await invokeElementNative("elementScriptGetRuntimeState", [nodeId]);
+  if (typeof raw === "string") {
+    try { return JSON.parse(raw) as ScriptRuntimeState; } catch { return { ok: false, error: "parse error" }; }
+  }
+  if (raw && typeof raw === "object") return raw as ScriptRuntimeState;
+  return { ok: false, error: "no response" };
+}
+

@@ -56,6 +56,12 @@ protected:
     inline bool wantsContext() const noexcept override { return true; }
     ParameterPtr getParameter (const PortDescription& port) override;
 
+public:
+    /** Returns the message-thread Lua state for inspection (e.g. variable snapshot).
+        NOTE: This is the message-thread state only. The audio-thread DSPScript has
+        its own environment that is NOT surfaced here — out of scope for this MVP. */
+    sol::state& getLuaState() noexcept { return lua; }
+
 private:
     sol::state lua;
     CodeDocument dspCode, edCode;
