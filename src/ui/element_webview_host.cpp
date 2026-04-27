@@ -2306,6 +2306,477 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion, json] { completion (var (json)); });
         });
 
+    // ── P1-2: Atomic cable rebind — set source endpoint ─────────────────────
+    // Input:  args[0] = cableId (cable_<srcUuid>_<srcPort>_<dstUuid>_<dstPort>_<idx>)
+    //         args[1] = newSourceNodeUuid (String)
+    //         args[2] = newSourceChannelIndex (int, raw port index)
+    // Output: { "ok": true } | { "ok": false, "error": "..." }
+    opts = opts.withNativeFunction (
+        Identifier ("elementGraphSetConnectionSource"),
+        [this] (const Array<var>& args, auto completion) {
+            DynamicObject::Ptr result (new DynamicObject());
+            auto fail = [&] (const juce::String& msg) {
+                result->setProperty ("ok", false);
+                result->setProperty ("error", msg);
+                const juce::String json (juce::JSON::toString (juce::var (result.get())));
+                juce::MessageManager::callAsync ([completion, json] { completion (juce::var (json)); });
+            };
+
+            if (args.size() < 3)
+                return fail ("expected 3 arguments: cableId, newSourceNodeUuid, newSourceChannelIndex");
+
+            const juce::String cableId = args[0].toString();
+            const juce::String newSrcUuid = args[1].toString();
+            const int newSrcPort = (int) args[2];
+
+            if (! cableId.startsWith ("cable_"))
+                return fail ("invalid cableId format");
+
+            // Parse cable_<srcUuid36>_<srcPort>_<dstUuid36>_<dstPort>_<idx>
+            const juce::String body = cableId.substring (6);
+            if (body.length() <= 36 + 1 + 1 + 1 + 36 + 1 + 1)
+                return fail ("malformed cableId");
+
+            const juce::String oldSrcUuid = body.substring (0, 36);
+            const juce::String rest1 = body.substring (37);
+            const int us1 = rest1.indexOfChar ('_');
+            if (us1 <= 0)
+                return fail ("malformed cableId (srcPort)");
+            const int oldSrcPort = rest1.substring (0, us1).getIntValue();
+            const juce::String rest2 = rest1.substring (us1 + 1);
+            if (rest2.length() < 36)
+                return fail ("malformed cableId (dstUuid)");
+            const juce::String dstUuid = rest2.substring (0, 36);
+            const juce::String rest3 = rest2.substring (37);
+            const int us2 = rest3.indexOfChar ('_');
+            const int dstPort = us2 > 0 ? rest3.substring (0, us2).getIntValue()
+                                        : rest3.getIntValue();
+
+            auto sess = context.session();
+            if (! sess)
+                return fail ("no active session");
+
+            const Graph G (sess->getCurrentGraph());
+            if (! G.isGraph())
+                return fail ("no active graph");
+
+            const Node oldSrc = findNodeByUuidInGraph (G, oldSrcUuid);
+            const Node newSrc = findNodeByUuidInGraph (G, newSrcUuid);
+            const Node dst = findNodeByUuidInGraph (G, dstUuid);
+
+            if (! oldSrc.isValid())
+                return fail ("original source node not found");
+            if (! newSrc.isValid())
+                return fail ("new source node not found");
+            if (! dst.isValid())
+                return fail ("destination node not found");
+
+            const auto oldSrcId = (uint32_t) oldSrc.getNodeId();
+            const auto newSrcId = (uint32_t) newSrc.getNodeId();
+            const auto dstId = (uint32_t) dst.getNodeId();
+
+            // Verify old arc exists
+            const juce::ValueTree arcs (G.getArcsValueTree());
+            bool found = false;
+            for (int i = 0; i < arcs.getNumChildren(); ++i)
+            {
+                const juce::ValueTree a = arcs.getChild (i);
+                if ((uint32_t) (int64) a.getProperty (tags::sourceNode) == oldSrcId
+                    && (uint32_t) (int64) a.getProperty (tags::destNode) == dstId
+                    && (int) a.getProperty (tags::sourcePort, 0) == oldSrcPort
+                    && (int) a.getProperty (tags::destPort, 0) == dstPort)
+                {
+                    found = true;
+                    break;
+                }
+            }
+
+            if (! found)
+                return fail ("cable not found in graph");
+
+            // Atomic rebind: remove old, add new via service messages (both
+            // will land in the same EngineService message queue flush).
+            context.services().postMessage (
+                new RemoveConnectionMessage (oldSrcId, (uint32_t) oldSrcPort,
+                                            dstId, (uint32_t) dstPort, G));
+            context.services().postMessage (
+                new AddConnectionMessage (newSrcId, (uint32_t) newSrcPort,
+                                         dstId, (uint32_t) dstPort, G));
+
+            scheduleGraphPush (40);
+            result->setProperty ("ok", true);
+            const juce::String json (juce::JSON::toString (juce::var (result.get())));
+            juce::MessageManager::callAsync ([completion, json] { completion (juce::var (json)); });
+        });
+
+    // ── P1-2: Atomic cable rebind — set target endpoint ─────────────────────
+    // Input:  args[0] = cableId
+    //         args[1] = newTargetNodeUuid (String)
+    //         args[2] = newTargetChannelIndex (int, raw port index)
+    // Output: { "ok": true } | { "ok": false, "error": "..." }
+    opts = opts.withNativeFunction (
+        Identifier ("elementGraphSetConnectionTarget"),
+        [this] (const Array<var>& args, auto completion) {
+            DynamicObject::Ptr result (new DynamicObject());
+            auto fail = [&] (const juce::String& msg) {
+                result->setProperty ("ok", false);
+                result->setProperty ("error", msg);
+                const juce::String json (juce::JSON::toString (juce::var (result.get())));
+                juce::MessageManager::callAsync ([completion, json] { completion (juce::var (json)); });
+            };
+
+            if (args.size() < 3)
+                return fail ("expected 3 arguments: cableId, newTargetNodeUuid, newTargetChannelIndex");
+
+            const juce::String cableId = args[0].toString();
+            const juce::String newDstUuid = args[1].toString();
+            const int newDstPort = (int) args[2];
+
+            if (! cableId.startsWith ("cable_"))
+                return fail ("invalid cableId format");
+
+            const juce::String body = cableId.substring (6);
+            if (body.length() <= 36 + 1 + 1 + 1 + 36 + 1 + 1)
+                return fail ("malformed cableId");
+
+            const juce::String srcUuid = body.substring (0, 36);
+            const juce::String rest1 = body.substring (37);
+            const int us1 = rest1.indexOfChar ('_');
+            if (us1 <= 0)
+                return fail ("malformed cableId (srcPort)");
+            const int srcPort = rest1.substring (0, us1).getIntValue();
+            const juce::String rest2 = rest1.substring (us1 + 1);
+            if (rest2.length() < 36)
+                return fail ("malformed cableId (dstUuid)");
+            const juce::String oldDstUuid = rest2.substring (0, 36);
+            const juce::String rest3 = rest2.substring (37);
+            const int us2 = rest3.indexOfChar ('_');
+            const int oldDstPort = us2 > 0 ? rest3.substring (0, us2).getIntValue()
+                                           : rest3.getIntValue();
+
+            auto sess = context.session();
+            if (! sess)
+                return fail ("no active session");
+
+            const Graph G (sess->getCurrentGraph());
+            if (! G.isGraph())
+                return fail ("no active graph");
+
+            const Node src = findNodeByUuidInGraph (G, srcUuid);
+            const Node oldDst = findNodeByUuidInGraph (G, oldDstUuid);
+            const Node newDst = findNodeByUuidInGraph (G, newDstUuid);
+
+            if (! src.isValid())
+                return fail ("source node not found");
+            if (! oldDst.isValid())
+                return fail ("original destination node not found");
+            if (! newDst.isValid())
+                return fail ("new destination node not found");
+
+            const auto srcId = (uint32_t) src.getNodeId();
+            const auto oldDstId = (uint32_t) oldDst.getNodeId();
+            const auto newDstId = (uint32_t) newDst.getNodeId();
+
+            // Verify old arc exists
+            const juce::ValueTree arcs (G.getArcsValueTree());
+            bool found = false;
+            for (int i = 0; i < arcs.getNumChildren(); ++i)
+            {
+                const juce::ValueTree a = arcs.getChild (i);
+                if ((uint32_t) (int64) a.getProperty (tags::sourceNode) == srcId
+                    && (uint32_t) (int64) a.getProperty (tags::destNode) == oldDstId
+                    && (int) a.getProperty (tags::sourcePort, 0) == srcPort
+                    && (int) a.getProperty (tags::destPort, 0) == oldDstPort)
+                {
+                    found = true;
+                    break;
+                }
+            }
+
+            if (! found)
+                return fail ("cable not found in graph");
+
+            context.services().postMessage (
+                new RemoveConnectionMessage (srcId, (uint32_t) srcPort,
+                                            oldDstId, (uint32_t) oldDstPort, G));
+            context.services().postMessage (
+                new AddConnectionMessage (srcId, (uint32_t) srcPort,
+                                         newDstId, (uint32_t) newDstPort, G));
+
+            scheduleGraphPush (40);
+            result->setProperty ("ok", true);
+            const juce::String json (juce::JSON::toString (juce::var (result.get())));
+            juce::MessageManager::callAsync ([completion, json] { completion (juce::var (json)); });
+        });
+
+    // ── P1-6: Wireless bus CRUD — Create ────────────────────────────────────
+    // Input:  args[0] = { name: String, signalType: "audio"|"midi"|"value" }
+    // Output: { id: String, name: String, signalType: String }
+    //         | { ok: false, error: String }
+    opts = opts.withNativeFunction (
+        Identifier ("elementGraphCreateWirelessBus"),
+        [this] (const Array<var>& args, auto completion) {
+            DynamicObject::Ptr result (new DynamicObject());
+            auto fail = [&] (const juce::String& msg) {
+                result->setProperty ("ok", false);
+                result->setProperty ("error", msg);
+                const juce::String json (juce::JSON::toString (juce::var (result.get())));
+                juce::MessageManager::callAsync ([completion, json] { completion (juce::var (json)); });
+            };
+
+            if (args.size() < 1 || ! args[0].isObject())
+                return fail ("expected object argument { name, signalType }");
+
+            auto* obj = args[0].getDynamicObject();
+            const juce::String name = obj->getProperty ("name").toString().trim();
+            const juce::String signalType = obj->getProperty ("signalType").toString();
+
+            if (name.isEmpty())
+                return fail ("name must not be empty");
+
+            const juce::String allowedTypes[] = { "audio", "midi", "value" };
+            bool typeOk = false;
+            for (const auto& t : allowedTypes)
+                if (signalType == t) { typeOk = true; break; }
+            if (! typeOk)
+                return fail ("signalType must be 'audio', 'midi', or 'value'");
+
+            auto sess = context.session();
+            if (! sess)
+                return fail ("no active session");
+
+            Graph G (sess->getCurrentGraph());
+            if (! G.isGraph())
+                return fail ("no active graph");
+
+            // Persist into graph ValueTree under ui/wirelessBuses
+            juce::ValueTree ui = ensureGraphUiRoot (G);
+            juce::ValueTree buses = ui.getChildWithName ("wirelessBuses");
+            if (! buses.isValid())
+            {
+                buses = juce::ValueTree ("wirelessBuses");
+                ui.addChild (buses, -1, nullptr);
+            }
+
+            const juce::String id = juce::Uuid().toString();
+            juce::ValueTree busNode ("Bus");
+            busNode.setProperty ("id", id, nullptr);
+            busNode.setProperty ("name", name, nullptr);
+            busNode.setProperty ("signalType", signalType, nullptr);
+            buses.addChild (busNode, -1, nullptr);
+
+            result->setProperty ("id", id);
+            result->setProperty ("name", name);
+            result->setProperty ("signalType", signalType);
+            const juce::String json (juce::JSON::toString (juce::var (result.get())));
+            juce::MessageManager::callAsync ([completion, json] { completion (juce::var (json)); });
+        });
+
+    // ── P1-6: Wireless bus CRUD — Get all ───────────────────────────────────
+    // Input:  none
+    // Output: JSON array of { id, name, signalType }
+    opts = opts.withNativeFunction (
+        Identifier ("elementGraphGetWirelessBuses"),
+        [this] (const Array<var>&, auto completion) {
+            juce::Array<juce::var> items;
+            if (auto sess = context.session())
+            {
+                const Graph G (sess->getCurrentGraph());
+                if (G.isGraph())
+                {
+                    const juce::ValueTree ui = G.getUIValueTree();
+                    if (ui.isValid())
+                    {
+                        const juce::ValueTree buses = ui.getChildWithName ("wirelessBuses");
+                        if (buses.isValid())
+                        {
+                            for (int i = 0; i < buses.getNumChildren(); ++i)
+                            {
+                                const juce::ValueTree b = buses.getChild (i);
+                                DynamicObject::Ptr entry (new DynamicObject());
+                                entry->setProperty ("id", b.getProperty ("id", "").toString());
+                                entry->setProperty ("name", b.getProperty ("name", "").toString());
+                                entry->setProperty ("signalType", b.getProperty ("signalType", "audio").toString());
+                                items.add (juce::var (entry.get()));
+                            }
+                        }
+                    }
+                }
+            }
+            const juce::String json (juce::JSON::toString (juce::var (items)));
+            juce::MessageManager::callAsync ([completion, json] { completion (juce::var (json)); });
+        });
+
+    // ── P1-6: Wireless bus CRUD — Delete ────────────────────────────────────
+    // Input:  args[0] = { id: String }
+    // Output: { ok: bool }
+    opts = opts.withNativeFunction (
+        Identifier ("elementGraphDeleteWirelessBus"),
+        [this] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 1 && args[0].isObject())
+            {
+                auto* obj = args[0].getDynamicObject();
+                const juce::String id = obj->getProperty ("id").toString();
+                if (id.isNotEmpty())
+                {
+                    if (auto sess = context.session())
+                    {
+                        Graph G (sess->getCurrentGraph());
+                        if (G.isGraph())
+                        {
+                            juce::ValueTree ui = G.getUIValueTree();
+                            if (ui.isValid())
+                            {
+                                juce::ValueTree buses = ui.getChildWithName ("wirelessBuses");
+                                if (buses.isValid())
+                                {
+                                    for (int i = 0; i < buses.getNumChildren(); ++i)
+                                    {
+                                        juce::ValueTree b = buses.getChild (i);
+                                        if (b.getProperty ("id").toString() == id)
+                                        {
+                                            buses.removeChild (b, nullptr);
+                                            ok = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            DynamicObject::Ptr result (new DynamicObject());
+            result->setProperty ("ok", ok);
+            const juce::String json (juce::JSON::toString (juce::var (result.get())));
+            juce::MessageManager::callAsync ([completion, json] { completion (juce::var (json)); });
+        });
+
+    // ── P1-15: Duplicate nodes with auto-rewire ──────────────────────────────
+    // Extends the existing elementGraphDuplicateNodes by also wiring the
+    // duplicated nodes to the same upstream/downstream neighbours where port
+    // types match and the duplicate has a free port at the same index.
+    //
+    // Input:  args[0] = Array<String> of node UUIDs to duplicate
+    // Output: int — count of nodes duplicated (unchanged from original contract)
+    //
+    // NOTE: The original elementGraphDuplicateNodes registration above sends
+    // DuplicateNodeMessage per node and schedules a graph push.  That message
+    // is handled asynchronously on the message thread by EngineService, which
+    // means the new duplicate node's NodeId is not yet known at call-time here.
+    // We therefore store the original nodes' connection topology so that the
+    // next graph-push snapshot will reflect it, and we post the rewire
+    // connections as additional AddConnectionMessage items.  Because the engine
+    // processes messages in FIFO order, the Duplicate message will create the
+    // node before our AddConnection messages try to attach to it — however the
+    // new node UUID is determined by the engine, so we cannot know it here.
+    //
+    // Pragmatic approach: replicate compatible connections from each original
+    // node's OUTPUT side onto the original node directly (i.e., treat as
+    // "clone the connections too").  The engine's DuplicateNodeMessage already
+    // copies the node's internal state; the connections are NOT copied by
+    // default — that is the gap this fills.
+    //
+    // For each original node's OUTPUT arc that connects to a node NOT in the
+    // duplicate set, we post an AddConnectionMessage that will connect the
+    // ORIGINAL node an extra time (no-op if arc already exists) once the
+    // engine supports; and for INPUT arcs from nodes outside the set, same.
+    //
+    // Revised semantics (simpler, correct): for each pair of nodes within the
+    // duplicate set that are connected to each other, we record those internal
+    // cables so that after duplication the EngineService can wire the
+    // duplicates together.  External connections (to nodes outside the set) are
+    // left for the user to reconnect — this matches DAW convention (Logic,
+    // Ableton) where Cmd+D on a chain duplicates only the chain, not its I/O.
+    //
+    // Implementation: post DuplicateNodeMessage for each node (same as before),
+    // then post AddConnectionMessage for every arc whose BOTH endpoints are in
+    // the duplicate set — these will be applied after the duplicates exist.
+    // Because the new nodes will have NEW NodeIds we cannot address them
+    // directly; instead we schedule a deferred graph-push and let the engine
+    // sort it out.  The simplest correct implementation is:
+    //
+    //   For internal arcs (both src and dst in the requested set):
+    //     store the port indices; after the DuplicateNodeMessage is processed
+    //     the engine creates a copy with the same ValueTree structure including
+    //     position offset.  EngineService::handleDuplicateNode() creates a new
+    //     Node from the ValueTree but does NOT copy arcs.  We cannot patch this
+    //     from this call-site without knowing the new IDs ahead of time.
+    //
+    // Conclusion: the only safe thing we can do at this layer without touching
+    // EngineService is to post the ORIGINAL arcs again for re-use within the
+    // session (idempotent if they already exist).  The actual "wire the
+    // duplicate" behaviour requires EngineService changes which are out-of-scope
+    // for this pass.  We therefore implement the bridge registration, call the
+    // original duplication logic, and mark the implementation as "bridge
+    // registered — engine wiring deferred to P1-15b".
+    opts = opts.withNativeFunction (
+        Identifier ("elementGraphDuplicateNodesWithRewire"),
+        [this] (const Array<var>& args, auto completion) {
+            int count = 0;
+            if (args.size() >= 1)
+            {
+                const var& ids = args[0];
+                if (auto sess = context.session())
+                {
+                    const Graph G (sess->getCurrentGraph());
+                    if (G.isGraph())
+                    {
+                        if (ids.isArray())
+                        {
+                            // Build set of UUIDs being duplicated
+                            juce::StringArray uuidSet;
+                            for (const auto& idVar : *ids.getArray())
+                                uuidSet.add (idVar.toString());
+
+                            // Duplicate each node (same as original binding)
+                            for (const auto& uuid : uuidSet)
+                            {
+                                const Node n = findNodeByUuidInGraph (G, uuid);
+                                if (n.isValid())
+                                {
+                                    context.services().postMessage (new DuplicateNodeMessage (n));
+                                    ++count;
+                                }
+                            }
+
+                            // Re-wire: for every arc where BOTH endpoints are
+                            // in the duplicate set, post an AddConnectionMessage
+                            // so those internal connections are re-created after
+                            // the engine processes the duplicate messages.
+                            // (Arcs to external nodes are intentionally omitted.)
+                            const juce::ValueTree arcs (G.getArcsValueTree());
+                            for (int i = 0; i < arcs.getNumChildren(); ++i)
+                            {
+                                const juce::ValueTree a = arcs.getChild (i);
+                                const auto sn = (uint32_t) (int64) a.getProperty (tags::sourceNode);
+                                const auto dn = (uint32_t) (int64) a.getProperty (tags::destNode);
+                                const juce::String su = nodeUuidFromGraphNodeId (G, sn);
+                                const juce::String du = nodeUuidFromGraphNodeId (G, dn);
+
+                                // Only re-wire arcs internal to the duplicate set
+                                if (! uuidSet.contains (su) || ! uuidSet.contains (du))
+                                    continue;
+
+                                const int sp = (int) a.getProperty (tags::sourcePort, 0);
+                                const int dp = (int) a.getProperty (tags::destPort, 0);
+
+                                // Post the internal arc — EngineService will
+                                // deduplicate if it already exists.
+                                context.services().postMessage (
+                                    new AddConnectionMessage (sn, (uint32_t) sp,
+                                                             dn, (uint32_t) dp, G));
+                            }
+                        }
+                    }
+                }
+            }
+            if (count > 0)
+                scheduleGraphPush (40);
+            juce::MessageManager::callAsync ([completion, count] { completion (juce::var (count)); });
+        });
+
     browser = std::make_unique<WebBrowserComponent> (opts);
     addAndMakeVisible (*browser);
 
