@@ -9,6 +9,11 @@ import type { CableData } from "../../data/types";
 import { useCableMeterStore } from "../../stores/useCableMeterStore";
 import { useAppStore } from "../../stores/useAppStore";
 import { useBusStore } from "../../stores/useBusStore";
+import { useGraphStore } from "../../stores/useGraphStore";
+
+// Per-port lateral offset between parallel manhattan cables (px).
+// Value chosen so cables remain visually distinct without crowding adjacent ports.
+const MANHATTAN_FAN_PX = 18;
 
 // ── Signal type → stroke colour ──
 
@@ -37,6 +42,7 @@ const pulseKeyframes = `
 
 function CableComponent({
   id,
+  source,
   sourceX,
   sourceY,
   targetX,
@@ -60,6 +66,21 @@ function CableComponent({
   const strokeOpacity = selected ? 1 : 0.4 + amp * 0.6;
   const glowOpacity = 0.05 + amp * 0.4;
 
+  // Manhattan fan-out: when the source block has multiple output ports, splay
+  // each port's cable to a different vertical trunk so they don't overlap on
+  // the orthogonal mid-segment. Single-output blocks pass through unchanged.
+  const fanOffset = useGraphStore((s) => {
+    if (routing !== "manhattan") return 0;
+    const node = s.nodes.find((n) => n.id === source);
+    if (!node) return 0;
+    const outPorts = node.ports.filter((p) => p.direction === "output");
+    if (outPorts.length <= 1) return 0;
+    const idx = outPorts.findIndex((p) => p.id === d?.sourcePort);
+    if (idx < 0) return 0;
+    // Center the fan around 0 so the visual splay is symmetric across the bundle.
+    return (idx - (outPorts.length - 1) / 2) * MANHATTAN_FAN_PX;
+  });
+
   const [edgePath] =
     routing === "bezier"
       ? getBezierPath({
@@ -78,6 +99,8 @@ function CableComponent({
           sourcePosition,
           targetPosition,
           borderRadius: 8,
+          centerX:
+            fanOffset !== 0 ? (sourceX + targetX) / 2 + fanOffset : undefined,
         });
 
   if (isWireless) {

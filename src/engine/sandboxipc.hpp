@@ -27,6 +27,12 @@ namespace element {
 /** Maximum buffer size supported in sandbox IPC. */
 #define EL_SANDBOX_MAX_BUFFER_SIZE 8192
 
+/** Maximum parameters reported by a sandboxed plugin to the host.
+    Plugins above this cap are truncated by the worker and parsed payloads
+    above this cap are rejected — defends the host against buggy or
+    malicious plugins from triggering unbounded host-side allocation. */
+#define EL_SANDBOX_MAX_PARAMETERS 4096
+
 //==============================================================================
 /** Message types for sandbox control IPC. */
 enum class SandboxMessageType : uint32_t
@@ -55,6 +61,7 @@ enum class SandboxMessageType : uint32_t
     LatencyChanged,     // Plugin latency changed
     Heartbeat,          // Worker is alive
     Error,              // Error message
+    PluginInfo,         // Plugin metadata (param count + names + I/O config) sent after PluginLoaded
 };
 
 //==============================================================================
@@ -184,6 +191,104 @@ struct LatencyPayload
 {
     int32_t latencySamples;
 };
+
+//==============================================================================
+/** Plugin metadata payload — sent worker → host immediately after PluginLoaded.
+    Followed in the wire payload by `numParameters` length-prefixed UTF-8 names:
+    each name has a `uint32_t byteLength` followed by `byteLength` bytes.
+    Use createPluginInfoMessage() / parsePluginInfoMessage() to (de)serialize. */
+struct PluginInfoPayload
+{
+    uint32_t numParameters { 0 };
+    uint32_t numInputChannels { 0 };
+    uint32_t numOutputChannels { 0 };
+    uint8_t isInstrument { 0 };
+    uint8_t acceptsMidi { 0 };
+    uint8_t producesMidi { 0 };
+    uint8_t reserved { 0 };
+    uint32_t paramNamesLength { 0 };  ///< total bytes of trailing name table
+};
+
+/** Serialize a PluginInfoPayload + parameter names into a transferable block.
+    Names beyond EL_SANDBOX_MAX_PARAMETERS are silently dropped — the worker is
+    expected to apply the same cap before calling this helper. */
+inline juce::MemoryBlock createPluginInfoMessage (const PluginInfoPayload& info,
+                                                   const juce::StringArray& names)
+{
+    // Cap names at EL_SANDBOX_MAX_PARAMETERS — defensive duplicate of the
+    // worker-side cap; ensures bounded allocation even if the caller forgot.
+    const int safeCount = juce::jmin (names.size(), (int) EL_SANDBOX_MAX_PARAMETERS);
+
+    // First pass: compute total bytes for the trailing name table.
+    uint32_t namesBytes = 0;
+    for (int i = 0; i < safeCount; ++i)
+    {
+        const auto utf8Len = (uint32_t) names[i].getNumBytesAsUTF8();
+        namesBytes += (uint32_t) sizeof (uint32_t) + utf8Len;
+    }
+
+    PluginInfoPayload header = info;
+    header.numParameters = (uint32_t) safeCount;
+    header.paramNamesLength = namesBytes;
+
+    juce::MemoryBlock payload (sizeof (PluginInfoPayload) + namesBytes, true);
+    auto* dst = static_cast<uint8_t*> (payload.getData());
+    std::memcpy (dst, &header, sizeof (PluginInfoPayload));
+
+    uint8_t* cursor = dst + sizeof (PluginInfoPayload);
+    for (int i = 0; i < safeCount; ++i)
+    {
+        const auto utf8 = names[i].toRawUTF8();
+        const uint32_t len = (uint32_t) names[i].getNumBytesAsUTF8();
+        std::memcpy (cursor, &len, sizeof (len));
+        cursor += sizeof (len);
+        std::memcpy (cursor, utf8, len);
+        cursor += len;
+    }
+
+    return payload;
+}
+
+/** Parse a PluginInfoPayload + names. Returns false on any out-of-bounds read,
+    on a numParameters > EL_SANDBOX_MAX_PARAMETERS, or on a paramNamesLength
+    that doesn't match the actual trailing buffer size. */
+inline bool parsePluginInfoMessage (const void* payload, uint32_t payloadSize,
+                                     PluginInfoPayload& out, juce::StringArray& names)
+{
+    names.clear();
+    if (payload == nullptr || payloadSize < sizeof (PluginInfoPayload))
+        return false;
+
+    std::memcpy (&out, payload, sizeof (PluginInfoPayload));
+
+    if (out.numParameters > EL_SANDBOX_MAX_PARAMETERS)
+        return false;
+
+    if (payloadSize < sizeof (PluginInfoPayload) + out.paramNamesLength)
+        return false;
+
+    const auto* cursor = static_cast<const uint8_t*> (payload) + sizeof (PluginInfoPayload);
+    const auto* end = cursor + out.paramNamesLength;
+
+    for (uint32_t i = 0; i < out.numParameters; ++i)
+    {
+        if (cursor + sizeof (uint32_t) > end)
+            return false;
+
+        uint32_t len = 0;
+        std::memcpy (&len, cursor, sizeof (uint32_t));
+        cursor += sizeof (uint32_t);
+
+        if (cursor + len > end)
+            return false;
+
+        names.add (juce::String::fromUTF8 (reinterpret_cast<const char*> (cursor), (int) len));
+        cursor += len;
+    }
+
+    // Strict: any leftover bytes in the names region are an encoding error.
+    return cursor == end;
+}
 
 //==============================================================================
 /**

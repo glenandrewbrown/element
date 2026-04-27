@@ -8,6 +8,7 @@
 #include "scripting/bindings.hpp"
 #include <element/processor.hpp>
 
+using namespace juce;
 using namespace element;
 namespace element {
 

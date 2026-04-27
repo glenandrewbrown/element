@@ -42,6 +42,44 @@ export function useKeyboard({ onToggleCommandPalette }: UseKeyboardOptions) {
       const shift = e.shiftKey;
       const key = e.key;
 
+      // ── Cmd+Shift+L/R/T/B/H/V — multi-select alignment & distribute (P1-13) ──
+      // Handled BEFORE the main `switch(key)` so we get first refusal on
+      // Cmd+Shift+R (which would otherwise hit the plain "r" rename case)
+      // and Cmd+Shift+V (which would otherwise hit the plain "v" paste case).
+      if (meta && shift) {
+        const lower = key.toLowerCase();
+        if (
+          lower === "l" ||
+          lower === "r" ||
+          lower === "t" ||
+          lower === "b" ||
+          lower === "h" ||
+          lower === "v"
+        ) {
+          const selected = reactFlow
+            .getNodes()
+            .filter((n) => n.selected && n.type === "block")
+            .map((n) => n.id);
+          if (selected.length < 2) {
+            // Consume the chord so the browser default (Safari history etc.)
+            // doesn't fire, but otherwise no-op.
+            if (selected.length > 0) e.preventDefault();
+            return;
+          }
+          e.preventDefault();
+          const store = useGraphStore.getState();
+          if (lower === "l") store.alignSelectedNodes("left", selected);
+          else if (lower === "r") store.alignSelectedNodes("right", selected);
+          else if (lower === "t") store.alignSelectedNodes("top", selected);
+          else if (lower === "b") store.alignSelectedNodes("bottom", selected);
+          else if (lower === "h")
+            store.distributeSelectedNodes("horizontal", selected);
+          else if (lower === "v")
+            store.distributeSelectedNodes("vertical", selected);
+          return;
+        }
+      }
+
       // ── Cmd/Ctrl combos ──
 
       if (meta) {

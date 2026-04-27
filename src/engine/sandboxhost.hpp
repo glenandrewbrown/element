@@ -59,7 +59,7 @@ public:
         virtual void sandboxPluginLoaded (SandboxHost*) {}
 
         /** Called when plugin loading fails. */
-        virtual void sandboxPluginLoadFailed (SandboxHost*, const juce::String& error) {}
+        virtual void sandboxPluginLoadFailed (SandboxHost*, const juce::String& error) { juce::ignoreUnused (error); }
 
         /** Called when sandbox worker crashes. */
         virtual void sandboxCrashed (SandboxHost*) {}
@@ -68,7 +68,20 @@ public:
         virtual void sandboxRestarted (SandboxHost*) {}
 
         /** Called when plugin latency changes. */
-        virtual void sandboxLatencyChanged (SandboxHost*, int newLatency) {}
+        virtual void sandboxLatencyChanged (SandboxHost*, int newLatency) { juce::ignoreUnused (newLatency); }
+
+        /** Called when the worker delivers PluginInfo (parameter list, port config).
+            Fires after sandboxPluginLoaded. Read getPluginInfo() / getParameterName(i)
+            on the SandboxHost to consume the payload. */
+        virtual void sandboxPluginInfo (SandboxHost*) {}
+
+        /** Called when the worker reports a parameter value change (e.g. plugin
+            internal automation). Use to update host-side proxies + UI without
+            echoing back to the worker. */
+        virtual void sandboxParameterChanged (SandboxHost*, int index, float value)
+        {
+            juce::ignoreUnused (index, value);
+        }
     };
 
     //==========================================================================
@@ -136,6 +149,22 @@ public:
     int getLatencySamples() const { return latencySamples.load(); }
 
     //==========================================================================
+    /** Get the most recent PluginInfo payload from the worker.
+        Empty/zero values until sandboxPluginInfo() listener has fired. */
+    const PluginInfoPayload& getPluginInfo() const noexcept { return pluginInfo; }
+
+    /** Get the cached parameter count from the latest PluginInfo. */
+    int getParameterCount() const noexcept { return (int) pluginInfo.numParameters; }
+
+    /** Get a parameter name by index. Returns empty string if out of range. */
+    juce::String getParameterName (int index) const
+    {
+        return juce::isPositiveAndBelow (index, parameterNames.size())
+                   ? parameterNames[index]
+                   : juce::String();
+    }
+
+    //==========================================================================
     /** Save plugin state. Blocking call. */
     juce::MemoryBlock getPluginState();
 
@@ -164,14 +193,18 @@ protected:
     /** Handle worker process connection lost. */
     void handleConnectionLost() override;
 
+    /** Send a control-pipe message to the worker.
+        Marked protected + virtual so test stubs can intercept outbound IPC
+        without needing to launch a real worker subprocess. */
+    virtual void sendMessage (SandboxMessageType type, const void* payload = nullptr,
+                              uint32_t payloadSize = 0);
+
 private:
     //==========================================================================
     void timerCallback() override;
 
     bool launchWorkerProcess();
     void handleWorkerMessage (const SandboxMessageHeader& header, const void* payload);
-    void sendMessage (SandboxMessageType type, const void* payload = nullptr,
-                      uint32_t payloadSize = 0);
 
     /** Wait for response from worker. Uses mutex+condvar.
         WARNING: NEVER call from the audio thread. Use only for control messages
@@ -192,6 +225,10 @@ private:
 
     juce::PluginDescription loadedPlugin;
     juce::MemoryBlock lastKnownState;
+
+    // Cached PluginInfo from worker (populated when PluginInfo IPC arrives).
+    PluginInfoPayload pluginInfo {};
+    juce::StringArray parameterNames;
 
     // Audio processing — shared memory backed
     SandboxSharedMemory sharedMemory;
@@ -597,9 +634,37 @@ inline void SandboxHost::handleWorkerMessage (const SandboxMessageHeader& header
         case SandboxMessageType::ParameterChanged:
             if (payload && header.payloadSize >= sizeof (ParameterChangePayload))
             {
-                // Forward parameter change to listeners if needed
+                ParameterChangePayload pc;
+                std::memcpy (&pc, payload, sizeof (pc));
+                const int idx = static_cast<int> (pc.parameterIndex);
+                if (juce::isPositiveAndBelow (idx, (int) pluginInfo.numParameters))
+                {
+                    listeners.call (&Listener::sandboxParameterChanged, this, idx, pc.value);
+                }
+                else
+                {
+                    juce::Logger::writeToLog ("[sandbox] Ignoring out-of-range ParameterChanged index "
+                                              + juce::String (idx));
+                }
             }
             break;
+
+        case SandboxMessageType::PluginInfo:
+        {
+            PluginInfoPayload info;
+            juce::StringArray names;
+            if (parsePluginInfoMessage (payload, header.payloadSize, info, names))
+            {
+                pluginInfo = info;
+                parameterNames = std::move (names);
+                listeners.call (&Listener::sandboxPluginInfo, this);
+            }
+            else
+            {
+                juce::Logger::writeToLog ("[sandbox] Rejected malformed PluginInfo payload");
+            }
+            break;
+        }
 
         case SandboxMessageType::StateData:
             {

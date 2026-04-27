@@ -26,6 +26,8 @@
 
 #include "common.hpp"
 
+using namespace juce;
+
 namespace element {
 
 class MidiRouterMatrix : public PatchMatrixComponent

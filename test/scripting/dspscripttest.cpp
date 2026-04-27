@@ -8,6 +8,7 @@
 #include "scripting/scriptloader.hpp"
 #include "testutil.hpp"
 
+using namespace juce;
 using namespace element;
 
 BOOST_AUTO_TEST_SUITE (DSPScriptTest)

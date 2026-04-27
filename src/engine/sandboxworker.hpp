@@ -387,6 +387,35 @@ inline void SandboxWorker::handleLoadPlugin (const void* payload, uint32_t paylo
 
     juce::Logger::writeToLog ("Plugin loaded successfully: " + desc.name);
     sendResponse (SandboxMessageType::PluginLoaded);
+
+    // Send PluginInfo so the host can build parameter proxies + correct ports.
+    // Truncate parameter list at the IPC cap to bound the host-side allocation.
+    {
+        const auto& jParams = plugin->getParameters();
+        const int paramCount = juce::jmin (jParams.size(), (int) EL_SANDBOX_MAX_PARAMETERS);
+        if (jParams.size() > paramCount)
+            juce::Logger::writeToLog ("[sandbox-worker] Truncated " + juce::String (jParams.size())
+                                       + " plugin parameters to cap " + juce::String (paramCount));
+
+        juce::StringArray paramNames;
+        paramNames.ensureStorageAllocated (paramCount);
+        for (int i = 0; i < paramCount; ++i)
+            paramNames.add (jParams[i]->getName (256));
+
+        PluginInfoPayload info;
+        info.numParameters = (uint32_t) paramCount;
+        info.numInputChannels = (uint32_t) plugin->getTotalNumInputChannels();
+        info.numOutputChannels = (uint32_t) plugin->getTotalNumOutputChannels();
+        info.isInstrument = loadedDescription.isInstrument ? 1 : 0;
+        info.acceptsMidi = plugin->acceptsMidi() ? 1 : 0;
+        info.producesMidi = plugin->producesMidi() ? 1 : 0;
+        info.reserved = 0;
+
+        auto block = createPluginInfoMessage (info, paramNames);
+        sendResponse (SandboxMessageType::PluginInfo,
+                      block.getData(),
+                      static_cast<uint32_t> (block.getSize()));
+    }
 }
 
 inline void SandboxWorker::handleUnloadPlugin()

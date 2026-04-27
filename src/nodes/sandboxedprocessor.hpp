@@ -6,6 +6,7 @@
 #include <element/processor.hpp>
 
 #include "engine/sandboxhost.hpp"
+#include "engine/sandboxparameter.hpp"
 #include "engine/graphnode.hpp"
 
 namespace element {
@@ -75,6 +76,8 @@ public:
     void sandboxCrashed (SandboxHost*) override;
     void sandboxRestarted (SandboxHost*) override;
     void sandboxLatencyChanged (SandboxHost*, int newLatency) override;
+    void sandboxPluginInfo (SandboxHost*) override;
+    void sandboxParameterChanged (SandboxHost*, int index, float value) override;
 
 protected:
     ParameterPtr getParameter (const PortDescription& port) override;
@@ -294,26 +297,65 @@ inline void SandboxedProcessorNode::setupPorts()
     PortList newPorts;
     int index = 0;
 
-    // Add audio inputs (assume stereo for now)
-    for (int ch = 0; ch < numInputChannels; ++ch)
+    // Pull I/O config + MIDI flags from PluginInfo when available; fall back
+    // to the cached numInputChannels/numOutputChannels (set in prepareToRender)
+    // when PluginInfo has not arrived yet (e.g. very first setupPorts before load).
+    int audioIn = numInputChannels;
+    int audioOut = numOutputChannels;
+    bool acceptsMidi = true;
+    bool producesMidi = true;
+
+    if (sandbox && sandbox->getParameterCount() >= 0)
+    {
+        const auto& info = sandbox->getPluginInfo();
+        if (info.numInputChannels > 0 || info.numOutputChannels > 0)
+        {
+            audioIn = juce::jmax (2, (int) info.numInputChannels);
+            audioOut = juce::jmax (2, (int) info.numOutputChannels);
+        }
+        // Use authoritative MIDI flags only if PluginInfo has been received
+        // (numParameters > 0 OR numInputChannels > 0 — either signal indicates
+        // a non-default payload).
+        if (info.numParameters > 0 || info.numInputChannels > 0
+            || info.numOutputChannels > 0)
+        {
+            acceptsMidi = info.acceptsMidi != 0;
+            producesMidi = info.producesMidi != 0;
+        }
+    }
+
+    for (int ch = 0; ch < audioIn; ++ch)
     {
         juce::String name = "Input " + juce::String (ch + 1);
         juce::String symbol = "audio_in_" + juce::String (ch + 1);
         newPorts.add (PortType::Audio, index++, ch, symbol, name, true);
     }
 
-    // Add audio outputs
-    for (int ch = 0; ch < numOutputChannels; ++ch)
+    for (int ch = 0; ch < audioOut; ++ch)
     {
         juce::String name = "Output " + juce::String (ch + 1);
         juce::String symbol = "audio_out_" + juce::String (ch + 1);
         newPorts.add (PortType::Audio, index++, ch, symbol, name, false);
     }
 
-    // Add MIDI if plugin accepts it
-    // TODO: Get this info from plugin description
-    newPorts.add (PortType::Midi, index++, 0, "midi_in_0", "MIDI", true);
-    newPorts.add (PortType::Midi, index++, 0, "midi_out_0", "MIDI", false);
+    if (acceptsMidi)
+        newPorts.add (PortType::Midi, index++, 0, "midi_in_0", "MIDI In", true);
+    if (producesMidi)
+        newPorts.add (PortType::Midi, index++, 0, "midi_out_0", "MIDI Out", false);
+
+    // One Control input port per plugin parameter. Channel = parameter index
+    // so getParameter(port).channel maps directly into params[].
+    for (int i = 0; i < params.size(); ++i)
+    {
+        auto* sp = dynamic_cast<SandboxParameter*> (params.getObjectPointer (i));
+        const juce::String paramName = sp != nullptr ? sp->getName (64)
+                                                      : juce::String ("Param ") + juce::String (i);
+        const juce::String symbol = "param_" + juce::String (i);
+        newPorts.add (PortType::Control, index, i, symbol, paramName, true);
+        if (sp != nullptr)
+            sp->setPortIndex (index);
+        ++index;
+    }
 
     setPorts (newPorts);
 }
@@ -330,8 +372,12 @@ inline void SandboxedProcessorNode::getPluginDescription (juce::PluginDescriptio
 
 inline ParameterPtr SandboxedProcessorNode::getParameter (const PortDescription& port)
 {
-    // TODO: Implement parameter forwarding through sandbox IPC
-    jassert (isPositiveAndBelow (port.channel, params.size()));
+    if (! juce::isPositiveAndBelow (port.channel, params.size()))
+    {
+        // Out-of-range query — caller should sync ports before this is called.
+        // Return null instead of asserting+UB-reading.
+        return nullptr;
+    }
     return params.getObjectPointerUnchecked (port.channel);
 }
 
@@ -345,8 +391,9 @@ inline void SandboxedProcessorNode::sandboxPluginLoaded (SandboxHost*)
     hasError.store (false);
     lastError.clear();
 
-    // Setup ports now that plugin info is available
-    setupPorts();
+    // Ports are built later in sandboxPluginInfo() when the worker delivers
+    // the parameter list + I/O config. PluginInfo always follows PluginLoaded
+    // on the wire, so doing it here would just be replaced milliseconds later.
 
     // Re-prepare if we have valid settings
     if (currentSampleRate > 0 && currentBlockSize > 0 && sandbox)
@@ -383,6 +430,45 @@ inline void SandboxedProcessorNode::sandboxLatencyChanged (SandboxHost*, int new
     // Add 1 buffer of IPC round-trip latency to the plugin's reported latency
     setLatencySamples (newLatency + currentBlockSize);
     // Note: setLatencySamples should trigger graph rebuild via Processor mechanism
+}
+
+inline void SandboxedProcessorNode::sandboxPluginInfo (SandboxHost*)
+{
+    if (! sandbox)
+        return;
+
+    // Rebuild parameter proxies. Each proxy holds a reference to the host so
+    // setValue() pushes through the existing SetParameter IPC.
+    params.clear();
+    const int n = sandbox->getParameterCount();
+    for (int i = 0; i < n; ++i)
+    {
+        auto name = sandbox->getParameterName (i);
+        if (name.isEmpty())
+            name = "Param " + juce::String (i);
+        // Default to 0.5f midpoint — the v1 wire format does not carry the
+        // plugin's reported default. Hosts can update the cache later via
+        // applyValueFromWorker() once the worker reports actual state.
+        params.add (new SandboxParameter (*sandbox, i, name, 0.5f));
+    }
+
+    // Rebuild ports with real I/O config + per-parameter Control ports.
+    setupPorts();
+}
+
+inline void SandboxedProcessorNode::sandboxParameterChanged (SandboxHost*,
+                                                              int index,
+                                                              float value)
+{
+    if (! juce::isPositiveAndBelow (index, params.size()))
+    {
+        juce::Logger::writeToLog ("[SandboxedProcessor] Ignoring out-of-range "
+                                  "parameter change for index " + juce::String (index));
+        return;
+    }
+
+    if (auto* sp = dynamic_cast<SandboxParameter*> (params.getObjectPointer (index)))
+        sp->applyValueFromWorker (value);
 }
 
 } // namespace element

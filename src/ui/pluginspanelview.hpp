@@ -13,9 +13,9 @@ class PluginManager;
 class PluginUsageTracker;
 
 class PluginsPanelView : public ContentView,
-                         public ChangeListener,
-                         public TextEditor::Listener,
-                         public Timer
+                         public juce::ChangeListener,
+                         public juce::TextEditor::Listener,
+                         public juce::Timer
 {
 public:
     enum class ViewMode
@@ -29,18 +29,18 @@ public:
     ~PluginsPanelView();
 
     void resized() override;
-    void paint (Graphics&) override;
+    void paint (juce::Graphics&) override;
 
     /** Returns the text in the search box */
-    String getSearchText() { return search.getText(); }
+    juce::String getSearchText() { return search.getText(); }
 
     /** @internal */
-    void textEditorTextChanged (TextEditor&) override;
-    void textEditorReturnKeyPressed (TextEditor&) override;
-    void changeListenerCallback (ChangeBroadcaster*) override;
+    void textEditorTextChanged (juce::TextEditor&) override;
+    void textEditorReturnKeyPressed (juce::TextEditor&) override;
+    void changeListenerCallback (juce::ChangeBroadcaster*) override;
     void timerCallback() override;
-    void mouseMove (const MouseEvent& e) override;
-    void mouseExit (const MouseEvent& e) override;
+    void mouseMove (const juce::MouseEvent& e) override;
+    void mouseExit (const juce::MouseEvent& e) override;
 
     void setViewMode (ViewMode mode);
     void refreshContent();
@@ -49,21 +49,21 @@ private:
     class FlatListModel;
 
     PluginManager& plugins;
-    TreeView tree;
-    TextEditor search;
-    ListBox flatList;
+    juce::TreeView tree;
+    juce::TextEditor search;
+    juce::ListBox flatList;
     std::unique_ptr<FlatListModel> flatListModel;
 
-    TextButton btnAll { "All" };
-    TextButton btnFavorites { "Favorites" };
-    TextButton btnRecent { "Recent" };
+    juce::TextButton btnAll { "All" };
+    juce::TextButton btnFavorites { "Favorites" };
+    juce::TextButton btnRecent { "Recent" };
 
     ViewMode viewMode { ViewMode::All };
     int hoveredRow { -1 };
     bool isRefreshing { false };
 
     void updateTreeView();
-    void styleSegmentButton (TextButton& btn, bool active);
+    void styleSegmentButton (juce::TextButton& btn, bool active);
     void updateSegmentButtons();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PluginsPanelView);

@@ -2,10 +2,28 @@ import { create } from "zustand";
 import type { BlockData, CableData, CommentBoxData } from "../data/types";
 import { demoGraph } from "../data/demoGraph";
 import {
+  nativeGraphMoveNodes,
   nativeGraphSetBypass,
   nativeGraphSetMute,
   nativeGraphSetMuteInput,
 } from "../bridge/nativeGraph";
+
+// Reference dimensions for align center/middle math. Block.tsx renders at
+// roughly these dimensions at standard zoom — exact pixel-precision is not
+// required because the user can nudge afterwards; what matters is that the
+// alignment is deterministic and looks correct.
+const BLOCK_REF_WIDTH = 200;
+const BLOCK_REF_HEIGHT = 100;
+
+export type AlignDirection =
+  | "left"
+  | "center"
+  | "right"
+  | "top"
+  | "middle"
+  | "bottom";
+
+export type DistributeAxis = "horizontal" | "vertical";
 import { useBusStore } from "./useBusStore";
 
 /** Standalone Vite: `VITE_USE_DEMO_GRAPH=1 npm run dev` seeds the demo board. Hosted Element starts empty until snapshot arrives. */
@@ -70,6 +88,24 @@ interface GraphActions {
   updateCommentBoxLayout: (
     id: string,
     layout: { x: number; y: number; width: number; height: number },
+  ) => void;
+  /**
+   * Align the given block IDs by edge or centerline.
+   * No-op when fewer than 2 IDs are provided.
+   * Engine ValueTree is updated via nativeGraphMoveNodes so the engine sees
+   * the same authoritative positions the React side just rendered.
+   */
+  alignSelectedNodes: (
+    direction: AlignDirection,
+    selectedIds: string[],
+  ) => void;
+  /**
+   * Evenly distribute the given block IDs along the chosen axis between the
+   * two outermost. No-op when fewer than 3 IDs are provided.
+   */
+  distributeSelectedNodes: (
+    axis: DistributeAxis,
+    selectedIds: string[],
   ) => void;
 }
 
@@ -195,6 +231,106 @@ export const useGraphStore = create<GraphStore>()((set) => ({
           : c,
       ),
     })),
+
+  alignSelectedNodes: (direction, selectedIds) =>
+    set((s) => {
+      if (selectedIds.length < 2) return s;
+      const idSet = new Set(selectedIds);
+      const targets = s.nodes.filter((n) => idSet.has(n.id));
+      if (targets.length < 2) return s;
+
+      const xs = targets.map((n) => n.position.x);
+      const ys = targets.map((n) => n.position.y);
+      const minX = Math.min(...xs);
+      const maxX = Math.max(...xs);
+      const minY = Math.min(...ys);
+      const maxY = Math.max(...ys);
+      const centerX = (minX + maxX + BLOCK_REF_WIDTH) / 2;
+      const middleY = (minY + maxY + BLOCK_REF_HEIGHT) / 2;
+
+      const targetX = (n: BlockData): number => {
+        switch (direction) {
+          case "left":
+            return minX;
+          case "right":
+            return maxX;
+          case "center":
+            return centerX - BLOCK_REF_WIDTH / 2;
+          default:
+            return n.position.x;
+        }
+      };
+      const targetY = (n: BlockData): number => {
+        switch (direction) {
+          case "top":
+            return minY;
+          case "bottom":
+            return maxY;
+          case "middle":
+            return middleY - BLOCK_REF_HEIGHT / 2;
+          default:
+            return n.position.y;
+        }
+      };
+
+      const updates: Array<{ id: string; x: number; y: number }> = [];
+      const next = s.nodes.map((n) => {
+        if (!idSet.has(n.id)) return n;
+        const x = targetX(n);
+        const y = targetY(n);
+        if (x === n.position.x && y === n.position.y) return n;
+        updates.push({ id: n.id, x, y });
+        return { ...n, position: { x, y } };
+      });
+      if (updates.length > 0) void nativeGraphMoveNodes(updates);
+      return { nodes: next };
+    }),
+
+  distributeSelectedNodes: (axis, selectedIds) =>
+    set((s) => {
+      if (selectedIds.length < 3) return s;
+      const idSet = new Set(selectedIds);
+      const targets = s.nodes.filter((n) => idSet.has(n.id));
+      if (targets.length < 3) return s;
+
+      // Sort along the chosen axis; the two extremes anchor the spread and
+      // every node in between is repositioned to evenly divide the gap.
+      const sorted = [...targets].sort((a, b) =>
+        axis === "horizontal"
+          ? a.position.x - b.position.x
+          : a.position.y - b.position.y,
+      );
+      const first = sorted[0];
+      const last = sorted[sorted.length - 1];
+      const span =
+        axis === "horizontal"
+          ? last.position.x - first.position.x
+          : last.position.y - first.position.y;
+      const step = span / (sorted.length - 1);
+
+      const newCoord = new Map<string, number>();
+      sorted.forEach((n, i) => {
+        if (i === 0 || i === sorted.length - 1) return;
+        newCoord.set(
+          n.id,
+          (axis === "horizontal" ? first.position.x : first.position.y) +
+            step * i,
+        );
+      });
+
+      const updates: Array<{ id: string; x: number; y: number }> = [];
+      const next = s.nodes.map((n) => {
+        const coord = newCoord.get(n.id);
+        if (coord === undefined) return n;
+        const x = axis === "horizontal" ? coord : n.position.x;
+        const y = axis === "vertical" ? coord : n.position.y;
+        if (x === n.position.x && y === n.position.y) return n;
+        updates.push({ id: n.id, x, y });
+        return { ...n, position: { x, y } };
+      });
+      if (updates.length > 0) void nativeGraphMoveNodes(updates);
+      return { nodes: next };
+    }),
 }));
 
 // ── Selectors ──
