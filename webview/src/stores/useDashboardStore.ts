@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { persist, createJSONStorage } from "zustand/middleware";
+import { invokeElementNative } from "../bridge/juceBackend";
 
 export type WidgetKind = "knob" | "fader" | "button" | "meter";
 
@@ -39,60 +39,98 @@ const KIND_DEFAULTS: Record<
   meter: { w: 32, h: 100, color: "blue" },
 };
 
-export const useDashboardStore = create<DashboardState>()(
-  persist(
-    (set) => ({
-      widgets: [],
-      editing: false,
-      selectedId: null,
+// ── Bridge persistence helpers ──
 
-      addWidget: (kind) =>
-        set((s) => {
-          const id = `w-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
-          const def = KIND_DEFAULTS[kind];
-          // Stagger new widgets slightly so they don't all stack at (24, 24)
-          const offset = s.widgets.length * 16;
-          const x = 24 + (offset % 128);
-          const y = 24 + Math.floor(offset / 128) * 20;
-          return {
-            widgets: [
-              ...s.widgets,
-              { id, kind, x, y, ...def },
-            ],
-            selectedId: id,
-          };
-        }),
+/** True while hydrating from host — prevents the save debounce from firing. */
+let _hydrating = false;
 
-      updateWidget: (id, patch) =>
-        set((s) => ({
-          widgets: s.widgets.map((w) => (w.id === id ? { ...w, ...patch } : w)),
-        })),
+let _saveTimer: ReturnType<typeof setTimeout> | null = null;
 
-      removeWidget: (id) =>
-        set((s) => ({
-          widgets: s.widgets.filter((w) => w.id !== id),
-          selectedId: s.selectedId === id ? null : s.selectedId,
-        })),
+function _scheduleSave(widgets: DashboardWidget[]): void {
+  if (_hydrating) return;
+  if (_saveTimer !== null) clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(() => {
+    _saveTimer = null;
+    void invokeElementNative("elementDashboardSetLayout", [{ widgets }]);
+  }, 200);
+}
 
-      bindWidget: (id, nodeId, paramIndex) =>
-        set((s) => ({
-          widgets: s.widgets.map((w) =>
-            w.id === id ? { ...w, nodeId, paramIndex } : w,
-          ),
-        })),
+/**
+ * Load dashboard widget layout from the host ValueTree and replace the store's
+ * widget list. Sets _hydrating while applying so the debounced save does not
+ * re-fire and overwrite.
+ */
+export async function loadDashboardLayoutFromHost(): Promise<void> {
+  const raw = await invokeElementNative("elementDashboardGetLayout", []);
+  if (!Array.isArray(raw)) return;
+  const widgets = raw as DashboardWidget[];
+  _hydrating = true;
+  try {
+    useDashboardStore.setState({ widgets });
+  } finally {
+    _hydrating = false;
+  }
+}
 
-      setEditing: (e) => set({ editing: e, selectedId: null }),
+export const useDashboardStore = create<DashboardState>()((set) => ({
+  widgets: [],
+  editing: false,
+  selectedId: null,
 
-      selectWidget: (id) => set({ selectedId: id }),
-
-      clear: () => set({ widgets: [], selectedId: null }),
+  addWidget: (kind) =>
+    set((s) => {
+      const id = `w-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+      const def = KIND_DEFAULTS[kind];
+      // Stagger new widgets slightly so they don't all stack at (24, 24)
+      const offset = s.widgets.length * 16;
+      const x = 24 + (offset % 128);
+      const y = 24 + Math.floor(offset / 128) * 20;
+      const next = {
+        widgets: [
+          ...s.widgets,
+          { id, kind, x, y, ...def },
+        ],
+        selectedId: id,
+      };
+      _scheduleSave(next.widgets);
+      return next;
     }),
-    {
-      name: "element-dashboard-v1",
-      storage: createJSONStorage(() => localStorage),
-    },
-  ),
-);
+
+  updateWidget: (id, patch) =>
+    set((s) => {
+      const next = s.widgets.map((w) => (w.id === id ? { ...w, ...patch } : w));
+      _scheduleSave(next);
+      return { widgets: next };
+    }),
+
+  removeWidget: (id) =>
+    set((s) => {
+      const next = s.widgets.filter((w) => w.id !== id);
+      _scheduleSave(next);
+      return {
+        widgets: next,
+        selectedId: s.selectedId === id ? null : s.selectedId,
+      };
+    }),
+
+  bindWidget: (id, nodeId, paramIndex) =>
+    set((s) => {
+      const next = s.widgets.map((w) =>
+        w.id === id ? { ...w, nodeId, paramIndex } : w,
+      );
+      _scheduleSave(next);
+      return { widgets: next };
+    }),
+
+  setEditing: (e) => set({ editing: e, selectedId: null }),
+
+  selectWidget: (id) => set({ selectedId: id }),
+
+  clear: () => {
+    _scheduleSave([]);
+    set({ widgets: [], selectedId: null });
+  },
+}));
 
 // ── Selectors ──
 

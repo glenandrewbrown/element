@@ -2653,6 +2653,155 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             juce::MessageManager::callAsync ([completion, json] { completion (juce::var (json)); });
         });
 
+    // ── P1-1: Dashboard widget layout — Set ─────────────────────────────────
+    // Input:  args[0] = { widgets: DashboardWidget[] }
+    //           Each widget: { id, kind, x, y, w, h,
+    //                          nodeId?, paramIndex?, label?, color? }
+    // Output: { ok: true } | { ok: false, error: String }
+    // Effect: replaces the entire ui/dashboard/widgets ValueTree slot under the
+    //         active graph; uses scheduleGraphPush(40) so React sees the change
+    //         reflected in the next snapshot.
+    opts = opts.withNativeFunction (
+        Identifier ("elementDashboardSetLayout"),
+        [this] (const Array<var>& args, auto completion) {
+            DynamicObject::Ptr result (new DynamicObject());
+            auto fail = [&] (const juce::String& msg) {
+                result->setProperty ("ok", false);
+                result->setProperty ("error", msg);
+                const juce::String json (juce::JSON::toString (juce::var (result.get())));
+                juce::MessageManager::callAsync ([completion, json] { completion (juce::var (json)); });
+            };
+
+            if (args.size() < 1 || ! args[0].isObject())
+                return fail ("expected object argument { widgets }");
+
+            auto* obj = args[0].getDynamicObject();
+            const var& widgetsVar = obj->getProperty ("widgets");
+            if (! widgetsVar.isArray())
+                return fail ("widgets must be an array");
+
+            auto sess = context.session();
+            if (! sess)
+                return fail ("no active session");
+
+            Graph G (sess->getCurrentGraph());
+            if (! G.isGraph())
+                return fail ("no active graph");
+
+            // Ensure ui root and dashboard slot exist
+            juce::ValueTree ui = ensureGraphUiRoot (G);
+            juce::ValueTree dashboard = ui.getChildWithName ("dashboard");
+            if (! dashboard.isValid())
+            {
+                dashboard = juce::ValueTree ("dashboard");
+                ui.addChild (dashboard, -1, nullptr);
+            }
+
+            // Replace widgets child entirely
+            juce::ValueTree widgets ("widgets");
+            const auto* arr = widgetsVar.getArray();
+            if (arr != nullptr)
+            {
+                for (const var& wv : *arr)
+                {
+                    if (! wv.isObject()) continue;
+                    auto* w = wv.getDynamicObject();
+                    if (w == nullptr) continue;
+
+                    juce::ValueTree wt ("Widget");
+                    wt.setProperty ("id",   w->getProperty ("id").toString(),   nullptr);
+                    wt.setProperty ("kind", w->getProperty ("kind").toString(), nullptr);
+                    wt.setProperty ("x",    (int) w->getProperty ("x"),         nullptr);
+                    wt.setProperty ("y",    (int) w->getProperty ("y"),         nullptr);
+                    wt.setProperty ("w",    (int) w->getProperty ("w"),         nullptr);
+                    wt.setProperty ("h",    (int) w->getProperty ("h"),         nullptr);
+
+                    const juce::String nodeId = w->getProperty ("nodeId").toString();
+                    if (nodeId.isNotEmpty())
+                        wt.setProperty ("nodeId", nodeId, nullptr);
+
+                    const var paramIndexVar = w->getProperty ("paramIndex");
+                    if (! paramIndexVar.isVoid() && ! paramIndexVar.isUndefined())
+                        wt.setProperty ("paramIndex", (int) paramIndexVar, nullptr);
+
+                    const juce::String label = w->getProperty ("label").toString();
+                    if (label.isNotEmpty())
+                        wt.setProperty ("label", label, nullptr);
+
+                    const juce::String color = w->getProperty ("color").toString();
+                    if (color.isNotEmpty())
+                        wt.setProperty ("color", color, nullptr);
+
+                    widgets.addChild (wt, -1, nullptr);
+                }
+            }
+
+            // Atomically replace previous widgets child
+            juce::ValueTree oldWidgets = dashboard.getChildWithName ("widgets");
+            if (oldWidgets.isValid())
+                dashboard.removeChild (oldWidgets, nullptr);
+            dashboard.addChild (widgets, -1, nullptr);
+
+            scheduleGraphPush (40);
+            result->setProperty ("ok", true);
+            const juce::String json (juce::JSON::toString (juce::var (result.get())));
+            juce::MessageManager::callAsync ([completion, json] { completion (juce::var (json)); });
+        });
+
+    // ── P1-1: Dashboard widget layout — Get ─────────────────────────────────
+    // Input:  none
+    // Output: JSON array of widget objects, or [] if nothing persisted.
+    //         Each object: { id, kind, x, y, w, h,
+    //                        nodeId?, paramIndex?, label?, color? }
+    opts = opts.withNativeFunction (
+        Identifier ("elementDashboardGetLayout"),
+        [this] (const Array<var>&, auto completion) {
+            juce::Array<juce::var> items;
+            if (auto sess = context.session())
+            {
+                const Graph G (sess->getCurrentGraph());
+                if (G.isGraph())
+                {
+                    const juce::ValueTree ui = G.getUIValueTree();
+                    if (ui.isValid())
+                    {
+                        const juce::ValueTree dashboard = ui.getChildWithName ("dashboard");
+                        if (dashboard.isValid())
+                        {
+                            const juce::ValueTree widgets = dashboard.getChildWithName ("widgets");
+                            if (widgets.isValid())
+                            {
+                                for (int i = 0; i < widgets.getNumChildren(); ++i)
+                                {
+                                    const juce::ValueTree wt = widgets.getChild (i);
+                                    DynamicObject::Ptr entry (new DynamicObject());
+                                    entry->setProperty ("id",   wt.getProperty ("id",   "").toString());
+                                    entry->setProperty ("kind", wt.getProperty ("kind", "knob").toString());
+                                    entry->setProperty ("x",    (int) wt.getProperty ("x", 0));
+                                    entry->setProperty ("y",    (int) wt.getProperty ("y", 0));
+                                    entry->setProperty ("w",    (int) wt.getProperty ("w", 64));
+                                    entry->setProperty ("h",    (int) wt.getProperty ("h", 80));
+
+                                    if (wt.hasProperty ("nodeId"))
+                                        entry->setProperty ("nodeId", wt.getProperty ("nodeId").toString());
+                                    if (wt.hasProperty ("paramIndex"))
+                                        entry->setProperty ("paramIndex", (int) wt.getProperty ("paramIndex"));
+                                    if (wt.hasProperty ("label"))
+                                        entry->setProperty ("label", wt.getProperty ("label").toString());
+                                    if (wt.hasProperty ("color"))
+                                        entry->setProperty ("color", wt.getProperty ("color").toString());
+
+                                    items.add (juce::var (entry.get()));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            const juce::String json (juce::JSON::toString (juce::var (items)));
+            juce::MessageManager::callAsync ([completion, json] { completion (juce::var (json)); });
+        });
+
     // ── P1-15: Duplicate nodes with auto-rewire ──────────────────────────────
     // Extends the existing elementGraphDuplicateNodes by also wiring the
     // duplicated nodes to the same upstream/downstream neighbours where port

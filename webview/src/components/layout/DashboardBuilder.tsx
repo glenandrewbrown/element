@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   useDashboardStore,
+  loadDashboardLayoutFromHost,
   type DashboardWidget,
   type WidgetKind,
 } from "../../stores/useDashboardStore";
@@ -518,6 +519,11 @@ export function DashboardBuilder() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const [bindWidgetId, setBindWidgetId] = useState<string | null>(null);
+
+  // Load persisted layout from host ValueTree on mount
+  useEffect(() => {
+    void loadDashboardLayoutFromHost();
+  }, []);
 
   const handleWriteParam = useCallback(
     (nodeId: string, paramIndex: number, normalized: number) => {
