@@ -4,19 +4,51 @@
 #include "services/deviceservice.hpp"
 #include "engine/mappingengine.hpp"
 #include "engine/midiengine.hpp"
+#include <element/devices.hpp>
 #include <element/session.hpp>
 #include <element/context.hpp>
 
 namespace element {
 
-class DeviceService::Impl
+class DeviceService::Impl : public juce::ChangeListener,
+                             public juce::Timer
 {
 public:
     Impl (DeviceService& o) : owner (o) {}
-    ~Impl() {}
+    ~Impl() override { stopTimer(); }
+
+    void startListening (juce::AudioDeviceManager& dm)
+    {
+        dm.addChangeListener (this);
+    }
+
+    void stopListening (juce::AudioDeviceManager& dm)
+    {
+        dm.removeChangeListener (this);
+        stopTimer();
+    }
+
+    // juce::ChangeListener — called on the message thread when the device
+    // list changes (e.g. USB interface plugged/unplugged).
+    void changeListenerCallback (juce::ChangeBroadcaster*) override
+    {
+        // Debounce: restart the 250 ms one-shot timer on every notification
+        // so that rapid unplug/replug events coalesce into a single rebuild.
+        startTimer (250);
+    }
+
+    // juce::Timer — fires ~250 ms after the last device-list change.
+    void timerCallback() override
+    {
+        stopTimer();
+        // restartLastAudioDevice() is message-thread-safe and re-opens the
+        // audio device with the current settings without touching the audio
+        // thread directly.
+        owner.context().devices().restartLastAudioDevice();
+    }
 
 private:
-    [[maybe_unused]] DeviceService& owner;
+    DeviceService& owner;
 };
 
 DeviceService::DeviceService()
@@ -32,10 +64,12 @@ DeviceService::~DeviceService()
 void DeviceService::activate()
 {
     Service::activate();
+    impl->startListening (context().devices());
 }
 
 void DeviceService::deactivate()
 {
+    impl->stopListening (context().devices());
     Service::deactivate();
 }
 

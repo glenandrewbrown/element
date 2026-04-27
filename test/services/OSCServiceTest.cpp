@@ -63,4 +63,36 @@ BOOST_AUTO_TEST_CASE (refresh_with_settings_does_not_crash)
     BOOST_CHECK_NO_THROW (svc->refreshWithSettings (false));
 }
 
+// P1-9: sender API — connect to a real port and verify state tracking.
+BOOST_AUTO_TEST_CASE (sender_connect_reports_state)
+{
+    // Use a standalone instance so this test is fully self-contained.
+    OSCService svc;
+
+    // Not connected before any call.
+    BOOST_CHECK (! svc.isSenderConnected());
+
+    // Connect to localhost on a high port (connection succeeds for UDP sender).
+    const bool connected = svc.connectSender ("127.0.0.1", 19900);
+    BOOST_CHECK (connected);
+    BOOST_CHECK (svc.isSenderConnected());
+
+    svc.disconnectSender();
+    BOOST_CHECK (! svc.isSenderConnected());
+}
+
+// P1-9: sending on a disconnected sender must return false, never crash.
+BOOST_AUTO_TEST_CASE (send_on_disconnected_sender_returns_false)
+{
+    OSCService svc;
+    BOOST_REQUIRE (! svc.isSenderConnected());
+
+    juce::OSCMessage msg (juce::OSCAddressPattern ("/test/ping"));
+    msg.addInt32 (42);
+
+    bool result = false;
+    BOOST_CHECK_NO_THROW (result = svc.sendMessage (msg));
+    BOOST_CHECK (! result);
+}
+
 BOOST_AUTO_TEST_SUITE_END()

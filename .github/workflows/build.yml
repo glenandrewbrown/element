@@ -243,3 +243,81 @@ jobs:
         UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
         TSAN_OPTIONS: halt_on_error=1
       run: ctest --test-dir build --output-on-failure
+
+  coverage:
+    name: coverage
+    runs-on: ubuntu-22.04
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential cmake ninja-build lcov \
+          libasound2-dev libjack-jackd2-dev ladspa-sdk \
+          libcurl4-openssl-dev libfontconfig1-dev libfreetype6-dev \
+          libx11-dev libxcomposite-dev libxcursor-dev libxext-dev \
+          libxinerama-dev libxrandr-dev libxrender-dev \
+          libglu1-mesa-dev mesa-common-dev
+
+    - name: Setup Boost
+      id: install-boost
+      uses: MarkusJx/install-boost@v2.4.5
+      with:
+        boost_version: 1.83.0
+        platform_version: 22.04
+        toolset: gcc
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: webview/package-lock.json
+
+    - name: Build webview bundle
+      run: |
+        cd webview
+        npm ci
+        npm run build
+
+    - name: Configure CMake
+      run: |
+        cmake -B build -G Ninja \
+          -DCMAKE_BUILD_TYPE=Debug \
+          -DELEMENT_ENABLE_COVERAGE=ON \
+          -DELEMENT_BUILD_PLUGINS=OFF
+      env:
+        BOOST_ROOT: ${{ steps.install-boost.outputs.BOOST_ROOT }}
+
+    - name: Build test_element
+      run: cmake --build build --target test_element
+
+    - name: Run tests
+      run: ctest --test-dir build --output-on-failure
+
+    - name: Generate coverage report
+      run: |
+        lcov --capture \
+          --directory build \
+          --output-file coverage_raw.info \
+          --ignore-errors mismatch
+        lcov --remove coverage_raw.info \
+          '/usr/*' \
+          '*/build/_deps/*' \
+          '*/JUCE/*' \
+          '*/test/*' \
+          --output-file coverage.info
+        lcov --list coverage.info
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        files: coverage.info
+        fail_ci_if_error: false
+      env:
+        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}

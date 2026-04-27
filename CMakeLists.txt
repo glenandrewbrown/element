@@ -311,6 +311,21 @@ if (NOT ELEMENT_ENABLE_SANITIZER STREQUAL "none")
     endif()
 endif()
 
+# Coverage instrumentation support
+# Usage: cmake -DELEMENT_ENABLE_COVERAGE=ON -DCMAKE_BUILD_TYPE=Debug
+option(ELEMENT_ENABLE_COVERAGE "Enable gcov/llvm-cov coverage instrumentation" OFF)
+
+if (ELEMENT_ENABLE_COVERAGE)
+    if (MSVC)
+        message(WARNING "ELEMENT_ENABLE_COVERAGE is not supported on MSVC; ignoring.")
+    else()
+        set(_cov_flags --coverage -O0 -g)
+        add_compile_options(${_cov_flags})
+        add_link_options(--coverage)
+        message(STATUS "Coverage instrumentation enabled")
+    endif()
+endif()
+
 # Clean CPack staging directory before and after packaging to prevent macOS relocation issues
 add_custom_target(installer
     COMMAND ${CMAKE_COMMAND} -E rm -rf "${PROJECT_BINARY_DIR}/_CPack_Packages"

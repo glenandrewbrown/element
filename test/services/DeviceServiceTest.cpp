@@ -8,6 +8,7 @@
 
 #include <boost/test/unit_test.hpp>
 
+#include <element/devices.hpp>
 #include <element/services.hpp>
 
 #include "fixture/ServicesFixture.hpp"
@@ -58,6 +59,25 @@ BOOST_AUTO_TEST_CASE (refresh_does_not_crash)
     auto* svc = test::getService<DeviceService>();
     BOOST_REQUIRE (svc != nullptr);
     BOOST_CHECK_NO_THROW (svc->refresh());
+}
+
+// P1-7: Verify that device hot-plug handling (ChangeListener + debounce Timer)
+// can be exercised without crashing. We simulate a device-list change by
+// sending a change notification through the AudioDeviceManager's broadcaster
+// interface and then calling deactivate/activate to confirm the listener
+// registration path is stable.
+BOOST_AUTO_TEST_CASE (hotplug_change_listener_no_crash)
+{
+    auto* svc = test::getService<DeviceService>();
+    BOOST_REQUIRE (svc != nullptr);
+    // Deactivate removes the ChangeListener and stops the debounce timer.
+    BOOST_CHECK_NO_THROW (svc->deactivate());
+    // Re-activate re-registers the ChangeListener on the DeviceManager.
+    BOOST_CHECK_NO_THROW (svc->activate());
+    // Simulate a rapid double-change (would trigger debounce in real use).
+    auto& dm = test::context()->devices();
+    BOOST_CHECK_NO_THROW (dm.sendSynchronousChangeMessage());
+    BOOST_CHECK_NO_THROW (dm.sendSynchronousChangeMessage());
 }
 
 BOOST_AUTO_TEST_SUITE_END()
