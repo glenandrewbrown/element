@@ -2926,6 +2926,139 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             juce::MessageManager::callAsync ([completion, count] { completion (juce::var (count)); });
         });
 
+    // ── P1-3: Perform MAP MODE — mark parameter as mapped — Set ─────────────
+    // Input:  args[0] = { nodeId: String, paramIndex: Int, mapped: Bool }
+    // Output: { ok: true } | { ok: false, error: String }
+    // Effect: under active graph ui/perform/mappedParameters, add or remove a
+    //         child ValueTree named "Mapping" with properties { nodeId, paramIndex }.
+    //         Adding is idempotent — duplicate calls produce a single entry.
+    //         scheduleGraphPush(40) so React resyncs.
+    opts = opts.withNativeFunction (
+        Identifier ("elementPerformMarkParameterMapped"),
+        [this] (const Array<var>& args, auto completion) {
+            DynamicObject::Ptr result (new DynamicObject());
+            auto fail = [&] (const juce::String& msg) {
+                result->setProperty ("ok", false);
+                result->setProperty ("error", msg);
+                const juce::String json (juce::JSON::toString (juce::var (result.get())));
+                juce::MessageManager::callAsync ([completion, json] { completion (juce::var (json)); });
+            };
+
+            if (args.size() < 1 || ! args[0].isObject())
+                return fail ("expected object argument { nodeId, paramIndex, mapped }");
+
+            auto* obj = args[0].getDynamicObject();
+            const juce::String nodeId = obj->getProperty ("nodeId").toString();
+            const int paramIndex = (int) obj->getProperty ("paramIndex");
+            const bool mapped = (bool) obj->getProperty ("mapped");
+
+            if (nodeId.isEmpty())
+                return fail ("nodeId must be a non-empty string");
+
+            auto sess = context.session();
+            if (! sess)
+                return fail ("no active session");
+
+            Graph G (sess->getCurrentGraph());
+            if (! G.isGraph())
+                return fail ("no active graph");
+
+            // Ensure ui/perform/mappedParameters subtree exists
+            juce::ValueTree ui = ensureGraphUiRoot (G);
+            juce::ValueTree perform = ui.getChildWithName ("perform");
+            if (! perform.isValid())
+            {
+                perform = juce::ValueTree ("perform");
+                ui.addChild (perform, -1, nullptr);
+            }
+            juce::ValueTree mappedParams = perform.getChildWithName ("mappedParameters");
+            if (! mappedParams.isValid())
+            {
+                mappedParams = juce::ValueTree ("mappedParameters");
+                perform.addChild (mappedParams, -1, nullptr);
+            }
+
+            if (mapped)
+            {
+                // Idempotent add — only insert if not already present
+                bool exists = false;
+                for (int i = 0; i < mappedParams.getNumChildren(); ++i)
+                {
+                    const juce::ValueTree child = mappedParams.getChild (i);
+                    if (child.getProperty ("nodeId").toString() == nodeId
+                        && (int) child.getProperty ("paramIndex") == paramIndex)
+                    {
+                        exists = true;
+                        break;
+                    }
+                }
+                if (! exists)
+                {
+                    juce::ValueTree mapping ("Mapping");
+                    mapping.setProperty ("nodeId",     nodeId,     nullptr);
+                    mapping.setProperty ("paramIndex", paramIndex, nullptr);
+                    mappedParams.addChild (mapping, -1, nullptr);
+                }
+            }
+            else
+            {
+                // Remove matching entry if present
+                for (int i = mappedParams.getNumChildren() - 1; i >= 0; --i)
+                {
+                    const juce::ValueTree child = mappedParams.getChild (i);
+                    if (child.getProperty ("nodeId").toString() == nodeId
+                        && (int) child.getProperty ("paramIndex") == paramIndex)
+                    {
+                        mappedParams.removeChild (i, nullptr);
+                        break;
+                    }
+                }
+            }
+
+            scheduleGraphPush (40);
+            result->setProperty ("ok", true);
+            const juce::String json (juce::JSON::toString (juce::var (result.get())));
+            juce::MessageManager::callAsync ([completion, json] { completion (juce::var (json)); });
+        });
+
+    // ── P1-3: Perform MAP MODE — get all mapped parameters ──────────────────
+    // Input:  none
+    // Output: JSON array of { nodeId: String, paramIndex: Int }, or []
+    opts = opts.withNativeFunction (
+        Identifier ("elementPerformGetMappedParameters"),
+        [this] (const Array<var>&, auto completion) {
+            juce::Array<juce::var> items;
+            if (auto sess = context.session())
+            {
+                const Graph G (sess->getCurrentGraph());
+                if (G.isGraph())
+                {
+                    const juce::ValueTree ui = G.getUIValueTree();
+                    if (ui.isValid())
+                    {
+                        const juce::ValueTree perform = ui.getChildWithName ("perform");
+                        if (perform.isValid())
+                        {
+                            const juce::ValueTree mappedParams = perform.getChildWithName ("mappedParameters");
+                            if (mappedParams.isValid())
+                            {
+                                for (int i = 0; i < mappedParams.getNumChildren(); ++i)
+                                {
+                                    const juce::ValueTree child = mappedParams.getChild (i);
+                                    DynamicObject::Ptr entry (new DynamicObject());
+                                    entry->setProperty ("nodeId",     child.getProperty ("nodeId").toString());
+                                    entry->setProperty ("paramIndex", (int) child.getProperty ("paramIndex"));
+                                    items.add (juce::var (entry.get()));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            const juce::String json (juce::JSON::toString (juce::var (items)));
+            juce::MessageManager::callAsync ([completion, json] { completion (juce::var (json)); });
+        });
+
     browser = std::make_unique<WebBrowserComponent> (opts);
     addAndMakeVisible (*browser);
 

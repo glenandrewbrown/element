@@ -6,6 +6,12 @@ import {
   type DashboardWidget,
   type WidgetKind,
 } from "../../stores/useDashboardStore";
+import {
+  usePerformStore,
+  selectMapMode,
+  selectMappedParameters,
+  loadMappedParametersFromHost,
+} from "../../stores/usePerformStore";
 import { useParameterStore, paramKey } from "../../stores/useParameterStore";
 import { useGraphStore } from "../../stores/useGraphStore";
 import { NeuKnob } from "../neu/NeuKnob";
@@ -231,6 +237,9 @@ interface BindModalProps {
 function BindModal({ widgetId, onClose }: BindModalProps) {
   const nodes = useGraphStore((s) => s.nodes);
   const bindWidget = useDashboardStore((s) => s.bindWidget);
+  const mapModeActive = usePerformStore(selectMapMode);
+  const mappedParameters = usePerformStore(selectMappedParameters);
+  const markParameterMapped = usePerformStore((s) => s.markParameterMapped);
   const [selectedNodeId, setSelectedNodeId] = useState<string>("");
   const [params, setParams] = useState<NodeParameterRow[]>([]);
   const [selectedParamIndex, setSelectedParamIndex] = useState<number>(-1);
@@ -249,6 +258,13 @@ function BindModal({ widgetId, onClose }: BindModalProps) {
       setLoading(false);
     });
   }, [selectedNodeId]);
+
+  // When mapModeActive is OFF, only show parameters that have been mapped
+  const visibleParams = mapModeActive
+    ? params
+    : params.filter((p) =>
+        mappedParameters.has(`${selectedNodeId}:${p.index}`),
+      );
 
   const handleBind = useCallback(() => {
     if (!selectedNodeId || selectedParamIndex < 0) return;
@@ -299,19 +315,52 @@ function BindModal({ widgetId, onClose }: BindModalProps) {
         {/* Parameter selector */}
         <div className="flex flex-col gap-1">
           <label className="text-[9px] font-bold uppercase tracking-widest text-text-secondary">
-            Parameter
+            {mapModeActive ? "Parameters (check to expose in Perform)" : "Parameter"}
           </label>
           {loading ? (
             <div className="text-[10px] text-text-secondary px-2 py-1.5">Loading…</div>
+          ) : mapModeActive ? (
+            /* Map-mode ON: show all params with a checkbox each */
+            <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto">
+              {params.length === 0 && (
+                <span className="text-[10px] text-text-secondary px-2 py-1.5">— no parameters —</span>
+              )}
+              {params.map((p) => {
+                const isMapped = selectedNodeId
+                  ? mappedParameters.has(`${selectedNodeId}:${p.index}`)
+                  : false;
+                return (
+                  <label
+                    key={p.index}
+                    className="flex items-center gap-2 px-2 py-1 rounded hover:bg-elevated cursor-pointer"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isMapped}
+                      onChange={(e) => {
+                        if (selectedNodeId) {
+                          markParameterMapped(selectedNodeId, p.index, e.target.checked);
+                        }
+                      }}
+                      className="accent-generator"
+                    />
+                    <span className="text-[11px] text-text-primary">{p.name}</span>
+                  </label>
+                );
+              })}
+            </div>
           ) : (
+            /* Map-mode OFF: show only mapped params for binding */
             <select
               value={selectedParamIndex}
               onChange={(e) => setSelectedParamIndex(Number(e.target.value))}
-              disabled={params.length === 0}
+              disabled={visibleParams.length === 0}
               className="bg-pressed border border-white/10 rounded text-[11px] text-text-primary px-2 py-1.5 outline-none focus:border-generator/50 cursor-pointer disabled:opacity-40"
             >
-              {params.length === 0 && <option value={-1}>— no parameters —</option>}
-              {params.map((p) => (
+              {visibleParams.length === 0 && (
+                <option value={-1}>— no mapped parameters —</option>
+              )}
+              {visibleParams.map((p) => (
                 <option key={p.index} value={p.index}>
                   {p.name}
                 </option>
@@ -520,9 +569,10 @@ export function DashboardBuilder() {
   const [confirmClear, setConfirmClear] = useState(false);
   const [bindWidgetId, setBindWidgetId] = useState<string | null>(null);
 
-  // Load persisted layout from host ValueTree on mount
+  // Load persisted layout and mapped parameters from host ValueTree on mount
   useEffect(() => {
     void loadDashboardLayoutFromHost();
+    void loadMappedParametersFromHost();
   }, []);
 
   const handleWriteParam = useCallback(
