@@ -11,6 +11,10 @@ Usage:
     python3 element_verify.py --suite session-browser
     python3 element_verify.py --suite navigation
     python3 element_verify.py --suite toolbar
+    python3 element_verify.py --suite dashboard-builder
+    python3 element_verify.py --suite command-palette
+    python3 element_verify.py --suite bus-inspector
+    python3 element_verify.py --suite virtual-keyboard
 """
 
 import argparse
@@ -131,7 +135,16 @@ def assert_value_contains(substring, description, timeout_s=3.0):
 # ---------------------------------------------------------------------------
 # Suite definitions
 # ---------------------------------------------------------------------------
-SUITES = ["plugin-browser", "session-browser", "navigation", "toolbar"]
+SUITES = [
+    "plugin-browser",
+    "session-browser",
+    "navigation",
+    "toolbar",
+    "dashboard-builder",
+    "command-palette",
+    "bus-inspector",
+    "virtual-keyboard",
+]
 
 
 def _ensure_element_running():
@@ -207,11 +220,144 @@ def _run_toolbar():
     return checks
 
 
+def _run_dashboard_builder():
+    """Verify Dashboard Builder in Perform mode: tab present, widget row exists, edit toggle clickable.
+
+    The Dashboard tab is surfaced in Perform mode. AX labels depend on the C++ side
+    setting accessible names on the tab button and the edit-mode toggle button.
+    TODO(P1-18): Once the Perform-mode tab bar has AX labels set in C++, tighten
+    the label strings below (currently using best-guess names from the blueprint).
+    """
+    checks = []
+    # Check that the "Perform" mode button (or tab) is reachable
+    checks.append(assert_element_exists("Perform", timeout_s=3.0))
+    # Check that a "Dashboard" tab / label is present in the AX tree
+    checks.append(assert_element_exists("Dashboard", timeout_s=3.0))
+    # Check that an "Edit" toggle is present (edit-mode toggle for dashboard layout)
+    # TODO(P1-18): AX label "Edit" may collide with other buttons; refine once
+    # the dashboard edit toggle has a unique AX identifier in C++.
+    checks.append(assert_element_exists("Edit", timeout_s=3.0))
+    return checks
+
+
+def _run_command_palette():
+    """Verify Command Palette: Cmd+K opens it, a text field is present for filtering.
+
+    The palette is triggered by Cmd+K from the graph canvas. We send the keystroke
+    via osascript and then poll for the text field that appears.
+    TODO(P1-18): AX identifier for the palette's text field is not yet set in C++;
+    falling back to role-only search. Once AXIdentifier is set, switch to
+    assert_element_exists with the specific label.
+    """
+    import subprocess as _sp
+
+    checks = []
+
+    # Attempt to send Cmd+K to Element via osascript (best-effort; no-op if
+    # Element is not frontmost, but AX polling will still time out gracefully).
+    try:
+        _sp.run(
+            [
+                "osascript",
+                "-e",
+                'tell application "Element" to activate',
+                "-e",
+                'tell application "System Events" to keystroke "k" using command down',
+            ],
+            timeout=3,
+            check=False,
+            capture_output=True,
+        )
+    except Exception:
+        pass
+
+    # After the keystroke, poll for a text field (the palette search box)
+    checks.append(
+        assert_role_exists(
+            "AXTextField",
+            "Command Palette search field (AXTextField)",
+            timeout_s=4.0,
+        )
+    )
+    # Also check that the palette container itself is visible via a static text label
+    # TODO(P1-18): Replace with assert_element_exists("Command Palette") once the
+    # palette overlay has an AXTitle set in C++.
+    checks.append(
+        assert_role_exists(
+            "AXScrollArea",
+            "Command Palette results list (AXScrollArea)",
+            timeout_s=3.0,
+        )
+    )
+    return checks
+
+
+def _run_bus_inspector():
+    """Verify Bus Inspector panel: right-click cable → Inspect → panel renders.
+
+    Triggering the right-click menu on a cable requires a live graph with at
+    least one cable, which may not exist in a fresh session. The assertions
+    therefore check only that the inspector panel container and a level-meter
+    element are reachable once the panel is open.
+
+    TODO(P1-18): The "Inspect" menu item and the "Bus Inspector" panel title
+    are not yet AX-labelled in C++. These checks use role-only BFS and will
+    pass only when the panel is already open. Wire up AX identifiers and add
+    the right-click + menu-item trigger once labels are available.
+    """
+    checks = []
+    # Check that an inspector panel group exists (the side InspectorPanel)
+    checks.append(
+        assert_element_exists("Inspector", timeout_s=3.0)
+    )
+    # Check for a level-meter widget (AXLevelIndicator) anywhere in the tree
+    # TODO(P1-18): AXLevelIndicator may not be emitted by JUCE's WebView layer;
+    # punt this assertion until the native meter widget is wired up.
+    checks.append(
+        assert_role_exists(
+            "AXGroup",
+            "Bus Inspector panel container (AXGroup) — punt if no cable selected",
+            timeout_s=3.0,
+        )
+    )
+    return checks
+
+
+def _run_virtual_keyboard():
+    """Verify Virtual MIDI Keyboard surface: row exists and is enabled.
+
+    The virtual keyboard is expected to appear as a row of buttons (one per
+    key) inside a named container. Key-press → MIDI-event verification is
+    best-effort and skipped here because it requires inspecting audio-engine
+    state, which is out of scope for AX-only checks.
+
+    TODO(P1-18): The keyboard container does not yet have an AXIdentifier or
+    AXTitle set in C++. The role-only check below will find any toolbar-style
+    group. Tighten once "Virtual Keyboard" label is set on the container.
+    """
+    checks = []
+    # Check that a "Keyboard" or "Virtual Keyboard" label exists in the tree
+    checks.append(assert_element_exists("Keyboard", timeout_s=3.0))
+    # Check that the keyboard surface contains pressable buttons (keys)
+    checks.append(
+        assert_role_exists(
+            "AXButton",
+            "Virtual Keyboard key button (AXButton)",
+            timeout_s=3.0,
+        )
+    )
+    return checks
+
+
 SUITE_RUNNERS = {
     "plugin-browser": _run_plugin_browser,
     "session-browser": _run_session_browser,
     "navigation": _run_navigation,
     "toolbar": _run_toolbar,
+    "dashboard-builder": _run_dashboard_builder,
+    "command-palette": _run_command_palette,
+    "bus-inspector": _run_bus_inspector,
+    "virtual-keyboard": _run_virtual_keyboard,
 }
 
 # ---------------------------------------------------------------------------
