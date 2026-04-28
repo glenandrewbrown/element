@@ -441,6 +441,8 @@ void EngineService::removeGraph (int index)
 
     if (toRemove.isValid())
         sigNodeRemoved (toRemove);
+    // P1-11: parallel signal path — stabilizeContent kept for now until all consumers migrate
+    sigEngineStateChanged();
     // FIXME: dont notify the UI top-down
     if (auto* ui = sibling<UI>())
         ui->stabilizeContent();

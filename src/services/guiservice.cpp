@@ -359,11 +359,19 @@ void GuiService::activate()
     SystemTray::init (*this);
     context().devices().addChangeListener (this);
     impl->restoreRecents();
+
+    // P1-11: subscribe to additive engine-state signal so stabilizeContent
+    // is also reachable via the new parallel path (not only the direct call
+    // inside EngineService::removeGraph).
+    if (auto* es = sibling<EngineService>())
+        engineStateChangedConnection = es->sigEngineStateChanged.connect (
+            [this] { stabilizeContent(); });
 }
 
 void GuiService::deactivate()
 {
     context().devices().removeChangeListener (this);
+    engineStateChangedConnection.disconnect(); // P1-11
     nodeSelected.disconnect_all_slots();
 
     saveProperties (settings().getUserSettings());

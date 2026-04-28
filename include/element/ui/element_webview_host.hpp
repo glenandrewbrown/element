@@ -6,6 +6,7 @@
 #include <element/context.hpp>
 #include <element/juce/gui_basics.hpp>
 #include <element/juce/gui_extra.hpp>
+#include <element/signals.hpp>
 #include <element/web_metering_fifo.hpp>
 
 #include <functional>
@@ -130,6 +131,9 @@ private:
 
     bool logPushPending = false;
     int lastLogHistorySize = 0;
+
+    /** P1-11: connection to EngineService::sigEngineStateChanged. */
+    SignalConnection engineStateChangedConnection;
 
     std::unique_ptr<juce::Component> pluginEmbedEditor;
     juce::Rectangle<int> pluginEmbedBounds;

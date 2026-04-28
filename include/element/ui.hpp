@@ -160,6 +160,9 @@ private:
 
     Node selectedNode; // TODO: content manager
 
+    /** P1-11: connection to EngineService::sigEngineStateChanged. */
+    SignalConnection engineStateChangedConnection;
+
     struct KeyPressManager;
     std::unique_ptr<KeyPressManager> keys;
 

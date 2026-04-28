@@ -3,6 +3,7 @@
 
 #include <element/context.hpp>
 #include <element/devices.hpp>
+#include <element/engine.hpp>
 #include <element/graph.hpp>
 #include <element/settings.hpp>
 #include <juce_audio_processors/juce_audio_processors.h>
@@ -3556,6 +3557,12 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
            #endif
     }
 
+    // P1-11: subscribe to additive engine-state-changed signal so graph is
+    // pushed to the React bundle whenever the engine removes/rebuilds a graph.
+    if (auto* es = ctx.services().find<EngineService>())
+        engineStateChangedConnection = es->sigEngineStateChanged.connect (
+            [this] { scheduleGraphPush (40); });
+
     attachSessionListener();
     startTimerHz (60);
 }
@@ -3563,6 +3570,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
 ElementWebViewHost::~ElementWebViewHost()
 {
     stopTimer();
+    engineStateChangedConnection.disconnect(); // P1-11
     detachSessionListener();
     pluginEditorClose();
     if (logForwarder != nullptr)

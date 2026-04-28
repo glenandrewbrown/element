@@ -129,6 +129,13 @@ public:
 
     Signal<void (const Node&)> sigNodeRemoved;
 
+    /** Fired on the message thread whenever the engine graph state changes
+        (node added/removed, graph rebuilt, session reloaded).
+        P1-11: additive parallel signal path — consumers opt in here;
+        EngineService::removeGraph still calls ui->stabilizeContent() directly
+        until all consumers have migrated. */
+    Signal<void()> sigEngineStateChanged;
+
 private:
     friend struct RootGraphHolder;
     class RootGraphs;
