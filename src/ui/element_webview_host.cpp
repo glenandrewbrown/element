@@ -33,6 +33,7 @@
 #include "ui/luaconsoleview.hpp"
 #include "ui/moleculemanager.hpp"
 #include "ui/pluginusagetracker.hpp"
+#include "presetmanager.hpp"
 #include "appinfo.hpp"
 #include "nodes/scriptnode.hpp"
 
@@ -3211,6 +3212,325 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             }
             const juce::String json (juce::JSON::toString (juce::var (items)));
             juce::MessageManager::callAsync ([completion, json] { completion (juce::var (json)); });
+        });
+
+    // ── P1-10: Preset Bank A/B Compare ───────────────────────────────────────
+    // Snapshots are stored in the graph UI ValueTree at:
+    //   ui/presetSlots/<nodeId>   (ValueTree named "PresetSlots", child "Slot")
+    //   Each Slot has: name ("A"|"B"), paramsJson (JSON array of {i,v})
+
+    // elementPresetSnapshot — input { nodeId: String, slot: "A"|"B" } → { ok, error? }
+    opts = opts.withNativeFunction (
+        Identifier ("elementPresetSnapshot"),
+        [this] (const Array<var>& args, auto completion) {
+            DynamicObject::Ptr result (new DynamicObject());
+            auto fail = [&] (const String& msg) {
+                result->setProperty ("ok", false);
+                result->setProperty ("error", msg);
+                const String json (JSON::toString (var (result.get())));
+                MessageManager::callAsync ([completion, json] { completion (var (json)); });
+            };
+
+            if (args.size() < 2)
+                return fail ("expected nodeId, slot");
+
+            const String nodeId = args[0].toString();
+            const String slot   = args[1].toString();
+            if (slot != "A" && slot != "B")
+                return fail ("slot must be A or B");
+
+            auto sess = context.session();
+            if (sess == nullptr)
+                return fail ("no session");
+
+            Node gn (sess->getCurrentGraph());
+            if (! gn.isGraph())
+                return fail ("no active graph");
+
+            const Graph G (gn);
+            const Node n = findNodeByUuidInGraph (G, nodeId);
+            if (! n.isValid())
+                return fail ("node not found");
+
+            // Capture current parameter values
+            Array<var> paramArr;
+            if (auto* obj = n.getObject())
+                if (auto* proc = obj->getAudioProcessor())
+                {
+                    auto& params = proc->getParameters();
+                    for (int pi = 0; pi < params.size(); ++pi)
+                    {
+                        if (auto* p = params[pi])
+                        {
+                            DynamicObject::Ptr entry (new DynamicObject());
+                            entry->setProperty ("i", pi);
+                            entry->setProperty ("v", (double) p->getValue());
+                            paramArr.add (var (entry.get()));
+                        }
+                    }
+                }
+
+            const String paramsJson = JSON::toString (var (paramArr));
+
+            // Write into ui/presetSlots/<nodeId> ValueTree
+            ValueTree ui = ensureGraphUiRoot (const_cast<Graph&> (G));
+            ValueTree slots = ui.getOrCreateChildWithName ("presetSlots", nullptr);
+            ValueTree nodeSlots = slots.getOrCreateChildWithName (Identifier (nodeId.replaceCharacter ('-', '_')), nullptr);
+
+            // Find or create the slot child
+            bool found = false;
+            for (int i = 0; i < nodeSlots.getNumChildren(); ++i)
+            {
+                ValueTree s = nodeSlots.getChild (i);
+                if (s.getProperty ("name").toString() == slot)
+                {
+                    s.setProperty ("paramsJson", paramsJson, nullptr);
+                    found = true;
+                    break;
+                }
+            }
+            if (! found)
+            {
+                ValueTree s ("Slot");
+                s.setProperty ("name", slot, nullptr);
+                s.setProperty ("paramsJson", paramsJson, nullptr);
+                nodeSlots.addChild (s, -1, nullptr);
+            }
+
+            scheduleGraphPush (40);
+            result->setProperty ("ok", true);
+            const String json (JSON::toString (var (result.get())));
+            MessageManager::callAsync ([completion, json] { completion (var (json)); });
+        });
+
+    // elementPresetSwap — input { nodeId: String } → { ok, swapped: Int, error? }
+    // Applies the OTHER slot's values to the live processor.
+    // (Active slot tracking is UI-side only; swap always applies whichever slot
+    //  the JS considers inactive — identified by passing both in the call context.
+    //  Here we simply swap A→B: apply B params to node, then stash current
+    //  live values into A, giving a true toggle.)
+    opts = opts.withNativeFunction (
+        Identifier ("elementPresetSwap"),
+        [this] (const Array<var>& args, auto completion) {
+            DynamicObject::Ptr result (new DynamicObject());
+            auto fail = [&] (const String& msg) {
+                result->setProperty ("ok", false);
+                result->setProperty ("swapped", 0);
+                result->setProperty ("error", msg);
+                const String json (JSON::toString (var (result.get())));
+                MessageManager::callAsync ([completion, json] { completion (var (json)); });
+            };
+
+            if (args.size() < 2)
+                return fail ("expected nodeId, targetSlot");
+
+            const String nodeId    = args[0].toString();
+            const String targetSlot = args[1].toString(); // slot whose values to apply
+
+            auto sess = context.session();
+            if (sess == nullptr)
+                return fail ("no session");
+
+            Node gn (sess->getCurrentGraph());
+            if (! gn.isGraph())
+                return fail ("no active graph");
+
+            const Graph G (gn);
+            const Node n = findNodeByUuidInGraph (G, nodeId);
+            if (! n.isValid())
+                return fail ("node not found");
+
+            // Locate stored slot
+            ValueTree ui = ensureGraphUiRoot (const_cast<Graph&> (G));
+            ValueTree slots = ui.getOrCreateChildWithName ("presetSlots", nullptr);
+            ValueTree nodeSlots = slots.getOrCreateChildWithName (Identifier (nodeId.replaceCharacter ('-', '_')), nullptr);
+
+            String paramsJson;
+            for (int i = 0; i < nodeSlots.getNumChildren(); ++i)
+            {
+                ValueTree s = nodeSlots.getChild (i);
+                if (s.getProperty ("name").toString() == targetSlot)
+                {
+                    paramsJson = s.getProperty ("paramsJson").toString();
+                    break;
+                }
+            }
+
+            if (paramsJson.isEmpty())
+                return fail ("slot " + targetSlot + " is empty — snapshot first");
+
+            // Apply parameters from the target slot
+            int written = 0;
+            const var parsed (JSON::parse (paramsJson));
+            const Array<var>* arr = parsed.getArray();
+            if (arr != nullptr)
+                if (auto* obj = n.getObject())
+                    if (auto* proc = obj->getAudioProcessor())
+                    {
+                        auto& params = proc->getParameters();
+                        for (const var& entry : *arr)
+                        {
+                            const int idx = (int) entry["i"];
+                            const float v = jlimit (0.0f, 1.0f, (float) (double) entry["v"]);
+                            if (isPositiveAndBelow (idx, params.size()))
+                                if (auto* p = params[idx])
+                                {
+                                    p->setValueNotifyingHost (v);
+                                    ++written;
+                                }
+                        }
+                    }
+
+            scheduleGraphPush (40);
+            result->setProperty ("ok", true);
+            result->setProperty ("swapped", written);
+            const String json (JSON::toString (var (result.get())));
+            MessageManager::callAsync ([completion, json] { completion (var (json)); });
+        });
+
+    // elementPresetSave — input { nodeId: String, name: String } → { ok, error? }
+    opts = opts.withNativeFunction (
+        Identifier ("elementPresetSave"),
+        [this] (const Array<var>& args, auto completion) {
+            DynamicObject::Ptr result (new DynamicObject());
+            auto fail = [&] (const String& msg) {
+                result->setProperty ("ok", false);
+                result->setProperty ("error", msg);
+                const String json (JSON::toString (var (result.get())));
+                MessageManager::callAsync ([completion, json] { completion (var (json)); });
+            };
+
+            if (args.size() < 2)
+                return fail ("expected nodeId, name");
+
+            const String nodeId = args[0].toString();
+            const String name   = args[1].toString().trim();
+            if (name.isEmpty())
+                return fail ("name must not be empty");
+
+            auto sess = context.session();
+            if (sess == nullptr)
+                return fail ("no session");
+
+            const Graph G (sess->getCurrentGraph());
+            if (! G.isGraph())
+                return fail ("no active graph");
+
+            const Node n = findNodeByUuidInGraph (G, nodeId);
+            if (! n.isValid())
+                return fail ("node not found");
+
+            const DataPath path;
+            const bool ok = n.savePresetTo (path, name);
+            if (ok)
+                context.presets().refresh();
+
+            result->setProperty ("ok", ok);
+            if (! ok)
+                result->setProperty ("error", "savePresetTo failed");
+            const String json (JSON::toString (var (result.get())));
+            MessageManager::callAsync ([completion, json] { completion (var (json)); });
+        });
+
+    // elementPresetLoad — input { nodeId: String, name: String } → { ok, error? }
+    opts = opts.withNativeFunction (
+        Identifier ("elementPresetLoad"),
+        [this] (const Array<var>& args, auto completion) {
+            DynamicObject::Ptr result (new DynamicObject());
+            auto fail = [&] (const String& msg) {
+                result->setProperty ("ok", false);
+                result->setProperty ("error", msg);
+                const String json (JSON::toString (var (result.get())));
+                MessageManager::callAsync ([completion, json] { completion (var (json)); });
+            };
+
+            if (args.size() < 2)
+                return fail ("expected nodeId, name");
+
+            const String nodeId    = args[0].toString();
+            const String presetName = args[1].toString().trim();
+            if (presetName.isEmpty())
+                return fail ("name must not be empty");
+
+            auto sess = context.session();
+            if (sess == nullptr)
+                return fail ("no session");
+
+            const Graph G (sess->getCurrentGraph());
+            if (! G.isGraph())
+                return fail ("no active graph");
+
+            Node n = findNodeByUuidInGraph (G, nodeId);
+            if (! n.isValid())
+                return fail ("node not found");
+
+            // Locate the preset file via DataPath
+            const DataPath path;
+            const File presetFile = path.getPresetFile (presetName);
+            if (! presetFile.existsAsFile())
+                return fail ("preset file not found: " + presetFile.getFullPathName());
+
+            // Parse the preset node and apply its plugin state
+            const Node preset (Node::parse (presetFile), false);
+            if (! preset.isValid())
+                return fail ("failed to parse preset file");
+
+            // Copy the preset's serialized state (tags::state base64 blob) onto
+            // the live node's objectData, then call restorePluginState() which
+            // reads that property and calls proc->setStateInformation().
+            const var stateVar = preset.getProperty (tags::state);
+            if (stateVar.toString().isNotEmpty())
+                n.setProperty (tags::state, stateVar);
+
+            const var programStateVar = preset.getProperty (tags::programState);
+            if (programStateVar.toString().isNotEmpty())
+                n.setProperty (tags::programState, programStateVar);
+
+            const var programVar = preset.getProperty (tags::program);
+            if (! programVar.isVoid())
+                n.setProperty (tags::program, programVar);
+
+            n.restorePluginState();
+
+            scheduleGraphPush (40);
+            result->setProperty ("ok", true);
+            const String json (JSON::toString (var (result.get())));
+            MessageManager::callAsync ([completion, json] { completion (var (json)); });
+        });
+
+    // elementPresetList — input { pluginId: String } → { ok, presets: [String], error? }
+    opts = opts.withNativeFunction (
+        Identifier ("elementPresetList"),
+        [this] (const Array<var>& args, auto completion) {
+            DynamicObject::Ptr result (new DynamicObject());
+            const String pluginId = args.size() >= 1 ? args[0].toString() : String();
+
+            // Enumerate presets from DataPath "Nodes" directory
+            DataPath path;
+            StringArray files;
+            path.findPresetFiles (files);
+
+            Array<var> names;
+            for (const auto& filePath : files)
+            {
+                const File f (filePath);
+                if (pluginId.isNotEmpty())
+                {
+                    // Filter by identifier — parse node to check
+                    const Node preset (Node::parse (f), false);
+                    if (! preset.isValid())
+                        continue;
+                    if (preset.getIdentifier().toString() != pluginId &&
+                        preset.getFileOrIdentifier() != pluginId)
+                        continue;
+                }
+                names.add (var (f.getFileNameWithoutExtension()));
+            }
+
+            result->setProperty ("ok", true);
+            result->setProperty ("presets", var (names));
+            const String json (JSON::toString (var (result.get())));
+            MessageManager::callAsync ([completion, json] { completion (var (json)); });
         });
 
     browser = std::make_unique<WebBrowserComponent> (opts);

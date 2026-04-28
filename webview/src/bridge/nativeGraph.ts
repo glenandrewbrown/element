@@ -409,3 +409,67 @@ export async function nativeScriptGetRuntimeState(
   return { ok: false, error: "no response" };
 }
 
+// ── P1-10: Preset Bank A/B Compare ───────────────────────────────────────
+
+/** Snapshot live parameter values of nodeId into slot "A" or "B". */
+export async function nativePresetSnapshot(
+  nodeId: string,
+  slot: "A" | "B",
+): Promise<{ ok: boolean; error?: string }> {
+  const raw = await invokeElementNative("elementPresetSnapshot", [nodeId, slot]);
+  if (typeof raw === "string") {
+    try { return JSON.parse(raw) as { ok: boolean; error?: string }; } catch { return { ok: false, error: "parse error" }; }
+  }
+  return { ok: false, error: "no response" };
+}
+
+/**
+ * Apply targetSlot's stored values to the live processor.
+ * Returns count of parameters written.
+ */
+export async function nativePresetSwap(
+  nodeId: string,
+  targetSlot: "A" | "B",
+): Promise<{ ok: boolean; swapped: number; error?: string }> {
+  const raw = await invokeElementNative("elementPresetSwap", [nodeId, targetSlot]);
+  if (typeof raw === "string") {
+    try { return JSON.parse(raw) as { ok: boolean; swapped: number; error?: string }; } catch { return { ok: false, swapped: 0, error: "parse error" }; }
+  }
+  return { ok: false, swapped: 0, error: "no response" };
+}
+
+/** Save the current node state as a named preset on disk. */
+export async function nativePresetSave(
+  nodeId: string,
+  name: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const raw = await invokeElementNative("elementPresetSave", [nodeId, name]);
+  if (typeof raw === "string") {
+    try { return JSON.parse(raw) as { ok: boolean; error?: string }; } catch { return { ok: false, error: "parse error" }; }
+  }
+  return { ok: false, error: "no response" };
+}
+
+/** Load a named preset from disk and apply it to the node. */
+export async function nativePresetLoad(
+  nodeId: string,
+  name: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const raw = await invokeElementNative("elementPresetLoad", [nodeId, name]);
+  if (typeof raw === "string") {
+    try { return JSON.parse(raw) as { ok: boolean; error?: string }; } catch { return { ok: false, error: "parse error" }; }
+  }
+  return { ok: false, error: "no response" };
+}
+
+/** List preset names on disk, optionally filtered by pluginId. */
+export async function nativePresetList(
+  pluginId = "",
+): Promise<{ ok: boolean; presets: string[]; error?: string }> {
+  const raw = await invokeElementNative("elementPresetList", [pluginId]);
+  if (typeof raw === "string") {
+    try { return JSON.parse(raw) as { ok: boolean; presets: string[]; error?: string }; } catch { return { ok: false, presets: [], error: "parse error" }; }
+  }
+  return { ok: false, presets: [], error: "no response" };
+}
+

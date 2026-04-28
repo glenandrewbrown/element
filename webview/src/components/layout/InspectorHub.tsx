@@ -22,6 +22,11 @@ import {
   nativeGetNodeParameters,
   nativeGraphSetNodeNote,
   nativeSetNodeParameter,
+  nativePresetSnapshot,
+  nativePresetSwap,
+  nativePresetSave,
+  nativePresetLoad,
+  nativePresetList,
   type NodeParameterRow,
 } from "../../bridge/nativeGraph";
 import { useHostExtrasStore } from "../../stores/useHostExtrasStore";
@@ -43,6 +48,101 @@ function isScriptNode(block: BlockData): boolean {
   return (
     block.name?.toLowerCase().includes("script") === true ||
     (block.format === "INT" && block.name === "Script")
+  );
+}
+
+// ── P1-10: Preset Bank A/B Compare ───────────────────────────────────────
+
+type PresetSlot = "A" | "B";
+
+function PresetStrip({ nodeId }: { nodeId: string }) {
+  const [activeSlot, setActiveSlot] = useState<PresetSlot>("A");
+  const [presets, setPresets] = useState<string[]>([]);
+
+  const refreshPresets = () => {
+    void nativePresetList("").then((r) => {
+      if (r.ok) setPresets(r.presets);
+    });
+  };
+
+  useEffect(() => {
+    refreshPresets();
+  }, [nodeId]);
+
+  // Snapshot current live values into slot, then activate it.
+  const snapshotAndActivate = async (slot: PresetSlot) => {
+    if (slot === activeSlot) return;
+    await nativePresetSnapshot(nodeId, slot);
+    setActiveSlot(slot);
+  };
+
+  // Apply the OTHER slot's stored values to the live processor.
+  const swap = async () => {
+    const target: PresetSlot = activeSlot === "A" ? "B" : "A";
+    await nativePresetSwap(nodeId, target);
+    // Keep the active slot label unchanged — the values just swapped underneath.
+  };
+
+  const openSavePrompt = () => {
+    // MVP: window.prompt (punted — no modal primitive available yet)
+    const name = window.prompt("Preset name:");
+    if (name && name.trim()) {
+      void nativePresetSave(nodeId, name.trim()).then((r) => {
+        if (r.ok) refreshPresets();
+      });
+    }
+  };
+
+  const openLoadMenu = () => {
+    if (presets.length === 0) {
+      void refreshPresets();
+      return;
+    }
+    // MVP: window.prompt with numbered list (punted — no modal primitive)
+    const list = presets.map((p, i) => `${i + 1}. ${p}`).join("\n");
+    const input = window.prompt(`Load preset:\n${list}\n\nEnter name:`);
+    if (input && input.trim()) {
+      void nativePresetLoad(nodeId, input.trim());
+    }
+  };
+
+  const activeBtn =
+    "px-2 py-0.5 text-[10px] font-bold rounded border-b-2 border-generator text-generator bg-pressed shadow-[inset_1px_1px_4px_rgba(0,0,0,0.4)]";
+  const inactiveBtn =
+    "px-2 py-0.5 text-[10px] font-bold rounded text-text-secondary bg-surface hover:bg-elevated transition-colors shadow-[-1px_-1px_4px_rgba(255,255,255,0.04),1px_1px_4px_rgba(0,0,0,0.3)]";
+  const swapBtn =
+    "px-2 py-0.5 text-[10px] rounded text-text-secondary bg-surface hover:bg-elevated transition-colors shadow-[-1px_-1px_4px_rgba(255,255,255,0.04),1px_1px_4px_rgba(0,0,0,0.3)]";
+  const textBtn =
+    "text-[10px] text-text-secondary hover:text-text-primary transition-colors underline underline-offset-2";
+
+  return (
+    <div className="flex items-center gap-1 px-2 py-1 border-b border-white/5">
+      <span className="text-[9px] uppercase tracking-widest text-text-secondary mr-1">
+        Presets
+      </span>
+      <button
+        className={activeSlot === "A" ? activeBtn : inactiveBtn}
+        onClick={() => void snapshotAndActivate("A")}
+      >
+        A
+      </button>
+      <button
+        className={activeSlot === "B" ? activeBtn : inactiveBtn}
+        onClick={() => void snapshotAndActivate("B")}
+      >
+        B
+      </button>
+      <button className={swapBtn} onClick={() => void swap()} title="Swap A↔B">
+        ⇄
+      </button>
+      <span className="flex-1" />
+      <button className={textBtn} onClick={openSavePrompt}>
+        Save…
+      </button>
+      <button className={textBtn} onClick={openLoadMenu}>
+        Load…
+      </button>
+    </div>
   );
 }
 
@@ -513,6 +613,7 @@ export function InspectorHub() {
             {selectedBlock ? (
               <>
                 <BlockHeader block={selectedBlock} />
+                <PresetStrip nodeId={selectedBlock.id} />
 
                 <div className="p-3 bg-pressed rounded-lg shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] space-y-3">
                   <BlockParameterList nodeId={selectedBlock.id} />
