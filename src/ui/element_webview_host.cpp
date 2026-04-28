@@ -772,7 +772,7 @@ static File resolveWebviewDistRoot()
 }
 
 //==============================================================================
-ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
+ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : context (ctx)
 {
     logForwarder = std::make_unique<ElementWebViewLogForwarder> (*this);
     context.logger().addListener (logForwarder.get());
@@ -813,21 +813,29 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
        #endif
     }
 
-    opts = opts.withNativeFunction (
+    // Helper: register a native function in both opts and bridgeFunctions map
+    // so unit tests can invoke lambdas without a live WebBrowserComponent.
+    auto registerFn = [&] (const juce::Identifier& name,
+                            juce::WebBrowserComponent::NativeFunction fn) {
+        bridgeFunctions[name.toString().toStdString()] = fn;
+        opts = opts.withNativeFunction (name, std::move (fn));
+    };
+
+    registerFn (
         Identifier ("elementGetGraphState"),
         [this] (const Array<var>&, auto completion) {
             const String j (buildActiveGraphJson());
             MessageManager::callAsync ([completion, j] { completion (var (j)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementGetPluginList"),
         [this] (const Array<var>&, auto completion) {
             const String j (buildPluginListJson());
             MessageManager::callAsync ([completion, j] { completion (var (j)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementGetNodeParameters"),
         [this] (const Array<var>& args, auto completion) {
             String uuid;
@@ -837,7 +845,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion, j] { completion (var (j)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementSetNodeParameter"),
         [this] (const Array<var>& args, auto completion) {
             bool ok = false;
@@ -851,7 +859,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementScriptGetSource"),
         [this] (const Array<var>& args, auto completion) {
             String source;
@@ -874,7 +882,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion, source] { completion (var (source)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementScriptSetSource"),
         [this] (const Array<var>& args, auto completion) {
             String json;
@@ -905,7 +913,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion, json] { completion (var (json)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementScriptCompile"),
         [this] (const Array<var>& args, auto completion) {
             String json;
@@ -954,7 +962,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
     //           Cap at 64 entries to avoid runaway state.
     //           NOTE: Only the message-thread Lua state is inspected; the audio-thread
     //           DSPScript runtime has its own environment that is not surfaced here yet.
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementScriptGetRuntimeState"),
         [this] (const Array<var>& args, auto completion) {
             String json;
@@ -1090,7 +1098,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion, json] { completion (var (json)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementGraphAddPlugin"),
         [this] (const Array<var>& args, auto completion) {
             bool ok = false;
@@ -1111,7 +1119,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementGraphRemoveNode"),
         [this] (const Array<var>& args, auto completion) {
             bool ok = false;
@@ -1134,7 +1142,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementGraphConnect"),
         [this] (const Array<var>& args, auto completion) {
             bool ok = false;
@@ -1161,7 +1169,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementGraphDisconnect"),
         [this] (const Array<var>& args, auto completion) {
             bool ok = false;
@@ -1188,7 +1196,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementGraphMoveNodes"),
         [this] (const Array<var>& args, auto completion) {
             int count = 0;
@@ -1226,7 +1234,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion, count] { completion (var (count)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementGraphSetBypass"),
         [this] (const Array<var>& args, auto completion) {
             bool ok = false;
@@ -1253,7 +1261,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementGraphSetMute"),
         [this] (const Array<var>& args, auto completion) {
             bool ok = false;
@@ -1276,7 +1284,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementGraphSetMuteInput"),
         [this] (const Array<var>& args, auto completion) {
             bool ok = false;
@@ -1299,7 +1307,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementGraphSetCanvasOptions"),
         [this] (const Array<var>& args, auto completion) {
             bool ok = false;
@@ -1320,7 +1328,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementGraphSetViewport"),
         [this] (const Array<var>& args, auto completion) {
             bool ok = false;
@@ -1342,7 +1350,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementGraphDuplicateNode"),
         [this] (const Array<var>& args, auto completion) {
             bool ok = false;
@@ -1365,7 +1373,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementUndo"),
         [this] (const Array<var>&, auto completion) {
             if (auto* gui = context.services().find<GuiService>())
@@ -1373,7 +1381,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion] { completion (var (true)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementRedo"),
         [this] (const Array<var>&, auto completion) {
             if (auto* gui = context.services().find<GuiService>())
@@ -1381,7 +1389,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion] { completion (var (true)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementTransportPanic"),
         [this] (const Array<var>&, auto completion) {
             if (auto e = context.audio())
@@ -1390,7 +1398,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion] { completion (var (true)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementTransportTogglePlay"),
         [this] (const Array<var>&, auto completion) {
             if (auto e = context.audio())
@@ -1398,7 +1406,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion] { completion (var (true)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementGraphRenameNode"),
         [this] (const Array<var>& args, auto completion) {
             bool ok = false;
@@ -1425,7 +1433,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
 
     // Per-block user note (Inspector textarea). Persisted as a "userNote"
     // ValueTree property on the Node so it survives session save/load.
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementGraphSetNodeNote"),
         [this] (const Array<var>& args, auto completion) {
             bool ok = false;
@@ -1450,7 +1458,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementGraphDuplicateNodes"),
         [this] (const Array<var>& args, auto completion) {
             int count = 0;
@@ -1482,7 +1490,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion, count] { completion (var (count)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementGraphCopyNodes"),
         [this] (const Array<var>& args, auto completion) {
             int count = 0;
@@ -1506,7 +1514,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion, count] { completion (var (count)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementGraphPasteNodes"),
         [this] (const Array<var>&, auto completion) {
             int count = 0;
@@ -1531,7 +1539,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion, count] { completion (var (count)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementGraphCommentAdd"),
         [this] (const Array<var>& args, auto completion) {
             bool ok = false;
@@ -1568,7 +1576,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementGraphCommentUpsert"),
         [this] (const Array<var>& args, auto completion) {
             bool ok = false;
@@ -1621,7 +1629,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementGraphCommentDelete"),
         [this] (const Array<var>& args, auto completion) {
             bool ok = false;
@@ -1655,7 +1663,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementSessionNew"),
         [this] (const Array<var>&, auto completion) {
             if (auto* ss = context.services().find<SessionService>())
@@ -1668,7 +1676,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion] { completion (var (true)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementSessionSave"),
         [this] (const Array<var>&, auto completion) {
             if (auto* ss = context.services().find<SessionService>())
@@ -1681,7 +1689,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion] { completion (var (true)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementSessionSaveAs"),
         [this] (const Array<var>&, auto completion) {
             if (auto* ss = context.services().find<SessionService>())
@@ -1694,7 +1702,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion] { completion (var (true)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementSessionOpen"),
         [this] (const Array<var>&, auto completion) {
             bool ok = false;
@@ -1720,7 +1728,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementSessionOpenPath"),
         [this] (const Array<var>& args, auto completion) {
             bool ok = false;
@@ -1745,7 +1753,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementSessionSetActiveGraph"),
         [this] (const Array<var>& args, auto completion) {
             bool ok = false;
@@ -1768,7 +1776,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementSessionImportGraph"),
         [this] (const Array<var>&, auto completion) {
             bool ok = false;
@@ -1788,7 +1796,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementSessionExportGraph"),
         [this] (const Array<var>&, auto completion) {
             bool ok = false;
@@ -1815,7 +1823,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementAudioApplySetup"),
         [this] (const Array<var>& args, auto completion) {
             bool ok = false;
@@ -1853,7 +1861,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementOscApplyHost"),
         [this] (const Array<var>& args, auto completion) {
             bool ok = false;
@@ -1870,7 +1878,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementMappingSetLearning"),
         [this] (const Array<var>& args, auto completion) {
             bool ok = false;
@@ -1885,7 +1893,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementMappingRemoveMap"),
         [this] (const Array<var>& args, auto completion) {
             bool ok = false;
@@ -1907,14 +1915,14 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementSessionListFiles"),
         [] (const Array<var>&, auto completion) {
             const String j (buildSessionBrowserEntriesJson());
             MessageManager::callAsync ([completion, j] { completion (var (j)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementPluginEditorOpen"),
         [this] (const Array<var>& args, auto completion) {
             bool ok = false;
@@ -1926,14 +1934,14 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementPluginEditorClose"),
         [this] (const Array<var>&, auto completion) {
             pluginEditorClose();
             MessageManager::callAsync ([completion] { completion (var (true)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementPluginEditorSetBounds"),
         [this] (const Array<var>& args, auto completion) {
             if (args.size() >= 4)
@@ -1941,14 +1949,14 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion] { completion (var (true)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementPluginEditorFloat"),
         [this] (const Array<var>&, auto completion) {
             pluginEditorFloat();
             MessageManager::callAsync ([completion] { completion (var (true)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementWebDismissOverlay"),
         [this] (const Array<var>&, auto completion) {
             if (webShell != nullptr)
@@ -1956,7 +1964,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion] { completion (var (true)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementOpenLuaConsole"),
         [this] (const Array<var>&, auto completion) {
             if (webShell != nullptr)
@@ -1964,7 +1972,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion] { completion (var (true)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementOpenGraphMixer"),
         [this] (const Array<var>&, auto completion) {
             if (webShell != nullptr)
@@ -1972,7 +1980,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion] { completion (var (true)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementMoleculeInsert"),
         [this] (const Array<var>& args, auto completion) {
             int count = 0;
@@ -2017,7 +2025,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion, count] { completion (var (count)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementPerformSetActiveScene"),
         [this] (const Array<var>& args, auto completion) {
             bool ok = false;
@@ -2042,7 +2050,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementPerformAddScene"),
         [this] (const Array<var>& args, auto completion) {
             bool ok = false;
@@ -2062,7 +2070,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementPerformCaptureScene"),
         [this] (const Array<var>&, auto completion) {
             bool ok = false;
@@ -2090,7 +2098,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
 
     // ── US-002: Transport – record toggle ──────────────────────────────────────
     // AudioEngine::setRecording(bool) confirmed in include/element/audioengine.hpp
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementTransportSetRecording"),
         [this] (const Array<var>& args, auto completion) {
             if (auto e = context.audio())
@@ -2103,7 +2111,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
     // that Value and calls transport.requestTempo() automatically when it changes.
     // The current tempo is already pushed to JS via session.tempo in every
     // pushGraphSnapshot() call, so no separate "get" bridge is needed.
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementTransportSetTempo"),
         [this] (const Array<var>& args, auto completion) {
             bool ok = false;
@@ -2126,7 +2134,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
     // "Show all" has no counterpart method — individual windows are opened via
     // presentPluginWindow(node). elementShowAllPluginWindows is intentionally
     // omitted because no engine method exists to show ALL windows at once.
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementHideAllPluginWindows"),
         [this] (const Array<var>&, auto completion) {
             if (auto* gui = context.services().find<GuiService>())
@@ -2135,7 +2143,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
         });
 
     // ── US-005: Scene delete / rename ──────────────────────────────────────────
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementPerformDeleteScene"),
         [this] (const Array<var>& args, auto completion) {
             bool ok = false;
@@ -2168,7 +2176,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementPerformRenameScene"),
         [this] (const Array<var>& args, auto completion) {
             bool ok = false;
@@ -2196,7 +2204,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
     // AudioEngine::getKeyboardState() returns juce::MidiKeyboardState&
     // confirmed in include/element/audioengine.hpp line 67.
     // noteOn/noteOff on MidiKeyboardState inject MIDI into the engine graph.
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementVirtualKeyboardNoteOn"),
         [this] (const Array<var>& args, auto completion) {
             // args: [note (0-127), velocity (0.0-1.0), channel (1-16)]
@@ -2211,7 +2219,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion] { completion (var (true)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementVirtualKeyboardNoteOff"),
         [this] (const Array<var>& args, auto completion) {
             // args: [note (0-127), channel (1-16)]
@@ -2225,7 +2233,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion] { completion (var (true)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementAppGetAbout"),
         [] (const Array<var>&, auto completion) {
             DynamicObject::Ptr o (new DynamicObject());
@@ -2235,7 +2243,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion, o] { completion (var (o.get())); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementAppCheckForUpdates"),
         [this] (const Array<var>&, auto completion) {
             if (auto* gui = context.services().find<GuiService>())
@@ -2244,7 +2252,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
         });
 
     // ── Transport Stop / Rewind ────────────────────────────────────────────────
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementTransportStop"),
         [this] (const Array<var>&, auto completion) {
             if (auto e = context.audio())
@@ -2256,7 +2264,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion] { completion (var (true)); });
         });
 
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementTransportRewind"),
         [this] (const Array<var>&, auto completion) {
             if (auto e = context.audio())
@@ -2267,7 +2275,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
         });
 
     // ── Show All Plugin Windows ───────────────────────────────────────────────
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementHostShowAllPluginWindows"),
         [this] (const Array<var>&, auto completion) {
             bool ok = false;
@@ -2293,7 +2301,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
         });
 
     // ── Session Graph Tree ────────────────────────────────────────────────────
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementSessionGetGraphTree"),
         [this] (const Array<var>&, auto completion) {
             Array<var> graphsVar;
@@ -2344,7 +2352,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
     // of a drawn curve. Best-effort persistence: the front-end useBusStore is
     // the visual source of truth; this just round-trips the name so it
     // survives session save/reload via the ValueTree.
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementGraphSetCableBus"),
         [this] (const Array<var>& args, auto completion) {
             bool ok = false;
@@ -2417,7 +2425,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
         });
 
     // ── Graph Connection List ─────────────────────────────────────────────────
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementGraphGetConnectionList"),
         [this] (const Array<var>&, auto completion) {
             Array<var> cables;
@@ -2466,7 +2474,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
     //         args[1] = newSourceNodeUuid (String)
     //         args[2] = newSourceChannelIndex (int, raw port index)
     // Output: { "ok": true } | { "ok": false, "error": "..." }
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementGraphSetConnectionSource"),
         [this] (const Array<var>& args, auto completion) {
             DynamicObject::Ptr result (new DynamicObject());
@@ -2569,7 +2577,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
     //         args[1] = newTargetNodeUuid (String)
     //         args[2] = newTargetChannelIndex (int, raw port index)
     // Output: { "ok": true } | { "ok": false, "error": "..." }
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementGraphSetConnectionTarget"),
         [this] (const Array<var>& args, auto completion) {
             DynamicObject::Ptr result (new DynamicObject());
@@ -2668,7 +2676,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
     // Input:  args[0] = { name: String, signalType: "audio"|"midi"|"value" }
     // Output: { id: String, name: String, signalType: String }
     //         | { ok: false, error: String }
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementGraphCreateWirelessBus"),
         [this] (const Array<var>& args, auto completion) {
             DynamicObject::Ptr result (new DynamicObject());
@@ -2730,7 +2738,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
     // ── P1-6: Wireless bus CRUD — Get all ───────────────────────────────────
     // Input:  none
     // Output: JSON array of { id, name, signalType }
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementGraphGetWirelessBuses"),
         [this] (const Array<var>&, auto completion) {
             juce::Array<juce::var> items;
@@ -2765,7 +2773,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
     // ── P1-6: Wireless bus CRUD — Delete ────────────────────────────────────
     // Input:  args[0] = { id: String }
     // Output: { ok: bool }
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementGraphDeleteWirelessBus"),
         [this] (const Array<var>& args, auto completion) {
             bool ok = false;
@@ -2816,7 +2824,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
     // Effect: replaces the entire ui/dashboard/widgets ValueTree slot under the
     //         active graph; uses scheduleGraphPush(40) so React sees the change
     //         reflected in the next snapshot.
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementDashboardSetLayout"),
         [this] (const Array<var>& args, auto completion) {
             DynamicObject::Ptr result (new DynamicObject());
@@ -2908,7 +2916,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
     // Output: JSON array of widget objects, or [] if nothing persisted.
     //         Each object: { id, kind, x, y, w, h,
     //                        nodeId?, paramIndex?, label?, color? }
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementDashboardGetLayout"),
         [this] (const Array<var>&, auto completion) {
             juce::Array<juce::var> items;
@@ -3015,7 +3023,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
     // for this pass.  We therefore implement the bridge registration, call the
     // original duplication logic, and mark the implementation as "bridge
     // registered — engine wiring deferred to P1-15b".
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementGraphDuplicateNodesWithRewire"),
         [this] (const Array<var>& args, auto completion) {
             int count = 0;
@@ -3088,7 +3096,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
     //         child ValueTree named "Mapping" with properties { nodeId, paramIndex }.
     //         Adding is idempotent — duplicate calls produce a single entry.
     //         scheduleGraphPush(40) so React resyncs.
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementPerformMarkParameterMapped"),
         [this] (const Array<var>& args, auto completion) {
             DynamicObject::Ptr result (new DynamicObject());
@@ -3179,7 +3187,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
     // ── P1-3: Perform MAP MODE — get all mapped parameters ──────────────────
     // Input:  none
     // Output: JSON array of { nodeId: String, paramIndex: Int }, or []
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementPerformGetMappedParameters"),
         [this] (const Array<var>&, auto completion) {
             juce::Array<juce::var> items;
@@ -3220,7 +3228,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
     //   Each Slot has: name ("A"|"B"), paramsJson (JSON array of {i,v})
 
     // elementPresetSnapshot — input { nodeId: String, slot: "A"|"B" } → { ok, error? }
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementPresetSnapshot"),
         [this] (const Array<var>& args, auto completion) {
             DynamicObject::Ptr result (new DynamicObject());
@@ -3309,7 +3317,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
     //  the JS considers inactive — identified by passing both in the call context.
     //  Here we simply swap A→B: apply B params to node, then stash current
     //  live values into A, giving a true toggle.)
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementPresetSwap"),
         [this] (const Array<var>& args, auto completion) {
             DynamicObject::Ptr result (new DynamicObject());
@@ -3389,7 +3397,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
         });
 
     // elementPresetSave — input { nodeId: String, name: String } → { ok, error? }
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementPresetSave"),
         [this] (const Array<var>& args, auto completion) {
             DynamicObject::Ptr result (new DynamicObject());
@@ -3433,7 +3441,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
         });
 
     // elementPresetLoad — input { nodeId: String, name: String } → { ok, error? }
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementPresetLoad"),
         [this] (const Array<var>& args, auto completion) {
             DynamicObject::Ptr result (new DynamicObject());
@@ -3499,7 +3507,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
         });
 
     // elementPresetList — input { pluginId: String } → { ok, presets: [String], error? }
-    opts = opts.withNativeFunction (
+    registerFn (
         Identifier ("elementPresetList"),
         [this] (const Array<var>& args, auto completion) {
             DynamicObject::Ptr result (new DynamicObject());
@@ -3533,20 +3541,23 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx) : context (ctx)
             MessageManager::callAsync ([completion, json] { completion (var (json)); });
         });
 
-    browser = std::make_unique<WebBrowserComponent> (opts);
-    addAndMakeVisible (*browser);
+    if (! skipBrowser)
+    {
+        browser = std::make_unique<WebBrowserComponent> (opts);
+        addAndMakeVisible (*browser);
+
+        if (useDevServer)
+            browser->goToURL (devUrl);
+        else
+           #if JUCE_WEB_BROWSER_RESOURCE_PROVIDER_AVAILABLE
+            browser->goToURL (WebBrowserComponent::getResourceProviderRoot());
+           #else
+            jassertfalse;
+           #endif
+    }
 
     attachSessionListener();
     startTimerHz (60);
-
-    if (useDevServer)
-        browser->goToURL (devUrl);
-    else
-       #if JUCE_WEB_BROWSER_RESOURCE_PROVIDER_AVAILABLE
-        browser->goToURL (WebBrowserComponent::getResourceProviderRoot());
-       #else
-        jassertfalse;
-       #endif
 }
 
 ElementWebViewHost::~ElementWebViewHost()
@@ -3559,6 +3570,29 @@ ElementWebViewHost::~ElementWebViewHost()
         context.logger().removeListener (logForwarder.get());
         logForwarder.reset();
     }
+}
+
+juce::var ElementWebViewHost::invokeForTest (const juce::String& name,
+                                              const juce::Array<juce::var>& args)
+{
+    auto it = bridgeFunctions.find (name.toStdString());
+    if (it == bridgeFunctions.end())
+        return juce::var::undefined();
+
+    juce::var result;
+    bool called = false;
+
+    it->second (args, [&result, &called] (const juce::var& v) {
+        result = v;
+        called = true;
+    });
+
+    // Bridge lambdas post completion via MessageManager::callAsync.
+    // Drain the queue until our callback fires (max ~200 iterations).
+    for (int guard = 0; guard < 200 && ! called; ++guard)
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (10);
+
+    return result;
 }
 
 void ElementWebViewLogForwarder::messageLogged (const String&) { owner.logPushPending = true; }

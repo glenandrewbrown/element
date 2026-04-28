@@ -8,9 +8,10 @@
 #include <element/juce/gui_extra.hpp>
 #include <element/web_metering_fifo.hpp>
 
+#include <functional>
 #include <memory>
-#include <unordered_map>
 #include <string>
+#include <unordered_map>
 
 namespace element {
 
@@ -28,7 +29,8 @@ class ElementWebViewHost final : public juce::Component,
                                  private juce::Timer,
                                  private juce::ValueTree::Listener {
 public:
-    explicit ElementWebViewHost (Context& ctx);
+    /** If skipBrowser is true, the WebBrowserComponent is not created (used only by unit tests). */
+    explicit ElementWebViewHost (Context& ctx, bool skipBrowser = false);
     ~ElementWebViewHost() override;
 
     Context& getContext() const { return context; }
@@ -57,8 +59,20 @@ public:
     void resized() override;
     void visibilityChanged() override;
 
+    // ── Test-harness support ─────────────────────────────────────────────────
+    /** Callable type matching opts.withNativeFunction lambda signature. */
+    using BridgeFn = std::function<void (const juce::Array<juce::var>&,
+                                         std::function<void (const juce::var&)>)>;
+
+    /** Invoke a registered bridge function by name and collect the result
+        synchronously (blocks the calling thread until the completion callback
+        fires on the message thread).  Used only by BridgeContractTest.
+        Returns var::undefined if the name is not found. */
+    juce::var invokeForTest (const juce::String& name, const juce::Array<juce::var>& args);
+
 private:
     friend struct ElementWebViewLogForwarder;
+    friend class BridgeContractTest;
 
     void timerCallback() override;
     void valueTreePropertyChanged (juce::ValueTree&, const juce::Identifier&) override;
@@ -120,6 +134,11 @@ private:
     std::unique_ptr<juce::Component> pluginEmbedEditor;
     juce::Rectangle<int> pluginEmbedBounds;
     juce::String pluginEmbedNodeUuid;
+
+    /** Map of registered bridge function name → callable.
+        Populated during construction alongside opts.withNativeFunction so
+        that BridgeContractTest can invoke functions without a live browser. */
+    std::unordered_map<std::string, BridgeFn> bridgeFunctions;
 
     void rebuildPluginEmbedLayout();
 
