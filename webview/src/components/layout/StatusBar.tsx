@@ -1,8 +1,16 @@
 import { usePerformStore, selectLiveHealth } from "../../stores/usePerformStore";
+import {
+  useEngineSnapshotStore,
+  selectEngineRunning,
+} from "../../stores/useEngineSnapshotStore";
 import { Icon } from "../neu";
 
 export function StatusBar() {
   const health = usePerformStore(selectLiveHealth);
+  // US-002: real engine-running state from the C++ snapshot — replaces the
+  // old `cpu > 0` heuristic, which read STOPPED while audio sat idle even
+  // though a device was open and the engine was live.
+  const engineRunning = useEngineSnapshotStore(selectEngineRunning);
 
   const deviceName =
     health.clock && health.clock !== "—" ? health.clock : "Default Device";
@@ -16,7 +24,6 @@ export function StatusBar() {
       ? `${health.latency.toFixed(1)} ms`
       : "—";
   const cpuPercent = health.cpu;
-  const engineRunning = cpuPercent > 0;
 
   return (
     <div className="h-6 bg-pressed border-t border-white/5 flex items-center justify-between px-4 text-[10px] select-none">
@@ -30,7 +37,12 @@ export function StatusBar() {
 
         <div className="h-3 w-px bg-white/10" />
 
-        <div className="flex items-center gap-1.5">
+        <div
+          className="flex items-center gap-1.5"
+          role="status"
+          aria-live="polite"
+          aria-label={engineRunning ? "Engine running" : "Engine stopped"}
+        >
           <div
             className={[
               "w-2 h-2 rounded-full",
@@ -38,6 +50,7 @@ export function StatusBar() {
                 ? "bg-logic shadow-[0_0_6px_rgba(43,196,196,0.5)]"
                 : "bg-text-secondary",
             ].join(" ")}
+            aria-hidden
           />
           <span className={engineRunning ? "text-logic font-bold" : "text-text-secondary"}>
             {engineRunning ? "RUNNING" : "STOPPED"}
