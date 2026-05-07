@@ -14,6 +14,7 @@ import {
   nativeTransportStop,
   nativeTransportRewind,
   nativeTransportSetTempo,
+  nativeTransportSetRecording,
   nativeUndo,
   nativeRedo,
 } from "../../bridge/nativeGraph";
@@ -25,7 +26,7 @@ import {
   nativeSessionSetActiveGraph,
 } from "../../bridge/nativeSession";
 import { useSessionStore } from "../../stores/useSessionStore";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { PreferencesModal } from "./PreferencesModal";
 import { AboutModal } from "./AboutModal";
 import {
@@ -51,6 +52,67 @@ export function Toolbar() {
   const [captureBusy, setCaptureBusy] = useState(false);
   const [editingBpm, setEditingBpm] = useState(false);
   const [bpmInput, setBpmInput] = useState("");
+  /**
+   * F-204: Record button local mirror. The host AudioEngine has
+   * setRecording(bool) but does NOT publish isRecording in the snapshot,
+   * so we keep a local toggle. If recording stops via another path the
+   * button will desync — surfaced as known limitation.
+   */
+  const [recording, setRecording] = useState(false);
+  /**
+   * F-104: Tap tempo. Rolling buffer of click timestamps (ms). On each tap
+   * we keep the last N=4 entries; if we have ≥ 2 we compute the median
+   * inter-tap interval and derive BPM = 60000 / interval. After 2s of
+   * inactivity the buffer is reset.
+   */
+  const tapTimesRef = useRef<number[]>([]);
+  const tapResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleTap = useCallback(() => {
+    const now = Date.now();
+    const times = tapTimesRef.current;
+    times.push(now);
+    if (times.length > 4) times.shift();
+
+    if (tapResetTimerRef.current !== null) {
+      clearTimeout(tapResetTimerRef.current);
+    }
+    tapResetTimerRef.current = setTimeout(() => {
+      tapTimesRef.current = [];
+      tapResetTimerRef.current = null;
+    }, 2000);
+
+    if (times.length >= 2) {
+      const intervals: number[] = [];
+      for (let i = 1; i < times.length; i++) {
+        intervals.push(times[i] - times[i - 1]);
+      }
+      // Median (robust to a single off-tempo tap).
+      const sorted = [...intervals].sort((a, b) => a - b);
+      const median =
+        sorted.length % 2 === 1
+          ? sorted[(sorted.length - 1) / 2]
+          : (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2;
+      if (median > 0) {
+        const bpm = Math.min(999, Math.max(20, 60000 / median));
+        void nativeTransportSetTempo(bpm);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (tapResetTimerRef.current !== null) {
+        clearTimeout(tapResetTimerRef.current);
+      }
+    };
+  }, []);
+
+  const handleToggleRecord = useCallback(() => {
+    const next = !recording;
+    setRecording(next);
+    void nativeTransportSetRecording(next);
+  }, [recording]);
 
   useEffect(() => {
     const handleOpenPreferences = () => setPrefsOpen(true);
@@ -254,6 +316,16 @@ export function Toolbar() {
               >
                 <Icon name="Square" size={16} aria-hidden />
               </button>
+              <button
+                type="button"
+                className={`p-0.5 transition-colors ${recording ? "text-error animate-pulse" : "text-text-secondary hover:text-error"}`}
+                title={recording ? "Stop recording" : "Record"}
+                aria-label={recording ? "Stop recording" : "Record"}
+                aria-pressed={recording}
+                onClick={handleToggleRecord}
+              >
+                <Icon name="Circle" size={16} aria-hidden />
+              </button>
             </div>
 
             {/* Metrics */}
@@ -304,7 +376,15 @@ export function Toolbar() {
                       {bpm.toFixed(2)}
                     </span>
                   )}
-                  <button className="text-[8px] font-black px-1 py-0.5 bg-surface rounded hover:bg-elevated transition-colors text-text-dim hover:text-text-secondary">TAP</button>
+                  <button
+                    type="button"
+                    className="text-[8px] font-black px-1 py-0.5 bg-surface rounded hover:bg-elevated transition-colors text-text-dim hover:text-text-secondary"
+                    title="Tap tempo (rolling 4-tap median)"
+                    aria-label="Tap tempo"
+                    onClick={handleTap}
+                  >
+                    TAP
+                  </button>
                 </div>
               </div>
               <div className="flex flex-col items-center">
