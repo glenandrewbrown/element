@@ -4058,6 +4058,31 @@ String ElementWebViewHost::buildActiveGraphJson() const
     appendPerformJson (*sess, root);
     appendMidiMappingJson (context, root);
 
+    // C-2 hoist: the engine snapshot reads only context.audio() and
+    // context.devices(), so it must be emitted regardless of whether the
+    // current graph is empty. Previously this block sat AFTER the
+    // (! gn.isGraph()) early-return below, leaving deviceName / sampleRate /
+    // bufferSize / inputLatencySamples / outputLatencySamples / isPlaying
+    // missing from snapshots whenever no graph was selected — that emptied
+    // PROJECT OVERVIEW (D-3..D-6, D-12, D-14, D-17 in
+    // .sisyphus/qa/ui-bug-master-list.md). Scoped in its own block to keep
+    // the local DynamicObject lifetime tight.
+    {
+        DynamicObject::Ptr engine (new DynamicObject());
+        if (auto e = context.audio())
+            if (auto mon = e->getTransportMonitor())
+                engine->setProperty ("isPlaying", (bool) mon->playing.get());
+        if (auto* dev = context.devices().getCurrentAudioDevice())
+        {
+            engine->setProperty ("deviceName", dev->getName());
+            engine->setProperty ("sampleRate", dev->getCurrentSampleRate());
+            engine->setProperty ("bufferSize", dev->getCurrentBufferSizeSamples());
+            engine->setProperty ("inputLatencySamples", dev->getInputLatencyInSamples());
+            engine->setProperty ("outputLatencySamples", dev->getOutputLatencyInSamples());
+        }
+        root->setProperty ("engine", var (engine.get()));
+    }
+
     const Node gn (sess->getCurrentGraph());
     if (! gn.isGraph())
     {
@@ -4092,20 +4117,6 @@ String ElementWebViewHost::buildActiveGraphJson() const
     breadcrumbs.add (var (sess->getName()));
     breadcrumbs.add (var (gn.getName()));
     root->setProperty ("breadcrumbs", var (breadcrumbs));
-
-    DynamicObject::Ptr engine (new DynamicObject());
-    if (auto e = context.audio())
-        if (auto mon = e->getTransportMonitor())
-            engine->setProperty ("isPlaying", (bool) mon->playing.get());
-    if (auto* dev = context.devices().getCurrentAudioDevice())
-    {
-        engine->setProperty ("deviceName", dev->getName());
-        engine->setProperty ("sampleRate", dev->getCurrentSampleRate());
-        engine->setProperty ("bufferSize", dev->getCurrentBufferSizeSamples());
-        engine->setProperty ("inputLatencySamples", dev->getInputLatencyInSamples());
-        engine->setProperty ("outputLatencySamples", dev->getOutputLatencyInSamples());
-    }
-    root->setProperty ("engine", var (engine.get()));
 
     appendCanvasJson (gn, G, root);
     appendActiveGraphOutlineJson (G, root);
