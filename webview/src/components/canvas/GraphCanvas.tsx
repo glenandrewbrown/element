@@ -36,6 +36,7 @@ import {
   nativeGraphRenameNode,
   nativeGraphSetViewport,
 } from "../../bridge/nativeGraph";
+import { nativePluginEditorOpen } from "../../bridge/nativePluginEditor";
 import { Block } from "./Block";
 import { Cable } from "./Cable";
 import { CommentFrame } from "./CommentFrame";
@@ -194,12 +195,19 @@ export function GraphCanvas() {
   );
 
   const onNodeDoubleClick: NodeMouseHandler = useCallback(
-    (_event, node) => {
+    (event, node) => {
       if (node.type === "comment") return;
       const data = node.data as BlockData;
       if (data.containerNodeCount != null || data.isPortal) {
         pushBreadcrumb(data.name);
+        return;
       }
+      // Plugin Block: open the embedded plugin GUI window (Blueprint §10.1).
+      // Anchor the GUI near the click location with a sensible default size;
+      // the host clamps to screen bounds.
+      const anchorX = (event as MouseEvent).clientX ?? 80;
+      const anchorY = (event as MouseEvent).clientY ?? 80;
+      void nativePluginEditorOpen(node.id, anchorX, anchorY, 720, 480);
     },
     [pushBreadcrumb],
   );
