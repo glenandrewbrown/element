@@ -1,9 +1,20 @@
 /**
  * Canonical <Icon /> component for Element webview — V3.0 Instrument Paradigm.
  *
- * Wraps lucide-react. Single-tone monochrome, 1.5px stroke, 24×24 grid.
- * Pairs with the design tokens shipped in webview/src/motion/index.ts (F.0.9)
- * and the brand grammar in .sisyphus/plans/visual-asset-pipeline.md §3.
+ * Wraps lucide-react with an EXPLICIT ALLOWLIST so the bundler can tree-shake
+ * unused icons. Q1 closeout (Phase F-10): the previous `import * as LucideIcons`
+ * defeated tree-shaking, ballooning the bundle from 687 kB → 1.29 MB.
+ *
+ * Single-tone monochrome, 1.5px stroke, 24×24 grid. Pairs with the design tokens
+ * in webview/src/motion/index.ts (F.0.9) and the brand grammar in
+ * .sisyphus/plans/visual-asset-pipeline.md §3.
+ *
+ * Adding a new icon:
+ *   1. Confirm the export name on https://lucide.dev/icons (PascalCase).
+ *   2. Add a named import to the LUCIDE block below.
+ *   3. Add it to the ICON_MAP record.
+ *   That's it — tree-shaking remains intact because every entry is a static
+ *   named import.
  *
  * Accessibility: when neither `aria-label` nor `aria-hidden` is provided, the
  * icon defaults to `aria-hidden="true"` (decorative — for content icons,
@@ -13,9 +24,42 @@
  * dev-mode `console.warn` per unique unknown name.
  */
 
-import * as LucideIcons from "lucide-react";
+import {
+  Activity,
+  AudioWaveform,
+  Cable,
+  Camera,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  Cpu,
+  Folder,
+  GripVertical,
+  HeartPulse,
+  HelpCircle,
+  Layers,
+  LayoutGrid,
+  Link,
+  List,
+  MoreVertical,
+  Music,
+  Network,
+  Pencil,
+  Play,
+  Plus,
+  Power,
+  Puzzle,
+  Redo2,
+  Search,
+  Settings,
+  SkipBack,
+  Square,
+  Trash2,
+  Undo2,
+  Volume2,
+  X,
+} from "lucide-react";
 import type { LucideProps } from "lucide-react";
-import { HelpCircle } from "lucide-react";
 import type { ComponentType } from "react";
 
 // ── Semantic tone palette (mirrors CLAUDE.md V3.0) ──────────────────────────
@@ -29,6 +73,46 @@ const TONE_COLORS = {
 } as const;
 
 export type IconTone = keyof typeof TONE_COLORS;
+
+// ── Static icon registry (allowlisted for tree-shaking, F-10 / Q1 fix) ──────
+
+const ICON_MAP: Record<string, ComponentType<LucideProps>> = {
+  Activity,
+  AudioWaveform,
+  Cable,
+  Camera,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  Cpu,
+  Folder,
+  GripVertical,
+  HeartPulse,
+  Layers,
+  LayoutGrid,
+  Link,
+  List,
+  MoreVertical,
+  Music,
+  Network,
+  Pencil,
+  Play,
+  Plus,
+  Power,
+  Puzzle,
+  Redo2,
+  Search,
+  Settings,
+  SkipBack,
+  Square,
+  Trash2,
+  Undo2,
+  Volume2,
+  X,
+};
+
+/** Icon names available without an Icon.tsx edit (string-typed for ergonomics). */
+export type IconName = keyof typeof ICON_MAP;
 
 // ── Props ───────────────────────────────────────────────────────────────────
 
@@ -61,8 +145,10 @@ function warnUnknownIcon(name: string): void {
   // eslint-disable-next-line no-console
   console.warn(
     `[Icon] Unknown lucide icon name "${name}" — rendering <HelpCircle /> fallback. ` +
-      `If this is an audio-domain glyph (cable / jack / port-* / scene / etc.), ` +
-      `track it as a Phase F.0.8 custom-icon gap.`,
+      `Add it to the allowlist in webview/src/components/neu/Icon.tsx ` +
+      `(named import + ICON_MAP entry). If this is an audio-domain glyph ` +
+      `(cable / jack / port-* / scene / etc.), track it as a Phase F.0.8 ` +
+      `custom-icon gap.`,
   );
 }
 
@@ -85,20 +171,10 @@ export function Icon({
   "aria-label": ariaLabel,
   "aria-hidden": ariaHidden,
 }: IconProps) {
-  // Lookup the lucide export. The lucide-react module exposes named icon
-  // components plus utility exports (createLucideIcon, etc.) — we filter
-  // for components by checking PascalCase + that the value is callable.
-  const lucideMap = LucideIcons as unknown as Record<
-    string,
-    ComponentType<LucideProps> | undefined
-  >;
-  const Resolved = lucideMap[name];
-
-  const isComponent =
-    typeof Resolved === "function" || typeof Resolved === "object";
+  const Resolved = ICON_MAP[name];
 
   let LucideComponent: ComponentType<LucideProps>;
-  if (isComponent && Resolved) {
+  if (Resolved) {
     LucideComponent = Resolved;
   } else {
     warnUnknownIcon(name);
