@@ -68,3 +68,13 @@ add_test(NAME "RootGraphMissingNodeTests" COMMAND test_element --run_test=RootGr
 add_test(NAME "SandboxIsolationTests" COMMAND test_element --run_test=SandboxIsolationTests)
 add_test(NAME "LuaBoundsTests" COMMAND test_element --run_test=LuaBoundsTests)
 add_test(NAME "NodeWriteFileTests" COMMAND test_element --run_test=NodeWriteFileTests)
+add_test(NAME "AudioThreadAllocationTests" COMMAND test_element --run_test=AudioThreadAllocationTests)
+
+# Phase C opt-in stress harness: 100 nodes, 60 s wall-clock — not in default
+# ctest because it is wall-clock-bound and adds no extra coverage. Enable
+# manually with:  cmake -B build-merged -DELEMENT_RT_STRESS_TEST=ON
+option(ELEMENT_RT_STRESS_TEST "Build and register the audio-thread stress test" OFF)
+if (ELEMENT_RT_STRESS_TEST)
+    target_compile_definitions(test_element PRIVATE ELEMENT_RT_STRESS_TEST=1)
+    add_test(NAME "AudioThreadAllocationStressTests" COMMAND test_element --run_test=AudioThreadAllocationStressTests)
+endif()
