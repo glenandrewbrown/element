@@ -41,6 +41,7 @@ import {
 import { ConnectionEditor } from "./ConnectionEditor";
 import { ScriptEditor } from "../canvas/ScriptEditor";
 import { BusInspector } from "./BusInspector";
+import { NeuPromptModal } from "./NeuPromptModal";
 
 type Tab = "inspector" | "script" | "log" | "meters" | "connections";
 
@@ -58,6 +59,9 @@ type PresetSlot = "A" | "B";
 function PresetStrip({ nodeId }: { nodeId: string }) {
   const [activeSlot, setActiveSlot] = useState<PresetSlot>("A");
   const [presets, setPresets] = useState<string[]>([]);
+  // W-1: NeuPromptModal replaces window.prompt() for Save/Load.
+  const [saveOpen, setSaveOpen] = useState(false);
+  const [loadOpen, setLoadOpen] = useState(false);
 
   const refreshPresets = () => {
     void nativePresetList("").then((r) => {
@@ -83,28 +87,32 @@ function PresetStrip({ nodeId }: { nodeId: string }) {
     // Keep the active slot label unchanged — the values just swapped underneath.
   };
 
-  const openSavePrompt = () => {
-    // MVP: window.prompt (punted — no modal primitive available yet)
-    const name = window.prompt("Preset name:");
-    if (name && name.trim()) {
-      void nativePresetSave(nodeId, name.trim()).then((r) => {
-        if (r.ok) refreshPresets();
-      });
-    }
-  };
+  const openSavePrompt = () => setSaveOpen(true);
 
   const openLoadMenu = () => {
     if (presets.length === 0) {
       void refreshPresets();
       return;
     }
-    // MVP: window.prompt with numbered list (punted — no modal primitive)
-    const list = presets.map((p, i) => `${i + 1}. ${p}`).join("\n");
-    const input = window.prompt(`Load preset:\n${list}\n\nEnter name:`);
-    if (input && input.trim()) {
-      void nativePresetLoad(nodeId, input.trim());
-    }
+    setLoadOpen(true);
   };
+
+  const handleSaveConfirm = (name: string) => {
+    setSaveOpen(false);
+    void nativePresetSave(nodeId, name).then((r) => {
+      if (r.ok) refreshPresets();
+    });
+  };
+
+  const handleLoadConfirm = (name: string) => {
+    setLoadOpen(false);
+    void nativePresetLoad(nodeId, name);
+  };
+
+  const loadDescription =
+    presets.length > 0
+      ? `Available presets: ${presets.join(", ")}`
+      : undefined;
 
   const activeBtn =
     "px-2 py-0.5 text-[10px] font-bold rounded border-b-2 border-generator text-generator bg-pressed shadow-[inset_1px_1px_4px_rgba(0,0,0,0.4)]";
@@ -142,6 +150,24 @@ function PresetStrip({ nodeId }: { nodeId: string }) {
       <button className={textBtn} onClick={openLoadMenu}>
         Load…
       </button>
+      <NeuPromptModal
+        open={saveOpen}
+        title="Save preset"
+        description="Saves the current parameter values under the name you enter."
+        placeholder="Preset name"
+        confirmLabel="Save"
+        onConfirm={handleSaveConfirm}
+        onCancel={() => setSaveOpen(false)}
+      />
+      <NeuPromptModal
+        open={loadOpen}
+        title="Load preset"
+        description={loadDescription}
+        placeholder="Preset name"
+        confirmLabel="Load"
+        onConfirm={handleLoadConfirm}
+        onCancel={() => setLoadOpen(false)}
+      />
     </div>
   );
 }
