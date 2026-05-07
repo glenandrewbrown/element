@@ -64,26 +64,38 @@ static int audio_channels (lua_State* L)
 static int audio_clear (lua_State* L)
 {
     auto* buf = toclassref (L, 1);
+    const auto nchans = buf->getNumChannels();
+    const auto nsamps = buf->getNumSamples();
 
     switch (lua_gettop (L))
     {
         case 2: {
-            buf->clear (static_cast<int> (lua_tointeger (L, 2) - 1),
-                        0,
-                        buf->getNumSamples());
+            // Phase E-5: bounds check (channel arg, 1-indexed in Lua).
+            const auto ch = static_cast<int> (lua_tointeger (L, 2) - 1);
+            luaL_argcheck (L, ch >= 0 && ch < nchans, 2, "channel index out of range");
+            buf->clear (ch, 0, nsamps);
             break;
         }
 
         case 3: {
-            buf->clear (static_cast<int> (lua_tointeger (L, 2)),
-                        static_cast<int> (lua_tointeger (L, 3)));
+            // Phase E-5: clear (start, count) — both must lie inside the buffer.
+            const auto start = static_cast<int> (lua_tointeger (L, 2));
+            const auto count = static_cast<int> (lua_tointeger (L, 3));
+            luaL_argcheck (L, start >= 0 && start <= nsamps, 2, "start index out of range");
+            luaL_argcheck (L, count >= 0 && start + count <= nsamps, 3, "count out of range");
+            buf->clear (start, count);
             break;
         }
 
         case 4: {
-            buf->clear (static_cast<int> (lua_tointeger (L, 2) - 1),
-                        static_cast<int> (lua_tointeger (L, 3) - 1),
-                        static_cast<int> (lua_tointeger (L, 4)));
+            // Phase E-5: clear (channel, start, count) — all bounds-checked.
+            const auto ch    = static_cast<int> (lua_tointeger (L, 2) - 1);
+            const auto start = static_cast<int> (lua_tointeger (L, 3) - 1);
+            const auto count = static_cast<int> (lua_tointeger (L, 4));
+            luaL_argcheck (L, ch >= 0 && ch < nchans, 2, "channel index out of range");
+            luaL_argcheck (L, start >= 0 && start <= nsamps, 3, "start index out of range");
+            luaL_argcheck (L, count >= 0 && start + count <= nsamps, 4, "count out of range");
+            buf->clear (ch, start, count);
             break;
         }
 
@@ -112,21 +124,29 @@ static int audio_length (lua_State* L)
 
 static int audio_get (lua_State* L)
 {
-    // clang-format off
+    // Phase E-5: bounds-check channel + frame indices before dereferencing.
+    // Without these, a script can read past the end of the buffer
+    // (memory-disclosure primitive). Indices are 1-based in Lua.
     auto* buf = toclassref (L, 1);
-    lua_pushnumber (L, buf->getArrayOfReadPointers()
-        [lua_tointeger (L, 2) - 1]
-        [lua_tointeger (L, 3) - 1]);
+    const auto ch    = static_cast<int> (lua_tointeger (L, 2) - 1);
+    const auto frame = static_cast<int> (lua_tointeger (L, 3) - 1);
+    luaL_argcheck (L, ch >= 0 && ch < buf->getNumChannels(), 2, "channel index out of range");
+    luaL_argcheck (L, frame >= 0 && frame < buf->getNumSamples(), 3, "frame index out of range");
+    lua_pushnumber (L, buf->getArrayOfReadPointers()[ch][frame]);
     return 1;
-    // clang-format on
 }
 
 static int audio_set (lua_State* L)
 {
+    // Phase E-5: bounds-check channel + frame indices before dereferencing.
+    // Without these, a script can write past the end of the buffer
+    // (straight memory-corruption primitive). Indices are 1-based in Lua.
     auto* buf = toclassref (L, 1);
-    buf->getArrayOfWritePointers()
-        [lua_tointeger (L, 2) - 1]
-        [lua_tointeger (L, 3) - 1] = static_cast<SampleType> (lua_tonumber (L, 4));
+    const auto ch    = static_cast<int> (lua_tointeger (L, 2) - 1);
+    const auto frame = static_cast<int> (lua_tointeger (L, 3) - 1);
+    luaL_argcheck (L, ch >= 0 && ch < buf->getNumChannels(), 2, "channel index out of range");
+    luaL_argcheck (L, frame >= 0 && frame < buf->getNumSamples(), 3, "frame index out of range");
+    buf->getArrayOfWritePointers()[ch][frame] = static_cast<SampleType> (lua_tonumber (L, 4));
     return 0;
 }
 
