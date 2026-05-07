@@ -430,7 +430,7 @@ export function GraphCanvas() {
         onEdgeContextMenu={onEdgeContextMenu}
         onPaneClick={onPaneClick}
         onDoubleClick={onPaneDoubleClick}
-        onContextMenu={onPaneContextMenu}
+        onPaneContextMenu={onPaneContextMenu}
         onNodeContextMenu={onNodeContextMenu}
         onConnect={isEdit ? onConnect : undefined}
         onEdgesDelete={isEdit ? onEdgesDelete : undefined}
