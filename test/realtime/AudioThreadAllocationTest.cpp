@@ -27,6 +27,9 @@ using namespace juce;
 #include <element/context.hpp>
 #include <element/processor.hpp>
 #include "fixture/TestNode.h"
+#include "nodes/audiorouter.hpp"
+#include "nodes/eqfilter.hpp"
+#include "nodes/wetdry.hpp"
 
 using namespace element;
 
@@ -189,6 +192,110 @@ BOOST_AUTO_TEST_CASE (SmokeStableBlockSizeIsAllocFree)
     GainPassthrough proc;
     const int allocs = runRender (proc, 1024, 50, 48000.0);
     BOOST_CHECK_EQUAL (allocs, 0);
+}
+
+// 5. Real node — AudioRouterNode (C-3): tempAudio is pre-allocated in
+//    prepareToRender; steady-state render() must not allocate.
+BOOST_AUTO_TEST_CASE (AudioRouterIsAllocFreeInRender)
+{
+    constexpr int kBlockSize = 512;
+    constexpr int kNumBlocks = 50;
+    constexpr double kSampleRate = 48000.0;
+
+    AudioRouterNode router (4, 4);
+    router.refreshPorts();
+    router.prepareToRender (kSampleRate, kBlockSize);
+
+    AudioBuffer<float> audio (4, kBlockSize);
+    audio.clear();
+    AudioBuffer<float> cv (1, kBlockSize);
+    cv.clear();
+    MidiBuffer midi;
+
+    element_rt_test::resetAllocCount();
+    {
+        element_rt_test::ScopedAudioThread guard;
+        for (int b = 0; b < kNumBlocks; ++b)
+        {
+            RenderContext rc (audio, cv, midi, kBlockSize);
+            router.render (rc);
+        }
+    }
+
+    BOOST_TEST_CONTEXT ("C-3: AudioRouterNode::render must not allocate")
+    {
+        BOOST_CHECK_EQUAL (element_rt_test::getAllocCount(), 0);
+    }
+    router.releaseResources();
+}
+
+// 6. Real node — EQFilter (C-7): direct dispatch on shape change must
+//    not allocate (the previous std::function reseat would have).
+BOOST_AUTO_TEST_CASE (EQFilterIsAllocFreeIncludingShapeChange)
+{
+    constexpr int kBlockSize = 512;
+    constexpr int kNumBlocks = 100;
+    constexpr double kSampleRate = 48000.0;
+
+    EQFilter filter;
+    filter.reset (kSampleRate);
+    filter.setFrequency (440.0f);
+    filter.setQ (0.707f);
+    filter.setGain (1.0f);
+
+    juce::HeapBlock<float> buf (static_cast<size_t> (kBlockSize));
+
+    element_rt_test::resetAllocCount();
+    {
+        element_rt_test::ScopedAudioThread guard;
+        for (int b = 0; b < kNumBlocks; ++b)
+        {
+            // Mid-stream shape changes — the C-7 hazard. The prior
+            // std::function-of-lambda implementation would reseat the
+            // member function-object here, which heap-allocated.
+            if (b == 25) filter.setShape (EQFilter::Notch);
+            if (b == 50) filter.setShape (EQFilter::HighShelf);
+            if (b == 75) filter.setShape (EQFilter::LowPass);
+            // zero-fill — harmless, the filter just processes zeros
+            for (int i = 0; i < kBlockSize; ++i)
+                buf[i] = 0.0f;
+            filter.processBlock (buf, kBlockSize);
+        }
+    }
+
+    BOOST_TEST_CONTEXT ("C-7: EQFilter shape change + processBlock must not allocate")
+    {
+        BOOST_CHECK_EQUAL (element_rt_test::getAllocCount(), 0);
+    }
+}
+
+// 7. Real node — WetDryProcessor (C-8): the <4-channel fallback no longer
+//    DBG()s; the well-formed >=4-channel path must also stay alloc-free.
+BOOST_AUTO_TEST_CASE (WetDryIsAllocFreeInProcessBlock)
+{
+    constexpr int kBlockSize = 512;
+    constexpr int kNumBlocks = 50;
+    constexpr double kSampleRate = 48000.0;
+
+    WetDryProcessor proc;
+    proc.prepareToPlay (kSampleRate, kBlockSize);
+
+    AudioBuffer<float> audio (4, kBlockSize);
+    audio.clear();
+    MidiBuffer midi;
+
+    element_rt_test::resetAllocCount();
+    {
+        element_rt_test::ScopedAudioThread guard;
+        for (int b = 0; b < kNumBlocks; ++b)
+            proc.processBlock (audio, midi);
+    }
+
+    BOOST_TEST_CONTEXT ("C-8: WetDryProcessor::processBlock must not allocate")
+    {
+        BOOST_CHECK_EQUAL (element_rt_test::getAllocCount(), 0);
+    }
+    proc.releaseResources();
 }
 
 BOOST_AUTO_TEST_SUITE_END()
