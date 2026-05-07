@@ -16,6 +16,15 @@ import {
   selectLiveHealth,
   selectSessionName,
 } from "../../stores/usePerformStore";
+import {
+  useEngineSnapshotStore,
+  selectCpuPercent,
+  selectSampleRate,
+  selectBufferSize,
+  selectDeviceName,
+  selectDeviceLatencyMs,
+  selectHasHostData,
+} from "../../stores/useEngineSnapshotStore";
 import { NeuButton, NeuDisplay } from "../neu";
 import type { BlockData } from "../../data/types";
 import {
@@ -407,20 +416,35 @@ function BlockParameterList({ nodeId }: { nodeId: string }) {
 function ProjectOverview() {
   const nodes = useGraphStore(selectNodes);
   const edges = useGraphStore(selectEdges);
-  const totalCpu = nodes.reduce((sum, n) => sum + n.cpuLoad, 0);
-  const health = usePerformStore(selectLiveHealth);
   const projectName = usePerformStore(selectSessionName);
 
-  const sampleRate = health.sampleRateLabel;
-  const buffer =
-    typeof health.buffer === "number" && health.buffer > 0
-      ? `${health.buffer} spl`
+  // US-002 / C-2: subscribe directly to the engine snapshot store for the
+  // live audio-engine fields. The previous implementation read from
+  // usePerformStore.liveHealth, which depended on the OLD onGraphState
+  // poll that dropped the engine block on empty graphs (now fixed in C++)
+  // AND was previously fed a fake `peak * 320` CPU value (cleared by
+  // commit e7130f6f). Direct subscription removes both failure modes.
+  const engineCpuPercent = useEngineSnapshotStore(selectCpuPercent);
+  const engineSampleRate = useEngineSnapshotStore(selectSampleRate);
+  const engineBufferSize = useEngineSnapshotStore(selectBufferSize);
+  const engineDeviceName = useEngineSnapshotStore(selectDeviceName);
+  const engineDeviceLatencyMs = useEngineSnapshotStore(selectDeviceLatencyMs);
+  const hasHostData = useEngineSnapshotStore(selectHasHostData);
+
+  // Match StatusBar formatting so PROJECT OVERVIEW and the native footer
+  // present identical numbers.
+  const cpuLabel = hasHostData ? `${engineCpuPercent.toFixed(1)}%` : "—";
+  const sampleRateLabel =
+    engineSampleRate > 0
+      ? `${(engineSampleRate / 1000).toFixed(1)} kHz`
       : "—";
-  const device = health.clock && health.clock !== "—" ? health.clock : "—";
-  const latency =
-    typeof health.latency === "number" && health.latency > 0
-      ? `${health.latency.toFixed(1)} ms`
+  const bufferLabel = engineBufferSize > 0 ? `${engineBufferSize} spl` : "—";
+  const deviceLatencyLabel =
+    engineDeviceLatencyMs > 0
+      ? `${engineDeviceLatencyMs.toFixed(1)} ms`
       : "—";
+  const deviceLabel =
+    engineDeviceName.length > 0 ? engineDeviceName : "—";
 
   return (
     <div className="space-y-4">
@@ -433,14 +457,25 @@ function ProjectOverview() {
       {[
         { label: "BLOCKS", value: String(nodes.length) },
         { label: "CABLES", value: String(edges.length) },
-        { label: "TOTAL CPU", value: `${totalCpu.toFixed(1)}%` },
-        { label: "HOST CPU", value: `${health.cpu.toFixed(1)}%` },
-        { label: "SAMPLE RATE", value: sampleRate },
-        { label: "BUFFER", value: buffer },
-        { label: "DEVICE LATENCY", value: latency },
-        { label: "DEVICE", value: device },
+        // TOTAL CPU and HOST CPU both surface the audio-thread CPU from the
+        // engine snapshot. Previously TOTAL CPU was a graph-level sum of
+        // per-node `cpuLoad` placeholders — that placeholder is no longer
+        // populated, and the engine `cpu` field is the only authoritative
+        // measurement. Both rows are kept so the layout matches the
+        // existing inspector grid; HOST CPU is the canonical value and
+        // TOTAL CPU mirrors it until per-node CPU is wired (separate work).
+        { label: "TOTAL CPU", value: cpuLabel },
+        { label: "HOST CPU", value: cpuLabel },
+        { label: "SAMPLE RATE", value: sampleRateLabel },
+        { label: "BUFFER", value: bufferLabel },
+        { label: "DEVICE LATENCY", value: deviceLatencyLabel },
+        { label: "DEVICE", value: deviceLabel },
       ].map(({ label, value }) => (
-        <div key={label} className="flex justify-between items-center gap-2">
+        <div
+          key={label}
+          className="flex justify-between items-center gap-2"
+          aria-label={`${label}: ${value}`}
+        >
           <span className="text-[10px] text-text-secondary shrink-0">
             {label}
           </span>
