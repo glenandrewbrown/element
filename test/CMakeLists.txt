@@ -64,3 +64,4 @@ add_test(NAME "MappingServiceTests" COMMAND test_element --run_test=MappingServi
 add_test(NAME "OSCServiceTests" COMMAND test_element --run_test=OSCServiceTests)
 add_test(NAME "SessionServiceTests" COMMAND test_element --run_test=SessionServiceTests)
 add_test(NAME "BridgeContractTests" COMMAND test_element --run_test=BridgeContractTests)
+add_test(NAME "RootGraphMissingNodeTests" COMMAND test_element --run_test=RootGraphMissingNodeTests)
