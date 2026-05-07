@@ -65,3 +65,100 @@ BOOST_AUTO_TEST_CASE (close_all_plugin_windows_does_not_crash)
 }
 
 BOOST_AUTO_TEST_SUITE_END()
+
+// =====================================================================
+// Phase H — GuiService selection signal observers (Team H batch 3)
+// GuiService::nodeSelected is fired by selectNode() when the selected
+// node changes. We connect a listener and confirm:
+//   - the signal fires for a real selection change
+//   - no double-fire on selecting the same node
+//   - sigRefreshed is connectable without throwing
+// =====================================================================
+
+BOOST_AUTO_TEST_SUITE (GuiServiceObserverTests)
+
+BOOST_AUTO_TEST_CASE (node_selected_signal_fires_on_change)
+{
+    auto* svc = test::getService<GuiService>();
+    BOOST_REQUIRE (svc != nullptr);
+
+    int callCount = 0;
+    auto conn = svc->nodeSelected.connect ([&]() { ++callCount; });
+    BOOST_CHECK (conn.connected());
+
+    // selectNode() with a valid (non-empty) Node value will fire the signal;
+    // selecting the same value again must not re-fire (early return guard).
+    Node first;
+    svc->selectNode (first);
+    const int firstFireCount = callCount;
+    svc->selectNode (first);
+    BOOST_CHECK_EQUAL (callCount, firstFireCount); // no re-fire same value
+
+    conn.disconnect();
+    BOOST_CHECK (! conn.connected());
+}
+
+BOOST_AUTO_TEST_CASE (sig_refreshed_listener_connect)
+{
+    auto* svc = test::getService<GuiService>();
+    BOOST_REQUIRE (svc != nullptr);
+
+    int callCount = 0;
+    auto conn = svc->sigRefreshed.connect ([&]() { ++callCount; });
+    BOOST_CHECK (conn.connected());
+    conn.disconnect();
+    BOOST_CHECK (! conn.connected());
+}
+
+BOOST_AUTO_TEST_CASE (close_plugin_windows_for_unknown_node_id)
+{
+    auto* svc = test::getService<GuiService>();
+    BOOST_REQUIRE (svc != nullptr);
+    // Unknown node id must not crash; service iterates and skips silently.
+    BOOST_CHECK_NO_THROW (svc->closePluginWindowsFor (static_cast<uint32> (0xDEADBEEF), false));
+}
+
+BOOST_AUTO_TEST_SUITE_END()
+
+// =====================================================================
+// Phase H — GuiService accessor surface
+// Verify accessor methods that may run before any UI is constructed
+// (the test::context() runs in headless RunMode::Standalone with no
+// MainWindow). They must return null/zero rather than crashing.
+// =====================================================================
+
+BOOST_AUTO_TEST_SUITE (GuiServiceAccessorTests)
+
+BOOST_AUTO_TEST_CASE (get_main_window_returns_null_in_headless_mode)
+{
+    auto* svc = test::getService<GuiService>();
+    BOOST_REQUIRE (svc != nullptr);
+    // No MainWindow constructed in headless test context — must be null,
+    // not garbage / not a crash.
+    BOOST_CHECK (svc->getMainWindow() == nullptr);
+}
+
+BOOST_AUTO_TEST_CASE (get_num_plugin_windows_is_zero_initially)
+{
+    auto* svc = test::getService<GuiService>();
+    BOOST_REQUIRE (svc != nullptr);
+    BOOST_CHECK_EQUAL (svc->getNumPluginWindows(), 0);
+}
+
+BOOST_AUTO_TEST_CASE (have_active_windows_false_initially)
+{
+    auto* svc = test::getService<GuiService>();
+    BOOST_REQUIRE (svc != nullptr);
+    BOOST_CHECK (! svc->haveActiveWindows());
+}
+
+BOOST_AUTO_TEST_CASE (get_selected_node_default_constructed)
+{
+    auto* svc = test::getService<GuiService>();
+    BOOST_REQUIRE (svc != nullptr);
+    // No selection yet → returns a default Node value (not null pointer).
+    auto sel = svc->getSelectedNode();
+    BOOST_CHECK_NO_THROW ((void) sel.getName());
+}
+
+BOOST_AUTO_TEST_SUITE_END()

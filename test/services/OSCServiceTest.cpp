@@ -96,3 +96,106 @@ BOOST_AUTO_TEST_CASE (send_on_disconnected_sender_returns_false)
 }
 
 BOOST_AUTO_TEST_SUITE_END()
+
+// =====================================================================
+// Phase H — OSCService sender lifecycle (Team H batch 3)
+// Round-trip the sender API through reconnects, double-disconnects,
+// and connect-after-disconnect. The lock-free sender holder must
+// remain consistent across these state transitions.
+// =====================================================================
+
+BOOST_AUTO_TEST_SUITE (OSCServiceSenderLifecycleTests)
+
+BOOST_AUTO_TEST_CASE (reconnect_to_different_port_succeeds)
+{
+    OSCService svc;
+    BOOST_CHECK (! svc.isSenderConnected());
+
+    BOOST_CHECK (svc.connectSender ("127.0.0.1", 19901));
+    BOOST_CHECK (svc.isSenderConnected());
+
+    // Reconnect to a different port without explicit disconnect — the
+    // service must implicitly drop the old connection.
+    BOOST_CHECK (svc.connectSender ("127.0.0.1", 19902));
+    BOOST_CHECK (svc.isSenderConnected());
+
+    svc.disconnectSender();
+    BOOST_CHECK (! svc.isSenderConnected());
+}
+
+BOOST_AUTO_TEST_CASE (double_disconnect_is_safe)
+{
+    OSCService svc;
+    BOOST_REQUIRE (svc.connectSender ("127.0.0.1", 19903));
+    BOOST_CHECK_NO_THROW (svc.disconnectSender());
+    BOOST_CHECK_NO_THROW (svc.disconnectSender()); // double-disconnect
+    BOOST_CHECK (! svc.isSenderConnected());
+}
+
+BOOST_AUTO_TEST_CASE (send_after_reconnect_returns_true)
+{
+    OSCService svc;
+    BOOST_REQUIRE (svc.connectSender ("127.0.0.1", 19904));
+
+    juce::OSCMessage msg (juce::OSCAddressPattern ("/test/reconnect"));
+    msg.addFloat32 (0.42f);
+
+    bool result = false;
+    BOOST_CHECK_NO_THROW (result = svc.sendMessage (msg));
+    // Sender is connected — UDP send should succeed (no peer needed).
+    BOOST_CHECK (result);
+
+    svc.disconnectSender();
+}
+
+BOOST_AUTO_TEST_SUITE_END()
+
+// =====================================================================
+// Phase H — OSCService input validation
+// connectSender must reject obvious garbage gracefully (empty host,
+// out-of-range port). The contract says "returns false" — never throw.
+// =====================================================================
+
+BOOST_AUTO_TEST_SUITE (OSCServiceInputValidationTests)
+
+BOOST_AUTO_TEST_CASE (connect_with_empty_host_does_not_crash)
+{
+    OSCService svc;
+    bool result = true;
+    // Empty host is invalid input — implementation may return false or
+    // accept-then-fail-on-send. Either way, no throw.
+    BOOST_CHECK_NO_THROW (result = svc.connectSender ("", 19910));
+    if (result)
+        svc.disconnectSender();
+    BOOST_CHECK (! svc.isSenderConnected());
+}
+
+BOOST_AUTO_TEST_CASE (connect_with_zero_port_returns_false_or_throws_safely)
+{
+    OSCService svc;
+    bool result = true;
+    BOOST_CHECK_NO_THROW (result = svc.connectSender ("127.0.0.1", 0));
+    // Port 0 may be accepted by some OS stacks (kernel-assigned port);
+    // we only require: no crash and a consistent isSenderConnected().
+    if (result)
+        BOOST_CHECK (svc.isSenderConnected());
+    else
+        BOOST_CHECK (! svc.isSenderConnected());
+    svc.disconnectSender();
+}
+
+BOOST_AUTO_TEST_CASE (send_after_disconnect_returns_false_again)
+{
+    OSCService svc;
+    BOOST_REQUIRE (svc.connectSender ("127.0.0.1", 19911));
+    svc.disconnectSender();
+
+    juce::OSCMessage msg (juce::OSCAddressPattern ("/test/post-disconnect"));
+    msg.addString ("ping");
+
+    bool result = true;
+    BOOST_CHECK_NO_THROW (result = svc.sendMessage (msg));
+    BOOST_CHECK (! result);
+}
+
+BOOST_AUTO_TEST_SUITE_END()

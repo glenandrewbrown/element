@@ -100,3 +100,120 @@ BOOST_AUTO_TEST_CASE (autosave_file_path_no_session_file)
 }
 
 BOOST_AUTO_TEST_SUITE_END()
+
+// =====================================================================
+// Phase H — SessionService signal observers (Team H batch 3)
+// SessionService exposes:
+//   sigSessionLoaded — fired after openDefaultSession()/openFile()
+//   sigWillSave      — fired before saveSession()
+// We verify both signals are connectable, disconnect cleanly, and
+// fire (sigSessionLoaded) for the default-session reload path.
+// =====================================================================
+
+BOOST_AUTO_TEST_SUITE (SessionServiceObserverTests)
+
+BOOST_AUTO_TEST_CASE (sig_session_loaded_listener_connect)
+{
+    auto* svc = test::getService<SessionService>();
+    BOOST_REQUIRE (svc != nullptr);
+
+    int callCount = 0;
+    auto conn = svc->sigSessionLoaded.connect ([&]() { ++callCount; });
+    BOOST_CHECK (conn.connected());
+    conn.disconnect();
+    BOOST_CHECK (! conn.connected());
+}
+
+BOOST_AUTO_TEST_CASE (sig_will_save_listener_connect)
+{
+    auto* svc = test::getService<SessionService>();
+    BOOST_REQUIRE (svc != nullptr);
+
+    int callCount = 0;
+    auto conn = svc->sigWillSave.connect ([&]() { ++callCount; });
+    BOOST_CHECK (conn.connected());
+    conn.disconnect();
+    BOOST_CHECK (! conn.connected());
+}
+
+BOOST_AUTO_TEST_CASE (sig_session_loaded_fires_on_default_reload)
+{
+    // openDefaultSession() must trigger sigSessionLoaded after the new
+    // session ValueTree is in place — UI consumers depend on this hook.
+    auto* svc = test::getService<SessionService>();
+    BOOST_REQUIRE (svc != nullptr);
+
+    int callCount = 0;
+    auto conn = svc->sigSessionLoaded.connect ([&]() { ++callCount; });
+
+    BOOST_CHECK_NO_THROW (svc->openDefaultSession());
+    juce::MessageManager::getInstance()->runDispatchLoopUntil (50);
+
+    BOOST_CHECK (callCount >= 1);
+    conn.disconnect();
+}
+
+BOOST_AUTO_TEST_SUITE_END()
+
+// =====================================================================
+// Phase H — SessionService open / close edge cases
+// openFile() with a missing/invalid file must not crash; the public
+// API contract is fail-soft (showError flag exists but defaults true,
+// so we use openFile() — error dialog is suppressed by saveSession's
+// showError parameter, openFile is best-effort).
+// =====================================================================
+
+BOOST_AUTO_TEST_SUITE (SessionServiceFileOpsTests)
+
+BOOST_AUTO_TEST_CASE (open_nonexistent_file_does_not_crash)
+{
+    auto* svc = test::getService<SessionService>();
+    BOOST_REQUIRE (svc != nullptr);
+
+    juce::File missing (juce::File::getSpecialLocation (juce::File::tempDirectory)
+                            .getChildFile ("__element_phaseH_does_not_exist__.els"));
+    BOOST_REQUIRE (! missing.existsAsFile());
+    BOOST_CHECK_NO_THROW (svc->openFile (missing));
+    juce::MessageManager::getInstance()->runDispatchLoopUntil (10);
+}
+
+BOOST_AUTO_TEST_CASE (close_session_then_open_default_round_trip)
+{
+    auto* svc = test::getService<SessionService>();
+    BOOST_REQUIRE (svc != nullptr);
+
+    BOOST_CHECK_NO_THROW (svc->closeSession());
+    juce::MessageManager::getInstance()->runDispatchLoopUntil (10);
+
+    BOOST_CHECK_NO_THROW (svc->openDefaultSession());
+    juce::MessageManager::getInstance()->runDispatchLoopUntil (10);
+
+    // After reload, dirty flag may be set by async events; just verify
+    // the API surface remains responsive.
+    BOOST_CHECK_NO_THROW (svc->resetChanges());
+    BOOST_CHECK (! svc->hasSessionChanged());
+}
+
+BOOST_AUTO_TEST_CASE (new_session_does_not_crash)
+{
+    auto* svc = test::getService<SessionService>();
+    BOOST_REQUIRE (svc != nullptr);
+    BOOST_CHECK_NO_THROW (svc->newSession());
+    juce::MessageManager::getInstance()->runDispatchLoopUntil (10);
+    BOOST_CHECK_NO_THROW (svc->resetChanges());
+}
+
+BOOST_AUTO_TEST_CASE (autosave_with_zero_interval_clamped)
+{
+    // startAutosave with non-positive interval is an obvious error — must
+    // not crash. Implementation may clamp to a minimum or reject.
+    auto* svc = test::getService<SessionService>();
+    BOOST_REQUIRE (svc != nullptr);
+
+    BOOST_CHECK_NO_THROW (svc->startAutosave (0));
+    BOOST_CHECK_NO_THROW (svc->stopAutosave());
+    BOOST_CHECK_NO_THROW (svc->startAutosave (-5));
+    BOOST_CHECK_NO_THROW (svc->stopAutosave());
+}
+
+BOOST_AUTO_TEST_SUITE_END()

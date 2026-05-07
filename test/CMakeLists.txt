@@ -70,6 +70,24 @@ add_test(NAME "LuaBoundsTests" COMMAND test_element --run_test=LuaBoundsTests)
 add_test(NAME "NodeWriteFileTests" COMMAND test_element --run_test=NodeWriteFileTests)
 add_test(NAME "AudioThreadAllocationTests" COMMAND test_element --run_test=AudioThreadAllocationTests)
 
+# Phase H — service-layer test coverage extension (Team H batch 3).
+# Each <Service>Service<...>Tests sub-suite is registered as its own ctest
+# entry so coverage shows up at the suite-count level.
+add_test(NAME "DeviceServiceObserverTests" COMMAND test_element --run_test=DeviceServiceObserverTests)
+add_test(NAME "DeviceServiceControllerTests" COMMAND test_element --run_test=DeviceServiceControllerTests)
+add_test(NAME "EngineServiceObserverTests" COMMAND test_element --run_test=EngineServiceObserverTests)
+add_test(NAME "EngineServiceErrorTests" COMMAND test_element --run_test=EngineServiceErrorTests)
+add_test(NAME "GuiServiceObserverTests" COMMAND test_element --run_test=GuiServiceObserverTests)
+add_test(NAME "GuiServiceAccessorTests" COMMAND test_element --run_test=GuiServiceAccessorTests)
+add_test(NAME "MappingServiceLearnModeTests" COMMAND test_element --run_test=MappingServiceLearnModeTests)
+add_test(NAME "MappingServiceRemovalTests" COMMAND test_element --run_test=MappingServiceRemovalTests)
+add_test(NAME "OSCServiceSenderLifecycleTests" COMMAND test_element --run_test=OSCServiceSenderLifecycleTests)
+add_test(NAME "OSCServiceInputValidationTests" COMMAND test_element --run_test=OSCServiceInputValidationTests)
+add_test(NAME "PresetServiceRefreshTests" COMMAND test_element --run_test=PresetServiceRefreshTests)
+add_test(NAME "PresetServiceAddTests" COMMAND test_element --run_test=PresetServiceAddTests)
+add_test(NAME "SessionServiceObserverTests" COMMAND test_element --run_test=SessionServiceObserverTests)
+add_test(NAME "SessionServiceFileOpsTests" COMMAND test_element --run_test=SessionServiceFileOpsTests)
+
 # Phase C opt-in stress harness: 100 nodes, 60 s wall-clock — not in default
 # ctest because it is wall-clock-bound and adds no extra coverage. Enable
 # manually with:  cmake -B build-merged -DELEMENT_RT_STRESS_TEST=ON

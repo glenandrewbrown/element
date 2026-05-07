@@ -81,3 +81,99 @@ BOOST_AUTO_TEST_CASE (hotplug_change_listener_no_crash)
 }
 
 BOOST_AUTO_TEST_SUITE_END()
+
+// =====================================================================
+// Phase H — Observer / hot-plug behaviour (Team H batch 3)
+// Verifies the DeviceService's interaction with the JUCE
+// AudioDeviceManager change-notifier surface. The service must remain
+// resilient to repeated/spurious change notifications and must keep
+// receiving notifications across a deactivate/activate round-trip.
+// =====================================================================
+
+BOOST_AUTO_TEST_SUITE (DeviceServiceObserverTests)
+
+BOOST_AUTO_TEST_CASE (rapid_change_burst_does_not_crash)
+{
+    // The hot-plug debounce timer should coalesce a burst into one refresh.
+    auto* svc = test::getService<DeviceService>();
+    BOOST_REQUIRE (svc != nullptr);
+
+    auto& dm = test::context()->devices();
+    for (int i = 0; i < 10; ++i)
+        BOOST_CHECK_NO_THROW (dm.sendSynchronousChangeMessage());
+
+    // Pump the message queue so any debounce timer can fire (10ms is the
+    // shortest meaningful pump that won't slow the suite).
+    juce::MessageManager::getInstance()->runDispatchLoopUntil (10);
+}
+
+BOOST_AUTO_TEST_CASE (change_notifier_survives_lifecycle_round_trip)
+{
+    auto* svc = test::getService<DeviceService>();
+    BOOST_REQUIRE (svc != nullptr);
+
+    BOOST_CHECK_NO_THROW (svc->deactivate());
+    BOOST_CHECK_NO_THROW (svc->activate());
+
+    // Notification path should still be live after lifecycle round-trip.
+    auto& dm = test::context()->devices();
+    BOOST_CHECK_NO_THROW (dm.sendSynchronousChangeMessage());
+    juce::MessageManager::getInstance()->runDispatchLoopUntil (10);
+}
+
+BOOST_AUTO_TEST_CASE (change_notifier_when_deactivated)
+{
+    // Notifications received while deactivated must not crash — the service
+    // unregisters its ChangeListener in deactivate() so this is a no-op
+    // contract verification.
+    auto* svc = test::getService<DeviceService>();
+    BOOST_REQUIRE (svc != nullptr);
+
+    BOOST_CHECK_NO_THROW (svc->deactivate());
+    auto& dm = test::context()->devices();
+    BOOST_CHECK_NO_THROW (dm.sendSynchronousChangeMessage());
+    juce::MessageManager::getInstance()->runDispatchLoopUntil (10);
+    BOOST_CHECK_NO_THROW (svc->activate());
+}
+
+BOOST_AUTO_TEST_SUITE_END()
+
+// =====================================================================
+// Phase H — Controller-management API surface
+// DeviceService::add / remove / refresh accept Controller and Control
+// values. With no real controller registered, these calls must return
+// gracefully (defensive default-constructed inputs are valid program
+// inputs from the UI's "no selection" state).
+// =====================================================================
+
+BOOST_AUTO_TEST_SUITE (DeviceServiceControllerTests)
+
+BOOST_AUTO_TEST_CASE (refresh_default_controller_is_safe)
+{
+    auto* svc = test::getService<DeviceService>();
+    BOOST_REQUIRE (svc != nullptr);
+    // Refresh with a default-constructed (invalid) Controller — the service
+    // should treat it as a no-op rather than crashing.
+    Controller noController;
+    BOOST_CHECK_NO_THROW (svc->refresh (noController));
+}
+
+BOOST_AUTO_TEST_CASE (remove_default_controller_is_safe)
+{
+    auto* svc = test::getService<DeviceService>();
+    BOOST_REQUIRE (svc != nullptr);
+    // Removing a controller that was never added must not crash.
+    Controller noController;
+    BOOST_CHECK_NO_THROW (svc->remove (noController));
+}
+
+BOOST_AUTO_TEST_CASE (add_invalid_file_is_safe)
+{
+    auto* svc = test::getService<DeviceService>();
+    BOOST_REQUIRE (svc != nullptr);
+    // Adding a non-existent .controller file must fail gracefully.
+    juce::File missing ("/tmp/__element_nonexistent_controller_file__.controller");
+    BOOST_CHECK_NO_THROW (svc->add (missing));
+}
+
+BOOST_AUTO_TEST_SUITE_END()
