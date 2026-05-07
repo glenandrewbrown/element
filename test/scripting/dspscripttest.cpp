@@ -152,4 +152,35 @@ BOOST_AUTO_TEST_CASE (LuaSandboxDangerousGlobalsBlocked)
     }
 }
 
+// Phase E-6: DSPScript::validate() must reject empty + malformed scripts
+// at the gate so the host never tries to wire a half-broken DSP node into
+// the audio graph. The previous implementation always returned ok() because
+// the full render-side dry run was disabled; the lightweight version now
+// runs the script through ScriptLoader inside a sandboxed Lua state and
+// surfaces compile errors.
+BOOST_AUTO_TEST_CASE (ValidateRejectsEmptyScript)
+{
+    auto r = DSPScript::validate (String());
+    BOOST_REQUIRE (! r.wasOk());
+}
+
+BOOST_AUTO_TEST_CASE (ValidateRejectsSyntaxError)
+{
+    // Unbalanced 'function' keyword — syntactically invalid Lua. ScriptLoader
+    // should report this through hasError() and validate() should bubble it
+    // up as a failure.
+    const String bad = "function broken(";
+    auto r = DSPScript::validate (bad);
+    BOOST_CHECK (! r.wasOk());
+}
+
+BOOST_AUTO_TEST_CASE (ValidateAcceptsTrivialReturnTable)
+{
+    // Minimal valid script that compiles cleanly. validate() should not
+    // execute node_render against synthetic buffers; it just needs to load.
+    const String ok = "return { layout = function() return {}, {} end }";
+    auto r = DSPScript::validate (ok);
+    BOOST_CHECK (r.wasOk());
+}
+
 BOOST_AUTO_TEST_SUITE_END()
