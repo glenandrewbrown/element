@@ -117,4 +117,52 @@ BOOST_AUTO_TEST_CASE (writefile_inside_datapath_succeeds)
         target.deleteFile();
 }
 
+// Phase E-3 hardening: sibling-prefix bypass. A naive startsWith() would
+// let `<rootParent>/<rootBasename>HACK/...` through because the prefix
+// matches; juce::File::isAChildOf() correctly rejects it. This test is
+// the discriminator between the two implementations.
+BOOST_AUTO_TEST_CASE (writefile_rejects_sibling_prefix_directory)
+{
+    auto lua = make_sandboxed_state();
+    Node node = Node::createGraph ("Test");
+    install_node (lua, node);
+
+    const auto root       = DataPath::applicationDataDir();
+    const auto sibling    = root.getParentDirectory()
+                                .getChildFile (root.getFileName() + "HACK");
+    const auto target     = sibling.getChildFile ("evil.elg");
+    if (target.existsAsFile())
+        target.deleteFile();
+
+    auto r = lua.safe_script (
+        std::string ("return _test_node:writeFile('") + target.getFullPathName().toStdString() + "')",
+        sol::script_pass_on_error);
+
+    BOOST_REQUIRE (r.valid());
+    sol::object o = r;
+    BOOST_CHECK_EQUAL (o.as<bool>(), false);
+    BOOST_CHECK (! target.existsAsFile());
+}
+
+// Phase E-3 hardening: `..` traversal. Even an absolute path that nominally
+// starts with the data root must not be allowed to escape via `..`.
+BOOST_AUTO_TEST_CASE (writefile_rejects_dotdot_traversal)
+{
+    auto lua = make_sandboxed_state();
+    Node node = Node::createGraph ("Test");
+    install_node (lua, node);
+
+    const auto root = DataPath::applicationDataDir();
+    const std::string traversal =
+        root.getFullPathName().toStdString() + "/../../etc/element_evil.elg";
+
+    auto r = lua.safe_script (
+        std::string ("return _test_node:writeFile('") + traversal + "')",
+        sol::script_pass_on_error);
+
+    BOOST_REQUIRE (r.valid());
+    sol::object o = r;
+    BOOST_CHECK_EQUAL (o.as<bool>(), false);
+}
+
 BOOST_AUTO_TEST_SUITE_END()

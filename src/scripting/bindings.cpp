@@ -414,13 +414,17 @@ void clearGlobals (sol::state_view& view)
 //
 // Without an instruction limit, a malicious or buggy script can hang the host
 // indefinitely (e.g. `while true do end`). This hook is installed by
-// initializeState() with LUA_MASKCOUNT and fires every kInstructionBudget
-// VM instructions. When it fires it raises a Lua error that is cleanly
-// captured by sol's protected_function path (no host-side longjmp escape).
+// initializeState() with LUA_MASKCOUNT. Lua calls it every kInstructionBudget
+// VM instructions; the hook unconditionally raises a Lua error that is
+// cleanly caught by sol's protected_function path (no host-side longjmp
+// escape). In practice this means kInstructionBudget IS the per-pcall
+// instruction cap.
 //
-// The budget is sized so realistic scripts (DSP loops, MIDI handlers) never
-// trip it but a tight infinite loop terminates within a few milliseconds.
-static constexpr int kInstructionBudget = 100000;
+// Budget sizing: 1e7 (10 million) instructions. A non-trivial DSP block
+// (e.g. a 2-channel biquad on 4096 samples) is on the order of 1e4 - 1e5
+// VM ops, so realistic per-block scripts have ~100x headroom. A tight
+// infinite loop trips this in well under 100ms even on slow CI.
+static constexpr int kInstructionBudget = 10'000'000;
 
 static void instructionCountHook (lua_State* L, lua_Debug*)
 {
