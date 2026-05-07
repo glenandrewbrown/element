@@ -443,8 +443,23 @@ export function useJuceBridge() {
       }
     })();
 
+    // D-1: PluginManager scan is async — list may still be empty at first
+    // mount. Re-poll on a back-off until either (a) plugins arrive or
+    // (b) we hit the bounded retry budget. This intentionally avoids adding
+    // a new C++ push channel; the bridge `elementGetPluginList` is cheap.
+    const pluginPollDelays = [1500, 3000, 5000, 8000, 12000]; // ms, total ~30s
+    const pluginPollTimers: number[] = [];
+    pluginPollDelays.forEach((delay) => {
+      const id = window.setTimeout(() => {
+        if (usePluginBrowserStore.getState().plugins.length === 0)
+          void usePluginBrowserStore.getState().refresh();
+      }, delay);
+      pluginPollTimers.push(id);
+    });
+
     return () => {
       window.__elementNative = prev;
+      pluginPollTimers.forEach((id) => window.clearTimeout(id));
     };
   }, []);
 }

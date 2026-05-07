@@ -46,6 +46,12 @@ export const usePluginBrowserStore = create<PluginBrowserState>()((set) => ({
   refresh: async () => {
     try {
       const raw = await invokeElementNative("elementGetPluginList", []);
+      if (import.meta.env.DEV) {
+        // Dev observability for D-1 — surfaces shape/empty-list mismatches in
+        // the browser console without breaking the embedded WebView host.
+        // eslint-disable-next-line no-console
+        console.debug("[usePluginBrowserStore.refresh] raw payload:", raw);
+      }
       if (raw == null) return;
       const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
       const favRaw = parsed?.favoriteIdentifiers as unknown[] | undefined;
@@ -83,8 +89,12 @@ export const usePluginBrowserStore = create<PluginBrowserState>()((set) => ({
           };
         });
       set({ plugins, favoriteIdentifiers: fav, recentIdentifiers: recent });
-    } catch {
-      /* dev / no bridge */
+    } catch (err) {
+      // Dev / no bridge — but surface errors when the bridge IS present.
+      if (import.meta.env.DEV) {
+        // eslint-disable-next-line no-console
+        console.warn("[usePluginBrowserStore.refresh] failed:", err);
+      }
     }
   },
 }));
