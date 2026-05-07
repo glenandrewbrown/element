@@ -21,6 +21,8 @@ interface PerformState {
   macros: MacroControl[];
   scenes: SceneData[];
   liveHealth: LiveHealth;
+  /** Mirror of host AudioEngine transport state (TransportMonitor::playing). */
+  isPlaying: boolean;
   mapModeActive: boolean;
   mappedParameters: Set<string>;
 }
@@ -43,6 +45,8 @@ interface PerformActions {
     cpu?: number;
     /** Round-trip device latency (ms) from host audio device. */
     latencyMs?: number;
+    /** Engine transport state from `engine.isPlaying`. */
+    isPlaying?: boolean;
   }) => void;
 }
 
@@ -68,6 +72,7 @@ export const usePerformStore = create<PerformStore>()((set) => ({
   macros: [],
   scenes: [],
   liveHealth: { ...defaultHealth },
+  isPlaying: false,
   mapModeActive: false,
   mappedParameters: new Set<string>(),
 
@@ -124,6 +129,8 @@ export const usePerformStore = create<PerformStore>()((set) => ({
       return {
         sessionName: data.sessionName ?? s.sessionName,
         scenes,
+        isPlaying:
+          typeof data.isPlaying === "boolean" ? data.isPlaying : s.isPlaying,
         liveHealth: {
           ...s.liveHealth,
           bpm: data.bpm ?? s.liveHealth.bpm,
@@ -157,6 +164,7 @@ export const selectCpu = (s: PerformStore) => s.liveHealth.cpu;
 export const selectBpm = (s: PerformStore) => s.liveHealth.bpm;
 export const selectTimecode = (s: PerformStore) => s.liveHealth.timecode;
 export const selectAlerts = (s: PerformStore) => s.liveHealth.alerts;
+export const selectIsPlaying = (s: PerformStore) => s.isPlaying;
 
 export const selectMacroById = (id: string) => (s: PerformStore) =>
   s.macros.find((m) => m.id === id);

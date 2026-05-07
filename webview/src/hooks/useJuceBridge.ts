@@ -346,6 +346,8 @@ function applySnapshot(raw: unknown) {
     timecode: sampleRateLabel,
     sampleRateLabel,
     latencyMs,
+    isPlaying:
+      typeof s.engine?.isPlaying === "boolean" ? s.engine.isPlaying : undefined,
   });
 
   useHostExtrasStore.getState().hydrateFromSnapshot({
