@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { NeuInput } from "../neu";
+import { NeuInput, EmptyState } from "../neu";
 import type { BlockCategory } from "../../data/types";
 import { usePluginBrowserStore } from "../../stores/usePluginBrowserStore";
 import {
@@ -21,6 +21,7 @@ import {
   type GraphOutlineNode,
 } from "../../stores/useHostExtrasStore";
 import { Icon } from "../neu";
+import { EV_OPEN_PREFERENCES } from "../../events";
 
 // ── Category shape components ──
 
@@ -45,33 +46,6 @@ interface PluginEntry {
   category: BlockCategory;
   icon: string;
 }
-
-const pluginsDemoFallback: PluginEntry[] = [
-  {
-    id: "osc-core",
-    name: "OSCILLATOR_CORE_V3",
-    category: "generator",
-    icon: "radio",
-  },
-  {
-    id: "wave-gen",
-    name: "WAVETABLE_GEN",
-    category: "generator",
-    icon: "waves",
-  },
-  {
-    id: "ladder-filt",
-    name: "LADDER_FILTER_24DB",
-    category: "modifier",
-    icon: "filter_alt",
-  },
-  {
-    id: "peak-lim",
-    name: "PEAK_LIMITER",
-    category: "modifier",
-    icon: "compress",
-  },
-];
 
 function OutlineRow({
   node,
@@ -152,7 +126,6 @@ export function ToolPalette() {
   }, [browseTab]);
 
   const plugins = useMemo((): PluginEntry[] => {
-    if (nativePlugins.length === 0) return pluginsDemoFallback;
     return nativePlugins.map((p) => ({
       id: p.identifier,
       name: p.name,
@@ -436,33 +409,60 @@ export function ToolPalette() {
             </div>
 
             {/* Plugin items */}
-            {filtered.map((plugin) => {
-              const isSelected = plugin.id === selectedId;
-              return (
-                <div
-                  key={plugin.id}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => setSelectedId(plugin.id)}
-                  onDoubleClick={() => void nativeGraphAddPlugin(plugin.id)}
-                  onKeyDown={(ev) => {
-                    if (ev.key === "Enter")
-                      void nativeGraphAddPlugin(plugin.id);
-                  }}
-                  className={[
-                    "p-2 flex items-center gap-3 rounded transition-all cursor-pointer",
-                    isSelected
-                      ? "bg-surface shadow-[-2px_-2px_8px_rgba(255,255,255,0.04),2px_2px_8px_rgba(0,0,0,0.35)] border border-white/5 text-generator"
-                      : "text-text-secondary opacity-60 hover:opacity-100 hover:bg-elevated",
-                  ].join(" ")}
-                >
-                  <PluginIcon icon={plugin.icon} />
-                  <span className="text-[11px] font-medium truncate">
-                    {plugin.name}
-                  </span>
-                </div>
-              );
-            })}
+            {plugins.length === 0 ? (
+              <div className="px-2 py-4">
+                <EmptyState
+                  illustration="no-plugins"
+                  size="sm"
+                  tone="audio"
+                  title="No plugins scanned"
+                  description="Open Preferences to scan AU/VST3/CLAP/LV2 plugins on this system."
+                  action={
+                    <button
+                      type="button"
+                      className="px-3 py-1 rounded bg-pressed text-[11px] uppercase tracking-widest text-generator hover:bg-elevated transition-colors"
+                      onClick={() =>
+                        window.dispatchEvent(new Event(EV_OPEN_PREFERENCES))
+                      }
+                    >
+                      Open Preferences
+                    </button>
+                  }
+                />
+              </div>
+            ) : filtered.length === 0 ? (
+              <div className="px-2 py-3 text-[10px] text-text-dim text-center">
+                No plugins match the current filter.
+              </div>
+            ) : (
+              filtered.map((plugin) => {
+                const isSelected = plugin.id === selectedId;
+                return (
+                  <div
+                    key={plugin.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setSelectedId(plugin.id)}
+                    onDoubleClick={() => void nativeGraphAddPlugin(plugin.id)}
+                    onKeyDown={(ev) => {
+                      if (ev.key === "Enter")
+                        void nativeGraphAddPlugin(plugin.id);
+                    }}
+                    className={[
+                      "p-2 flex items-center gap-3 rounded transition-all cursor-pointer",
+                      isSelected
+                        ? "bg-surface shadow-[-2px_-2px_8px_rgba(255,255,255,0.04),2px_2px_8px_rgba(0,0,0,0.35)] border border-white/5 text-generator"
+                        : "text-text-secondary opacity-60 hover:opacity-100 hover:bg-elevated",
+                    ].join(" ")}
+                  >
+                    <PluginIcon icon={plugin.icon} />
+                    <span className="text-[11px] font-medium truncate">
+                      {plugin.name}
+                    </span>
+                  </div>
+                );
+              })
+            )}
           </>
         ) : null}
       </nav>
