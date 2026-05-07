@@ -14,6 +14,8 @@ import {
   nativeTransportStop,
   nativeTransportRewind,
   nativeTransportSetTempo,
+  nativeUndo,
+  nativeRedo,
 } from "../../bridge/nativeGraph";
 import {
   nativeSessionNew,
@@ -203,11 +205,23 @@ export function Toolbar() {
           <div className="flex items-center gap-6">
             {/* Undo/Redo — Section 7.8 */}
             <div className="flex items-center gap-1 bg-pressed px-1.5 py-0.5 rounded shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] border border-white/5">
-              <button className="text-text-secondary hover:text-text-primary p-1 flex items-center gap-1" title="Undo">
-                <Icon name="Undo2" size={14} aria-label="Undo" />
+              <button
+                type="button"
+                className="text-text-secondary hover:text-text-primary p-1 flex items-center gap-1"
+                title="Undo"
+                aria-label="Undo"
+                onClick={() => void nativeUndo()}
+              >
+                <Icon name="Undo2" size={14} aria-hidden />
               </button>
-              <button className="text-text-secondary hover:text-text-primary p-1" title="Redo">
-                <Icon name="Redo2" size={14} aria-label="Redo" />
+              <button
+                type="button"
+                className="text-text-secondary hover:text-text-primary p-1"
+                title="Redo"
+                aria-label="Redo"
+                onClick={() => void nativeRedo()}
+              >
+                <Icon name="Redo2" size={14} aria-hidden />
               </button>
             </div>
 
