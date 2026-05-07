@@ -410,6 +410,42 @@ void clearGlobals (sol::state_view& view)
 }
 
 //==============================================================================
+// Phase E-7: instruction-count watchdog hook.
+//
+// Without an instruction limit, a malicious or buggy script can hang the host
+// indefinitely (e.g. `while true do end`). This hook is installed by
+// initializeState() with LUA_MASKCOUNT and fires every kInstructionBudget
+// VM instructions. When it fires it raises a Lua error that is cleanly
+// captured by sol's protected_function path (no host-side longjmp escape).
+//
+// The budget is sized so realistic scripts (DSP loops, MIDI handlers) never
+// trip it but a tight infinite loop terminates within a few milliseconds.
+static constexpr int kInstructionBudget = 100000;
+
+static void instructionCountHook (lua_State* L, lua_Debug*)
+{
+    luaL_error (L, "Lua sandbox instruction-count budget exceeded — script aborted");
+}
+
+//==============================================================================
+// Phase E-1 / E-2: Lua sandbox initialization.
+//
+// Allow-listed standard libraries (loaded via sol::lib):
+//   base       — needs filtering: load/loadfile/dofile are nil-ed below
+//   string     — pure string ops, safe
+//   table      — pure table ops, safe
+//   math       — pure math, safe
+//   coroutine  — cooperative scheduling, safe
+//   utf8       — pure string ops, safe
+//   package    — needs filtering: cpath cleared, loadlib nil-ed, searchers
+//                replaced with a closed allow-list (searchInternalModules)
+//
+// Banned (never opened):
+//   io, os, debug, ffi
+//
+// If any of the banned globals or APIs becomes reachable from a Lua script,
+// the host is vulnerable to RCE through a malicious session/script file.
+// LuaSandboxTests / SandboxIsolationTests cover the boundary.
 void initializeState (sol::state_view& view)
 {
     view.open_libraries (
@@ -444,6 +480,12 @@ void initializeState (sol::state_view& view)
     package["cpath"] = "";           // No native library loading (.so/.dylib)
     package["spath"] = getScriptSearchPath().toStdString();
     package["loadlib"] = sol::lua_nil; // Prevent package.loadlib() native loading
+
+    // Phase E-7: install instruction-count watchdog.
+    lua_sethook (view.lua_state(),
+                 instructionCountHook,
+                 LUA_MASKCOUNT,
+                 kInstructionBudget);
 }
 
 void initializeState (sol::state_view& view, Context& g)
