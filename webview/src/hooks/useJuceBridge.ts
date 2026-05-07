@@ -24,6 +24,7 @@ import {
   type GraphOutlineNode,
 } from "../stores/useHostExtrasStore";
 import { useAppStore } from "../stores/useAppStore";
+import { useEngineSnapshotStore } from "../stores/useEngineSnapshotStore";
 
 type EngineBlock = {
   id: string;
@@ -408,10 +409,12 @@ export function useJuceBridge() {
       },
       onMetering: (peak: number) => {
         prev.onMetering?.(peak);
-        const cpu = Math.min(99.9, Math.max(0, peak * 320));
-        usePerformStore.setState((st) => ({
-          liveHealth: { ...st.liveHealth, cpu },
-        }));
+        // US-002 Wave 2: do NOT derive CPU from peak. The real CPU value
+        // is polled from `elementGetEngineSnapshot` via
+        // `useEngineSnapshotStore`, which write-throughs the percentage
+        // into `usePerformStore.liveHealth.cpu`. Keep the hook so future
+        // consumers can latch onto the master peak meter explicitly.
+        void peak;
       },
       onCableLevels: (items: Array<{ id: string; level: number }>) => {
         prev.onCableLevels?.(items);
@@ -442,6 +445,11 @@ export function useJuceBridge() {
         /* Embedded web dev without native bridge */
       }
     })();
+
+    // US-002 Wave 2: start polling the engine snapshot at 4 Hz
+    // (`elementGetEngineSnapshot`). Idempotent: subsequent calls with the
+    // same interval are no-ops, so HMR / StrictMode double-mount is safe.
+    useEngineSnapshotStore.getState().startPolling(250);
 
     // D-1: PluginManager scan is async — list may still be empty at first
     // mount. Re-poll on a back-off until either (a) plugins arrive or
