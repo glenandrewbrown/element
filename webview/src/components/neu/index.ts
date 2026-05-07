@@ -7,3 +7,9 @@ export { NeuDisplay } from "./NeuDisplay";
 export { NeuBadge } from "./NeuBadge";
 export { Icon } from "./Icon";
 export type { IconProps, IconTone } from "./Icon";
+export { EmptyState } from "./EmptyState";
+export type {
+  EmptyStateProps,
+  EmptyStateSize,
+  EmptyStateTone,
+} from "./EmptyState";

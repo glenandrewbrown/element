@@ -1,0 +1,89 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`<EmptyState /> > renders a ReactNode illustration with aria-hidden wrapper (lg / audio) 1`] = `
+<section
+  aria-live="polite"
+  class="flex flex-col items-center justify-center text-center rounded-md bg-surface text-text-primary mx-auto max-w-sm p-8 gap-4"
+  role="status"
+  style="box-shadow: var(--shadow-raised), var(--shadow-glow-audio); opacity: 0; transform: translateY(4px);"
+>
+  <div
+    aria-hidden="true"
+    class="flex items-center justify-center"
+    style="width: 128px; height: 128px;"
+  >
+    <svg
+      data-testid="custom-svg"
+    />
+  </div>
+  <h2
+    class="font-semibold uppercase text-[16px] tracking-wide"
+  >
+    No connections
+  </h2>
+</section>
+`;
+
+exports[`<EmptyState /> > renders description and CTA when provided (md / neutral) 1`] = `
+<section
+  aria-live="polite"
+  class="flex flex-col items-center justify-center text-center rounded-md bg-surface text-text-primary mx-auto max-w-sm p-6 gap-3"
+  role="status"
+  style="box-shadow: var(--shadow-raised); opacity: 0; transform: translateY(4px);"
+>
+  <h2
+    class="font-semibold uppercase text-[14px] tracking-wide"
+  >
+    No plugins yet
+  </h2>
+  <p
+    class="text-text-secondary text-[12px]"
+  >
+    Drag a plugin from the browser to get started.
+  </p>
+  <div
+    class="mt-2"
+  >
+    <button
+      type="button"
+    >
+      Add Plugin
+    </button>
+  </div>
+</section>
+`;
+
+exports[`<EmptyState /> > renders lg size with midi tone correctly 1`] = `
+<section
+  aria-live="polite"
+  class="flex flex-col items-center justify-center text-center rounded-md bg-surface text-text-primary mx-auto max-w-sm p-8 gap-4"
+  role="status"
+  style="box-shadow: var(--shadow-raised), var(--shadow-glow-midi); opacity: 0; transform: translateY(4px);"
+>
+  <h2
+    class="font-semibold uppercase text-[16px] tracking-wide"
+  >
+    No MIDI
+  </h2>
+</section>
+`;
+
+exports[`<EmptyState /> > renders sm size with cv tone correctly 1`] = `
+<section
+  aria-live="polite"
+  class="flex flex-col items-center justify-center text-center rounded-md bg-surface text-text-primary mx-auto max-w-sm p-4 gap-2"
+  role="status"
+  style="box-shadow: var(--shadow-raised), var(--shadow-glow-cv); opacity: 0; transform: translateY(4px);"
+>
+  <h2
+    class="font-semibold uppercase text-[12px] tracking-wide"
+  >
+    No CV input
+  </h2>
+  <p
+    class="text-text-secondary text-[11px]"
+  >
+    Connect a CV source.
+  </p>
+</section>
+`;
