@@ -874,6 +874,85 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             postCompletion (completion, ok);
         });
 
+    // US-002 / Wave 2 — engine status snapshot for the React webview.
+    //   Output: JSON object with the live engine + transport metrics that the
+    //           legacy native footer surfaces via `devices.getCpuUsage()` and
+    //           `Transport::Monitor`. Polled at ~4 Hz from the React side
+    //           (`useEngineSnapshotStore.startPolling`); `getCpuUsage()` reads
+    //           an atomic inside `juce::AudioDeviceManager` so this handler
+    //           stays on the message thread without touching audio-thread
+    //           state directly. `Transport::Monitor` fields are `juce::Atomic`.
+    registerFn (
+        Identifier ("elementGetEngineSnapshot"),
+        [this, postCompletion] (const Array<var>&, auto completion) {
+            DynamicObject::Ptr root (new DynamicObject());
+
+            // CPU — fraction 0..1 of the audio thread (matches content.cpp:314).
+            const double cpuFrac = context.devices().getCpuUsage();
+            root->setProperty ("cpu", cpuFrac);
+
+            // Audio device — sample rate, buffer, name, latency.
+            bool engineRunning = false;
+            if (auto* dev = context.devices().getCurrentAudioDevice())
+            {
+                engineRunning = true;
+                const double sr = dev->getCurrentSampleRate();
+                const int buf = dev->getCurrentBufferSizeSamples();
+                root->setProperty ("sampleRate", sr);
+                root->setProperty ("bufferSize", buf);
+                root->setProperty ("deviceName", dev->getName());
+
+                const int inLat = dev->getInputLatencyInSamples();
+                const int outLat = dev->getOutputLatencyInSamples();
+                root->setProperty ("inputLatencySamples", inLat);
+                root->setProperty ("outputLatencySamples", outLat);
+                if (sr > 0.0)
+                {
+                    root->setProperty ("deviceLatencyInputMs",
+                                       (double) inLat / sr * 1000.0);
+                    root->setProperty ("deviceLatencyOutputMs",
+                                       (double) outLat / sr * 1000.0);
+                }
+            }
+            else
+            {
+                root->setProperty ("sampleRate", 0.0);
+                root->setProperty ("bufferSize", 0);
+                root->setProperty ("deviceName", "");
+                root->setProperty ("deviceLatencyInputMs", 0.0);
+                root->setProperty ("deviceLatencyOutputMs", 0.0);
+            }
+            root->setProperty ("engineRunning", engineRunning);
+
+            // Transport — playing/recording/tempo/timeSig from the message-thread
+            // accessible Monitor (atomics).
+            bool transportPlaying = false;
+            bool transportRecording = false;
+            double tempo = 120.0;
+            int tsNum = 4, tsDen = 4;
+            if (auto e = context.audio())
+            {
+                if (auto mon = e->getTransportMonitor())
+                {
+                    transportPlaying = mon->playing.get();
+                    transportRecording = mon->recording.get();
+                    tempo = (double) mon->tempo.get();
+                    tsNum = mon->beatsPerBar.get();
+                    tsDen = mon->beatType.get();
+                }
+            }
+            root->setProperty ("transportPlaying", transportPlaying);
+            root->setProperty ("transportRecording", transportRecording);
+            root->setProperty ("tempoBpm", tempo);
+
+            Array<var> ts;
+            ts.add (var (tsNum));
+            ts.add (var (tsDen));
+            root->setProperty ("timeSig", var (ts));
+
+            postCompletion (completion, JSON::toString (var (root.get())));
+        });
+
     registerFn (
         Identifier ("elementScriptGetSource"),
         [this, postCompletion] (const Array<var>& args, auto completion) {
