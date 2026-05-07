@@ -396,6 +396,13 @@ export function Toolbar() {
               <div className="flex items-center gap-3 ml-2">
                 <button
                   type="button"
+                  className="text-[10px] uppercase tracking-wide text-text-secondary hover:text-text-primary transition-colors px-1"
+                  onClick={() => setAboutOpen(true)}
+                >
+                  About
+                </button>
+                <button
+                  type="button"
                   className="text-text-secondary hover:text-text-primary transition-colors"
                   aria-label="Preferences"
                   onClick={() => setPrefsOpen(true)}
