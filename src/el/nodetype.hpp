@@ -8,6 +8,8 @@
 
 #pragma once
 
+#include <element/datapath.hpp>
+
 #include "sol_helpers.hpp"
 
 namespace element {
@@ -118,10 +120,33 @@ inline static sol::table new_nodetype (lua_State* L, const char* name, Args&&...
         "bypassed",    &Node::isBypassed,
         "muted",       &Node::isMuted,
 
+        // Phase E-3: Restrict Node:writeFile() to paths inside the Element
+        // data directory. Without this clamp, a malicious Lua script can
+        // overwrite arbitrary files reachable by the host process (e.g.
+        // ~/.ssh/, ~/.bashrc, the user's Documents folder).
+        //
+        // The check accepts:
+        //   * absolute paths
+        //   * paths whose canonical form is rooted at DataPath::applicationDataDir()
+        //
+        // It rejects (returns false):
+        //   * relative paths
+        //   * paths outside the data directory
+        //   * paths containing `..` traversal once normalized away from the data dir
         "writeFile", [] (const Node& node, const char* filepath) -> bool {
             if (! File::isAbsolutePath (filepath))
                 return false;
-            return node.writeToFile (File (String::fromUTF8 (filepath)));
+            const auto target = File (String::fromUTF8 (filepath));
+            const auto root   = DataPath::applicationDataDir();
+            // root must exist for prefix check to be meaningful; if it doesn't,
+            // refuse the write — the host has no data dir to scope writes to.
+            if (! root.exists() && ! root.createDirectory().wasOk())
+                return false;
+            const auto rootPath   = root.getFullPathName();
+            const auto targetPath = target.getFullPathName();
+            if (! targetPath.startsWith (rootPath))
+                return false;
+            return node.writeToFile (target);
         },
 
         "resetPorts",   &Node::resetPorts,
