@@ -445,14 +445,26 @@ void BlockComponent::setDisplayModeInternal (DisplayMode mode, bool force)
     {
         if (detail::supportsEmbed (this->node))
         {
-            struct EmbedBockAsync : MessageManager::MessageBase
+            // W-12: hold the BlockComponent via SafePointer so a destruction race
+            // between post() and messageCallback() can't dereference dangling refs.
+            // The PtrType reference into `block.embedded` is only valid while the
+            // BlockComponent is alive, and UI (GuiService) outlives BlockComponent
+            // (Services owns it), so once we have verified block is alive we can
+            // safely use the captured reference and the UI ref. The struct is
+            // friended below so we can mutate the private `embedded` member from
+            // within the message-thread callback.
+            struct EmbedBockAsync : juce::MessageManager::MessageBase
             {
                 using PtrType = std::unique_ptr<juce::Component>;
                 EmbedBockAsync (BlockComponent& b, const Node& n, UI& u, PtrType& p, DisplayMode om)
-                    : block (b), node (n), ui (u), embedded (p), oldMode (om) {}
+                    : block (&b), node (n), ui (u), embedded (p), oldMode (om) {}
 
                 void messageCallback() override
                 {
+                    auto* bp = block.getComponent();
+                    if (bp == nullptr)
+                        return; // BlockComponent destroyed before this message ran — discard.
+
                     ui.closePluginWindowsFor (node, false);
 
                     if (embedded == nullptr)
@@ -468,19 +480,19 @@ void BlockComponent::setDisplayModeInternal (DisplayMode mode, bool force)
 
                     if (embedded != nullptr)
                     {
-                        block.addAndMakeVisible (embedded.get());
-                        block.updateSize();
-                        block.resized();
-                        embedded->addComponentListener (&block);
+                        bp->addAndMakeVisible (embedded.get());
+                        bp->updateSize();
+                        bp->resized();
+                        embedded->addComponentListener (bp);
                     }
                     else
                     {
                         if (oldMode != Embed)
-                            block.setDisplayModeInternal (oldMode, true);
+                            bp->setDisplayModeInternal (oldMode, true);
                     }
                 }
 
-                BlockComponent& block;
+                juce::Component::SafePointer<BlockComponent> block;
                 Node node;
                 UI& ui;
                 PtrType& embedded;
