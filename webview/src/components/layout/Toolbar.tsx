@@ -6,10 +6,13 @@ import {
   selectScenes,
   selectActiveScene,
   selectLiveHealth,
+  selectIsPlaying,
 } from "../../stores/usePerformStore";
 import {
   nativeTransportPanic,
   nativeTransportTogglePlay,
+  nativeTransportStop,
+  nativeTransportRewind,
   nativeTransportSetTempo,
 } from "../../bridge/nativeGraph";
 import {
@@ -64,6 +67,7 @@ export function Toolbar() {
   const breadcrumbs = useGraphStore(selectBreadcrumbs);
   const bpm = usePerformStore(selectBpm);
   const live = usePerformStore(selectLiveHealth);
+  const isPlaying = usePerformStore(selectIsPlaying);
   const scenes = usePerformStore(selectScenes);
   const activeSceneData = usePerformStore(selectActiveScene);
   const filePath = useSessionStore((s) => s.filePath);
@@ -209,19 +213,32 @@ export function Toolbar() {
 
             {/* Transport */}
             <div className="flex items-center gap-1 bg-pressed px-2 py-0.5 rounded shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] border border-white/5">
-              <button className="text-text-secondary hover:text-text-primary transition-colors p-0.5" title="Rewind">
-                <Icon name="SkipBack" size={16} aria-label="Rewind" />
+              <button
+                type="button"
+                className="text-text-secondary hover:text-text-primary transition-colors p-0.5"
+                title="Rewind"
+                aria-label="Rewind to start"
+                onClick={() => void nativeTransportRewind()}
+              >
+                <Icon name="SkipBack" size={16} aria-hidden />
               </button>
               <button
                 type="button"
                 className="text-logic hover:text-logic/80 transition-colors p-0.5"
                 onClick={() => void nativeTransportTogglePlay()}
-                aria-label="Play or pause"
+                aria-label={isPlaying ? "Pause" : "Play"}
+                title={isPlaying ? "Pause" : "Play"}
               >
-                <Icon name="Play" size={18} aria-hidden />
+                <Icon name={isPlaying ? "Pause" : "Play"} size={18} aria-hidden />
               </button>
-              <button className="text-text-secondary hover:text-text-primary transition-colors p-0.5" title="Stop">
-                <Icon name="Square" size={16} aria-label="Stop" />
+              <button
+                type="button"
+                className="text-text-secondary hover:text-text-primary transition-colors p-0.5"
+                title="Stop"
+                aria-label="Stop"
+                onClick={() => void nativeTransportStop()}
+              >
+                <Icon name="Square" size={16} aria-hidden />
               </button>
             </div>
 
@@ -454,8 +471,11 @@ export function Toolbar() {
                 <Icon name="Settings" size={18} aria-label="Preferences" />
               </button>
               <button
+                type="button"
                 className="text-text-secondary hover:text-error transition-colors"
-                aria-label="Power off"
+                aria-label="MIDI panic - all notes off"
+                title="PANIC - All Notes Off"
+                onClick={() => void nativeTransportPanic()}
               >
                 <Icon name="Power" size={18} aria-hidden />
               </button>
