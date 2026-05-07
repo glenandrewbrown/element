@@ -822,33 +822,47 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
         opts = opts.withNativeFunction (name, std::move (fn));
     };
 
+    // W-11: SafePointer-guarded completion poster. JUCE's webview completion
+    // callback dispatches results back into the embedded WebBrowserComponent;
+    // if the host (and thus its child WebBrowserComponent) is destroyed between
+    // the message-thread enqueue and dispatch, invoking `completion(...)` would
+    // reach into freed memory inside the JUCE webview wrapper. Each callAsync
+    // site now goes through this helper which gates on the host's SafePointer.
+    auto postCompletion = [this] (auto completion, auto value) {
+        juce::Component::SafePointer<ElementWebViewHost> safe (this);
+        juce::MessageManager::callAsync ([safe, completion, value] {
+            if (safe.getComponent() != nullptr)
+                completion (juce::var (value));
+        });
+    };
+
     registerFn (
         Identifier ("elementGetGraphState"),
-        [this] (const Array<var>&, auto completion) {
+        [this, postCompletion] (const Array<var>&, auto completion) {
             const String j (buildActiveGraphJson());
-            MessageManager::callAsync ([completion, j] { completion (var (j)); });
+            postCompletion (completion, j);
         });
 
     registerFn (
         Identifier ("elementGetPluginList"),
-        [this] (const Array<var>&, auto completion) {
+        [this, postCompletion] (const Array<var>&, auto completion) {
             const String j (buildPluginListJson());
-            MessageManager::callAsync ([completion, j] { completion (var (j)); });
+            postCompletion (completion, j);
         });
 
     registerFn (
         Identifier ("elementGetNodeParameters"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             String uuid;
             if (args.size() > 0)
                 uuid = args[0].toString();
             const String j (buildNodeParametersJson (uuid));
-            MessageManager::callAsync ([completion, j] { completion (var (j)); });
+            postCompletion (completion, j);
         });
 
     registerFn (
         Identifier ("elementSetNodeParameter"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             bool ok = false;
             if (args.size() >= 3)
             {
@@ -857,12 +871,12 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                 const float v = (float) args[2];
                 ok = setNodeParameterValue (uuid, idx, v);
             }
-            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+            postCompletion (completion, ok);
         });
 
     registerFn (
         Identifier ("elementScriptGetSource"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             String source;
             if (args.size() >= 1)
             {
@@ -880,12 +894,12 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                     }
                 }
             }
-            MessageManager::callAsync ([completion, source] { completion (var (source)); });
+            postCompletion (completion, source);
         });
 
     registerFn (
         Identifier ("elementScriptSetSource"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             String json;
             if (args.size() >= 2)
             {
@@ -911,12 +925,12 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             }
             if (json.isEmpty())
                 json = "{\"ok\":false,\"error\":\"node not found or not a script node\"}";
-            MessageManager::callAsync ([completion, json] { completion (var (json)); });
+            postCompletion (completion, json);
         });
 
     registerFn (
         Identifier ("elementScriptCompile"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             String json;
             if (args.size() >= 1)
             {
@@ -942,7 +956,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             }
             if (json.isEmpty())
                 json = "{\"ok\":false,\"error\":\"node not found or not a script node\"}";
-            MessageManager::callAsync ([completion, json] { completion (var (json)); });
+            postCompletion (completion, json);
         });
 
     // elementScriptGetRuntimeState
@@ -965,7 +979,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
     //           DSPScript runtime has its own environment that is not surfaced here yet.
     registerFn (
         Identifier ("elementScriptGetRuntimeState"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             String json;
             if (args.size() >= 1)
             {
@@ -1096,12 +1110,12 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             }
             if (json.isEmpty())
                 json = "{\"ok\":false,\"error\":\"node not found or not a script node\"}";
-            MessageManager::callAsync ([completion, json] { completion (var (json)); });
+            postCompletion (completion, json);
         });
 
     registerFn (
         Identifier ("elementGraphAddPlugin"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             bool ok = false;
             if (args.size() >= 1)
             {
@@ -1117,12 +1131,12 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                     }
                 }
             }
-            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+            postCompletion (completion, ok);
         });
 
     registerFn (
         Identifier ("elementGraphRemoveNode"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             bool ok = false;
             if (args.size() >= 1)
             {
@@ -1140,12 +1154,12 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                     }
                 }
             }
-            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+            postCompletion (completion, ok);
         });
 
     registerFn (
         Identifier ("elementGraphConnect"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             bool ok = false;
             if (args.size() >= 4)
             {
@@ -1167,12 +1181,12 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                     }
                 }
             }
-            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+            postCompletion (completion, ok);
         });
 
     registerFn (
         Identifier ("elementGraphDisconnect"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             bool ok = false;
             if (args.size() >= 4)
             {
@@ -1194,12 +1208,12 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                     }
                 }
             }
-            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+            postCompletion (completion, ok);
         });
 
     registerFn (
         Identifier ("elementGraphMoveNodes"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             int count = 0;
             if (args.size() >= 1)
             {
@@ -1232,12 +1246,12 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                 else
                     applyMove (payload);
             }
-            MessageManager::callAsync ([completion, count] { completion (var (count)); });
+            postCompletion (completion, count);
         });
 
     registerFn (
         Identifier ("elementGraphSetBypass"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             bool ok = false;
             if (args.size() >= 2)
             {
@@ -1259,12 +1273,12 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                     }
                 }
             }
-            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+            postCompletion (completion, ok);
         });
 
     registerFn (
         Identifier ("elementGraphSetMute"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             bool ok = false;
             if (args.size() >= 2)
                 if (auto sess = context.session())
@@ -1282,12 +1296,12 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                 }
             if (ok)
                 pushGraphSnapshot();
-            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+            postCompletion (completion, ok);
         });
 
     registerFn (
         Identifier ("elementGraphSetMuteInput"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             bool ok = false;
             if (args.size() >= 2)
                 if (auto sess = context.session())
@@ -1305,12 +1319,12 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                 }
             if (ok)
                 pushGraphSnapshot();
-            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+            postCompletion (completion, ok);
         });
 
     registerFn (
         Identifier ("elementGraphSetCanvasOptions"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             bool ok = false;
             if (args.size() >= 2)
                 if (auto sess = context.session())
@@ -1326,12 +1340,12 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                 }
             if (ok)
                 pushGraphSnapshot();
-            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+            postCompletion (completion, ok);
         });
 
     registerFn (
         Identifier ("elementGraphSetViewport"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             bool ok = false;
             if (args.size() >= 3)
                 if (auto sess = context.session())
@@ -1348,12 +1362,12 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                 }
             if (ok)
                 pushGraphSnapshot();
-            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+            postCompletion (completion, ok);
         });
 
     registerFn (
         Identifier ("elementGraphDuplicateNode"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             bool ok = false;
             if (args.size() >= 1)
             {
@@ -1371,45 +1385,45 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                     }
                 }
             }
-            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+            postCompletion (completion, ok);
         });
 
     registerFn (
         Identifier ("elementUndo"),
-        [this] (const Array<var>&, auto completion) {
+        [this, postCompletion] (const Array<var>&, auto completion) {
             if (auto* gui = context.services().find<GuiService>())
                 gui->performUndo();
-            MessageManager::callAsync ([completion] { completion (var (true)); });
+            postCompletion (completion, true);
         });
 
     registerFn (
         Identifier ("elementRedo"),
-        [this] (const Array<var>&, auto completion) {
+        [this, postCompletion] (const Array<var>&, auto completion) {
             if (auto* gui = context.services().find<GuiService>())
                 gui->performRedo();
-            MessageManager::callAsync ([completion] { completion (var (true)); });
+            postCompletion (completion, true);
         });
 
     registerFn (
         Identifier ("elementTransportPanic"),
-        [this] (const Array<var>&, auto completion) {
+        [this, postCompletion] (const Array<var>&, auto completion) {
             if (auto e = context.audio())
                 for (const auto& msg : MidiPanic::messages())
                     e->addMidiMessage (msg);
-            MessageManager::callAsync ([completion] { completion (var (true)); });
+            postCompletion (completion, true);
         });
 
     registerFn (
         Identifier ("elementTransportTogglePlay"),
-        [this] (const Array<var>&, auto completion) {
+        [this, postCompletion] (const Array<var>&, auto completion) {
             if (auto e = context.audio())
                 e->togglePlayPause();
-            MessageManager::callAsync ([completion] { completion (var (true)); });
+            postCompletion (completion, true);
         });
 
     registerFn (
         Identifier ("elementGraphRenameNode"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             bool ok = false;
             if (args.size() >= 2)
             {
@@ -1429,14 +1443,14 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             }
             if (ok)
                 pushGraphSnapshot();
-            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+            postCompletion (completion, ok);
         });
 
     // Per-block user note (Inspector textarea). Persisted as a "userNote"
     // ValueTree property on the Node so it survives session save/load.
     registerFn (
         Identifier ("elementGraphSetNodeNote"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             bool ok = false;
             if (args.size() >= 2)
             {
@@ -1456,12 +1470,12 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             }
             if (ok)
                 pushGraphSnapshot();
-            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+            postCompletion (completion, ok);
         });
 
     registerFn (
         Identifier ("elementGraphDuplicateNodes"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             int count = 0;
             if (args.size() >= 1)
             {
@@ -1488,12 +1502,12 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             }
             if (count > 0)
                 scheduleGraphPush (40);
-            MessageManager::callAsync ([completion, count] { completion (var (count)); });
+            postCompletion (completion, count);
         });
 
     registerFn (
         Identifier ("elementGraphCopyNodes"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             int count = 0;
             graphCopyPasteboard.clear();
             if (args.size() >= 1)
@@ -1512,12 +1526,12 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                     }
                 }
             }
-            MessageManager::callAsync ([completion, count] { completion (var (count)); });
+            postCompletion (completion, count);
         });
 
     registerFn (
         Identifier ("elementGraphPasteNodes"),
-        [this] (const Array<var>&, auto completion) {
+        [this, postCompletion] (const Array<var>&, auto completion) {
             int count = 0;
             if (auto sess = context.session())
             {
@@ -1537,12 +1551,12 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             }
             if (count > 0)
                 scheduleGraphPush (40);
-            MessageManager::callAsync ([completion, count] { completion (var (count)); });
+            postCompletion (completion, count);
         });
 
     registerFn (
         Identifier ("elementGraphCommentAdd"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             bool ok = false;
             if (auto sess = context.session())
             {
@@ -1574,12 +1588,12 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             }
             if (ok)
                 pushGraphSnapshot();
-            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+            postCompletion (completion, ok);
         });
 
     registerFn (
         Identifier ("elementGraphCommentUpsert"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             bool ok = false;
             if (args.size() >= 1)
             {
@@ -1627,12 +1641,12 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             }
             if (ok)
                 pushGraphSnapshot();
-            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+            postCompletion (completion, ok);
         });
 
     registerFn (
         Identifier ("elementGraphCommentDelete"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             bool ok = false;
             if (args.size() >= 1)
             {
@@ -1661,12 +1675,12 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             }
             if (ok)
                 pushGraphSnapshot();
-            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+            postCompletion (completion, ok);
         });
 
     registerFn (
         Identifier ("elementSessionNew"),
-        [this] (const Array<var>&, auto completion) {
+        [this, postCompletion] (const Array<var>&, auto completion) {
             if (auto* ss = context.services().find<SessionService>())
             {
                 ss->newSession();
@@ -1674,12 +1688,12 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                     gui->stabilizeContent();
             }
             pushGraphSnapshot();
-            MessageManager::callAsync ([completion] { completion (var (true)); });
+            postCompletion (completion, true);
         });
 
     registerFn (
         Identifier ("elementSessionSave"),
-        [this] (const Array<var>&, auto completion) {
+        [this, postCompletion] (const Array<var>&, auto completion) {
             if (auto* ss = context.services().find<SessionService>())
             {
                 ss->saveSession (false, true, true);
@@ -1687,12 +1701,12 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                     gui->stabilizeContent();
             }
             pushGraphSnapshot();
-            MessageManager::callAsync ([completion] { completion (var (true)); });
+            postCompletion (completion, true);
         });
 
     registerFn (
         Identifier ("elementSessionSaveAs"),
-        [this] (const Array<var>&, auto completion) {
+        [this, postCompletion] (const Array<var>&, auto completion) {
             if (auto* ss = context.services().find<SessionService>())
             {
                 ss->saveSession (true, true, true);
@@ -1700,12 +1714,12 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                     gui->stabilizeContent();
             }
             pushGraphSnapshot();
-            MessageManager::callAsync ([completion] { completion (var (true)); });
+            postCompletion (completion, true);
         });
 
     registerFn (
         Identifier ("elementSessionOpen"),
-        [this] (const Array<var>&, auto completion) {
+        [this, postCompletion] (const Array<var>&, auto completion) {
             bool ok = false;
             if (auto* ss = context.services().find<SessionService>())
             {
@@ -1726,12 +1740,12 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             }
             if (ok)
                 pushGraphSnapshot();
-            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+            postCompletion (completion, ok);
         });
 
     registerFn (
         Identifier ("elementSessionOpenPath"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             bool ok = false;
             if (args.size() >= 1)
             {
@@ -1751,12 +1765,12 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             }
             if (ok)
                 pushGraphSnapshot();
-            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+            postCompletion (completion, ok);
         });
 
     registerFn (
         Identifier ("elementSessionSetActiveGraph"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             bool ok = false;
             if (args.size() >= 1)
             {
@@ -1774,12 +1788,12 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             }
             if (ok)
                 pushGraphSnapshot();
-            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+            postCompletion (completion, ok);
         });
 
     registerFn (
         Identifier ("elementSessionImportGraph"),
-        [this] (const Array<var>&, auto completion) {
+        [this, postCompletion] (const Array<var>&, auto completion) {
             bool ok = false;
             if (auto* ss = context.services().find<SessionService>())
             {
@@ -1794,12 +1808,12 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             }
             if (ok)
                 pushGraphSnapshot();
-            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+            postCompletion (completion, ok);
         });
 
     registerFn (
         Identifier ("elementSessionExportGraph"),
-        [this] (const Array<var>&, auto completion) {
+        [this, postCompletion] (const Array<var>&, auto completion) {
             bool ok = false;
             if (auto sess = context.session())
                 if (auto* ss = context.services().find<SessionService>())
@@ -1821,12 +1835,12 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                 }
             if (ok)
                 pushGraphSnapshot();
-            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+            postCompletion (completion, ok);
         });
 
     registerFn (
         Identifier ("elementAudioApplySetup"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             bool ok = false;
             if (args.size() >= 1)
                 if (auto* dyn = args[0].getDynamicObject())
@@ -1859,12 +1873,12 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                 }
             if (ok)
                 pushGraphSnapshot();
-            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+            postCompletion (completion, ok);
         });
 
     registerFn (
         Identifier ("elementOscApplyHost"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             bool ok = false;
             if (args.size() >= 2)
             {
@@ -1876,12 +1890,12 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             }
             if (ok)
                 pushGraphSnapshot();
-            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+            postCompletion (completion, ok);
         });
 
     registerFn (
         Identifier ("elementMappingSetLearning"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             bool ok = false;
             if (args.size() >= 1)
                 if (auto* map = context.services().find<MappingService>())
@@ -1891,12 +1905,12 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                 }
             if (ok)
                 pushGraphSnapshot();
-            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+            postCompletion (completion, ok);
         });
 
     registerFn (
         Identifier ("elementMappingRemoveMap"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             bool ok = false;
             if (args.size() >= 1)
                 if (auto sess = context.session())
@@ -1913,77 +1927,77 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                 }
             if (ok)
                 pushGraphSnapshot();
-            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+            postCompletion (completion, ok);
         });
 
     registerFn (
         Identifier ("elementSessionListFiles"),
-        [] (const Array<var>&, auto completion) {
+        [this, postCompletion] (const Array<var>&, auto completion) {
             const String j (buildSessionBrowserEntriesJson());
-            MessageManager::callAsync ([completion, j] { completion (var (j)); });
+            postCompletion (completion, j);
         });
 
     registerFn (
         Identifier ("elementPluginEditorOpen"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             bool ok = false;
             if (args.size() >= 5)
             {
                 pluginEditorOpen (args[0].toString(), (int) args[1], (int) args[2], (int) args[3], (int) args[4]);
                 ok = pluginEmbedEditor != nullptr;
             }
-            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+            postCompletion (completion, ok);
         });
 
     registerFn (
         Identifier ("elementPluginEditorClose"),
-        [this] (const Array<var>&, auto completion) {
+        [this, postCompletion] (const Array<var>&, auto completion) {
             pluginEditorClose();
-            MessageManager::callAsync ([completion] { completion (var (true)); });
+            postCompletion (completion, true);
         });
 
     registerFn (
         Identifier ("elementPluginEditorSetBounds"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             if (args.size() >= 4)
                 pluginEditorSetBounds ((int) args[0], (int) args[1], (int) args[2], (int) args[3]);
-            MessageManager::callAsync ([completion] { completion (var (true)); });
+            postCompletion (completion, true);
         });
 
     registerFn (
         Identifier ("elementPluginEditorFloat"),
-        [this] (const Array<var>&, auto completion) {
+        [this, postCompletion] (const Array<var>&, auto completion) {
             pluginEditorFloat();
-            MessageManager::callAsync ([completion] { completion (var (true)); });
+            postCompletion (completion, true);
         });
 
     registerFn (
         Identifier ("elementWebDismissOverlay"),
-        [this] (const Array<var>&, auto completion) {
+        [this, postCompletion] (const Array<var>&, auto completion) {
             if (webShell != nullptr)
                 webShell->dismissPresentedView();
-            MessageManager::callAsync ([completion] { completion (var (true)); });
+            postCompletion (completion, true);
         });
 
     registerFn (
         Identifier ("elementOpenLuaConsole"),
-        [this] (const Array<var>&, auto completion) {
+        [this, postCompletion] (const Array<var>&, auto completion) {
             if (webShell != nullptr)
                 webShell->presentContentOverlay (std::make_unique<LuaConsoleView>());
-            MessageManager::callAsync ([completion] { completion (var (true)); });
+            postCompletion (completion, true);
         });
 
     registerFn (
         Identifier ("elementOpenGraphMixer"),
-        [this] (const Array<var>&, auto completion) {
+        [this, postCompletion] (const Array<var>&, auto completion) {
             if (webShell != nullptr)
                 webShell->presentContentOverlay (std::make_unique<GraphMixerView>());
-            MessageManager::callAsync ([completion] { completion (var (true)); });
+            postCompletion (completion, true);
         });
 
     registerFn (
         Identifier ("elementMoleculeInsert"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             int count = 0;
             if (args.size() >= 1)
                 if (auto sess = context.session())
@@ -2023,12 +2037,12 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                 }
             if (count > 0)
                 pushGraphSnapshot();
-            MessageManager::callAsync ([completion, count] { completion (var (count)); });
+            postCompletion (completion, count);
         });
 
     registerFn (
         Identifier ("elementPerformSetActiveScene"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             bool ok = false;
             if (args.size() >= 1)
                 if (auto sess = context.session())
@@ -2048,12 +2062,12 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                 }
             if (ok)
                 pushGraphSnapshot();
-            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+            postCompletion (completion, ok);
         });
 
     registerFn (
         Identifier ("elementPerformAddScene"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             bool ok = false;
             if (auto sess = context.session())
             {
@@ -2068,12 +2082,12 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             }
             if (ok)
                 pushGraphSnapshot();
-            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+            postCompletion (completion, ok);
         });
 
     registerFn (
         Identifier ("elementPerformCaptureScene"),
-        [this] (const Array<var>&, auto completion) {
+        [this, postCompletion] (const Array<var>&, auto completion) {
             bool ok = false;
             if (auto sess = context.session())
             {
@@ -2094,17 +2108,17 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             }
             if (ok)
                 pushGraphSnapshot();
-            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+            postCompletion (completion, ok);
         });
 
     // ── US-002: Transport – record toggle ──────────────────────────────────────
     // AudioEngine::setRecording(bool) confirmed in include/element/audioengine.hpp
     registerFn (
         Identifier ("elementTransportSetRecording"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             if (auto e = context.audio())
                 e->setRecording (args.size() >= 1 ? (bool) args[0] : false);
-            MessageManager::callAsync ([completion] { completion (var (true)); });
+            postCompletion (completion, true);
         });
 
     // ── US-003: BPM/Tempo ──────────────────────────────────────────────────────
@@ -2114,7 +2128,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
     // pushGraphSnapshot() call, so no separate "get" bridge is needed.
     registerFn (
         Identifier ("elementTransportSetTempo"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             bool ok = false;
             if (args.size() >= 1)
             {
@@ -2127,7 +2141,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             }
             if (ok)
                 pushGraphSnapshot();
-            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+            postCompletion (completion, ok);
         });
 
     // ── US-004: Plugin Windows ─────────────────────────────────────────────────
@@ -2137,16 +2151,16 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
     // omitted because no engine method exists to show ALL windows at once.
     registerFn (
         Identifier ("elementHideAllPluginWindows"),
-        [this] (const Array<var>&, auto completion) {
+        [this, postCompletion] (const Array<var>&, auto completion) {
             if (auto* gui = context.services().find<GuiService>())
                 gui->closeAllPluginWindows (true); // true = keep state, just hide
-            MessageManager::callAsync ([completion] { completion (var (true)); });
+            postCompletion (completion, true);
         });
 
     // ── US-005: Scene delete / rename ──────────────────────────────────────────
     registerFn (
         Identifier ("elementPerformDeleteScene"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             bool ok = false;
             if (args.size() >= 1)
                 if (auto sess = context.session())
@@ -2174,12 +2188,12 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                 }
             if (ok)
                 pushGraphSnapshot();
-            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+            postCompletion (completion, ok);
         });
 
     registerFn (
         Identifier ("elementPerformRenameScene"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             bool ok = false;
             if (args.size() >= 2)
                 if (auto sess = context.session())
@@ -2198,7 +2212,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                 }
             if (ok)
                 pushGraphSnapshot();
-            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+            postCompletion (completion, ok);
         });
 
     // ── US-006: Virtual Keyboard ───────────────────────────────────────────────
@@ -2207,7 +2221,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
     // noteOn/noteOff on MidiKeyboardState inject MIDI into the engine graph.
     registerFn (
         Identifier ("elementVirtualKeyboardNoteOn"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             // args: [note (0-127), velocity (0.0-1.0), channel (1-16)]
             if (args.size() >= 3)
                 if (auto e = context.audio())
@@ -2217,12 +2231,12 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                     const int channel  = jlimit (1, 16, (int) args[2]);
                     e->getKeyboardState().noteOn (channel, note, vel);
                 }
-            MessageManager::callAsync ([completion] { completion (var (true)); });
+            postCompletion (completion, true);
         });
 
     registerFn (
         Identifier ("elementVirtualKeyboardNoteOff"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             // args: [note (0-127), channel (1-16)]
             if (args.size() >= 2)
                 if (auto e = context.audio())
@@ -2231,54 +2245,54 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                     const int channel = jlimit (1, 16, (int) args[1]);
                     e->getKeyboardState().noteOff (channel, note, 0.0f);
                 }
-            MessageManager::callAsync ([completion] { completion (var (true)); });
+            postCompletion (completion, true);
         });
 
     registerFn (
         Identifier ("elementAppGetAbout"),
-        [] (const Array<var>&, auto completion) {
+        [this, postCompletion] (const Array<var>&, auto completion) {
             DynamicObject::Ptr o (new DynamicObject());
             o->setProperty ("name", String (EL_APP_NAME));
             o->setProperty ("version", String (ELEMENT_VERSION_STRING));
             o->setProperty ("copyright", String ("GPL-3.0-or-later"));
-            MessageManager::callAsync ([completion, o] { completion (var (o.get())); });
+            postCompletion (completion, juce::var (o.get()));
         });
 
     registerFn (
         Identifier ("elementAppCheckForUpdates"),
-        [this] (const Array<var>&, auto completion) {
+        [this, postCompletion] (const Array<var>&, auto completion) {
             if (auto* gui = context.services().find<GuiService>())
                 gui->checkUpdates (false);
-            MessageManager::callAsync ([completion] { completion (var (true)); });
+            postCompletion (completion, true);
         });
 
     // ── Transport Stop / Rewind ────────────────────────────────────────────────
     registerFn (
         Identifier ("elementTransportStop"),
-        [this] (const Array<var>&, auto completion) {
+        [this, postCompletion] (const Array<var>&, auto completion) {
             if (auto e = context.audio())
             {
                 if (auto mon = e->getTransportMonitor())
                     if (mon->playing.get())
                         e->setPlaying (false);
             }
-            MessageManager::callAsync ([completion] { completion (var (true)); });
+            postCompletion (completion, true);
         });
 
     registerFn (
         Identifier ("elementTransportRewind"),
-        [this] (const Array<var>&, auto completion) {
+        [this, postCompletion] (const Array<var>&, auto completion) {
             if (auto e = context.audio())
                 e->seekToAudioFrame (0);
             else
                 Logger::writeToLog ("elementTransportRewind: no audio engine");
-            MessageManager::callAsync ([completion] { completion (var (true)); });
+            postCompletion (completion, true);
         });
 
     // ── Show All Plugin Windows ───────────────────────────────────────────────
     registerFn (
         Identifier ("elementHostShowAllPluginWindows"),
-        [this] (const Array<var>&, auto completion) {
+        [this, postCompletion] (const Array<var>&, auto completion) {
             bool ok = false;
             if (auto sess = context.session())
             {
@@ -2298,13 +2312,13 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                     }
                 }
             }
-            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+            postCompletion (completion, ok);
         });
 
     // ── Session Graph Tree ────────────────────────────────────────────────────
     registerFn (
         Identifier ("elementSessionGetGraphTree"),
-        [this] (const Array<var>&, auto completion) {
+        [this, postCompletion] (const Array<var>&, auto completion) {
             Array<var> graphsVar;
             if (auto sess = context.session())
             {
@@ -2344,7 +2358,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                 }
             }
             const String json (JSON::toString (var (graphsVar)));
-            MessageManager::callAsync ([completion, json] { completion (var (json)); });
+            postCompletion (completion, json);
         });
 
     // ── Wireless Patching: cable bus name ─────────────────────────────────────
@@ -2355,7 +2369,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
     // survives session save/reload via the ValueTree.
     registerFn (
         Identifier ("elementGraphSetCableBus"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             bool ok = false;
             if (args.size() >= 2)
             {
@@ -2422,13 +2436,13 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                     }
                 }
             }
-            MessageManager::callAsync ([completion, ok] { completion (var (ok)); });
+            postCompletion (completion, ok);
         });
 
     // ── Graph Connection List ─────────────────────────────────────────────────
     registerFn (
         Identifier ("elementGraphGetConnectionList"),
-        [this] (const Array<var>&, auto completion) {
+        [this, postCompletion] (const Array<var>&, auto completion) {
             Array<var> cables;
             if (auto sess = context.session())
             {
@@ -2467,7 +2481,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                 }
             }
             const String json (JSON::toString (var (cables)));
-            MessageManager::callAsync ([completion, json] { completion (var (json)); });
+            postCompletion (completion, json);
         });
 
     // ── P1-2: Atomic cable rebind — set source endpoint ─────────────────────
@@ -2477,13 +2491,13 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
     // Output: { "ok": true } | { "ok": false, "error": "..." }
     registerFn (
         Identifier ("elementGraphSetConnectionSource"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             DynamicObject::Ptr result (new DynamicObject());
             auto fail = [&] (const juce::String& msg) {
                 result->setProperty ("ok", false);
                 result->setProperty ("error", msg);
                 const juce::String json (juce::JSON::toString (juce::var (result.get())));
-                juce::MessageManager::callAsync ([completion, json] { completion (juce::var (json)); });
+                postCompletion (completion, json);
             };
 
             if (args.size() < 3)
@@ -2570,7 +2584,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             scheduleGraphPush (40);
             result->setProperty ("ok", true);
             const juce::String json (juce::JSON::toString (juce::var (result.get())));
-            juce::MessageManager::callAsync ([completion, json] { completion (juce::var (json)); });
+            postCompletion (completion, json);
         });
 
     // ── P1-2: Atomic cable rebind — set target endpoint ─────────────────────
@@ -2580,13 +2594,13 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
     // Output: { "ok": true } | { "ok": false, "error": "..." }
     registerFn (
         Identifier ("elementGraphSetConnectionTarget"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             DynamicObject::Ptr result (new DynamicObject());
             auto fail = [&] (const juce::String& msg) {
                 result->setProperty ("ok", false);
                 result->setProperty ("error", msg);
                 const juce::String json (juce::JSON::toString (juce::var (result.get())));
-                juce::MessageManager::callAsync ([completion, json] { completion (juce::var (json)); });
+                postCompletion (completion, json);
             };
 
             if (args.size() < 3)
@@ -2670,7 +2684,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             scheduleGraphPush (40);
             result->setProperty ("ok", true);
             const juce::String json (juce::JSON::toString (juce::var (result.get())));
-            juce::MessageManager::callAsync ([completion, json] { completion (juce::var (json)); });
+            postCompletion (completion, json);
         });
 
     // ── P1-6: Wireless bus CRUD — Create ────────────────────────────────────
@@ -2679,13 +2693,13 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
     //         | { ok: false, error: String }
     registerFn (
         Identifier ("elementGraphCreateWirelessBus"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             DynamicObject::Ptr result (new DynamicObject());
             auto fail = [&] (const juce::String& msg) {
                 result->setProperty ("ok", false);
                 result->setProperty ("error", msg);
                 const juce::String json (juce::JSON::toString (juce::var (result.get())));
-                juce::MessageManager::callAsync ([completion, json] { completion (juce::var (json)); });
+                postCompletion (completion, json);
             };
 
             if (args.size() < 1 || ! args[0].isObject())
@@ -2733,7 +2747,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             result->setProperty ("name", name);
             result->setProperty ("signalType", signalType);
             const juce::String json (juce::JSON::toString (juce::var (result.get())));
-            juce::MessageManager::callAsync ([completion, json] { completion (juce::var (json)); });
+            postCompletion (completion, json);
         });
 
     // ── P1-6: Wireless bus CRUD — Get all ───────────────────────────────────
@@ -2741,7 +2755,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
     // Output: JSON array of { id, name, signalType }
     registerFn (
         Identifier ("elementGraphGetWirelessBuses"),
-        [this] (const Array<var>&, auto completion) {
+        [this, postCompletion] (const Array<var>&, auto completion) {
             juce::Array<juce::var> items;
             if (auto sess = context.session())
             {
@@ -2768,7 +2782,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                 }
             }
             const juce::String json (juce::JSON::toString (juce::var (items)));
-            juce::MessageManager::callAsync ([completion, json] { completion (juce::var (json)); });
+            postCompletion (completion, json);
         });
 
     // ── P1-6: Wireless bus CRUD — Delete ────────────────────────────────────
@@ -2776,7 +2790,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
     // Output: { ok: bool }
     registerFn (
         Identifier ("elementGraphDeleteWirelessBus"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             bool ok = false;
             if (args.size() >= 1 && args[0].isObject())
             {
@@ -2814,7 +2828,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             DynamicObject::Ptr result (new DynamicObject());
             result->setProperty ("ok", ok);
             const juce::String json (juce::JSON::toString (juce::var (result.get())));
-            juce::MessageManager::callAsync ([completion, json] { completion (juce::var (json)); });
+            postCompletion (completion, json);
         });
 
     // ── P1-1: Dashboard widget layout — Set ─────────────────────────────────
@@ -2827,13 +2841,13 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
     //         reflected in the next snapshot.
     registerFn (
         Identifier ("elementDashboardSetLayout"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             DynamicObject::Ptr result (new DynamicObject());
             auto fail = [&] (const juce::String& msg) {
                 result->setProperty ("ok", false);
                 result->setProperty ("error", msg);
                 const juce::String json (juce::JSON::toString (juce::var (result.get())));
-                juce::MessageManager::callAsync ([completion, json] { completion (juce::var (json)); });
+                postCompletion (completion, json);
             };
 
             if (args.size() < 1 || ! args[0].isObject())
@@ -2909,7 +2923,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             scheduleGraphPush (40);
             result->setProperty ("ok", true);
             const juce::String json (juce::JSON::toString (juce::var (result.get())));
-            juce::MessageManager::callAsync ([completion, json] { completion (juce::var (json)); });
+            postCompletion (completion, json);
         });
 
     // ── P1-1: Dashboard widget layout — Get ─────────────────────────────────
@@ -2919,7 +2933,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
     //                        nodeId?, paramIndex?, label?, color? }
     registerFn (
         Identifier ("elementDashboardGetLayout"),
-        [this] (const Array<var>&, auto completion) {
+        [this, postCompletion] (const Array<var>&, auto completion) {
             juce::Array<juce::var> items;
             if (auto sess = context.session())
             {
@@ -2963,7 +2977,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                 }
             }
             const juce::String json (juce::JSON::toString (juce::var (items)));
-            juce::MessageManager::callAsync ([completion, json] { completion (juce::var (json)); });
+            postCompletion (completion, json);
         });
 
     // ── P1-15: Duplicate nodes with auto-rewire ──────────────────────────────
@@ -3026,7 +3040,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
     // registered — engine wiring deferred to P1-15b".
     registerFn (
         Identifier ("elementGraphDuplicateNodesWithRewire"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             int count = 0;
             if (args.size() >= 1)
             {
@@ -3087,7 +3101,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             }
             if (count > 0)
                 scheduleGraphPush (40);
-            juce::MessageManager::callAsync ([completion, count] { completion (juce::var (count)); });
+            postCompletion (completion, count);
         });
 
     // ── P1-3: Perform MAP MODE — mark parameter as mapped — Set ─────────────
@@ -3099,13 +3113,13 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
     //         scheduleGraphPush(40) so React resyncs.
     registerFn (
         Identifier ("elementPerformMarkParameterMapped"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             DynamicObject::Ptr result (new DynamicObject());
             auto fail = [&] (const juce::String& msg) {
                 result->setProperty ("ok", false);
                 result->setProperty ("error", msg);
                 const juce::String json (juce::JSON::toString (juce::var (result.get())));
-                juce::MessageManager::callAsync ([completion, json] { completion (juce::var (json)); });
+                postCompletion (completion, json);
             };
 
             if (args.size() < 1 || ! args[0].isObject())
@@ -3182,7 +3196,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             scheduleGraphPush (40);
             result->setProperty ("ok", true);
             const juce::String json (juce::JSON::toString (juce::var (result.get())));
-            juce::MessageManager::callAsync ([completion, json] { completion (juce::var (json)); });
+            postCompletion (completion, json);
         });
 
     // ── P1-3: Perform MAP MODE — get all mapped parameters ──────────────────
@@ -3190,7 +3204,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
     // Output: JSON array of { nodeId: String, paramIndex: Int }, or []
     registerFn (
         Identifier ("elementPerformGetMappedParameters"),
-        [this] (const Array<var>&, auto completion) {
+        [this, postCompletion] (const Array<var>&, auto completion) {
             juce::Array<juce::var> items;
             if (auto sess = context.session())
             {
@@ -3220,7 +3234,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                 }
             }
             const juce::String json (juce::JSON::toString (juce::var (items)));
-            juce::MessageManager::callAsync ([completion, json] { completion (juce::var (json)); });
+            postCompletion (completion, json);
         });
 
     // ── P1-10: Preset Bank A/B Compare ───────────────────────────────────────
@@ -3231,13 +3245,13 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
     // elementPresetSnapshot — input { nodeId: String, slot: "A"|"B" } → { ok, error? }
     registerFn (
         Identifier ("elementPresetSnapshot"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             DynamicObject::Ptr result (new DynamicObject());
             auto fail = [&] (const String& msg) {
                 result->setProperty ("ok", false);
                 result->setProperty ("error", msg);
                 const String json (JSON::toString (var (result.get())));
-                MessageManager::callAsync ([completion, json] { completion (var (json)); });
+                postCompletion (completion, json);
             };
 
             if (args.size() < 2)
@@ -3309,7 +3323,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             scheduleGraphPush (40);
             result->setProperty ("ok", true);
             const String json (JSON::toString (var (result.get())));
-            MessageManager::callAsync ([completion, json] { completion (var (json)); });
+            postCompletion (completion, json);
         });
 
     // elementPresetSwap — input { nodeId: String } → { ok, swapped: Int, error? }
@@ -3320,14 +3334,14 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
     //  live values into A, giving a true toggle.)
     registerFn (
         Identifier ("elementPresetSwap"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             DynamicObject::Ptr result (new DynamicObject());
             auto fail = [&] (const String& msg) {
                 result->setProperty ("ok", false);
                 result->setProperty ("swapped", 0);
                 result->setProperty ("error", msg);
                 const String json (JSON::toString (var (result.get())));
-                MessageManager::callAsync ([completion, json] { completion (var (json)); });
+                postCompletion (completion, json);
             };
 
             if (args.size() < 2)
@@ -3394,19 +3408,19 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             result->setProperty ("ok", true);
             result->setProperty ("swapped", written);
             const String json (JSON::toString (var (result.get())));
-            MessageManager::callAsync ([completion, json] { completion (var (json)); });
+            postCompletion (completion, json);
         });
 
     // elementPresetSave — input { nodeId: String, name: String } → { ok, error? }
     registerFn (
         Identifier ("elementPresetSave"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             DynamicObject::Ptr result (new DynamicObject());
             auto fail = [&] (const String& msg) {
                 result->setProperty ("ok", false);
                 result->setProperty ("error", msg);
                 const String json (JSON::toString (var (result.get())));
-                MessageManager::callAsync ([completion, json] { completion (var (json)); });
+                postCompletion (completion, json);
             };
 
             if (args.size() < 2)
@@ -3438,19 +3452,19 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             if (! ok)
                 result->setProperty ("error", "savePresetTo failed");
             const String json (JSON::toString (var (result.get())));
-            MessageManager::callAsync ([completion, json] { completion (var (json)); });
+            postCompletion (completion, json);
         });
 
     // elementPresetLoad — input { nodeId: String, name: String } → { ok, error? }
     registerFn (
         Identifier ("elementPresetLoad"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             DynamicObject::Ptr result (new DynamicObject());
             auto fail = [&] (const String& msg) {
                 result->setProperty ("ok", false);
                 result->setProperty ("error", msg);
                 const String json (JSON::toString (var (result.get())));
-                MessageManager::callAsync ([completion, json] { completion (var (json)); });
+                postCompletion (completion, json);
             };
 
             if (args.size() < 2)
@@ -3504,13 +3518,13 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             scheduleGraphPush (40);
             result->setProperty ("ok", true);
             const String json (JSON::toString (var (result.get())));
-            MessageManager::callAsync ([completion, json] { completion (var (json)); });
+            postCompletion (completion, json);
         });
 
     // elementPresetList — input { pluginId: String } → { ok, presets: [String], error? }
     registerFn (
         Identifier ("elementPresetList"),
-        [this] (const Array<var>& args, auto completion) {
+        [this, postCompletion] (const Array<var>& args, auto completion) {
             DynamicObject::Ptr result (new DynamicObject());
             const String pluginId = args.size() >= 1 ? args[0].toString() : String();
 
@@ -3539,7 +3553,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             result->setProperty ("ok", true);
             result->setProperty ("presets", var (names));
             const String json (JSON::toString (var (result.get())));
-            MessageManager::callAsync ([completion, json] { completion (var (json)); });
+            postCompletion (completion, json);
         });
 
     if (! skipBrowser)
