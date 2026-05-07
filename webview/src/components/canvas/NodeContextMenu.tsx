@@ -7,58 +7,7 @@ import {
   nativeGraphRemoveNode,
   nativeGraphRenameNode,
 } from "../../bridge/nativeGraph";
-
-const ICON_COPY =
-  "M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z";
-const ICON_DELETE =
-  "M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z";
-const ICON_EDIT =
-  "M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z";
-const ICON_BYPASS =
-  "M13 7.83c.85.3 1.53.98 1.83 1.83L21 3l-6.5 6.5c-.3-.85-.98-1.53-1.83-1.83L13 7.83zm-6.83 3.5c-.3.85-.98 1.53-1.83 1.83L10 18.67c.85-.3 1.53-.98 1.83-1.83l-5.66-5.51zm10.5 2c-.85.3-1.53.98-1.83 1.83L21 21l-6.5-6.5c.3-.85.98-1.53 1.83-1.83l-.66-.67z";
-const ICON_MUTE =
-  "M16.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3z";
-const ICON_INPUT =
-  "M3 13h8v8h2v-8h8v-2h-8V3h-2v8H3v2z";
-// Material/Material-symbols-style alignment icons (24x24 viewbox).
-const ICON_ALIGN_LEFT =
-  "M3 3v18H2V3h1zm14 4v3H4V7h13zm-5 7v3H4v-3h8z";
-const ICON_ALIGN_CENTER =
-  "M11 3h2v18h-2V3zm6 4v3H7V7h10zm-2 7v3H9v-3h6z";
-const ICON_ALIGN_RIGHT =
-  "M21 3v18h1V3h-1zM7 7v3h13V7H7zm5 7v3h8v-3h-8z";
-const ICON_ALIGN_TOP =
-  "M3 3h18v1H3V3zm4 4h3v13H7V7zm7 4h3v9h-3v-9z";
-const ICON_ALIGN_MIDDLE =
-  "M3 11h18v2H3v-2zm4-4h3v10H7V7zm7 -2h3v14h-3V5z";
-const ICON_ALIGN_BOTTOM =
-  "M3 21h18v-1H3v1zM7 4h3v13H7V4zm7 4h3v9h-3V8z";
-const ICON_DIST_H =
-  "M3 3v18h1V3H3zm17 0v18h1V3h-1zM7 7h3v10H7V7zm7 0h3v10h-3V7z";
-const ICON_DIST_V =
-  "M3 3h18v1H3V3zm0 17h18v1H3v-1zM7 7h10v3H7V7zm0 7h10v3H7v-3z";
-
-function Icon({
-  d,
-  size = 14,
-  className = "",
-}: {
-  d: string;
-  size?: number;
-  className?: string;
-}) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      className={className}
-    >
-      <path d={d} />
-    </svg>
-  );
-}
+import { Icon } from "../neu";
 
 interface NodeContextMenuProps {
   nodeId: string;
@@ -155,13 +104,13 @@ export function NodeContextMenu({
 
   const items = [
     {
-      icon: ICON_EDIT,
+      iconName: "Pencil",
       label: "Rename",
       action: handleRename,
       shortcut: "R",
     },
     {
-      icon: ICON_BYPASS,
+      iconName: "Power",
       label: node.bypassed ? "Enable" : "Bypass",
       action: () => {
         toggleBypass(nodeId);
@@ -171,7 +120,7 @@ export function NodeContextMenu({
       active: node.bypassed,
     },
     {
-      icon: ICON_MUTE,
+      iconName: "VolumeX",
       label: node.muted ? "Unmute" : "Mute",
       action: () => {
         toggleMute(nodeId);
@@ -181,7 +130,7 @@ export function NodeContextMenu({
       active: !!node.muted,
     },
     {
-      icon: ICON_INPUT,
+      iconName: "LogIn",
       label: node.muteInput ? "Unmute Input" : "Mute Input",
       action: () => {
         toggleMuteInput(nodeId);
@@ -191,13 +140,13 @@ export function NodeContextMenu({
       active: !!node.muteInput,
     },
     {
-      icon: ICON_COPY,
+      iconName: "Copy",
       label: "Duplicate",
       action: handleDuplicate,
       shortcut: "D",
     },
     {
-      icon: ICON_DELETE,
+      iconName: "Trash2",
       label: "Delete",
       action: handleDelete,
       shortcut: "Del",
@@ -251,7 +200,7 @@ export function NodeContextMenu({
                     : "text-text-primary hover:bg-white/5",
               ].join(" ")}
             >
-              <Icon d={item.icon} size={14} />
+              <Icon name={item.iconName} size={14} aria-hidden />
               <span className="flex-1 text-left">{item.label}</span>
               <span className="text-[10px] text-text-dim">{item.shortcut}</span>
             </button>
@@ -273,7 +222,7 @@ export function NodeContextMenu({
                   }}
                   className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] transition-colors text-text-primary hover:bg-white/5"
                 >
-                  <Icon d={item.icon} size={14} />
+                  <Icon name={item.iconName} size={14} aria-hidden />
                   <span className="flex-1 text-left">{item.label}</span>
                   <span className="text-[10px] text-text-dim">
                     {item.shortcut}
@@ -304,7 +253,7 @@ export function NodeContextMenu({
                         : "text-text-dim opacity-40 cursor-not-allowed",
                     ].join(" ")}
                   >
-                    <Icon d={item.icon} size={14} />
+                    <Icon name={item.iconName} size={14} aria-hidden />
                     <span className="flex-1 text-left">{item.label}</span>
                     <span className="text-[10px] text-text-dim">
                       {item.shortcut}
@@ -323,25 +272,25 @@ export function NodeContextMenu({
 // ── Align/Distribute item definitions (module scope; pure data) ──
 
 const alignItems: ReadonlyArray<{
-  icon: string;
+  iconName: string;
   label: string;
   direction: AlignDirection;
   shortcut: string;
 }> = [
-  { icon: ICON_ALIGN_LEFT, label: "Align Left", direction: "left", shortcut: "⌘⇧L" },
-  { icon: ICON_ALIGN_CENTER, label: "Align Center", direction: "center", shortcut: "" },
-  { icon: ICON_ALIGN_RIGHT, label: "Align Right", direction: "right", shortcut: "⌘⇧R" },
-  { icon: ICON_ALIGN_TOP, label: "Align Top", direction: "top", shortcut: "⌘⇧T" },
-  { icon: ICON_ALIGN_MIDDLE, label: "Align Middle", direction: "middle", shortcut: "" },
-  { icon: ICON_ALIGN_BOTTOM, label: "Align Bottom", direction: "bottom", shortcut: "⌘⇧B" },
+  { iconName: "AlignStartVertical", label: "Align Left", direction: "left", shortcut: "⌘⇧L" },
+  { iconName: "AlignCenterVertical", label: "Align Center", direction: "center", shortcut: "" },
+  { iconName: "AlignEndVertical", label: "Align Right", direction: "right", shortcut: "⌘⇧R" },
+  { iconName: "AlignStartHorizontal", label: "Align Top", direction: "top", shortcut: "⌘⇧T" },
+  { iconName: "AlignCenterHorizontal", label: "Align Middle", direction: "middle", shortcut: "" },
+  { iconName: "AlignEndHorizontal", label: "Align Bottom", direction: "bottom", shortcut: "⌘⇧B" },
 ];
 
 const distributeItems: ReadonlyArray<{
-  icon: string;
+  iconName: string;
   label: string;
   axis: DistributeAxis;
   shortcut: string;
 }> = [
-  { icon: ICON_DIST_H, label: "Distribute Horizontally", axis: "horizontal", shortcut: "⌘⇧H" },
-  { icon: ICON_DIST_V, label: "Distribute Vertically", axis: "vertical", shortcut: "⌘⇧V" },
+  { iconName: "AlignHorizontalDistributeCenter", label: "Distribute Horizontally", axis: "horizontal", shortcut: "⌘⇧H" },
+  { iconName: "AlignVerticalDistributeCenter", label: "Distribute Vertically", axis: "vertical", shortcut: "⌘⇧V" },
 ];

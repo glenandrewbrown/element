@@ -3,34 +3,7 @@ import {
   selectLiveHealth,
   selectAlerts,
 } from "../../stores/usePerformStore";
-
-// ── Icons ──
-
-const ICON_HEART =
-  "M16.5 3c-1.74 0-3.41.81-4.5 2.09C10.91 3.81 9.24 3 7.5 3 4.42 3 2 5.42 2 8.5c0 3.78 3.4 6.86 8.55 11.54L12 21.35l1.45-1.32C18.6 15.36 22 12.28 22 8.5 22 5.42 19.58 3 16.5 3zm-4.4 15.55l-.1.1-.1-.1C7.14 14.24 4 11.39 4 8.5 4 6.5 5.5 5 7.5 5c1.54 0 3.04.99 3.57 2.36h1.87C13.46 5.99 14.96 5 16.5 5c2 0 3.5 1.5 3.5 3.5 0 2.89-3.14 5.74-7.9 10.05z";
-const ICON_WARNING = "M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z";
-
-function Icon({
-  d,
-  size = 16,
-  className = "",
-}: {
-  d: string;
-  size?: number;
-  className?: string;
-}) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      className={className}
-    >
-      <path d={d} />
-    </svg>
-  );
-}
+import { Icon } from "../neu";
 
 // ── I/O meter bars ──
 
@@ -63,7 +36,7 @@ export function LiveHealth() {
         <span className="text-[11px] font-bold text-text-primary uppercase tracking-widest">
           Live Health
         </span>
-        <Icon d={ICON_HEART} size={16} className="text-logic" />
+        <Icon name="HeartPulse" size={16} className="text-logic" aria-label="Live health monitor" />
       </div>
 
       {/* Content */}
@@ -132,9 +105,10 @@ export function LiveHealth() {
             className="p-3 bg-[#3d2600]/30 border border-[#c08512]/30 rounded flex items-start gap-3"
           >
             <Icon
-              d={ICON_WARNING}
+              name="TriangleAlert"
               size={18}
               className="text-modifier shrink-0 mt-0.5"
+              aria-label="Alert"
             />
             <div className="flex flex-col">
               <span className="text-[10px] font-bold text-modifier">

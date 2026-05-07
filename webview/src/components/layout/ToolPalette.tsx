@@ -20,37 +20,7 @@ import {
   useHostExtrasStore,
   type GraphOutlineNode,
 } from "../../stores/useHostExtrasStore";
-
-// ── SVG icon paths ──
-
-const ICON_GRID =
-  "M3 3h8v8H3V3zm0 10h8v8H3v-8zm10-10h8v8h-8V3zm0 10h8v8h-8v-8z";
-const ICON_LIST =
-  "M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z";
-const ICON_SEARCH =
-  "M15.5 14h-.79l-.28-.27A6.47 6.47 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z";
-
-function Icon({
-  d,
-  size = 14,
-  className = "",
-}: {
-  d: string;
-  size?: number;
-  className?: string;
-}) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      className={className}
-    >
-      <path d={d} />
-    </svg>
-  );
-}
+import { Icon } from "../neu";
 
 // ── Category shape components ──
 
@@ -267,7 +237,7 @@ export function ToolPalette() {
                   : "text-text-secondary hover:bg-white/5",
               ].join(" ")}
             >
-              <Icon d={ICON_GRID} />
+              <Icon name="LayoutGrid" size={14} aria-label="Grid view" />
             </button>
             <button
               onClick={() => setViewMode("list")}
@@ -278,7 +248,7 @@ export function ToolPalette() {
                   : "text-text-secondary hover:bg-white/5",
               ].join(" ")}
             >
-              <Icon d={ICON_LIST} />
+              <Icon name="List" size={14} aria-label="List view" />
             </button>
           </div>
         </div>
@@ -296,7 +266,7 @@ export function ToolPalette() {
             className="pl-8"
           />
           <span className="absolute left-2 top-1.5 text-text-secondary">
-            <Icon d={ICON_SEARCH} size={16} />
+            <Icon name="Search" size={16} aria-hidden />
           </span>
         </div>
       </div>

@@ -28,47 +28,7 @@ import {
   nativePerformCaptureScene,
 } from "../../bridge/nativePerform";
 import { EV_OPEN_PREFERENCES } from "../../events";
-
-// ── SVG icon helpers (inline to avoid icon-font dependency) ──
-
-function Icon({
-  d,
-  size = 16,
-  className = "",
-}: {
-  d: string;
-  size?: number;
-  className?: string;
-}) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      className={className}
-    >
-      <path d={d} />
-    </svg>
-  );
-}
-
-// Material icon paths
-const ICON_SKIP_PREV = "M6 6h2v12H6zm3.5 6l8.5 6V6z";
-const ICON_PLAY = "M8 5v14l11-7z";
-const ICON_STOP = "M6 6h12v12H6z";
-const ICON_CHEVRON_RIGHT = "M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z";
-const ICON_LAYERS =
-  "M11.99 18.54l-7.37-5.73L3 14.07l9 7 9-7-1.63-1.27zM12 16l7.36-5.73L21 9l-9-7-9 7 1.63 1.27L12 16z";
-const ICON_SETTINGS =
-  "M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.49.49 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 00-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1115.6 12 3.61 3.61 0 0112 15.6z";
-const ICON_POWER =
-  "M13 3h-2v10h2V3zm4.83 2.17l-1.42 1.42A6.92 6.92 0 0119 12c0 3.87-3.13 7-7 7s-7-3.13-7-7c0-2.27 1.08-4.28 2.59-5.59L6.17 5.17A8.93 8.93 0 003 12a9 9 0 0018 0c0-2.74-1.23-5.18-3.17-6.83z";
-const ICON_ARROW_LEFT = "M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z";
-const ICON_ARROW_RIGHT = "M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z";
-const ICON_UNDO = "M9 14L4 9l5-5M4 9h11a5 5 0 110 10H7";
-const ICON_REDO = "M15 14l5-5-5-5M20 9H9a5 5 0 110 10h8";
-const ICON_SCHEDULE = "M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67V7z";
+import { Icon } from "../neu";
 
 // ── Toolbar component ──
 
@@ -192,9 +152,10 @@ export function Toolbar() {
                     <span key={crumb} className="flex items-center gap-2">
                       {i > 0 && (
                         <Icon
-                          d={ICON_CHEVRON_RIGHT}
+                          name="ChevronRight"
                           size={14}
                           className="text-text-secondary"
+                          aria-hidden
                         />
                       )}
                       <span
@@ -217,12 +178,12 @@ export function Toolbar() {
               <div className="h-4 w-px bg-white/10 mx-1" />
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-pressed text-modifier shadow-inner">
-                  <Icon d={ICON_PLAY} size={14} />
+                  <Icon name="Play" size={14} aria-hidden />
                   <span className="font-bold">PERFORM</span>
                 </div>
                 <div className="flex items-center gap-4 text-text-secondary">
                   <span className="flex items-center gap-1">
-                    <Icon d={ICON_SCHEDULE} size={14} />
+                    <Icon name="Clock" size={14} aria-hidden />
                     {bpm.toFixed(2)} BPM
                   </span>
                   <span>4/4</span>
@@ -239,17 +200,17 @@ export function Toolbar() {
             {/* Undo/Redo — Section 7.8 */}
             <div className="flex items-center gap-1 bg-pressed px-1.5 py-0.5 rounded shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] border border-white/5">
               <button className="text-text-secondary hover:text-text-primary p-1 flex items-center gap-1" title="Undo">
-                <Icon d={ICON_UNDO} size={14} />
+                <Icon name="Undo2" size={14} aria-label="Undo" />
               </button>
               <button className="text-text-secondary hover:text-text-primary p-1" title="Redo">
-                <Icon d={ICON_REDO} size={14} />
+                <Icon name="Redo2" size={14} aria-label="Redo" />
               </button>
             </div>
 
             {/* Transport */}
             <div className="flex items-center gap-1 bg-pressed px-2 py-0.5 rounded shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] border border-white/5">
               <button className="text-text-secondary hover:text-text-primary transition-colors p-0.5" title="Rewind">
-                <Icon d={ICON_SKIP_PREV} size={16} />
+                <Icon name="SkipBack" size={16} aria-label="Rewind" />
               </button>
               <button
                 type="button"
@@ -257,10 +218,10 @@ export function Toolbar() {
                 onClick={() => void nativeTransportTogglePlay()}
                 aria-label="Play or pause"
               >
-                <Icon d={ICON_PLAY} size={18} />
+                <Icon name="Play" size={18} aria-hidden />
               </button>
               <button className="text-text-secondary hover:text-text-primary transition-colors p-0.5" title="Stop">
-                <Icon d={ICON_STOP} size={16} />
+                <Icon name="Square" size={16} aria-label="Stop" />
               </button>
             </div>
 
@@ -376,14 +337,15 @@ export function Toolbar() {
 
               {/* Scene selector */}
               <div className="flex items-center gap-2 bg-pressed px-2 py-0.5 rounded shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] text-text-secondary border border-white/5">
-                <Icon d={ICON_LAYERS} size={16} />
+                <Icon name="Layers" size={16} aria-hidden />
                 <button
                   className="hover:text-text-primary transition-colors"
                   onClick={() =>
                     setScene((activeSceneIdx - 1 + sceneCount) % sceneCount)
                   }
+                  aria-label="Previous scene"
                 >
-                  <Icon d={ICON_ARROW_LEFT} size={14} />
+                  <Icon name="ChevronLeft" size={14} aria-hidden />
                 </button>
                 <span className="inline-flex items-center gap-1 tabular-nums font-bold">
                   {sceneLabel}
@@ -398,8 +360,9 @@ export function Toolbar() {
                 <button
                   className="hover:text-text-primary transition-colors"
                   onClick={() => setScene((activeSceneIdx + 1) % sceneCount)}
+                  aria-label="Next scene"
                 >
-                  <Icon d={ICON_ARROW_RIGHT} size={14} />
+                  <Icon name="ChevronRight" size={14} aria-hidden />
                 </button>
                 <div className="flex items-center gap-1 border-l border-white/10 ml-1 pl-1">
                   <button
@@ -437,7 +400,7 @@ export function Toolbar() {
                   aria-label="Preferences"
                   onClick={() => setPrefsOpen(true)}
                 >
-                  <Icon d={ICON_SETTINGS} size={18} />
+                  <Icon name="Settings" size={18} aria-label="Preferences" />
                 </button>
                 <button
                   type="button"
@@ -446,7 +409,7 @@ export function Toolbar() {
                   title="PANIC - All Notes Off"
                   onClick={() => void nativeTransportPanic()}
                 >
-                  <Icon d={ICON_POWER} size={18} />
+                  <Icon name="Power" size={18} aria-hidden />
                 </button>
               </div>
             </>
@@ -481,10 +444,13 @@ export function Toolbar() {
                 aria-label="Preferences"
                 onClick={() => setPrefsOpen(true)}
               >
-                <Icon d={ICON_SETTINGS} size={18} />
+                <Icon name="Settings" size={18} aria-label="Preferences" />
               </button>
-              <button className="text-text-secondary hover:text-error transition-colors">
-                <Icon d={ICON_POWER} size={18} />
+              <button
+                className="text-text-secondary hover:text-error transition-colors"
+                aria-label="Power off"
+              >
+                <Icon name="Power" size={18} aria-hidden />
               </button>
             </>
           )}

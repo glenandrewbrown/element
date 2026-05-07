@@ -12,37 +12,7 @@ import {
   nativePerformRenameScene,
   nativePerformSetActiveScene,
 } from "../../bridge/nativePerform";
-import { NeuButton } from "../neu";
-
-const ICON_GRID =
-  "M3 3h8v8H3V3zm0 10h8v8H3v-8zm10-10h8v8h-8V3zm0 10h8v8h-8v-8z";
-const ICON_ADD = "M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z";
-const ICON_CAMERA =
-  "M9.5 6.5v3h-3v-3h3M11 5H5v6h6V5zm9.5 6.5v3h-3v-3h3M22 11h-6v6h6v-6zm-11 6.5v3h-3v-3h3M11 16H5v6h6v-6zm5-9.5v3h-3v-3h3M18 5h-6v6h6V5z";
-const ICON_DELETE = "M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z";
-const ICON_EDIT = "M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z";
-
-function Icon({
-  d,
-  size = 14,
-  className = "",
-}: {
-  d: string;
-  size?: number;
-  className?: string;
-}) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      className={className}
-    >
-      <path d={d} />
-    </svg>
-  );
-}
+import { NeuButton, Icon } from "../neu";
 
 export function SceneLauncher() {
   const scenes = usePerformStore(selectScenes);
@@ -112,7 +82,7 @@ export function SceneLauncher() {
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between px-4 py-3 bg-pressed border-b border-white/5">
         <div className="flex items-center gap-2">
-          <Icon d={ICON_GRID} size={16} className="text-modifier" />
+          <Icon name="LayoutGrid" size={16} className="text-modifier" aria-hidden />
           <span className="text-[11px] font-bold text-text-primary uppercase tracking-widest">
             Scene Launcher
           </span>
@@ -122,7 +92,7 @@ export function SceneLauncher() {
         </div>
         <div className="flex items-center gap-2">
           <NeuButton size="sm" onClick={handleAddScene}>
-            <Icon d={ICON_ADD} size={12} className="mr-1" />
+            <Icon name="Plus" size={12} className="mr-1" aria-hidden />
             Add
           </NeuButton>
         </div>
@@ -131,7 +101,7 @@ export function SceneLauncher() {
       <div className="flex-1 overflow-y-auto p-4">
         {scenes.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full gap-3 text-text-dim">
-            <Icon d={ICON_GRID} size={32} className="opacity-40" />
+            <Icon name="LayoutGrid" size={32} className="opacity-40" aria-hidden />
             <span className="text-[11px] uppercase tracking-widest">
               No scenes — press Add to create your first
             </span>
@@ -210,7 +180,7 @@ export function SceneLauncher() {
                         handleCaptureScene(index);
                       }}
                     >
-                      <Icon d={ICON_CAMERA} size={11} />
+                      <Icon name="Camera" size={11} aria-label="Capture parameters" />
                     </button>
 
                     {/* Rename */}
@@ -221,7 +191,7 @@ export function SceneLauncher() {
                         className="inline-flex items-center gap-0.5 text-[10px] text-text-secondary hover:text-generator"
                         onClick={(e) => beginRename(index, scene.name, e)}
                       >
-                        <Icon d={ICON_EDIT} size={11} />
+                        <Icon name="Pencil" size={11} aria-label="Rename scene" />
                       </button>
                     )}
 
@@ -232,7 +202,7 @@ export function SceneLauncher() {
                       className="inline-flex items-center gap-0.5 text-[10px] text-text-secondary hover:text-error"
                       onClick={(e) => handleDelete(index, e)}
                     >
-                      <Icon d={ICON_DELETE} size={11} />
+                      <Icon name="Trash2" size={11} aria-label="Delete scene" />
                     </button>
                   </div>
                 </div>

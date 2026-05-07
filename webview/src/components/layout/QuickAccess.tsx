@@ -4,37 +4,7 @@ import {
   selectSessionName,
   selectLiveHealth,
 } from "../../stores/usePerformStore";
-import { NeuBadge } from "../neu";
-
-const ICON_TREE = "M22 11V3h-7v3H9V3H2v8h7V8h2v10h4v3h7v-8h-7v3h-2V8h2v3z";
-const ICON_FOLDER =
-  "M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z";
-const ICON_SEARCH =
-  "M15.5 14h-.79l-.28-.27A6.47 6.47 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z";
-const ICON_DRAG =
-  "M11 18c0 1.1-.9 2-2 2s-2-.9-2-2 .9-2 2-2 2 .9 2 2zm-2-8c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0-6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm6 4c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z";
-
-function Icon({
-  d,
-  size = 16,
-  className = "",
-}: {
-  d: string;
-  size?: number;
-  className?: string;
-}) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      className={className}
-    >
-      <path d={d} />
-    </svg>
-  );
-}
+import { NeuBadge, Icon } from "../neu";
 
 const categoryDot: Record<string, string> = {
   generator: "bg-generator",
@@ -59,13 +29,13 @@ export function QuickAccess() {
           <span className="text-[11px] font-bold text-text-secondary uppercase tracking-widest">
             Quick Access
           </span>
-          <Icon d={ICON_SEARCH} size={16} className="text-text-secondary" />
+          <Icon name="Search" size={16} className="text-text-secondary" aria-hidden />
         </div>
 
         <div className="space-y-1">
           <div className="flex items-center justify-between p-2 rounded bg-surface text-generator shadow-[-2px_-2px_8px_rgba(255,255,255,0.04),2px_2px_8px_rgba(0,0,0,0.35)]">
             <div className="flex items-center gap-2 min-w-0">
-              <Icon d={ICON_TREE} size={16} className="shrink-0" />
+              <Icon name="Network" size={16} className="shrink-0" aria-hidden />
               <span className="text-[11px] font-medium truncate">
                 {projectName}
               </span>
@@ -74,7 +44,7 @@ export function QuickAccess() {
           </div>
 
           <div className="p-2 rounded text-text-secondary opacity-60 hover:opacity-100 hover:bg-elevated cursor-pointer flex items-center gap-2 transition-opacity">
-            <Icon d={ICON_FOLDER} size={16} />
+            <Icon name="Folder" size={16} aria-hidden />
             <span className="text-[11px]">User Presets (File menu)</span>
           </div>
         </div>
@@ -108,7 +78,7 @@ export function QuickAccess() {
                   </div>
                 </div>
                 <span className="text-text-secondary hidden group-hover:block shrink-0">
-                  <Icon d={ICON_DRAG} size={14} />
+                  <Icon name="GripVertical" size={14} aria-label="Drag handle" />
                 </span>
               </div>
             ))

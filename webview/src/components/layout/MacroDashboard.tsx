@@ -10,43 +10,7 @@ import { NeuKnob, NeuFader, NeuToggle } from "../neu";
 import { SceneLauncher } from "./SceneLauncher";
 import { nativeTransportPanic } from "../../bridge/nativeGraph";
 import type { BlockCategory } from "../../data/types";
-
-// ── Icons ──
-
-const ICON_TUNE =
-  "M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z";
-const ICON_GRID =
-  "M3 3h8v8H3V3zm0 10h8v8H3v-8zm10-10h8v8h-8V3zm0 10h8v8h-8v-8z";
-const ICON_FX =
-  "M7.5 5.6L5 7l1.4 3.5L3 12l3.4 1.5L5 17l2.5 1.4L9 22l1.5-3.4L14 20l-1.5-3.5L16 15l-3.5-1.5L14 10l-2.5-1.4L10 5l-1.5 3.5L5 7l2.5-1.4z";
-const ICON_MORE =
-  "M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z";
-const ICON_CLOCK =
-  "M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z";
-const ICON_EMERGENCY =
-  "M18.5 8.5L12 2 5.5 8.5 2 12l3.5 3.5L12 22l6.5-6.5L22 12l-3.5-3.5zM12 20l-8-8 8-8 8 8-8 8z";
-
-function Icon({
-  d,
-  size = 16,
-  className = "",
-}: {
-  d: string;
-  size?: number;
-  className?: string;
-}) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      className={className}
-    >
-      <path d={d} />
-    </svg>
-  );
-}
+import { Icon } from "../neu";
 
 // ── Dashboard tab types ──
 
@@ -92,10 +56,10 @@ export function MacroDashboard() {
   const toggleBypass = useGraphStore((s) => s.toggleBypass);
   const effectBlocks = allNodes.filter((n) => n.category !== "generator");
 
-  const tabs: { id: DashTab; label: string; icon: string }[] = [
-    { id: "macros", label: "Macro Controls", icon: ICON_TUNE },
-    { id: "scenes", label: "Scene Launch", icon: ICON_GRID },
-    { id: "fx", label: "Performance FX", icon: ICON_FX },
+  const tabs: { id: DashTab; label: string; iconName: string }[] = [
+    { id: "macros", label: "Macro Controls", iconName: "SlidersHorizontal" },
+    { id: "scenes", label: "Scene Launch", iconName: "LayoutGrid" },
+    { id: "fx", label: "Performance FX", iconName: "Sparkles" },
   ];
 
   // Separate knobs and faders from macros
@@ -118,7 +82,7 @@ export function MacroDashboard() {
                   : "text-text-secondary hover:text-text-primary cursor-pointer",
               ].join(" ")}
             >
-              <Icon d={tab.icon} />
+              <Icon name={tab.iconName} size={16} aria-hidden />
               {tab.label}
             </button>
           ))}
@@ -133,8 +97,8 @@ export function MacroDashboard() {
             <NeuToggle active={mapMode} onChange={toggleMapMode} color="blue" />
           </button>
           <div className="h-6 w-px bg-white/10" />
-          <button className="text-text-secondary">
-            <Icon d={ICON_MORE} />
+          <button className="text-text-secondary" aria-label="More options">
+            <Icon name="MoreVertical" size={16} aria-hidden />
           </button>
         </div>
       </div>
@@ -215,9 +179,10 @@ export function MacroDashboard() {
                 <div className="h-px bg-white/5 my-2" />
                 <div className="flex items-center gap-2">
                   <Icon
-                    d={ICON_CLOCK}
+                    name="Clock"
                     size={14}
                     className="text-text-secondary"
+                    aria-hidden
                   />
                   <span className="text-[12px] font-black tabular text-text-primary">
                     {health.timecode}
@@ -299,9 +264,10 @@ export function PanicButton() {
       className="absolute bottom-6 right-6 w-14 h-14 rounded-full bg-pressed shadow-[-2px_-2px_8px_rgba(255,255,255,0.04),2px_2px_8px_rgba(0,0,0,0.35)] border border-error/20 flex flex-col items-center justify-center active:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] active:translate-y-px group transition-all z-10"
     >
       <Icon
-        d={ICON_EMERGENCY}
+        name="AlertTriangle"
         size={24}
         className="text-error group-active:scale-95"
+        aria-hidden
       />
       <span className="text-[10px] font-black text-error uppercase tracking-tighter mt-0.5">
         Panic

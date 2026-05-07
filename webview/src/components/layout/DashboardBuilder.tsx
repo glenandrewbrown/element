@@ -16,32 +16,12 @@ import { useParameterStore, paramKey } from "../../stores/useParameterStore";
 import { useGraphStore } from "../../stores/useGraphStore";
 import { NeuKnob } from "../neu/NeuKnob";
 import { NeuFader } from "../neu/NeuFader";
+import { Icon } from "../neu/Icon";
 import {
   nativeSetNodeParameter,
   nativeGetNodeParameters,
   type NodeParameterRow,
 } from "../../bridge/nativeGraph";
-
-// ── Icons (inline SVG paths) ──
-
-const ICON_EDIT =
-  "M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z";
-const ICON_ADD =
-  "M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z";
-const ICON_DELETE =
-  "M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z";
-const ICON_CLOSE =
-  "M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z";
-const ICON_LINK =
-  "M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z";
-
-function Icon({ d, size = 14, className = "" }: { d: string; size?: number; className?: string }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className}>
-      <path d={d} />
-    </svg>
-  );
-}
 
 // ── Color map ──
 
@@ -289,7 +269,7 @@ function BindModal({ widgetId, onClose }: BindModalProps) {
             onClick={onClose}
             className="text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
           >
-            <Icon d={ICON_CLOSE} size={16} />
+            <Icon name="X" size={16} aria-label="Close" />
           </button>
         </div>
 
@@ -485,7 +465,7 @@ function WidgetShell({
             }}
             className="absolute -top-2 -right-2 w-4 h-4 rounded-full bg-error/80 border border-white/20 flex items-center justify-center text-white hover:bg-error transition-colors z-10 cursor-pointer"
           >
-            <Icon d={ICON_CLOSE} size={8} />
+            <Icon name="X" size={8} aria-label="Delete widget" />
           </button>
 
           {/* Bind button when unbound */}
@@ -498,7 +478,7 @@ function WidgetShell({
               }}
               className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-full mt-1 px-1.5 py-0.5 bg-surface border border-white/10 rounded text-[8px] font-black uppercase tracking-widest text-modifier hover:text-text-primary flex items-center gap-1 cursor-pointer whitespace-nowrap z-10 shadow-[-1px_-1px_4px_rgba(255,255,255,0.04),1px_1px_4px_rgba(0,0,0,0.35)]"
             >
-              <Icon d={ICON_LINK} size={8} />
+              <Icon name="Link" size={8} aria-hidden />
               Bind
             </button>
           )}
@@ -618,7 +598,7 @@ export function DashboardBuilder() {
               : "bg-surface border-white/5 text-text-secondary hover:text-text-primary shadow-[-2px_-2px_8px_rgba(255,255,255,0.04),2px_2px_8px_rgba(0,0,0,0.35)]",
           ].join(" ")}
         >
-          <Icon d={ICON_EDIT} size={12} />
+          <Icon name="Pencil" size={12} aria-hidden />
           Edit Layout
         </button>
 
@@ -637,7 +617,7 @@ export function DashboardBuilder() {
                 onClick={() => setPaletteOpen((v) => !v)}
                 className="h-6 px-3 rounded border border-white/5 bg-surface text-[10px] font-black uppercase tracking-widest text-text-secondary hover:text-text-primary flex items-center gap-1.5 shadow-[-2px_-2px_8px_rgba(255,255,255,0.04),2px_2px_8px_rgba(0,0,0,0.35)] active:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4)] active:translate-y-px transition-all cursor-pointer"
               >
-                <Icon d={ICON_ADD} size={12} />
+                <Icon name="Plus" size={12} aria-hidden />
                 Add
               </button>
               {paletteOpen && (
@@ -667,7 +647,7 @@ export function DashboardBuilder() {
                   : "bg-surface border-white/5 text-text-secondary hover:text-error",
               ].join(" ")}
             >
-              <Icon d={ICON_DELETE} size={12} />
+              <Icon name="Trash2" size={12} aria-hidden />
               {confirmClear ? "Confirm Clear" : "Clear All"}
             </motion.button>
           )}
