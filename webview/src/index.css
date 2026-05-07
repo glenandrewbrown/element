@@ -43,6 +43,27 @@
   --font-sans: "Inter", system-ui, -apple-system, sans-serif;
 }
 
+/* ── Motion vocabulary tokens — Phase F.0.9 ── */
+/* Pairs with webview/src/motion/index.ts. CSS-side mirror so primitives can */
+/* reference these via `style={{ transition: 'var(--motion-hover)' }}`. */
+
+:root {
+  /* Neumorphic shadow primitives (V3.0 Instrument Paradigm) */
+  --shadow-raised: -2px -2px 6px rgba(255, 255, 255, 0.04),
+    3px 3px 8px rgba(0, 0, 0, 0.4);
+  --shadow-pressed: inset -2px -2px 4px rgba(255, 255, 255, 0.04),
+    inset 3px 3px 6px rgba(0, 0, 0, 0.45);
+  --shadow-glow-audio: 0 0 4px rgba(74, 144, 217, 0.25);
+  --shadow-glow-midi: 0 0 4px rgba(43, 196, 196, 0.25);
+  --shadow-glow-cv: 0 0 4px rgba(232, 168, 56, 0.25);
+
+  /* Motion durations + easings */
+  --motion-press: 100ms cubic-bezier(0.4, 0, 0.2, 1);
+  --motion-hover: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  --motion-modal: 250ms cubic-bezier(0.32, 0.72, 0, 1);
+  --motion-page: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
 /* ── Global Reset ── */
 
 *,
