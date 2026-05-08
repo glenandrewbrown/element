@@ -2,9 +2,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #define BOOST_TEST_MODULE Element
+#define BOOST_TEST_NO_MAIN
+#define BOOST_TEST_ALTERNATIVE_INIT_API
 #include <boost/test/included/unit_test.hpp>
 #include <element/juce.hpp>
 using namespace juce;
+
+#include "engine/sandboxworker.hpp"
+#include "engine/sandboxipc.hpp"
 
 #include <element/context.hpp>
 #include <element/services.hpp>
@@ -53,3 +58,37 @@ BOOST_AUTO_TEST_CASE (Sanity)
 }
 
 BOOST_AUTO_TEST_SUITE_END()
+
+int main (int argc, char* argv[])
+{
+    // Sandbox-worker dispatch: when this test binary is re-execed by a
+    // SandboxHost (or its test stand-in) with the EL_PLUGIN_HOST_PROCESS_ID
+    // tag in argv[1], hand off to SandboxWorker and never run Boost.Test.
+    //
+    // Production parity: Application::maybeLaunchSandboxWorker (src/application.cpp:441)
+    // does the equivalent for the production element_app binary.
+    if (argc >= 2)
+    {
+        const juce::String commandLine (argv[1]);
+        if (commandLine.contains (EL_PLUGIN_HOST_PROCESS_ID))
+        {
+            // ScopedJuceInitialiser_GUI initialises the MessageManager that
+            // SandboxWorker's juce::Timer base class needs. RAII teardown.
+            juce::ScopedJuceInitialiser_GUI juceInit;
+
+            element::SandboxWorker worker;
+            if (worker.initialise (commandLine))
+            {
+                juce::MessageManager::getInstance()->runDispatchLoop();
+                return 0;
+            }
+            // initialise() returned false: either the tag was a coincidence,
+            // or the parent PID is dead. Exit non-zero without running tests.
+            return 1;
+        }
+    }
+
+    // Normal test-run path: delegate to Boost.Test's runner.
+    return ::boost::unit_test::unit_test_main (
+        []() { return true; }, argc, argv);
+}
