@@ -578,17 +578,15 @@ bool Settings::transportRespondToStartStopContinue() const
 //=============================================================================
 int Settings::getPluginSandboxMode() const
 {
-    // Default 2 (Problematic Only) — Phase D rebuilt the cross-process IPC
-    // (named POSIX semaphores, magic-sentinel placement-new, ordered shutdown,
-    // SIGKILL-recovery via attemptRestart). Gate 1.5 evidence shows 696/1000
-    // SIGKILL cycles recover cleanly with zero host crashes. The sandbox is
-    // therefore safe to enable by default for the plugin formats most prone
-    // to constructor-time crashes (AudioUnits on macOS). Users wanting full
-    // isolation can switch to 1 (All External) in Preferences → Plugins;
-    // users wanting in-process performance can switch back to 0.
+    // Default 0 (Disabled). Phase D Gate 1.5 stress-tested with the in-tree
+    // TestEchoPluginInstance only; real-world AU plugins through the sandbox
+    // at initial-load time hung the JUCE message thread on Glen's machine
+    // (2026-05-08, BRASS_4Horns session). Until the sandbox is verified
+    // against real third-party AUs end-to-end, sandbox stays opt-in via
+    // Preferences → Plugins → Sandbox Mode.
     if (auto* p = getProps())
-        return p->getIntValue (pluginSandboxModeKey, 2);
-    return 2;
+        return p->getIntValue (pluginSandboxModeKey, 0);
+    return 0;
 }
 
 void Settings::setPluginSandboxMode (int mode)
