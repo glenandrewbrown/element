@@ -374,6 +374,8 @@ function applySnapshot(raw: unknown) {
 
   if (typeof s.perform?.activeSceneIndex === "number")
     useAppStore.setState({ activeScene: s.perform.activeSceneIndex });
+
+  useSessionStore.getState().markSessionLoaded();
 }
 
 export type ElementNativeHooks = {
@@ -480,9 +482,36 @@ export function useJuceBridge() {
       pluginPollTimers.push(id);
     });
 
+    // T-P6-1: Session-load → graph-populate race. The boot IIFE above may
+    // resolve with `json === undefined` (host not yet ready) leaving the
+    // graph empty. Mirror the plugin retry-poll: if `sessionLoaded` is
+    // still false after each delay, re-issue `elementGetGraphState`.
+    const sessionPollDelays = [500, 1500, 3000, 6000, 10000]; // ms
+    const sessionPollTimers: number[] = [];
+    sessionPollDelays.forEach((delay) => {
+      const id = window.setTimeout(() => {
+        if (useSessionStore.getState().sessionLoaded) return;
+        void (async () => {
+          try {
+            const json = await invokeElementNative(
+              "elementGetGraphState",
+              [],
+            );
+            if (json === undefined) return;
+            if (typeof json === "string") applySnapshot(JSON.parse(json));
+            else applySnapshot(json);
+          } catch (err) {
+            logBridgeError("useJuceBridge.sessionRetryPoll", err);
+          }
+        })();
+      }, delay);
+      sessionPollTimers.push(id);
+    });
+
     return () => {
       window.__elementNative = prev;
       pluginPollTimers.forEach((id) => window.clearTimeout(id));
+      sessionPollTimers.forEach((id) => window.clearTimeout(id));
     };
   }, []);
 }
