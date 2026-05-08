@@ -84,13 +84,18 @@ export function LiveHealth() {
             I/O Activity
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <div className="bg-pressed p-2 rounded shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)]">
+            <div
+              className="bg-pressed p-2 rounded shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] opacity-40"
+              title="Input metering not yet exposed by host bridge (Q-VU-INPUT)"
+            >
               <span className="text-[10px] text-text-secondary block mb-1">
-                INPUT
+                INPUT <span className="text-text-dim">(n/a)</span>
               </span>
-              {/* TODO Q-VU-INPUT: bridge does not yet emit an input peak.
-                  Render an empty ladder rather than fake animation. */}
-              <MeterBars heights={levelToLadderHeights(0)} color="#4A90D9" />
+              {/* T-P1-5: Bridge does not yet emit an input peak. Render
+                  the ladder dimmed (opacity-40 + grey color + n/a label
+                  + tooltip) so it cannot be confused for an "active and
+                  silent" meter. Restore live colour once Q-VU-INPUT lands. */}
+              <MeterBars heights={levelToLadderHeights(0)} color="#4A4A4A" />
             </div>
             <div className="bg-pressed p-2 rounded shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)]">
               <span className="text-[10px] text-text-secondary block mb-1">
