@@ -375,13 +375,11 @@ inline void SandboxHost::prepareToPlay (double sampleRate, int maxBlockSize,
     const int maxChannels = std::max (inputChannels, outputChannels);
     const size_t requiredSize = SharedAudioBuffer::calculateRequiredSize (maxChannels, maxBlockSize);
 
-    // Attempt to create OS shared memory for cross-process audio IPC
     sharedMemory.close();
     shmName = SandboxSharedMemory::generateName();
 
     if (sharedMemory.create (shmName, requiredSize))
     {
-        // Point the audio buffer at the shared memory region
         audioBuffer.attachToMemoryAsOwner (sharedMemory.getData(), requiredSize,
                                          maxChannels, maxBlockSize);
         juce::Logger::writeToLog ("[sandbox] Created shared memory: "
@@ -390,7 +388,6 @@ inline void SandboxHost::prepareToPlay (double sampleRate, int maxBlockSize,
     }
     else
     {
-        // Fallback to process-local allocation (in-process mode)
         juce::Logger::writeToLog ("[sandbox] Shared memory creation failed, using local allocation");
         shmName.clear();
         audioBuffer.allocate (maxChannels, maxBlockSize);
@@ -401,10 +398,29 @@ inline void SandboxHost::prepareToPlay (double sampleRate, int maxBlockSize,
         header->sampleRate = sampleRate;
     }
 
-    // Send prepare message to worker, including shared memory name
+    // Phase D D-2: open named cross-process semaphores as Owner before sending the
+    // PreparePayload. The worker opens them as Attacher in handlePrepareToPlay.
+    triggerSemaphore.close();
+    doneSemaphore.close();
+    const std::string trigName = SandboxSemaphore::generateName ('t');
+    const std::string doneName = SandboxSemaphore::generateName ('d');
+    const bool trigOk = triggerSemaphore.open (trigName, SandboxSemaphore::Mode::Owner);
+    const bool doneOk = doneSemaphore.open (doneName, SandboxSemaphore::Mode::Owner);
+    if (! trigOk || ! doneOk)
+    {
+        juce::Logger::writeToLog ("[sandbox] Cross-process semaphore open failed (trig="
+                                   + juce::String ((int) trigOk) + " done=" + juce::String ((int) doneOk)
+                                   + ") — falling back to in-process semaphores; "
+                                   "host↔worker signalling will not work cross-process.");
+        triggerSemaphore.close();
+        doneSemaphore.close();
+    }
+
     auto payload = createPrepareMessage (sampleRate, maxBlockSize,
                                           inputChannels, outputChannels,
-                                          shmName);
+                                          shmName,
+                                          triggerSemaphore.isOpen() ? triggerSemaphore.getName() : std::string{},
+                                          doneSemaphore.isOpen() ? doneSemaphore.getName() : std::string{});
     sendMessage (SandboxMessageType::PrepareToPlay,
                  payload.getData(),
                  static_cast<uint32_t> (payload.getSize()));

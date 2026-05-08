@@ -19,18 +19,19 @@ BOOST_AUTO_TEST_SUITE (SandboxSemaphoreTests)
 BOOST_AUTO_TEST_CASE (TimedWaitTimesOutWhenNotSignaled)
 {
     SandboxSemaphore sem;
+    BOOST_REQUIRE (sem.open (SandboxSemaphore::generateName ('t'), SandboxSemaphore::Mode::Owner));
     auto start = std::chrono::steady_clock::now();
     bool signaled = sem.timedWait (1000); // 1ms timeout
     auto elapsed = std::chrono::steady_clock::now() - start;
 
     BOOST_CHECK (! signaled);
-    // Should have waited at least ~1ms (allow some slack)
     BOOST_CHECK (elapsed >= std::chrono::microseconds (500));
 }
 
 BOOST_AUTO_TEST_CASE (PostThenTimedWaitSucceeds)
 {
     SandboxSemaphore sem;
+    BOOST_REQUIRE (sem.open (SandboxSemaphore::generateName ('t'), SandboxSemaphore::Mode::Owner));
     sem.post();
     bool signaled = sem.timedWait (100000); // 100ms generous timeout
     BOOST_CHECK (signaled);
@@ -39,6 +40,7 @@ BOOST_AUTO_TEST_CASE (PostThenTimedWaitSucceeds)
 BOOST_AUTO_TEST_CASE (PostFromAnotherThread)
 {
     SandboxSemaphore sem;
+    BOOST_REQUIRE (sem.open (SandboxSemaphore::generateName ('t'), SandboxSemaphore::Mode::Owner));
     std::atomic<bool> posted { false };
 
     std::thread poster ([&] {
@@ -56,6 +58,7 @@ BOOST_AUTO_TEST_CASE (PostFromAnotherThread)
 BOOST_AUTO_TEST_CASE (MultiplePostsConsumedIndividually)
 {
     SandboxSemaphore sem;
+    BOOST_REQUIRE (sem.open (SandboxSemaphore::generateName ('t'), SandboxSemaphore::Mode::Owner));
     sem.post();
     sem.post();
 
@@ -68,6 +71,7 @@ BOOST_AUTO_TEST_CASE (MultiplePostsConsumedIndividually)
 BOOST_AUTO_TEST_CASE (WaitUnblocksOnPost)
 {
     SandboxSemaphore sem;
+    BOOST_REQUIRE (sem.open (SandboxSemaphore::generateName ('t'), SandboxSemaphore::Mode::Owner));
     std::atomic<bool> waited { false };
 
     std::thread waiter ([&] {
@@ -80,6 +84,45 @@ BOOST_AUTO_TEST_CASE (WaitUnblocksOnPost)
     sem.post();
     waiter.join();
     BOOST_CHECK (waited.load());
+}
+
+BOOST_AUTO_TEST_CASE (OwnerAttacherSeparateProcessesShareSignal)
+{
+    // Same-process simulation of Owner+Attacher pairing: Owner creates the
+    // named semaphore, Attacher opens it by name in the same process.
+    // The kernel object is shared via the OS namespace — both FDs operate
+    // on the same primitive. Cross-process variant is in
+    // SandboxSemaphoreCrossProcessTest (separate test binary spawn).
+    const auto name = SandboxSemaphore::generateName ('t');
+
+    SandboxSemaphore owner;
+    BOOST_REQUIRE (owner.open (name, SandboxSemaphore::Mode::Owner));
+
+    SandboxSemaphore attacher;
+    BOOST_REQUIRE (attacher.open (name, SandboxSemaphore::Mode::Attacher));
+
+    owner.post();
+    BOOST_CHECK (attacher.timedWait (100000));
+
+    attacher.post();
+    BOOST_CHECK (owner.timedWait (100000));
+}
+
+BOOST_AUTO_TEST_CASE (OwnerExclusiveCreateFailsOnDuplicateName)
+{
+    const auto name = SandboxSemaphore::generateName ('t');
+
+    SandboxSemaphore first;
+    BOOST_REQUIRE (first.open (name, SandboxSemaphore::Mode::Owner));
+
+    SandboxSemaphore second;
+    BOOST_CHECK (! second.open (name, SandboxSemaphore::Mode::Owner));
+}
+
+BOOST_AUTO_TEST_CASE (AttacherFailsWhenNameDoesNotExist)
+{
+    SandboxSemaphore attacher;
+    BOOST_CHECK (! attacher.open ("/els_does_not_exist", SandboxSemaphore::Mode::Attacher));
 }
 
 BOOST_AUTO_TEST_SUITE_END()
@@ -357,11 +400,16 @@ BOOST_AUTO_TEST_SUITE (SandboxProtocolTests)
 
 BOOST_AUTO_TEST_CASE (FullCycleProtocol)
 {
-    // Simulates one complete host-worker audio cycle without real processes
+    // Simulates one complete host-worker audio cycle without real processes.
+    // Same-process simulation: opens both semaphores as Owner since the "worker"
+    // is a thread in this process, not a separate process. The cross-process
+    // variant lives in SandboxSemaphoreCrossProcessTest.cpp.
     SharedAudioBuffer buf;
     buf.allocate (2, 512);
     SandboxSemaphore triggerSem;
     SandboxSemaphore doneSem;
+    BOOST_REQUIRE (triggerSem.open (SandboxSemaphore::generateName ('t'), SandboxSemaphore::Mode::Owner));
+    BOOST_REQUIRE (doneSem.open (SandboxSemaphore::generateName ('d'), SandboxSemaphore::Mode::Owner));
 
     const int numSamples = 512;
     juce::AudioSampleBuffer audio (2, numSamples);

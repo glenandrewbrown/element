@@ -10,6 +10,7 @@ using namespace juce;
 
 #include "engine/sandboxworker.hpp"
 #include "engine/sandboxipc.hpp"
+#include "engine/sandboxsemaphore.hpp"
 #include "engine/sandboxsharedmemory.hpp"
 
 #include <element/context.hpp>
@@ -68,6 +69,29 @@ int main (int argc, char* argv[])
     //
     // Production parity: Application::maybeLaunchSandboxWorker (src/application.cpp:441)
     // does the equivalent for the production element_app binary.
+    // D-2 cross-process semaphore test mode.
+    // Worker: open trig+done semaphores as Attacher, wait on trig (100 ms timeout),
+    // post done if signaled (exit 0) or exit 13 on timeout. Parent (test) is in
+    // SandboxSemaphoreCrossProcessTest.cpp.
+    if (argc >= 4 && juce::String (argv[1]) == "--d2-sem-test")
+    {
+        const std::string trigName = argv[2];
+        const std::string doneName = argv[3];
+
+        element::SandboxSemaphore trig;
+        element::SandboxSemaphore done;
+        if (! trig.open (trigName, element::SandboxSemaphore::Mode::Attacher))
+            return 91;
+        if (! done.open (doneName, element::SandboxSemaphore::Mode::Attacher))
+            return 92;
+
+        if (! trig.timedWait (100000)) // 100 ms
+            return 13;
+
+        done.post();
+        return 0;
+    }
+
     if (argc >= 3 && juce::String (argv[1]) == "--d1-readback-test")
     {
         juce::ScopedJuceInitialiser_GUI juceInit;

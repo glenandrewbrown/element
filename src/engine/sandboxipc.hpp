@@ -126,7 +126,15 @@ struct ParameterChangePayload
     float value;
 };
 
-/** Prepare to play message payload. */
+/** Prepare to play message payload.
+
+    Wire layout (in order):
+        [PreparePayload struct]
+        [shmNameLength bytes of UTF-8 shared-mem name]
+        [trigSemNameLength bytes of UTF-8 trigger-semaphore name]
+        [doneSemNameLength bytes of UTF-8 done-semaphore name]
+
+    Use createPrepareMessage() / parsePrepareMessage() to (de)serialize. */
 struct PreparePayload
 {
     double sampleRate;
@@ -134,20 +142,21 @@ struct PreparePayload
     int32_t numInputChannels;
     int32_t numOutputChannels;
 
-    /** Shared memory name length (0 = no shared memory, use local). */
-    uint32_t shmNameLength { 0 };
-
-    // Followed by shmNameLength bytes of UTF-8 shared memory name.
-    // Use createPrepareMessage() / parsePrepareMessage() to serialize.
+    uint32_t shmNameLength { 0 };       ///< 0 = no shared memory, use local
+    uint32_t trigSemNameLength { 0 };   ///< 0 = no cross-process trigger sem (in-process fallback)
+    uint32_t doneSemNameLength { 0 };   ///< 0 = no cross-process done sem (in-process fallback)
 };
 
-/** Serialize a PreparePayload with optional shared memory name. */
 inline juce::MemoryBlock createPrepareMessage (double sampleRate, int32_t maxBlockSize,
                                                 int32_t numInputChannels, int32_t numOutputChannels,
-                                                const std::string& shmName = {})
+                                                const std::string& shmName = {},
+                                                const std::string& trigSemName = {},
+                                                const std::string& doneSemName = {})
 {
-    const uint32_t nameLen = static_cast<uint32_t> (shmName.size());
-    const size_t totalPayload = sizeof (PreparePayload) + nameLen;
+    const uint32_t shmLen = static_cast<uint32_t> (shmName.size());
+    const uint32_t trigLen = static_cast<uint32_t> (trigSemName.size());
+    const uint32_t doneLen = static_cast<uint32_t> (doneSemName.size());
+    const size_t totalPayload = sizeof (PreparePayload) + shmLen + trigLen + doneLen;
 
     juce::MemoryBlock payload (totalPayload, true);
     auto* prep = static_cast<PreparePayload*> (payload.getData());
@@ -155,37 +164,78 @@ inline juce::MemoryBlock createPrepareMessage (double sampleRate, int32_t maxBlo
     prep->maxBlockSize = maxBlockSize;
     prep->numInputChannels = numInputChannels;
     prep->numOutputChannels = numOutputChannels;
-    prep->shmNameLength = nameLen;
+    prep->shmNameLength = shmLen;
+    prep->trigSemNameLength = trigLen;
+    prep->doneSemNameLength = doneLen;
 
-    if (nameLen > 0)
+    auto* cursor = static_cast<uint8_t*> (payload.getData()) + sizeof (PreparePayload);
+    if (shmLen > 0)
     {
-        auto* namePtr = static_cast<uint8_t*> (payload.getData()) + sizeof (PreparePayload);
-        std::memcpy (namePtr, shmName.data(), nameLen);
+        std::memcpy (cursor, shmName.data(), shmLen);
+        cursor += shmLen;
+    }
+    if (trigLen > 0)
+    {
+        std::memcpy (cursor, trigSemName.data(), trigLen);
+        cursor += trigLen;
+    }
+    if (doneLen > 0)
+    {
+        std::memcpy (cursor, doneSemName.data(), doneLen);
     }
 
     return payload;
 }
 
-/** Parse a PreparePayload and extract the optional shared memory name. */
 inline bool parsePrepareMessage (const void* payload, uint32_t payloadSize,
-                                  PreparePayload& prep, std::string& shmName)
+                                  PreparePayload& prep, std::string& shmName,
+                                  std::string& trigSemName, std::string& doneSemName)
 {
     if (payloadSize < sizeof (PreparePayload))
         return false;
 
     std::memcpy (&prep, payload, sizeof (PreparePayload));
 
+    const size_t total = sizeof (PreparePayload)
+                       + prep.shmNameLength
+                       + prep.trigSemNameLength
+                       + prep.doneSemNameLength;
+    if (payloadSize < total)
+        return false;
+
+    const auto* cursor = static_cast<const char*> (payload) + sizeof (PreparePayload);
+
     shmName.clear();
     if (prep.shmNameLength > 0)
     {
-        if (payloadSize < sizeof (PreparePayload) + prep.shmNameLength)
-            return false;
+        shmName.assign (cursor, prep.shmNameLength);
+        cursor += prep.shmNameLength;
+    }
 
-        const auto* namePtr = static_cast<const char*> (payload) + sizeof (PreparePayload);
-        shmName.assign (namePtr, prep.shmNameLength);
+    trigSemName.clear();
+    if (prep.trigSemNameLength > 0)
+    {
+        trigSemName.assign (cursor, prep.trigSemNameLength);
+        cursor += prep.trigSemNameLength;
+    }
+
+    doneSemName.clear();
+    if (prep.doneSemNameLength > 0)
+    {
+        doneSemName.assign (cursor, prep.doneSemNameLength);
     }
 
     return true;
+}
+
+/** Backwards-compat overload for callers that only need shmName extraction.
+    Used by tests that don't exercise the cross-process semaphore wiring. */
+inline bool parsePrepareMessage (const void* payload, uint32_t payloadSize,
+                                  PreparePayload& prep, std::string& shmName)
+{
+    std::string trig;
+    std::string done;
+    return parsePrepareMessage (payload, payloadSize, prep, shmName, trig, done);
 }
 
 /** Latency change message payload. */

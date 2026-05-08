@@ -71,6 +71,8 @@ add_test(NAME "NodeWriteFileTests" COMMAND test_element --run_test=NodeWriteFile
 add_test(NAME "AudioThreadAllocationTests" COMMAND test_element --run_test=AudioThreadAllocationTests)
 add_test(NAME "SandboxAtomicRefDataIntegrityTests" COMMAND test_element --run_test=SandboxAtomicRefDataIntegrityTests)
 set_tests_properties(SandboxAtomicRefDataIntegrityTests PROPERTIES RUN_SERIAL TRUE)
+add_test(NAME "SandboxSemaphoreCrossProcessTests" COMMAND test_element --run_test=SandboxSemaphoreCrossProcessTests)
+set_tests_properties(SandboxSemaphoreCrossProcessTests PROPERTIES RUN_SERIAL TRUE)
 
 # Phase H — service-layer test coverage extension (Team H batch 3).
 # Each <Service>Service<...>Tests sub-suite is registered as its own ctest

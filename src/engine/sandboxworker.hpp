@@ -443,8 +443,10 @@ inline void SandboxWorker::handlePrepareToPlay (const void* payload, uint32_t pa
 {
     PreparePayload prep;
     std::string shmName;
+    std::string trigSemName;
+    std::string doneSemName;
 
-    if (! parsePrepareMessage (payload, payloadSize, prep, shmName))
+    if (! parsePrepareMessage (payload, payloadSize, prep, shmName, trigSemName, doneSemName))
     {
         sendError ("Invalid PrepareToPlay payload");
         return;
@@ -463,7 +465,26 @@ inline void SandboxWorker::handlePrepareToPlay (const void* payload, uint32_t pa
     const int maxChannels = std::max (numInputChannels, numOutputChannels);
     const size_t requiredSize = SharedAudioBuffer::calculateRequiredSize (maxChannels, blockSize);
 
-    // Attempt to attach to host's shared memory region
+    // Phase D D-2: open named cross-process semaphores as Attacher to match the
+    // host's Owner pair. The host opens these in prepareToPlay BEFORE sending
+    // PreparePayload, so the kernel objects must already exist by the time we
+    // get here. If open fails the audio loop will run without cross-process
+    // signalling (host's spin phase still works for short blocks).
+    triggerSemaphore.close();
+    doneSemaphore.close();
+    if (! trigSemName.empty())
+    {
+        if (! triggerSemaphore.open (trigSemName, SandboxSemaphore::Mode::Attacher))
+            juce::Logger::writeToLog ("[sandbox-worker] Failed to attach to trigger semaphore: "
+                                       + juce::String (trigSemName.c_str()));
+    }
+    if (! doneSemName.empty())
+    {
+        if (! doneSemaphore.open (doneSemName, SandboxSemaphore::Mode::Attacher))
+            juce::Logger::writeToLog ("[sandbox-worker] Failed to attach to done semaphore: "
+                                       + juce::String (doneSemName.c_str()));
+    }
+
     sharedMemory.close();
     bool usedShm = false;
 
