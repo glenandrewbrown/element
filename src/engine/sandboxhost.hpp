@@ -268,6 +268,8 @@ private:
     std::atomic<bool> pluginReadyFailed { false };
     static constexpr int pluginReadyTimeoutMs { 5000 };
 
+    std::atomic<bool> restartInProgress { false };
+
     // Message sequencing
     std::atomic<uint32_t> messageSequence { 0 };
 
@@ -384,6 +386,8 @@ inline void SandboxHost::prepareToPlay (double sampleRate, int maxBlockSize,
 
     const int maxChannels = std::max (inputChannels, outputChannels);
     const size_t requiredSize = SharedAudioBuffer::calculateRequiredSize (maxChannels, maxBlockSize);
+
+    expectedWorkerSequence = 0;
 
     sharedMemory.close();
     shmName = SandboxSharedMemory::generateName();
@@ -785,6 +789,18 @@ inline bool SandboxHost::waitForResponse (SandboxMessageType expectedType,
 
 inline void SandboxHost::attemptRestart()
 {
+    bool expected = false;
+    if (! restartInProgress.compare_exchange_strong (expected, true))
+    {
+        juce::Logger::writeToLog ("[sandbox] attemptRestart re-entered, ignoring");
+        return;
+    }
+    struct ResetGuard
+    {
+        std::atomic<bool>& flag;
+        ~ResetGuard() { flag.store (false); }
+    } guard { restartInProgress };
+
     if (restartAttempts >= maxRestartAttempts)
     {
         juce::Logger::writeToLog ("Max sandbox restart attempts reached");
