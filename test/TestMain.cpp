@@ -10,6 +10,7 @@ using namespace juce;
 
 #include "engine/sandboxworker.hpp"
 #include "engine/sandboxipc.hpp"
+#include "engine/sandboxsharedmemory.hpp"
 
 #include <element/context.hpp>
 #include <element/services.hpp>
@@ -67,6 +68,32 @@ int main (int argc, char* argv[])
     //
     // Production parity: Application::maybeLaunchSandboxWorker (src/application.cpp:441)
     // does the equivalent for the production element_app binary.
+    if (argc >= 3 && juce::String (argv[1]) == "--d1-readback-test")
+    {
+        juce::ScopedJuceInitialiser_GUI juceInit;
+        const std::string shmName = argv[2];
+
+        const size_t total = element::SharedAudioBuffer::calculateRequiredSize (2, 256);
+        element::SandboxSharedMemory shm;
+        if (! shm.attach (shmName, total))
+            return 91;
+
+        element::SharedAudioBuffer worker;
+        if (! worker.attachToMemoryAsAttacher (
+                static_cast<uint8_t*> (shm.getData()),
+                shm.getSize(),
+                2, 256))
+            return 92;
+
+        auto* header = worker.getHeader();
+        if (header == nullptr)
+            return 93;
+
+        const uint32_t value = __atomic_load_n (&header->coordinatorSequence, __ATOMIC_ACQUIRE);
+        __atomic_store_n (&header->workerSequence, value, __ATOMIC_RELEASE);
+        return 0;
+    }
+
     if (argc >= 2)
     {
         const juce::String commandLine (argv[1]);

@@ -328,22 +328,22 @@ public:
             The attacher reads this with acquire ordering to detect completed init. */
         uint32_t magic { 0 };
 
-        std::atomic<BufferState> state { BufferState::Idle };
-        std::atomic<uint32_t> activeBuffer { 0 };  // 0 = A, 1 = B
-        std::atomic<uint32_t> numSamples { 0 };
-        std::atomic<uint32_t> numInputChannels { 0 };
-        std::atomic<uint32_t> numOutputChannels { 0 };
-        std::atomic<uint32_t> coordinatorSequence { 0 };
-        std::atomic<uint32_t> workerSequence { 0 };
+        uint32_t state { static_cast<uint32_t> (BufferState::Idle) };
+        uint32_t activeBuffer { 0 };  // 0 = A, 1 = B
+        uint32_t numSamples { 0 };
+        uint32_t numInputChannels { 0 };
+        uint32_t numOutputChannels { 0 };
+        uint32_t coordinatorSequence { 0 };
+        uint32_t workerSequence { 0 };
         double sampleRate { 0.0 };
 
         // Xrun tracking
-        std::atomic<uint32_t> xrunCount { 0 };
-        std::atomic<uint32_t> consecutiveXruns { 0 };
+        uint32_t xrunCount { 0 };
+        uint32_t consecutiveXruns { 0 };
 
         // MIDI buffer sizes
-        std::atomic<uint32_t> midiInputSize { 0 };
-        std::atomic<uint32_t> midiOutputSize { 0 };
+        uint32_t midiInputSize { 0 };
+        uint32_t midiOutputSize { 0 };
     };
 
     SharedAudioBuffer() = default;
@@ -408,6 +408,18 @@ public:
     Header* getHeader() { return header; }
     const Header* getHeader() const { return header; }
 
+    /** Typed accessor for Header::state (cross-process atomic via __atomic_load_n).
+        Use this rather than touching state directly so that any future
+        BufferState-backing-type change has a single migration point. */
+    static BufferState loadBufferState (const Header& h, int memoryOrder = __ATOMIC_ACQUIRE) noexcept
+    {
+        return static_cast<BufferState> (__atomic_load_n (&h.state, memoryOrder));
+    }
+    static void storeBufferState (Header& h, BufferState s, int memoryOrder = __ATOMIC_RELEASE) noexcept
+    {
+        __atomic_store_n (&h.state, static_cast<uint32_t> (s), memoryOrder);
+    }
+
     /** Get pointers to audio buffers. */
     float* getInputBuffer (int channel, int bufferIndex)
     {
@@ -433,7 +445,7 @@ public:
             return;
 
         numSamples = std::min (numSamples, maxSamples);
-        const uint32_t writeBuffer = 1 - header->activeBuffer.load (std::memory_order_acquire);
+        const uint32_t writeBuffer = 1 - __atomic_load_n (&header->activeBuffer, __ATOMIC_ACQUIRE);
         const int numChannels = std::min (source.getNumChannels(), maxChannels);
 
         for (int ch = 0; ch < numChannels; ++ch)
@@ -443,8 +455,8 @@ public:
                         static_cast<size_t> (numSamples) * sizeof (float));
         }
 
-        header->numSamples.store (static_cast<uint32_t> (numSamples), std::memory_order_release);
-        header->numInputChannels.store (static_cast<uint32_t> (numChannels), std::memory_order_release);
+        __atomic_store_n (&header->numSamples, static_cast<uint32_t> (numSamples), __ATOMIC_RELEASE);
+        __atomic_store_n (&header->numInputChannels, static_cast<uint32_t> (numChannels), __ATOMIC_RELEASE);
     }
 
     /** Read processed audio from the active buffer (coordinator side). */
@@ -454,7 +466,7 @@ public:
             return;
 
         numSamples = std::min (numSamples, maxSamples);
-        const uint32_t readBuffer = header->activeBuffer.load (std::memory_order_acquire);
+        const uint32_t readBuffer = __atomic_load_n (&header->activeBuffer, __ATOMIC_ACQUIRE);
         const int numChannels = std::min (dest.getNumChannels(), maxChannels);
 
         for (int ch = 0; ch < numChannels; ++ch)
@@ -471,8 +483,8 @@ public:
         if (header == nullptr)
             return;
 
-        header->activeBuffer.fetch_xor (1, std::memory_order_acq_rel);
-        header->coordinatorSequence.fetch_add (1, std::memory_order_release);
+        __atomic_fetch_xor (&header->activeBuffer, 1u, __ATOMIC_ACQ_REL);
+        __atomic_fetch_add (&header->coordinatorSequence, 1u, __ATOMIC_RELEASE);
     }
 
     /** Check if new data is available (worker side). */
@@ -481,7 +493,7 @@ public:
         if (header == nullptr)
             return false;
 
-        return header->coordinatorSequence.load (std::memory_order_acquire) != lastProcessedSequence;
+        return __atomic_load_n (&header->coordinatorSequence, __ATOMIC_ACQUIRE) != lastProcessedSequence;
     }
 
     /** Mark data as processed (worker side). */
@@ -490,8 +502,8 @@ public:
         if (header == nullptr)
             return;
 
-        lastProcessedSequence = header->coordinatorSequence.load (std::memory_order_acquire);
-        header->workerSequence.fetch_add (1, std::memory_order_release);
+        lastProcessedSequence = __atomic_load_n (&header->coordinatorSequence, __ATOMIC_ACQUIRE);
+        __atomic_fetch_add (&header->workerSequence, 1u, __ATOMIC_RELEASE);
     }
 
     //==========================================================================
@@ -501,14 +513,14 @@ public:
     void signalHostReady()
     {
         if (header != nullptr)
-            header->coordinatorSequence.fetch_add (1, std::memory_order_release);
+            __atomic_fetch_add (&header->coordinatorSequence, 1u, __ATOMIC_RELEASE);
     }
 
     /** Increment worker sequence with release ordering (worker side). */
     void signalWorkerDone()
     {
         if (header != nullptr)
-            header->workerSequence.fetch_add (1, std::memory_order_release);
+            __atomic_fetch_add (&header->workerSequence, 1u, __ATOMIC_RELEASE);
     }
 
     /** Check if the worker has completed processing for the expected sequence. */
@@ -516,7 +528,7 @@ public:
     {
         if (header == nullptr)
             return false;
-        return header->workerSequence.load (std::memory_order_acquire) >= expectedSeq;
+        return __atomic_load_n (&header->workerSequence, __ATOMIC_ACQUIRE) >= expectedSeq;
     }
 
     /** Record an xrun by incrementing both total and consecutive counters. */
@@ -524,15 +536,15 @@ public:
     {
         if (header == nullptr)
             return;
-        header->xrunCount.fetch_add (1, std::memory_order_relaxed);
-        header->consecutiveXruns.fetch_add (1, std::memory_order_relaxed);
+        __atomic_fetch_add (&header->xrunCount, 1u, __ATOMIC_RELAXED);
+        __atomic_fetch_add (&header->consecutiveXruns, 1u, __ATOMIC_RELAXED);
     }
 
     /** Reset the consecutive xrun counter to zero. */
     void clearConsecutiveXruns()
     {
         if (header != nullptr)
-            header->consecutiveXruns.store (0, std::memory_order_relaxed);
+            __atomic_store_n (&header->consecutiveXruns, 0u, __ATOMIC_RELAXED);
     }
 
     /** Get the current consecutive xrun count. */
@@ -540,7 +552,7 @@ public:
     {
         if (header == nullptr)
             return 0;
-        return header->consecutiveXruns.load (std::memory_order_relaxed);
+        return __atomic_load_n (&header->consecutiveXruns, __ATOMIC_RELAXED);
     }
 
     /** Get the current host (coordinator) sequence number. */
@@ -548,7 +560,7 @@ public:
     {
         if (header == nullptr)
             return 0;
-        return header->coordinatorSequence.load (std::memory_order_acquire);
+        return __atomic_load_n (&header->coordinatorSequence, __ATOMIC_ACQUIRE);
     }
 
 private:
@@ -613,6 +625,40 @@ private:
     int maxChannels { 0 };
     int maxSamples { 0 };
     uint32_t lastProcessedSequence { 0 };
+
+    // === D-1 layout / lock-free guards ===
+    //
+    // These asserts lock in the cross-process layout. If a future change reorders
+    // fields or adds padding, the assert fires at compile time — preventing the
+    // silent corruption mode where host writes at offset N and worker reads from
+    // offset N+padding.
+    static_assert (__atomic_always_lock_free (sizeof (uint32_t), 0),
+                   "Phase D requires lock-free uint32_t atomics on this platform.");
+    static_assert (std::is_trivially_copyable_v<Header>,
+                   "Header must be trivially copyable for cross-process layout stability "
+                   "(every field plain or layout-equivalent to plain).");
+    static_assert (sizeof (uint32_t) == 4, "uint32_t must be exactly 4 bytes.");
+    static_assert (alignof (uint32_t) == 4, "uint32_t must be 4-byte aligned.");
+    static_assert (alignof (double) == 8, "double must be 8-byte aligned (sampleRate).");
+    // Field offsets — must match what the worker process expects byte-for-byte.
+    static_assert (offsetof (Header, magic) == 0);
+    static_assert (offsetof (Header, state) == 4);
+    static_assert (offsetof (Header, activeBuffer) == 8);
+    static_assert (offsetof (Header, numSamples) == 12);
+    static_assert (offsetof (Header, numInputChannels) == 16);
+    static_assert (offsetof (Header, numOutputChannels) == 20);
+    static_assert (offsetof (Header, coordinatorSequence) == 24);
+    static_assert (offsetof (Header, workerSequence) == 28);
+    // sampleRate (double) at offset 32 — natural 8-byte alignment, no padding needed
+    // since prior 8 × uint32_t = 32 bytes brings us to 8-byte boundary.
+    static_assert (offsetof (Header, sampleRate) == 32);
+    static_assert (offsetof (Header, xrunCount) == 40);
+    static_assert (offsetof (Header, consecutiveXruns) == 44);
+    static_assert (offsetof (Header, midiInputSize) == 48);
+    static_assert (offsetof (Header, midiOutputSize) == 52);
+    static_assert (sizeof (Header) == 56,
+                   "Header layout changed — coordinate with worker rebuild and update "
+                   "the offsetof asserts above.");
 };
 
 //==============================================================================

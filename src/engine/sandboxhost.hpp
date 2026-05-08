@@ -432,7 +432,7 @@ inline void SandboxHost::processBlock (juce::AudioSampleBuffer& buffer,
     {
         auto* midiIn = audioBuffer.getMidiInputBuffer();
         uint32_t midiSize = serializeMidiBuffer (midi, midiIn, audioBuffer.getMidiBufferSize());
-        header->midiInputSize.store (midiSize, std::memory_order_release);
+        __atomic_store_n (&header->midiInputSize, midiSize, __ATOMIC_RELEASE);
     }
 
     // 3. Signal data is ready (atomic sequence + buffer swap + semaphore)
@@ -476,7 +476,7 @@ inline void SandboxHost::processBlock (juce::AudioSampleBuffer& buffer,
         if (auto* header = audioBuffer.getHeader())
         {
             auto* midiOut = audioBuffer.getMidiOutputBuffer();
-            uint32_t midiOutSize = header->midiOutputSize.load (std::memory_order_acquire);
+            uint32_t midiOutSize = __atomic_load_n (&header->midiOutputSize, __ATOMIC_ACQUIRE);
             if (midiOutSize > 0)
             {
                 midi.clear();

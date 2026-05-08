@@ -97,12 +97,12 @@ BOOST_AUTO_TEST_CASE (AllocateInitializesHeader)
 
     auto* header = buf.getHeader();
     BOOST_REQUIRE (header != nullptr);
-    BOOST_CHECK_EQUAL (header->activeBuffer.load(), 0u);
-    BOOST_CHECK_EQUAL (header->numSamples.load(), 0u);
-    BOOST_CHECK_EQUAL (header->coordinatorSequence.load(), 0u);
-    BOOST_CHECK_EQUAL (header->workerSequence.load(), 0u);
-    BOOST_CHECK_EQUAL (header->xrunCount.load(), 0u);
-    BOOST_CHECK_EQUAL (header->consecutiveXruns.load(), 0u);
+    BOOST_CHECK_EQUAL (__atomic_load_n (&header->activeBuffer, __ATOMIC_ACQUIRE), 0u);
+    BOOST_CHECK_EQUAL (__atomic_load_n (&header->numSamples, __ATOMIC_ACQUIRE), 0u);
+    BOOST_CHECK_EQUAL (__atomic_load_n (&header->coordinatorSequence, __ATOMIC_ACQUIRE), 0u);
+    BOOST_CHECK_EQUAL (__atomic_load_n (&header->workerSequence, __ATOMIC_ACQUIRE), 0u);
+    BOOST_CHECK_EQUAL (__atomic_load_n (&header->xrunCount, __ATOMIC_ACQUIRE), 0u);
+    BOOST_CHECK_EQUAL (__atomic_load_n (&header->consecutiveXruns, __ATOMIC_ACQUIRE), 0u);
 }
 
 BOOST_AUTO_TEST_CASE (SwapBuffersTogglesAtomically)
@@ -111,15 +111,15 @@ BOOST_AUTO_TEST_CASE (SwapBuffersTogglesAtomically)
     buf.allocate (2, 512);
 
     auto* header = buf.getHeader();
-    BOOST_CHECK_EQUAL (header->activeBuffer.load(), 0u);
+    BOOST_CHECK_EQUAL (__atomic_load_n (&header->activeBuffer, __ATOMIC_ACQUIRE), 0u);
 
     buf.swapBuffers();
-    BOOST_CHECK_EQUAL (header->activeBuffer.load(), 1u);
-    BOOST_CHECK_EQUAL (header->coordinatorSequence.load(), 1u);
+    BOOST_CHECK_EQUAL (__atomic_load_n (&header->activeBuffer, __ATOMIC_ACQUIRE), 1u);
+    BOOST_CHECK_EQUAL (__atomic_load_n (&header->coordinatorSequence, __ATOMIC_ACQUIRE), 1u);
 
     buf.swapBuffers();
-    BOOST_CHECK_EQUAL (header->activeBuffer.load(), 0u);
-    BOOST_CHECK_EQUAL (header->coordinatorSequence.load(), 2u);
+    BOOST_CHECK_EQUAL (__atomic_load_n (&header->activeBuffer, __ATOMIC_ACQUIRE), 0u);
+    BOOST_CHECK_EQUAL (__atomic_load_n (&header->coordinatorSequence, __ATOMIC_ACQUIRE), 2u);
 }
 
 BOOST_AUTO_TEST_CASE (SignalHostReadyIncrementsSequence)
@@ -167,7 +167,7 @@ BOOST_AUTO_TEST_CASE (XrunTrackingIncrements)
     BOOST_CHECK_EQUAL (buf.getConsecutiveXruns(), 2u);
 
     auto* header = buf.getHeader();
-    BOOST_CHECK_EQUAL (header->xrunCount.load(), 2u);
+    BOOST_CHECK_EQUAL (__atomic_load_n (&header->xrunCount, __ATOMIC_ACQUIRE), 2u);
 }
 
 BOOST_AUTO_TEST_CASE (ClearConsecutiveXrunsResets)
@@ -185,7 +185,7 @@ BOOST_AUTO_TEST_CASE (ClearConsecutiveXrunsResets)
 
     // Total xrun count should still be 3
     auto* header = buf.getHeader();
-    BOOST_CHECK_EQUAL (header->xrunCount.load(), 3u);
+    BOOST_CHECK_EQUAL (__atomic_load_n (&header->xrunCount, __ATOMIC_ACQUIRE), 3u);
 }
 
 BOOST_AUTO_TEST_CASE (WriteAndReadAudioRoundTrips)
@@ -213,9 +213,9 @@ BOOST_AUTO_TEST_CASE (WriteAndReadAudioRoundTrips)
 
     // Simulate worker: read input from active buffer, write to output
     auto* header = buf.getHeader();
-    uint32_t activeIdx = header->activeBuffer.load();
-    int nSamp = static_cast<int> (header->numSamples.load());
-    int nCh = static_cast<int> (header->numInputChannels.load());
+    uint32_t activeIdx = __atomic_load_n (&header->activeBuffer, __ATOMIC_ACQUIRE);
+    int nSamp = static_cast<int> (__atomic_load_n (&header->numSamples, __ATOMIC_ACQUIRE));
+    int nCh = static_cast<int> (__atomic_load_n (&header->numInputChannels, __ATOMIC_ACQUIRE));
 
     BOOST_CHECK_EQUAL (nSamp, numSamples);
     BOOST_CHECK_EQUAL (nCh, numChannels);
@@ -259,7 +259,7 @@ BOOST_AUTO_TEST_CASE (WriteClampsSamplesToMax)
 
     // Should have clamped to 128
     auto* header = buf.getHeader();
-    BOOST_CHECK_EQUAL (header->numSamples.load(), 128u);
+    BOOST_CHECK_EQUAL (__atomic_load_n (&header->numSamples, __ATOMIC_ACQUIRE), 128u);
 }
 
 BOOST_AUTO_TEST_CASE (HasNewDataDetectsSequenceChange)
@@ -320,12 +320,12 @@ BOOST_AUTO_TEST_CASE (WorkerAttachDoesNotClobberHostInit)
     SharedAudioBuffer host;
     host.attachToMemoryAsOwner (backing.data(), total, numChannels, numSamples);
 
-    host.getHeader()->coordinatorSequence.store (0xDEADBEEFu, std::memory_order_release);
+    __atomic_store_n (&host.getHeader()->coordinatorSequence, 0xDEADBEEFu, __ATOMIC_RELEASE);
 
     SharedAudioBuffer worker;
     BOOST_REQUIRE (worker.attachToMemoryAsAttacher (backing.data(), total, numChannels, numSamples));
 
-    BOOST_CHECK_EQUAL (worker.getHeader()->coordinatorSequence.load (std::memory_order_acquire), 0xDEADBEEFu);
+    BOOST_CHECK_EQUAL (__atomic_load_n (&worker.getHeader()->coordinatorSequence, __ATOMIC_ACQUIRE), 0xDEADBEEFu);
     BOOST_CHECK_EQUAL (worker.getHeader()->magic, SharedAudioBuffer::Header::kMagic);
 }
 
@@ -388,9 +388,9 @@ BOOST_AUTO_TEST_CASE (FullCycleProtocol)
 
         // Read input, write to output (passthrough)
         auto* hdr = buf.getHeader();
-        uint32_t activeIdx = hdr->activeBuffer.load();
-        int ns = static_cast<int> (hdr->numSamples.load());
-        int nc = static_cast<int> (hdr->numInputChannels.load());
+        uint32_t activeIdx = __atomic_load_n (&hdr->activeBuffer, __ATOMIC_ACQUIRE);
+        int ns = static_cast<int> (__atomic_load_n (&hdr->numSamples, __ATOMIC_ACQUIRE));
+        int nc = static_cast<int> (__atomic_load_n (&hdr->numInputChannels, __ATOMIC_ACQUIRE));
 
         for (int ch = 0; ch < nc; ++ch)
         {
@@ -495,9 +495,9 @@ BOOST_AUTO_TEST_CASE (MultipleCyclesSequenceProgresses)
     }
 
     auto* header = buf.getHeader();
-    BOOST_CHECK_EQUAL (header->coordinatorSequence.load(), 20u);
-    BOOST_CHECK_EQUAL (header->workerSequence.load(), 10u);
-    BOOST_CHECK_EQUAL (header->xrunCount.load(), 0u);
+    BOOST_CHECK_EQUAL (__atomic_load_n (&header->coordinatorSequence, __ATOMIC_ACQUIRE), 20u);
+    BOOST_CHECK_EQUAL (__atomic_load_n (&header->workerSequence, __ATOMIC_ACQUIRE), 10u);
+    BOOST_CHECK_EQUAL (__atomic_load_n (&header->xrunCount, __ATOMIC_ACQUIRE), 0u);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

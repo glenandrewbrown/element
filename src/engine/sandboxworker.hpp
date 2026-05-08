@@ -534,14 +534,14 @@ inline void SandboxWorker::processAudioBlock()
         return;
 
     const int numSamples = std::min (
-        static_cast<int> (header->numSamples.load()),
+        static_cast<int> (__atomic_load_n (&header->numSamples, __ATOMIC_ACQUIRE)),
         processBuffer.getNumSamples());
     const int inChannels = std::min (
-        static_cast<int> (header->numInputChannels.load()),
+        static_cast<int> (__atomic_load_n (&header->numInputChannels, __ATOMIC_ACQUIRE)),
         processBuffer.getNumChannels());
 
     // Read input audio from shared buffer
-    const uint32_t readBuffer = header->activeBuffer.load (std::memory_order_acquire);
+    const uint32_t readBuffer = __atomic_load_n (&header->activeBuffer, __ATOMIC_ACQUIRE);
     for (int ch = 0; ch < inChannels; ++ch)
     {
         const float* src = audioBuffer.getInputBuffer (ch, readBuffer);
@@ -551,7 +551,7 @@ inline void SandboxWorker::processAudioBlock()
 
     // Deserialize MIDI input
     midiBuffer.clear();
-    uint32_t midiInSize = header->midiInputSize.load();
+    uint32_t midiInSize = __atomic_load_n (&header->midiInputSize, __ATOMIC_ACQUIRE);
     if (midiInSize > 0)
     {
         deserializeMidiBuffer (audioBuffer.getMidiInputBuffer(), midiInSize, midiBuffer);
@@ -566,7 +566,7 @@ inline void SandboxWorker::processAudioBlock()
     // Write output audio to shared buffer (write to inactive buffer)
     const uint32_t writeBuffer = 1 - readBuffer;
     const int outChannels = std::min (
-        static_cast<int> (header->numOutputChannels.load()),
+        static_cast<int> (__atomic_load_n (&header->numOutputChannels, __ATOMIC_ACQUIRE)),
         processBuffer.getNumChannels());
     for (int ch = 0; ch < outChannels; ++ch)
     {
@@ -579,10 +579,10 @@ inline void SandboxWorker::processAudioBlock()
     uint32_t midiOutSize = serializeMidiBuffer (midiBuffer,
                                                  audioBuffer.getMidiOutputBuffer(),
                                                  audioBuffer.getMidiBufferSize());
-    header->midiOutputSize.store (midiOutSize);
+    __atomic_store_n (&header->midiOutputSize, midiOutSize, __ATOMIC_RELEASE);
 
     // Swap output buffer
-    header->activeBuffer.store (writeBuffer, std::memory_order_release);
+    __atomic_store_n (&header->activeBuffer, writeBuffer, __ATOMIC_RELEASE);
     audioBuffer.markProcessed();
 
     // Signal worker done via shared buffer sequence counter
