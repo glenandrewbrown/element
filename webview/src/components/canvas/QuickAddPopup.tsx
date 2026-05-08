@@ -7,10 +7,11 @@ import {
   type KeyboardEvent,
   type ReactElement,
 } from "react";
-import { NeuInput } from "../neu";
+import { NeuInput, EmptyState } from "../neu";
 import type { BlockCategory } from "../../data/types";
 import { usePluginBrowserStore } from "../../stores/usePluginBrowserStore";
 import { nativeGraphAddPlugin } from "../../bridge/nativeGraph";
+import { EV_OPEN_PREFERENCES } from "../../events";
 
 interface PluginEntry {
   id: string;
@@ -18,13 +19,6 @@ interface PluginEntry {
   category: BlockCategory;
   format: string;
 }
-
-const demoPlugins: PluginEntry[] = [
-  { id: "osc-core", name: "OSCILLATOR_CORE_V3", category: "generator", format: "INT" },
-  { id: "wave-gen", name: "WAVETABLE_GEN", category: "generator", format: "INT" },
-  { id: "ladder-filt", name: "LADDER_FILTER_24DB", category: "modifier", format: "INT" },
-  { id: "peak-lim", name: "PEAK_LIMITER", category: "modifier", format: "INT" },
-];
 
 /** Filled circle for Instrument/Generator (●) */
 function InstrumentDot() {
@@ -134,7 +128,6 @@ export function QuickAddPopup({ x, y, onClose }: QuickAddPopupProps) {
   }, [refreshPlugins]);
 
   const plugins = useMemo((): PluginEntry[] => {
-    if (nativePlugins.length === 0) return demoPlugins;
     return nativePlugins.map((p) => ({
       id: p.identifier,
       name: p.name,
@@ -244,11 +237,35 @@ export function QuickAddPopup({ x, y, onClose }: QuickAddPopupProps) {
             ref={listRef}
             className="max-h-52 overflow-y-auto px-1 pb-1.5"
           >
-            {flatList.length === 0 && (
+            {plugins.length === 0 ? (
+              // F-101 sibling fix: no demoPlugins fallback. Show real empty state
+              // with a CTA to open Preferences (mirrors ToolPalette commit cadec9bd).
+              <div className="px-2 py-3">
+                <EmptyState
+                  illustration="no-plugins"
+                  size="sm"
+                  tone="audio"
+                  title="No plugins scanned"
+                  description="Open Preferences to scan AU/VST3/CLAP/LV2 plugins."
+                  action={
+                    <button
+                      type="button"
+                      className="px-3 py-1 rounded bg-pressed text-[10px] uppercase tracking-widest text-generator hover:bg-elevated transition-colors"
+                      onClick={() => {
+                        window.dispatchEvent(new Event(EV_OPEN_PREFERENCES));
+                        onClose();
+                      }}
+                    >
+                      Open Preferences
+                    </button>
+                  }
+                />
+              </div>
+            ) : flatList.length === 0 ? (
               <div className="px-2 py-3 text-[10px] text-text-dim text-center uppercase tracking-widest">
                 No matches
               </div>
-            )}
+            ) : null}
 
             {favorites.length > 0 && (
               <>
