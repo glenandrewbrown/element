@@ -264,6 +264,10 @@ private:
 
     std::atomic<bool> connectionAlive { false };
 
+    juce::WaitableEvent pluginReadyEvent;
+    std::atomic<bool> pluginReadyFailed { false };
+    static constexpr int pluginReadyTimeoutMs { 5000 };
+
     // Message sequencing
     std::atomic<uint32_t> messageSequence { 0 };
 
@@ -642,6 +646,8 @@ inline void SandboxHost::handleWorkerMessage (const SandboxMessageHeader& header
         case SandboxMessageType::PluginLoaded:
             pluginLoaded.store (true);
             state.store (State::Active);
+            pluginReadyFailed.store (false);
+            pluginReadyEvent.signal();
             listeners.call (&Listener::sandboxPluginLoaded, this);
             break;
 
@@ -651,6 +657,8 @@ inline void SandboxHost::handleWorkerMessage (const SandboxMessageHeader& header
                 static_cast<const char*> (payload),
                 static_cast<int> (header.payloadSize)) : "Unknown error";
             state.store (State::Ready);
+            pluginReadyFailed.store (true);
+            pluginReadyEvent.signal();
             listeners.call (&Listener::sandboxPluginLoadFailed, this, error);
             break;
         }
@@ -802,19 +810,31 @@ inline void SandboxHost::attemptRestart()
 
         if (loadedPlugin.name.isNotEmpty())
         {
+            pluginReadyEvent.reset();
+            pluginReadyFailed.store (false);
+
             loadPlugin (loadedPlugin);
 
-            // Restore state if available
-            if (lastKnownState.getSize() > 0)
-            {
-                setPluginState (lastKnownState);
-            }
+            const bool pluginReady = pluginReadyEvent.wait (pluginReadyTimeoutMs);
 
-            // Re-prepare if we were processing
-            if (currentSampleRate > 0 && currentBlockSize > 0)
+            if (! pluginReady)
             {
-                prepareToPlay (currentSampleRate, currentBlockSize,
-                              numInputChannels, numOutputChannels);
+                juce::Logger::writeToLog ("[sandbox] restart: plugin did not ack ready within "
+                                           + juce::String (pluginReadyTimeoutMs)
+                                           + " ms — skipping state restore");
+            }
+            else if (pluginReadyFailed.load())
+            {
+                juce::Logger::writeToLog ("[sandbox] restart: plugin reported load failed — skipping state restore");
+            }
+            else
+            {
+                if (lastKnownState.getSize() > 0)
+                    setPluginState (lastKnownState);
+
+                if (currentSampleRate > 0 && currentBlockSize > 0)
+                    prepareToPlay (currentSampleRate, currentBlockSize,
+                                  numInputChannels, numOutputChannels);
             }
         }
 
