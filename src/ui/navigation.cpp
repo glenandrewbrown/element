@@ -32,63 +32,76 @@ const juce::Colour iconActive (0xff2bc4c4);
 const juce::Colour hoverBg (0xff2a2a2e);
 const juce::Colour stripBg (0xff1e1e22);
 
+// All navigation icons use a 24x24 viewbox (lucide-react convention) so
+// they scale cleanly into any cell size. Each icon is a single fillable
+// JUCE::Path — no separate stroke pass is required by the IconButton paint
+// code (g.fillPath at line ~131). For shapes that are visually "stroked"
+// (search lens, slider tracks), we pre-stroke into the same path here.
+
 juce::Path createTreeIcon()
 {
+    // Folder: tab + body. Reads as "Sessions" / file-like grouping.
     juce::Path p;
-    // 3 horizontal lines with left indent hierarchy (tree structure)
-    p.addRectangle (0.0f, 1.0f, 10.0f, 1.5f);
-    p.addRectangle (3.0f, 5.5f, 8.0f, 1.5f);
-    p.addRectangle (3.0f, 10.0f, 8.0f, 1.5f);
-    // vertical connector
-    p.addRectangle (1.0f, 1.0f, 1.0f, 10.5f);
+    p.startNewSubPath (3.0f,  7.0f);
+    p.lineTo          (3.0f,  5.0f);
+    p.lineTo          (9.0f,  5.0f);
+    p.lineTo          (11.0f, 7.0f);
+    p.lineTo          (21.0f, 7.0f);
+    p.lineTo          (21.0f, 19.0f);
+    p.lineTo          (3.0f,  19.0f);
+    p.closeSubPath();
     return p;
 }
 
 juce::Path createSearchIcon()
 {
-    juce::Path p;
-    // magnifying glass: circle + diagonal line
-    p.addEllipse (0.0f, 0.0f, 8.0f, 8.0f);
-    p.addRectangle (0.5f, 0.5f, 7.0f, 7.0f); // clear interior
-    // Re-do as stroked circle
-    p.clear();
-    juce::Path circle;
-    circle.addEllipse (0.0f, 0.0f, 8.5f, 8.5f);
-    juce::PathStrokeType stroke (1.5f);
-    stroke.createStrokedPath (p, circle);
-    // handle
-    p.addRectangle (7.5f, 7.5f, 5.0f, 1.8f);
-    p.applyTransform (juce::AffineTransform::rotation (juce::MathConstants<float>::pi * 0.25f, 4.25f, 4.25f));
-    return p;
+    // Magnifier lens + handle, both pre-stroked into a single fillable path.
+    juce::Path raw;
+    raw.addEllipse        (4.0f, 4.0f, 12.0f, 12.0f);
+    raw.startNewSubPath   (14.5f, 14.5f);
+    raw.lineTo            (20.5f, 20.5f);
+
+    juce::Path stroked;
+    juce::PathStrokeType (2.2f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded)
+        .createStrokedPath (stroked, raw);
+    return stroked;
 }
 
 juce::Path createSlidersIcon()
 {
+    // Three horizontal sliders with offset knobs — reads as "Inspector".
+    juce::Path tracks;
+    tracks.startNewSubPath (3.0f,  6.0f);  tracks.lineTo (21.0f, 6.0f);
+    tracks.startNewSubPath (3.0f, 12.0f);  tracks.lineTo (21.0f, 12.0f);
+    tracks.startNewSubPath (3.0f, 18.0f);  tracks.lineTo (21.0f, 18.0f);
+
     juce::Path p;
-    // 3 horizontal lines with dots (mixer/sliders icon)
-    p.addRectangle (0.0f, 1.0f, 12.0f, 1.2f);
-    p.addRectangle (0.0f, 5.5f, 12.0f, 1.2f);
-    p.addRectangle (0.0f, 10.0f, 12.0f, 1.2f);
-    // dots on each line at different positions
-    p.addEllipse (3.0f, 0.0f, 3.0f, 3.0f);
-    p.addEllipse (7.0f, 4.5f, 3.0f, 3.0f);
-    p.addEllipse (5.0f, 9.0f, 3.0f, 3.0f);
+    juce::PathStrokeType (1.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded)
+        .createStrokedPath (p, tracks);
+
+    // Knobs at varied positions — visually conveys "settings/levels".
+    p.addEllipse (14.0f,  3.0f, 6.0f, 6.0f);
+    p.addEllipse ( 4.0f,  9.0f, 6.0f, 6.0f);
+    p.addEllipse (12.0f, 15.0f, 6.0f, 6.0f);
     return p;
 }
 
 juce::Path createPencilIcon()
 {
+    // Pencil body (parallelogram) + tip + eraser band — reads as "Edit".
     juce::Path p;
-    // pencil: diagonal line with pointed tip
-    p.startNewSubPath (9.0f, 0.5f);
-    p.lineTo (12.0f, 3.5f);
-    p.lineTo (4.0f, 11.5f);
-    p.lineTo (0.5f, 12.5f);
-    p.lineTo (1.5f, 9.0f);
+    p.startNewSubPath (16.0f,  3.5f);
+    p.lineTo          (20.5f,  8.0f);
+    p.lineTo          ( 8.5f, 20.0f);
+    p.lineTo          ( 3.5f, 20.5f);
+    p.lineTo          ( 4.0f, 15.5f);
     p.closeSubPath();
-    // inner detail line
-    p.startNewSubPath (8.0f, 2.0f);
-    p.lineTo (10.5f, 4.5f);
+
+    juce::Path band;
+    band.startNewSubPath (12.5f,  7.0f);
+    band.lineTo          (17.0f, 11.5f);
+    juce::PathStrokeType (1.0f).createStrokedPath (band, band);
+    p.addPath (band);
     return p;
 }
 
