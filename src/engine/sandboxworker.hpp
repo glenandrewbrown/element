@@ -471,8 +471,15 @@ inline void SandboxWorker::handlePrepareToPlay (const void* payload, uint32_t pa
     {
         if (sharedMemory.attach (shmName, requiredSize))
         {
-            audioBuffer.attachToMemory (sharedMemory.getData(), requiredSize,
-                                        maxChannels, blockSize);
+            const bool magicSeen = audioBuffer.attachToMemoryAsAttacher (
+                sharedMemory.getData(), requiredSize, maxChannels, blockSize);
+            if (! magicSeen)
+            {
+                juce::Logger::writeToLog ("[sandbox-worker] Shared memory header magic not observed within 100 ms"
+                                           " — host did not finish initialising. Bailing out.");
+                sharedMemory.close();
+                return;
+            }
             usedShm = true;
             juce::Logger::writeToLog ("[sandbox-worker] Attached to shared memory: "
                                        + juce::String (shmName.c_str())

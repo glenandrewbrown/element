@@ -7,7 +7,9 @@
 #include <element/atomic.hpp>
 
 #include <atomic>
+#include <chrono>
 #include <cstring>
+#include <thread>
 
 namespace element {
 
@@ -317,6 +319,15 @@ public:
     /** Header stored at the start of shared memory. */
     struct Header
     {
+        /** Written last by the owner (host) after all other fields are zeroed.
+            The attacher (worker) spins on this value before touching any other field.
+            Value = 'ELSB' in little-endian: 0x454C5342. */
+        static constexpr uint32_t kMagic = 0x454C5342u;
+
+        /** First field: zero until the owner finishes placement-new + writes kMagic.
+            The attacher reads this with acquire ordering to detect completed init. */
+        uint32_t magic { 0 };
+
         std::atomic<BufferState> state { BufferState::Idle };
         std::atomic<uint32_t> activeBuffer { 0 };  // 0 = A, 1 = B
         std::atomic<uint32_t> numSamples { 0 };
@@ -355,16 +366,15 @@ public:
         usingExternalMemory = false;
         const size_t totalSize = calculateRequiredSize (numChannels, numSamples);
         memory.allocate (totalSize, true);
-        setupPointers (static_cast<uint8_t*> (memory.getData()), numChannels, numSamples);
+        setupPointersAsOwner (static_cast<uint8_t*> (memory.getData()), numChannels, numSamples);
     }
 
-    /**
-     * Attach to externally-provided memory (e.g., OS shared memory).
-     * The caller is responsible for ensuring the memory remains valid
-     * and is at least calculateRequiredSize() bytes.
-     */
-    void attachToMemory (uint8_t* externalData, size_t externalSize,
-                         int numChannels, int numSamples)
+    /** Host (owner) path: attach to shared memory and placement-new the Header,
+        then write kMagic last with release ordering so the attacher can detect
+        completed initialisation.  Call this exactly once per prepareToPlay on
+        the host side. */
+    void attachToMemoryAsOwner (uint8_t* externalData, size_t externalSize,
+                                int numChannels, int numSamples)
     {
         const size_t required = calculateRequiredSize (numChannels, numSamples);
         jassert (externalData != nullptr);
@@ -373,7 +383,25 @@ public:
 
         usingExternalMemory = true;
         memory.free();
-        setupPointers (externalData, numChannels, numSamples);
+        setupPointersAsOwner (externalData, numChannels, numSamples);
+    }
+
+    /** Worker (attacher) path: attach to existing shared memory without
+        placement-new.  Spins on the header magic written by the owner until
+        timeout.  Returns true if magic was observed; returns false on timeout,
+        meaning the shared memory was never fully initialised by the host. */
+    bool attachToMemoryAsAttacher (uint8_t* externalData, size_t externalSize,
+                                   int numChannels, int numSamples,
+                                   std::chrono::milliseconds timeout = std::chrono::milliseconds { 100 })
+    {
+        const size_t required = calculateRequiredSize (numChannels, numSamples);
+        jassert (externalData != nullptr);
+        jassert (externalSize >= required);
+        juce::ignoreUnused (required);
+
+        usingExternalMemory = true;
+        memory.free();
+        return setupPointersAsAttacher (externalData, numChannels, numSamples, timeout);
     }
 
     /** Get the header for reading/writing state. */
@@ -524,7 +552,7 @@ public:
     }
 
 private:
-    void setupPointers (uint8_t* base, int numChannels, int numSamples)
+    void setupPointersCommon (uint8_t* base, int numChannels, int numSamples)
     {
         maxChannels = numChannels;
         maxSamples = numSamples;
@@ -532,7 +560,6 @@ private:
         uint8_t* ptr = base;
 
         header = reinterpret_cast<Header*> (ptr);
-        new (header) Header();  // Placement new for atomic initialization
         ptr += sizeof (Header);
 
         const size_t channelBytes = static_cast<size_t> (numChannels) *
@@ -552,6 +579,27 @@ private:
         midiInputBuffer = ptr;
         ptr += midiBufferSize;
         midiOutputBuffer = ptr;
+    }
+
+    void setupPointersAsOwner (uint8_t* base, int numChannels, int numSamples)
+    {
+        setupPointersCommon (base, numChannels, numSamples);
+        new (header) Header();
+        __atomic_store_n (&header->magic, Header::kMagic, __ATOMIC_RELEASE);
+    }
+
+    bool setupPointersAsAttacher (uint8_t* base, int numChannels, int numSamples,
+                                  std::chrono::milliseconds timeout)
+    {
+        setupPointersCommon (base, numChannels, numSamples);
+        const auto deadline = std::chrono::steady_clock::now() + timeout;
+        while (__atomic_load_n (&header->magic, __ATOMIC_ACQUIRE) != Header::kMagic)
+        {
+            if (std::chrono::steady_clock::now() >= deadline)
+                return false;
+            std::this_thread::sleep_for (std::chrono::microseconds (50));
+        }
+        return true;
     }
 
     juce::HeapBlock<uint8_t> memory;

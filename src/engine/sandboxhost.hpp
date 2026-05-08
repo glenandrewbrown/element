@@ -382,8 +382,8 @@ inline void SandboxHost::prepareToPlay (double sampleRate, int maxBlockSize,
     if (sharedMemory.create (shmName, requiredSize))
     {
         // Point the audio buffer at the shared memory region
-        audioBuffer.attachToMemory (sharedMemory.getData(), requiredSize,
-                                    maxChannels, maxBlockSize);
+        audioBuffer.attachToMemoryAsOwner (sharedMemory.getData(), requiredSize,
+                                         maxChannels, maxBlockSize);
         juce::Logger::writeToLog ("[sandbox] Created shared memory: "
                                    + juce::String (shmName.c_str())
                                    + " (" + juce::String (requiredSize) + " bytes)");

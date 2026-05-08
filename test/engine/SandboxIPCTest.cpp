@@ -310,6 +310,43 @@ BOOST_AUTO_TEST_CASE (NullHeaderSafetyChecks)
     BOOST_CHECK_EQUAL (buf.getHostSequence(), 0u);
 }
 
+BOOST_AUTO_TEST_CASE (WorkerAttachDoesNotClobberHostInit)
+{
+    const int numChannels = 2;
+    const int numSamples = 256;
+    const size_t total = SharedAudioBuffer::calculateRequiredSize (numChannels, numSamples);
+    std::vector<uint8_t> backing (total, 0xFF);
+
+    SharedAudioBuffer host;
+    host.attachToMemoryAsOwner (backing.data(), total, numChannels, numSamples);
+
+    host.getHeader()->coordinatorSequence.store (0xDEADBEEFu, std::memory_order_release);
+
+    SharedAudioBuffer worker;
+    BOOST_REQUIRE (worker.attachToMemoryAsAttacher (backing.data(), total, numChannels, numSamples));
+
+    BOOST_CHECK_EQUAL (worker.getHeader()->coordinatorSequence.load (std::memory_order_acquire), 0xDEADBEEFu);
+    BOOST_CHECK_EQUAL (worker.getHeader()->magic, SharedAudioBuffer::Header::kMagic);
+}
+
+BOOST_AUTO_TEST_CASE (AttacherTimesOutOnUninitialisedMemory)
+{
+    const int numChannels = 2;
+    const int numSamples = 256;
+    const size_t total = SharedAudioBuffer::calculateRequiredSize (numChannels, numSamples);
+    std::vector<uint8_t> backing (total, 0u);
+
+    SharedAudioBuffer worker;
+    auto start = std::chrono::steady_clock::now();
+    bool ok = worker.attachToMemoryAsAttacher (backing.data(), total, numChannels, numSamples,
+                                               std::chrono::milliseconds { 50 });
+    auto elapsed = std::chrono::steady_clock::now() - start;
+
+    BOOST_CHECK (! ok);
+    BOOST_CHECK (elapsed >= std::chrono::milliseconds { 45 });
+    BOOST_CHECK (elapsed <= std::chrono::milliseconds { 200 });
+}
+
 BOOST_AUTO_TEST_SUITE_END()
 
 //==============================================================================
