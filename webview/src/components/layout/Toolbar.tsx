@@ -6,8 +6,12 @@ import {
   selectScenes,
   selectActiveScene,
   selectLiveHealth,
-  selectIsPlaying,
 } from "../../stores/usePerformStore";
+import {
+  useEngineSnapshotStore,
+  selectTransportRecording,
+  selectTransportPlaying,
+} from "../../stores/useEngineSnapshotStore";
 import {
   nativeTransportPanic,
   nativeTransportTogglePlay,
@@ -53,12 +57,16 @@ export function Toolbar() {
   const [editingBpm, setEditingBpm] = useState(false);
   const [bpmInput, setBpmInput] = useState("");
   /**
-   * F-204: Record button local mirror. The host AudioEngine has
-   * setRecording(bool) but does NOT publish isRecording in the snapshot,
-   * so we keep a local toggle. If recording stops via another path the
-   * button will desync — surfaced as known limitation.
+   * Record button mirrors engine.transportRecording from the engine
+   * snapshot. External record triggers (Lua, MIDI, native menu) flip the
+   * button automatically since the snapshot polls at 4 Hz.
    */
-  const [recording, setRecording] = useState(false);
+  const recording = useEngineSnapshotStore(selectTransportRecording);
+  /**
+   * Play button reads from the engine snapshot directly so external
+   * play/stop triggers (Lua, MIDI, native menu) update the icon.
+   */
+  const isPlaying = useEngineSnapshotStore(selectTransportPlaying);
   /**
    * F-104: Tap tempo. Rolling buffer of click timestamps (ms). On each tap
    * we keep the last N=4 entries; if we have ≥ 2 we compute the median
@@ -109,9 +117,7 @@ export function Toolbar() {
   }, []);
 
   const handleToggleRecord = useCallback(() => {
-    const next = !recording;
-    setRecording(next);
-    void nativeTransportSetRecording(next);
+    void nativeTransportSetRecording(!recording);
   }, [recording]);
 
   useEffect(() => {
@@ -131,7 +137,7 @@ export function Toolbar() {
   const breadcrumbs = useGraphStore(selectBreadcrumbs);
   const bpm = usePerformStore(selectBpm);
   const live = usePerformStore(selectLiveHealth);
-  const isPlaying = usePerformStore(selectIsPlaying);
+  // isPlaying now sourced from useEngineSnapshotStore at the top of the component.
   const scenes = usePerformStore(selectScenes);
   const activeSceneData = usePerformStore(selectActiveScene);
   const filePath = useSessionStore((s) => s.filePath);
