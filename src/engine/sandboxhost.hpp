@@ -199,18 +199,19 @@ protected:
     virtual void sendMessage (SandboxMessageType type, const void* payload = nullptr,
                               uint32_t payloadSize = 0);
 
+    /** Wait for response from worker. Uses mutex+condvar.
+        WARNING: NEVER call from the audio thread. Use only for control messages
+        (loadPlugin, getPluginState, etc.) from the message thread.
+        Returns false on timeout OR when the worker connection is lost
+        (handleConnectionLost flips connectionAlive to false and notifies). */
+    bool waitForResponse (SandboxMessageType expectedType, uint32_t timeoutMs = 250);
+
 private:
     //==========================================================================
     void timerCallback() override;
 
     bool launchWorkerProcess();
     void handleWorkerMessage (const SandboxMessageHeader& header, const void* payload);
-
-    /** Wait for response from worker. Uses mutex+condvar.
-        WARNING: NEVER call from the audio thread. Use only for control messages
-        (loadPlugin, getPluginState, etc.) from the message thread.
-    */
-    bool waitForResponse (SandboxMessageType expectedType, uint32_t timeoutMs = 5000);
 
     void attemptRestart();
 
@@ -261,6 +262,8 @@ private:
     juce::WaitableEvent shutdownAcked;
     static constexpr int shutdownAckTimeoutMs { 2000 };
 
+    std::atomic<bool> connectionAlive { false };
+
     // Message sequencing
     std::atomic<uint32_t> messageSequence { 0 };
 
@@ -294,7 +297,8 @@ inline bool SandboxHost::launch()
         return false;
     }
 
-    // Start heartbeat monitoring
+    connectionAlive.store (true);
+
     heartbeat.reset();
     startTimer (EL_SANDBOX_HEARTBEAT_MS);
 
@@ -578,6 +582,14 @@ inline void SandboxHost::handleConnectionLost()
 {
     juce::Logger::writeToLog ("Sandbox worker connection lost");
 
+    connectionAlive.store (false);
+    {
+        std::lock_guard<std::mutex> lock (responseMutex);
+        responseReceived = true;
+        lastResponseType = SandboxMessageType::None;
+    }
+    responseCondition.notify_all();
+
     if (state.load() == State::Idle)
         return;
 
@@ -743,7 +755,7 @@ inline void SandboxHost::sendMessage (SandboxMessageType type,
 }
 
 inline bool SandboxHost::waitForResponse (SandboxMessageType expectedType,
-                                           uint32_t timeoutMs)
+                                            uint32_t timeoutMs)
 {
     std::unique_lock<std::mutex> lock (responseMutex);
     responseReceived = false;
@@ -753,6 +765,9 @@ inline bool SandboxHost::waitForResponse (SandboxMessageType expectedType,
 
     while (! responseReceived)
     {
+        if (! connectionAlive.load())
+            return false;
+
         if (responseCondition.wait_until (lock, deadline) == std::cv_status::timeout)
             return false;
     }
@@ -781,10 +796,10 @@ inline void SandboxHost::attemptRestart()
     // Relaunch
     if (launchWorkerProcess())
     {
+        connectionAlive.store (true);
         state.store (State::Ready);
         heartbeat.reset();
 
-        // Reload plugin if we had one
         if (loadedPlugin.name.isNotEmpty())
         {
             loadPlugin (loadedPlugin);
