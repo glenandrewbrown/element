@@ -14,6 +14,13 @@ interface LiveHealth {
   sampleRateLabel: string;
   alerts: AlertData[];
   ioActivity: "nominal" | "warning" | "critical";
+  /**
+   * Master output peak 0–1 from `window.__elementNative.onMetering`.
+   * Bridge currently emits a single aggregate peak; we surface it as the
+   * master output level. Input peak is not yet exposed by the C++ bridge —
+   * see Q-id Q-VU-INPUT (per-side L/R + input split).
+   */
+  outputPeak: number;
 }
 
 interface PerformState {
@@ -62,6 +69,7 @@ const defaultHealth: LiveHealth = {
   sampleRateLabel: "—",
   alerts: [],
   ioActivity: "nominal",
+  outputPeak: 0,
 };
 
 /** True while hydrating mapped parameters from host — prevents bridge re-fire. */
@@ -148,6 +156,41 @@ export const usePerformStore = create<PerformStore>()((set) => ({
     }),
 }));
 
+// ── Bridge: master output peak ──
+//
+// The host emits a single aggregate peak on `__elementNative.onMetering`.
+// We chain ourselves *behind* whatever handler is already installed (the
+// existing `useJuceBridge` hook always invokes `prev.onMetering?.(peak)`
+// before its own logic — see hooks/useJuceBridge.ts:420). Installing the
+// chain at module load runs once per JS context, which matches how the
+// other bridge consumers (useCableMeterStore via useJuceBridge) operate.
+//
+// Honest representation: the bridge today gives us *one* number — we map
+// it to `outputPeak`. Input metering and per-channel L/R are tracked under
+// Q-id Q-VU-INPUT and Q-VU-LR (need C++ bridge extension).
+function installMeteringChain(): void {
+  if (typeof window === "undefined") return;
+  // Capture whatever was registered before us (could be undefined or set
+  // by useJuceBridge effect on a later tick — both are fine because we
+  // chain into prev.onMetering, and useJuceBridge will chain into ours).
+  const native: Record<string, unknown> = (window as unknown as {
+    __elementNative?: Record<string, unknown>;
+  }).__elementNative ?? {};
+  const prev = native.onMetering as ((peak: number) => void) | undefined;
+  native.onMetering = (peak: number) => {
+    prev?.(peak);
+    const clamped = Number.isFinite(peak)
+      ? Math.max(0, Math.min(1, peak))
+      : 0;
+    usePerformStore.setState((s) => ({
+      liveHealth: { ...s.liveHealth, outputPeak: clamped },
+    }));
+  };
+  (window as unknown as { __elementNative?: Record<string, unknown> })
+    .__elementNative = native;
+}
+installMeteringChain();
+
 // ── Selectors ──
 
 export const selectSessionName = (s: PerformStore) => s.sessionName;
@@ -165,6 +208,7 @@ export const selectBpm = (s: PerformStore) => s.liveHealth.bpm;
 export const selectTimecode = (s: PerformStore) => s.liveHealth.timecode;
 export const selectAlerts = (s: PerformStore) => s.liveHealth.alerts;
 export const selectIsPlaying = (s: PerformStore) => s.isPlaying;
+export const selectOutputPeak = (s: PerformStore) => s.liveHealth.outputPeak;
 
 export const selectMacroById = (id: string) => (s: PerformStore) =>
   s.macros.find((m) => m.id === id);

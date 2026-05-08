@@ -6,6 +6,27 @@ import {
 import { Icon } from "../neu";
 
 // ── I/O meter bars ──
+//
+// Visual choice: the bridge currently emits a single aggregate output peak
+// (`onMetering`). We render the 4-bar group as a graduated bar-graph where
+// each bar lights up once the peak crosses its threshold — bar 1 at >0,
+// bar 2 at >25 %, bar 3 at >50 %, bar 4 at >75 %. Each bar's height also
+// scales with how far past its threshold the signal is, producing a
+// classic LED-ladder feel from a single scalar. When future C++ work
+// (Q-VU-INPUT) splits input vs output, we can render the same ladder
+// against the input scalar.
+
+function levelToLadderHeights(level01: number): number[] {
+  const v = Number.isFinite(level01) ? Math.max(0, Math.min(1, level01)) : 0;
+  // Each bar is mapped from its threshold to the peak. A bar at threshold
+  // 25 % shows 0 below 0.25 and ramps to 100 % at 1.0.
+  const thresholds = [0, 0.25, 0.5, 0.75];
+  return thresholds.map((t) => {
+    if (v <= t) return 0;
+    const denom = 1 - t || 1;
+    return Math.round(((v - t) / denom) * 100);
+  });
+}
 
 function MeterBars({ heights, color }: { heights: number[]; color: string }) {
   return (
@@ -67,13 +88,18 @@ export function LiveHealth() {
               <span className="text-[10px] text-text-secondary block mb-1">
                 INPUT
               </span>
-              <MeterBars heights={[20, 60, 45, 10]} color="#4A90D9" />
+              {/* TODO Q-VU-INPUT: bridge does not yet emit an input peak.
+                  Render an empty ladder rather than fake animation. */}
+              <MeterBars heights={levelToLadderHeights(0)} color="#4A90D9" />
             </div>
             <div className="bg-pressed p-2 rounded shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)]">
               <span className="text-[10px] text-text-secondary block mb-1">
                 OUTPUT
               </span>
-              <MeterBars heights={[80, 55, 70, 5]} color="#2BC4C4" />
+              <MeterBars
+                heights={levelToLadderHeights(health.outputPeak)}
+                color="#2BC4C4"
+              />
             </div>
           </div>
         </div>

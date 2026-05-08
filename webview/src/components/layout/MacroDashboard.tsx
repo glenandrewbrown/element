@@ -150,10 +150,13 @@ export function MacroDashboard() {
 
             {/* Master section (right-anchored) */}
             <div className="flex-1 flex justify-end gap-10">
-              {/* VU Meters */}
+              {/* VU Meters — driven by master output peak from
+                  `__elementNative.onMetering` (single aggregate scalar today).
+                  Both bars render the same value until per-side L/R is wired
+                  in the C++ bridge — see Q-id Q-VU-LR. */}
               <div className="flex gap-2">
-                <VuMeter level={75} />
-                <VuMeter level={72} />
+                <VuMeter level={Math.round(health.outputPeak * 100)} />
+                <VuMeter level={Math.round(health.outputPeak * 100)} />
                 <div className="flex flex-col justify-between text-[10px] text-text-secondary font-black py-1">
                   <span>0</span>
                   <span>-6</span>
