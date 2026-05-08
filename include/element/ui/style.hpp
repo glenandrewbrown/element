@@ -75,19 +75,19 @@ struct Style {
 class JUCE_API LookAndFeel_E1 : public juce::LookAndFeel_V4 {
 public:
     enum DefaultColorCodes {
-        defaultBackgroundColor = 0xff16191A,
+        defaultBackgroundColor = 0xff1e1e22,
 
-        defaultTextColor = 0xffcccccc,
-        defaultTextActiveColor = 0xffe5e5e5,
-        defaultTextBoldColor = 0xffe4e4e4,
-        defaultTextEntryBackgroundColor = 0xff000000,
-        defaultTextEntryForegroundColor = 0xffe5e5e5,
-        defaultTabColor = 0xff1a1a1a,
-        defaultTabOnColor = 0xff23252d,
+        defaultTextColor = 0xffe5e5ea,
+        defaultTextActiveColor = 0xffe5e5ea,
+        defaultTextBoldColor = 0xffe5e5ea,
+        defaultTextEntryBackgroundColor = 0xff1a1a1e,
+        defaultTextEntryForegroundColor = 0xffe5e5ea,
+        defaultTabColor = 0xff222226,
+        defaultTabOnColor = 0xff2a2a2e,
 
-        defaultMatrixCellOffColor = 0xff3b3b3b,
-        defaultMatrixCellOnColor = 0xff9be94d,
-        defaultMatrixCellHighlightColor = 0xff3b525b
+        defaultMatrixCellOffColor = 0xff252529,
+        defaultMatrixCellOnColor = 0xff2bc4c4,
+        defaultMatrixCellHighlightColor = 0xff333338
     };
 
     LookAndFeel_E1();
