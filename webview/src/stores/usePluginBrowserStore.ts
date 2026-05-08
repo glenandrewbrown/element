@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { invokeElementNative } from "../bridge/juceBackend";
+import { logBridgeError } from "../bridge/bridgeError";
 import type { BlockCategory } from "../data/types";
 
 export type BrowserPlugin = {
@@ -52,7 +53,14 @@ export const usePluginBrowserStore = create<PluginBrowserState>()((set) => ({
         // eslint-disable-next-line no-console
         console.debug("[usePluginBrowserStore.refresh] raw payload:", raw);
       }
-      if (raw == null) return;
+      // deep-review.md 4.4 — distinguish "scan complete with 0 plugins"
+      // from "bridge unavailable". `raw == null` means no bridge response
+      // at all (dev mode or pre-scan); not a parse error, but worth a
+      // breadcrumb for the D-1 retry-poll diagnostics.
+      if (raw == null) {
+        logBridgeError("usePluginBrowserStore.refresh", "bridge returned null");
+        return;
+      }
       const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
       const favRaw = parsed?.favoriteIdentifiers as unknown[] | undefined;
       const recRaw = parsed?.recentIdentifiers as unknown[] | undefined;
@@ -90,11 +98,9 @@ export const usePluginBrowserStore = create<PluginBrowserState>()((set) => ({
         });
       set({ plugins, favoriteIdentifiers: fav, recentIdentifiers: recent });
     } catch (err) {
-      // Dev / no bridge — but surface errors when the bridge IS present.
-      if (import.meta.env.DEV) {
-        // eslint-disable-next-line no-console
-        console.warn("[usePluginBrowserStore.refresh] failed:", err);
-      }
+      // Replaces an ad-hoc `if (import.meta.env.DEV)` warn block; the helper
+      // surfaces bridge errors uniformly across the webview (deep-review 8.16).
+      logBridgeError("usePluginBrowserStore.refresh", err);
     }
   },
 }));

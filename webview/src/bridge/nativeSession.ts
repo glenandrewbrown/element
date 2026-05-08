@@ -1,4 +1,5 @@
 import { invokeElementNative } from "./juceBackend";
+import { logBridgeError } from "./bridgeError";
 
 export async function nativeSessionNew(): Promise<void> {
   await invokeElementNative("elementSessionNew", []);
@@ -59,7 +60,8 @@ export async function nativeSessionListFiles(): Promise<SessionFileEntry[]> {
   try {
     const o = JSON.parse(r) as { entries?: SessionFileEntry[] };
     return Array.isArray(o.entries) ? o.entries : [];
-  } catch {
+  } catch (err) {
+    logBridgeError("nativeSessionListFiles.parse", err);
     return [];
   }
 }

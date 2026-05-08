@@ -1,4 +1,5 @@
 import { invokeElementNative } from "./juceBackend";
+import { logBridgeError } from "./bridgeError";
 
 export async function nativeGraphAddPlugin(
   identifier: string,
@@ -282,7 +283,8 @@ export async function nativeGetNodeParameters(
   try {
     const o = JSON.parse(r) as { parameters?: NodeParameterRow[] };
     return { parameters: Array.isArray(o.parameters) ? o.parameters : [] };
-  } catch {
+  } catch (err) {
+    logBridgeError("nativeGetNodeParameters.parse", err);
     return { parameters: [] };
   }
 }
@@ -321,7 +323,8 @@ export async function nativeSessionGetGraphTree(): Promise<
   if (typeof r !== "string") return [];
   try {
     return JSON.parse(r) as SessionGraphTreeNode[];
-  } catch {
+  } catch (err) {
+    logBridgeError("nativeSessionGetGraphTree.parse", err);
     return [];
   }
 }
@@ -349,7 +352,8 @@ export async function nativeGraphGetConnectionList(): Promise<
   if (typeof r !== "string") return [];
   try {
     return JSON.parse(r) as ConnectionListEntry[];
-  } catch {
+  } catch (err) {
+    logBridgeError("nativeGraphGetConnectionList.parse", err);
     return [];
   }
 }
@@ -370,7 +374,8 @@ export async function nativeScriptSetSource(
   try {
     const o = JSON.parse(r) as Partial<ScriptCompileResult>;
     return { ok: !!o.ok, error: typeof o.error === "string" ? o.error : "" };
-  } catch {
+  } catch (err) {
+    logBridgeError("nativeScriptSetSource.parse", err);
     return { ok: false, error: "invalid response" };
   }
 }
@@ -381,7 +386,8 @@ export async function nativeScriptCompile(nodeId: string): Promise<ScriptCompile
   try {
     const o = JSON.parse(r) as Partial<ScriptCompileResult>;
     return { ok: !!o.ok, error: typeof o.error === "string" ? o.error : "" };
-  } catch {
+  } catch (err) {
+    logBridgeError("nativeScriptCompile.parse", err);
     return { ok: false, error: "invalid response" };
   }
 }
@@ -403,7 +409,12 @@ export async function nativeScriptGetRuntimeState(
 ): Promise<ScriptRuntimeState> {
   const raw = await invokeElementNative("elementScriptGetRuntimeState", [nodeId]);
   if (typeof raw === "string") {
-    try { return JSON.parse(raw) as ScriptRuntimeState; } catch { return { ok: false, error: "parse error" }; }
+    try {
+      return JSON.parse(raw) as ScriptRuntimeState;
+    } catch (err) {
+      logBridgeError("nativeScriptGetRuntimeState.parse", err);
+      return { ok: false, error: "parse error" };
+    }
   }
   if (raw && typeof raw === "object") return raw as ScriptRuntimeState;
   return { ok: false, error: "no response" };
@@ -418,7 +429,12 @@ export async function nativePresetSnapshot(
 ): Promise<{ ok: boolean; error?: string }> {
   const raw = await invokeElementNative("elementPresetSnapshot", [nodeId, slot]);
   if (typeof raw === "string") {
-    try { return JSON.parse(raw) as { ok: boolean; error?: string }; } catch { return { ok: false, error: "parse error" }; }
+    try {
+      return JSON.parse(raw) as { ok: boolean; error?: string };
+    } catch (err) {
+      logBridgeError("nativePresetSnapshot.parse", err);
+      return { ok: false, error: "parse error" };
+    }
   }
   return { ok: false, error: "no response" };
 }
@@ -433,7 +449,12 @@ export async function nativePresetSwap(
 ): Promise<{ ok: boolean; swapped: number; error?: string }> {
   const raw = await invokeElementNative("elementPresetSwap", [nodeId, targetSlot]);
   if (typeof raw === "string") {
-    try { return JSON.parse(raw) as { ok: boolean; swapped: number; error?: string }; } catch { return { ok: false, swapped: 0, error: "parse error" }; }
+    try {
+      return JSON.parse(raw) as { ok: boolean; swapped: number; error?: string };
+    } catch (err) {
+      logBridgeError("nativePresetSwap.parse", err);
+      return { ok: false, swapped: 0, error: "parse error" };
+    }
   }
   return { ok: false, swapped: 0, error: "no response" };
 }
@@ -445,7 +466,12 @@ export async function nativePresetSave(
 ): Promise<{ ok: boolean; error?: string }> {
   const raw = await invokeElementNative("elementPresetSave", [nodeId, name]);
   if (typeof raw === "string") {
-    try { return JSON.parse(raw) as { ok: boolean; error?: string }; } catch { return { ok: false, error: "parse error" }; }
+    try {
+      return JSON.parse(raw) as { ok: boolean; error?: string };
+    } catch (err) {
+      logBridgeError("nativePresetSave.parse", err);
+      return { ok: false, error: "parse error" };
+    }
   }
   return { ok: false, error: "no response" };
 }
@@ -457,7 +483,12 @@ export async function nativePresetLoad(
 ): Promise<{ ok: boolean; error?: string }> {
   const raw = await invokeElementNative("elementPresetLoad", [nodeId, name]);
   if (typeof raw === "string") {
-    try { return JSON.parse(raw) as { ok: boolean; error?: string }; } catch { return { ok: false, error: "parse error" }; }
+    try {
+      return JSON.parse(raw) as { ok: boolean; error?: string };
+    } catch (err) {
+      logBridgeError("nativePresetLoad.parse", err);
+      return { ok: false, error: "parse error" };
+    }
   }
   return { ok: false, error: "no response" };
 }
@@ -468,7 +499,12 @@ export async function nativePresetList(
 ): Promise<{ ok: boolean; presets: string[]; error?: string }> {
   const raw = await invokeElementNative("elementPresetList", [pluginId]);
   if (typeof raw === "string") {
-    try { return JSON.parse(raw) as { ok: boolean; presets: string[]; error?: string }; } catch { return { ok: false, presets: [], error: "parse error" }; }
+    try {
+      return JSON.parse(raw) as { ok: boolean; presets: string[]; error?: string };
+    } catch (err) {
+      logBridgeError("nativePresetList.parse", err);
+      return { ok: false, presets: [], error: "parse error" };
+    }
   }
   return { ok: false, presets: [], error: "no response" };
 }

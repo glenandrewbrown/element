@@ -10,6 +10,7 @@ import type {
   SignalType,
 } from "../data/types";
 import { invokeElementNative } from "../bridge/juceBackend";
+import { logBridgeError } from "../bridge/bridgeError";
 import { useGraphStore } from "../stores/useGraphStore";
 import { usePerformStore } from "../stores/usePerformStore";
 import { usePluginBrowserStore } from "../stores/usePluginBrowserStore";
@@ -411,8 +412,8 @@ export function useJuceBridge() {
         else if (typeof payload === "string") {
           try {
             applySnapshot(JSON.parse(payload));
-          } catch {
-            /* ignore malformed */
+          } catch (err) {
+            logBridgeError("onGraphState.parse", err);
           }
         }
       },
@@ -450,8 +451,13 @@ export function useJuceBridge() {
           else applySnapshot(json);
         }
         await usePluginBrowserStore.getState().refresh();
-      } catch {
-        /* Embedded web dev without native bridge */
+      } catch (err) {
+        // Note: in pure Vite dev with no `__JUCE__` bridge,
+        // `invokeElementNative` resolves to `undefined` (not a throw), so
+        // this catch only fires on a genuine bridge / parse failure. Log
+        // it instead of swallowing — masks both dev-mode AND real
+        // bridge failures (deep-review.md 8.15).
+        logBridgeError("useJuceBridge.bootEffect", err);
       }
     })();
 

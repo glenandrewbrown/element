@@ -6,6 +6,7 @@
 // We parse it here and expose a typed result so consumers do not have to
 // re-validate the payload shape.
 import { invokeElementNative } from "./juceBackend";
+import { logBridgeError } from "./bridgeError";
 
 export interface EngineSnapshot {
   /** Audio-thread CPU usage as a fraction 0..1 (multiply by 100 for %). */
@@ -75,15 +76,19 @@ export async function nativeGetEngineSnapshot(): Promise<EngineSnapshot | null> 
   let raw: unknown;
   try {
     raw = await invokeElementNative("elementGetEngineSnapshot", []);
-  } catch {
+  } catch (err) {
+    logBridgeError("nativeGetEngineSnapshot.invoke", err);
     return null;
   }
+  // Note: `raw == null` here is the dev-mode no-bridge fallback documented
+  // above the function declaration — NOT a silent failure. Don't log it.
   if (raw == null) return null;
   let parsed: Record<string, unknown> | null = null;
   if (typeof raw === "string") {
     try {
       parsed = JSON.parse(raw) as Record<string, unknown>;
-    } catch {
+    } catch (err) {
+      logBridgeError("nativeGetEngineSnapshot.parse", err);
       return null;
     }
   } else if (typeof raw === "object") {
