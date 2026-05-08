@@ -4121,6 +4121,13 @@ String ElementWebViewHost::buildActiveGraphJson() const
     appendCanvasJson (gn, G, root);
     appendActiveGraphOutlineJson (G, root);
 
+    // Sample rate for per-block latency-in-samples → ms conversion. Pulled
+    // once outside the node loop so we don't re-read the device per block.
+    // 0.0 when no audio device is open (treated as "unknown" → latencyMs 0).
+    double activeSampleRate = 0.0;
+    if (auto* dev = context.devices().getCurrentAudioDevice())
+        activeSampleRate = dev->getCurrentSampleRate();
+
     Array<var> blocks;
     for (int i = 0; i < G.getNumNodes(); ++i)
     {
@@ -4143,6 +4150,28 @@ String ElementWebViewHost::buildActiveGraphJson() const
         }
         b->setProperty ("color", n.getColor().toString());
         b->setProperty ("note", n.getProperty (Identifier ("userNote"), "").toString());
+
+        // Per-block CPU load + latency. Latency comes from
+        // `Processor::getLatencySamples()` (already aggregates host-reported,
+        // delay-comp, and oversampler latency in processor.cpp:851), converted
+        // to ms via the active device sample rate.
+        //
+        // FIXME(US-002): there is no per-Processor CPU usage source today —
+        // `juce::AudioDeviceManager::getCpuUsage()` is engine-wide. Until a
+        // per-block measurement layer exists (would require touching
+        // `src/engine/`, out of scope for the snapshot story), `cpuLoad` is
+        // emitted as 0 so the JSON shape is stable. React consumers
+        // (`InspectorHub`, `Block.tsx`) already gate display on `> 0`.
+        double cpuLoadPercent = 0.0;
+        double latencyMs = 0.0;
+        if (auto* proc = n.getObject())
+        {
+            const int latencySamples = proc->getLatencySamples();
+            if (activeSampleRate > 0.0 && latencySamples > 0)
+                latencyMs = (double) latencySamples / activeSampleRate * 1000.0;
+        }
+        b->setProperty ("cpuLoad", cpuLoadPercent);
+        b->setProperty ("latencyMs", latencyMs);
 
         Array<var> portsVar;
         for (int pi = 0; pi < n.getNumPorts(); ++pi)

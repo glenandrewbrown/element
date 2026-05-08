@@ -37,6 +37,11 @@ type EngineBlock = {
   color?: string;
   isContainer?: boolean;
   containerNodeCount?: number;
+  /** CPU load percentage 0..100 contributed by this block. Engine emits 0
+   *  until a per-Processor CPU measurement layer lands (US-002 follow-up). */
+  cpuLoad?: number;
+  /** Per-block latency in milliseconds (host-reported + delay comp + OS). */
+  latencyMs?: number;
   ports?: Array<{
     id: string;
     label?: string;
@@ -199,8 +204,9 @@ function mapBlock(b: EngineBlock): BlockData {
     format: inferFormat(b),
     position: { x: b.x ?? 0, y: b.y ?? 0 },
     ports: mapPorts(b),
-    cpuLoad: 0,
-    latencyMs: 0,
+    cpuLoad: typeof b.cpuLoad === "number" && b.cpuLoad >= 0 ? b.cpuLoad : 0,
+    latencyMs:
+      typeof b.latencyMs === "number" && b.latencyMs >= 0 ? b.latencyMs : 0,
     bypassed: !!b.bypassed,
     muted: !!b.muted,
     muteInput: !!b.muteInput,
