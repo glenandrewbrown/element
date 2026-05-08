@@ -266,6 +266,7 @@ function BindModal({ widgetId, onClose }: BindModalProps) {
           </span>
           <button
             type="button"
+            title="Close"
             onClick={onClose}
             className="text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
           >
@@ -459,6 +460,7 @@ function WidgetShell({
           {/* Delete button */}
           <button
             type="button"
+            title="Delete widget"
             onClick={(e) => {
               e.stopPropagation();
               onDelete();

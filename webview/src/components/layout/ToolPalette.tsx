@@ -202,6 +202,7 @@ export function ToolPalette() {
           </div>
           <div className="flex gap-1">
             <button
+              title="Grid view"
               onClick={() => setViewMode("grid")}
               className={[
                 "p-1 rounded",
@@ -213,6 +214,7 @@ export function ToolPalette() {
               <Icon name="LayoutGrid" size={14} aria-label="Grid view" />
             </button>
             <button
+              title="List view"
               onClick={() => setViewMode("list")}
               className={[
                 "p-1 rounded",

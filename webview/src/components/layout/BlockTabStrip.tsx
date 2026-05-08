@@ -31,6 +31,7 @@ export function BlockTabStrip() {
           >
             {name}
             <button
+              title={`Close ${name} tab`}
               onClick={(e) => {
                 e.stopPropagation();
                 closeTab(tabId);
