@@ -394,8 +394,8 @@ void Settings::setMidiOutLatency (double latencyMs)
 double Settings::getDesktopScale() const
 {
     if (auto* p = getProps())
-        return p->getDoubleValue (desktopScaleKey, 1.0);
-    return 1.0;
+        return p->getDoubleValue (desktopScaleKey, 1.15);
+    return 1.15;
 }
 
 void Settings::setDesktopScale (double scale)

@@ -21,16 +21,16 @@ namespace element {
 
 namespace {
 
-constexpr int iconStripWidth = 24;
-constexpr int iconCellSize = 24;
-constexpr int iconDrawSize = 14;
+constexpr int iconStripWidth = 36;
+constexpr int iconCellSize = 36;
+constexpr int iconDrawSize = 20;
 constexpr int numPanels = 4;
 
-const juce::Colour iconDefault (0xff6b7280);
-const juce::Colour iconHover (0xffcccccc);
-const juce::Colour iconActive (0xff33aaf9);
-const juce::Colour hoverBg (0xff2e3235);
-const juce::Colour stripBg (0xff16191a);
+const juce::Colour iconDefault (0xff8e8e93);
+const juce::Colour iconHover (0xffe5e5ea);
+const juce::Colour iconActive (0xff2bc4c4);
+const juce::Colour hoverBg (0xff2a2a2e);
+const juce::Colour stripBg (0xff1e1e22);
 
 juce::Path createTreeIcon()
 {

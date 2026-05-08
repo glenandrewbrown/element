@@ -378,13 +378,13 @@ Content::Content (Context& ctx)
     statusBar = std::make_unique<StatusBar> (context());
     addAndMakeVisible (statusBar.get());
     statusBarVisible = true;
-    statusBarSize = 22;
+    statusBarSize = 28;
 
     toolBar = std::make_unique<Toolbar> (*this);
     addAndMakeVisible (toolBar.get());
     toolBar->setSession (context().session());
     toolBarVisible = true;
-    toolBarSize = 32;
+    toolBarSize = 40;
 
     const Node node (context().session()->getCurrentGraph());
     setCurrentNode (node);

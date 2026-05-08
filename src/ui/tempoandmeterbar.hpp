@@ -28,7 +28,7 @@ public:
         meter = std::make_unique<TopMeter> (*this);
         addAndMakeVisible (meter.get());
 
-        setSize (152, 24);
+        setSize (220, 32);
     }
 
     ~TempoAndMeterBar()
@@ -44,22 +44,22 @@ public:
         if (extButton.isVisible())
         {
             GlyphArrangement glyphs;
-            glyphs.addLineOfText (Font (FontOptions (18)), "EXT", 0, 0);
+            glyphs.addLineOfText (Font (FontOptions (22)), "EXT", 0, 0);
             int w = (int) glyphs.getBoundingBox (0, -1, true).getWidth();
-            extButton.setBounds (r.removeFromLeft (w + 4));
-            r.removeFromLeft (2);
+            extButton.setBounds (r.removeFromLeft (w + 6));
+            r.removeFromLeft (4);
         }
 
-        tempoLabel.setBounds (r.removeFromLeft (46));
-        r.removeFromLeft (2);
+        tempoLabel.setBounds (r.removeFromLeft (62));
+        r.removeFromLeft (4);
 
         GlyphArrangement glyphs;
-        glyphs.addLineOfText (Font (FontOptions (18)), "TAP", 0, 0);
+        glyphs.addLineOfText (Font (FontOptions (22)), "TAP", 0, 0);
         int w = (int) glyphs.getBoundingBox (0, -1, true).getWidth();
-        tapTempoButton.setBounds (r.removeFromLeft (w + 4));
-        r.removeFromLeft (2);
+        tapTempoButton.setBounds (r.removeFromLeft (w + 6));
+        r.removeFromLeft (4);
 
-        meter->setBounds (r.removeFromLeft (42));
+        meter->setBounds (r.removeFromLeft (56));
     }
 
     Value& getTempoValue() { return tempoLabel.tempoValue; }

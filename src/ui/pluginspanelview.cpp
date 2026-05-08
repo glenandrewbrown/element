@@ -111,6 +111,105 @@ public:
     }
 };
 
+// JUCE's KnownPluginList::createTree(sortByCategory) produces unusable
+// concatenated category paths like "Fx|Delay|Modulation|Pitch Shift". This
+// builder replaces that with a clean two-level tree:
+//   Effect / Instrument / MIDI Effect / Other
+//     ↳ Manufacturer (alphabetical)
+//       ↳ Plugin Name (alphabetical)
+// Buckets are picked by isInstrument flag and category-keyword scan; empty
+// top-level buckets are dropped so the user only sees groups they have.
+static std::unique_ptr<KnownPluginList::PluginTree>
+buildElementPluginTree (const Array<PluginDescription>& types)
+{
+    auto root = std::make_unique<KnownPluginList::PluginTree>();
+
+    auto effects     = std::make_unique<KnownPluginList::PluginTree>();
+    auto instruments = std::make_unique<KnownPluginList::PluginTree>();
+    auto midiFx      = std::make_unique<KnownPluginList::PluginTree>();
+    auto other       = std::make_unique<KnownPluginList::PluginTree>();
+    effects->folder     = "Effect";
+    instruments->folder = "Instrument";
+    midiFx->folder      = "MIDI Effect";
+    other->folder       = "Other";
+
+    auto bucketByManufacturer = [] (KnownPluginList::PluginTree* bucket,
+                                    const PluginDescription& desc)
+    {
+        const String mfg = desc.manufacturerName.trim().isEmpty()
+                               ? String ("Unknown")
+                               : desc.manufacturerName.trim();
+        for (auto* sub : bucket->subFolders)
+        {
+            if (sub->folder == mfg)
+            {
+                sub->plugins.add (desc);
+                return;
+            }
+        }
+        auto sub = std::make_unique<KnownPluginList::PluginTree>();
+        sub->folder = mfg;
+        sub->plugins.add (desc);
+        bucket->subFolders.add (sub.release());
+    };
+
+    for (const auto& d : types)
+    {
+        const String catLower = d.category.toLowerCase();
+        KnownPluginList::PluginTree* bucket = nullptr;
+
+        if (d.isInstrument)
+            bucket = instruments.get();
+        else if (catLower.contains ("midi") || catLower.contains ("note")
+                 || catLower.contains ("arpegg"))
+            bucket = midiFx.get();
+        else
+            bucket = effects.get();
+
+        if (bucket == nullptr)
+            bucket = other.get();
+
+        bucketByManufacturer (bucket, d);
+    }
+
+    struct FolderCmp
+    {
+        int compareElements (KnownPluginList::PluginTree* a,
+                             KnownPluginList::PluginTree* b) const noexcept
+        {
+            return a->folder.compareIgnoreCase (b->folder);
+        }
+    };
+    struct PluginNameCmp
+    {
+        int compareElements (const PluginDescription& a,
+                             const PluginDescription& b) const noexcept
+        {
+            return a.name.compareIgnoreCase (b.name);
+        }
+    };
+
+    auto sortBucket = [] (KnownPluginList::PluginTree* bucket)
+    {
+        FolderCmp fc;
+        bucket->subFolders.sort (fc);
+        PluginNameCmp pc;
+        for (auto* sub : bucket->subFolders)
+            sub->plugins.sort (pc);
+    };
+    sortBucket (effects.get());
+    sortBucket (instruments.get());
+    sortBucket (midiFx.get());
+    sortBucket (other.get());
+
+    if (effects->subFolders.size() > 0)     root->subFolders.add (effects.release());
+    if (instruments->subFolders.size() > 0) root->subFolders.add (instruments.release());
+    if (midiFx->subFolders.size() > 0)      root->subFolders.add (midiFx.release());
+    if (other->subFolders.size() > 0)       root->subFolders.add (other.release());
+
+    return root;
+}
+
 class PluginsPanelTreeRootItem : public TreeViewItem
 {
 public:
@@ -118,8 +217,7 @@ public:
         : owner (o),
           plugins (p)
     {
-        data = KnownPluginList::createTree (p.getKnownPlugins().getTypes(),
-                                            KnownPluginList::sortByCategory);
+        data = buildElementPluginTree (p.getKnownPlugins().getTypes());
     }
 
     bool mightContainSubItems() override { return true; }
