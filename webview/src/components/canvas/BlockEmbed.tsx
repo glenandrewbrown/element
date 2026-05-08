@@ -199,10 +199,13 @@ interface MeterEmbedProps {
 }
 
 function MeterEmbed({
-  leftLevel = 0.62,
-  rightLevel = 0.58,
-  leftPeak = 0.78,
-  rightPeak = 0.74,
+  // Defaults are 0 (silent) until per-block meter bridge channel
+  // lands (Q-VU-PER-BLOCK). Rendering an honest empty meter is
+  // preferred to fabricated levels.
+  leftLevel = 0,
+  rightLevel = 0,
+  leftPeak = 0,
+  rightPeak = 0,
 }: MeterEmbedProps) {
   return (
     <div
@@ -325,7 +328,7 @@ function BlockEmbedComponent({ nodeId, category, compact = false }: BlockEmbedPr
       {/* Logic blocks: just param strip + compact meter */}
       {category === "logic" && (
         <div className="flex items-center justify-end">
-          <MeterEmbed leftLevel={0.3} rightLevel={0.28} leftPeak={0.45} rightPeak={0.42} />
+          <MeterEmbed />
         </div>
       )}
     </div>
