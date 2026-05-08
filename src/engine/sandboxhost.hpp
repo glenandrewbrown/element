@@ -254,10 +254,12 @@ private:
     juce::MemoryBlock lastResponsePayload;
     bool responseReceived { false };
 
-    // Heartbeat monitoring
     SandboxHeartbeat heartbeat;
     int restartAttempts { 0 };
     static constexpr int maxRestartAttempts { 3 };
+
+    juce::WaitableEvent shutdownAcked;
+    static constexpr int shutdownAckTimeoutMs { 2000 };
 
     // Message sequencing
     std::atomic<uint32_t> messageSequence { 0 };
@@ -310,9 +312,13 @@ inline void SandboxHost::shutdown()
     state.store (State::Idle);
     pluginLoaded.store (false);
 
+    shutdownAcked.reset();
     sendMessage (SandboxMessageType::Shutdown);
 
-    juce::Thread::sleep (100);
+    const bool acked = shutdownAcked.wait (shutdownAckTimeoutMs);
+    if (! acked)
+        juce::Logger::writeToLog ("[sandbox] worker did not ack shutdown within "
+                                   + juce::String (shutdownAckTimeoutMs) + " ms — forcing kill");
 
     killWorkerProcess();
 
@@ -643,7 +649,10 @@ inline void SandboxHost::handleWorkerMessage (const SandboxMessageHeader& header
             break;
 
         case SandboxMessageType::Prepared:
-            // PrepareToPlay completed
+            break;
+
+        case SandboxMessageType::ShutdownAck:
+            shutdownAcked.signal();
             break;
 
         case SandboxMessageType::ProcessComplete:

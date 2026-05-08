@@ -756,10 +756,10 @@ inline void SandboxWorker::handleShutdown()
         plugin.reset();
     }
 
-    // Detach from shared memory before exit
     sharedMemory.close();
 
-    // Give time for final messages to send
+    sendResponse (SandboxMessageType::ShutdownAck);
+
     juce::Thread::sleep (50);
 
     juce::JUCEApplication::quit();

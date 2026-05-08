@@ -76,6 +76,8 @@ add_test(NAME "SandboxSemaphoreCrossProcessTests" COMMAND test_element --run_tes
 set_tests_properties(SandboxSemaphoreCrossProcessTests PROPERTIES RUN_SERIAL TRUE)
 add_test(NAME "SandboxRealProcessTests" COMMAND test_element --run_test=SandboxRealProcessTests)
 set_tests_properties(SandboxRealProcessTests PROPERTIES RUN_SERIAL TRUE TIMEOUT 30)
+add_test(NAME "SandboxOrderedShutdownTests" COMMAND test_element --run_test=SandboxOrderedShutdownTests)
+set_tests_properties(SandboxOrderedShutdownTests PROPERTIES RUN_SERIAL TRUE TIMEOUT 60)
 
 # Phase H — service-layer test coverage extension (Team H batch 3).
 # Each <Service>Service<...>Tests sub-suite is registered as its own ctest

@@ -64,6 +64,7 @@ enum class SandboxMessageType : uint32_t
     Heartbeat,          // Worker is alive
     Error,              // Error message
     PluginInfo,         // Plugin metadata (param count + names + I/O config) sent after PluginLoaded
+    ShutdownAck,        // Worker has finished cleanup and is about to exit (D-4 ordered shutdown)
 };
 
 //==============================================================================
