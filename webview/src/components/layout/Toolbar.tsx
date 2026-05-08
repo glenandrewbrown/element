@@ -11,6 +11,8 @@ import {
   useEngineSnapshotStore,
   selectTransportRecording,
   selectTransportPlaying,
+  selectEngineRunning,
+  selectTimeSig,
 } from "../../stores/useEngineSnapshotStore";
 import {
   nativeTransportPanic,
@@ -67,6 +69,12 @@ export function Toolbar() {
    * play/stop triggers (Lua, MIDI, native menu) update the icon.
    */
   const isPlaying = useEngineSnapshotStore(selectTransportPlaying);
+  /**
+   * Perform-mode time-signature + LIVE/IDLE badge read from the engine
+   * snapshot so they reflect real transport/engine state.
+   */
+  const engineRunning = useEngineSnapshotStore(selectEngineRunning);
+  const timeSig = useEngineSnapshotStore(selectTimeSig);
   /**
    * F-104: Tap tempo. Rolling buffer of click timestamps (ms). On each tap
    * we keep the last N=4 entries; if we have ≥ 2 we compute the median
@@ -260,8 +268,8 @@ export function Toolbar() {
                     <Icon name="Clock" size={14} aria-hidden />
                     {bpm.toFixed(2)} BPM
                   </span>
-                  <span>4/4</span>
-                  <span>LIVE</span>
+                  <span>{`${timeSig[0]}/${timeSig[1]}`}</span>
+                  <span>{engineRunning ? "LIVE" : "IDLE"}</span>
                 </div>
               </div>
             </>
