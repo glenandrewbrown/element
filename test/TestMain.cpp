@@ -13,6 +13,8 @@ using namespace juce;
 #include "engine/sandboxsemaphore.hpp"
 #include "engine/sandboxsharedmemory.hpp"
 
+#include <unistd.h>
+
 #include <element/context.hpp>
 #include <element/services.hpp>
 
@@ -123,18 +125,25 @@ int main (int argc, char* argv[])
         const juce::String commandLine (argv[1]);
         if (commandLine.contains (EL_PLUGIN_HOST_PROCESS_ID))
         {
-            // ScopedJuceInitialiser_GUI initialises the MessageManager that
-            // SandboxWorker's juce::Timer base class needs. RAII teardown.
+            {
+                const auto pidStr = juce::String (static_cast<int> (::getpid()));
+                juce::File startupLog ("/tmp/element-sandbox-worker-" + pidStr + ".startup.log");
+                startupLog.replaceWithText (
+                    "[startup] argc=" + juce::String (argc)
+                    + " pid=" + pidStr
+                    + " cmdline=" + commandLine + "\n");
+            }
+
             juce::ScopedJuceInitialiser_GUI juceInit;
 
             element::SandboxWorker worker;
             if (worker.initialise (commandLine))
             {
-                juce::MessageManager::getInstance()->runDispatchLoop();
+                auto* mm = juce::MessageManager::getInstance();
+                while (! mm->hasStopMessageBeenSent())
+                    mm->runDispatchLoopUntil (50);
                 return 0;
             }
-            // initialise() returned false: either the tag was a coincidence,
-            // or the parent PID is dead. Exit non-zero without running tests.
             return 1;
         }
     }

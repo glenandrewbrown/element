@@ -307,21 +307,17 @@ inline void SandboxHost::shutdown()
     if (state.load() == State::Idle)
         return;
 
-    // Send graceful shutdown request
-    sendMessage (SandboxMessageType::Shutdown);
-
-    // Give worker time to clean up
-    juce::Thread::sleep (100);
-
-    // Force kill if still running
-    killWorkerProcess();
-
-    // Release shared memory
-    sharedMemory.close();
-    shmName.clear();
-
     state.store (State::Idle);
     pluginLoaded.store (false);
+
+    sendMessage (SandboxMessageType::Shutdown);
+
+    juce::Thread::sleep (100);
+
+    killWorkerProcess();
+
+    sharedMemory.close();
+    shmName.clear();
 }
 
 inline bool SandboxHost::isHealthy() const
@@ -396,6 +392,12 @@ inline void SandboxHost::prepareToPlay (double sampleRate, int maxBlockSize,
     if (auto* header = audioBuffer.getHeader())
     {
         header->sampleRate = sampleRate;
+        __atomic_store_n (&header->numInputChannels,
+                          static_cast<uint32_t> (inputChannels),
+                          __ATOMIC_RELEASE);
+        __atomic_store_n (&header->numOutputChannels,
+                          static_cast<uint32_t> (outputChannels),
+                          __ATOMIC_RELEASE);
     }
 
     // Phase D D-2: open named cross-process semaphores as Owner before sending the
@@ -570,13 +572,15 @@ inline void SandboxHost::handleConnectionLost()
 {
     juce::Logger::writeToLog ("Sandbox worker connection lost");
 
+    if (state.load() == State::Idle)
+        return;
+
     state.store (State::Crashed);
     pluginLoaded.store (false);
 
     listeners.call (&Listener::sandboxCrashed, this);
     crashed();
 
-    // Attempt restart
     attemptRestart();
 }
 

@@ -13,7 +13,8 @@ target_include_directories(test_element
         ${Boost_INCLUDE_DIRS})
 target_compile_definitions(test_element
     PRIVATE
-        EL_TEST_SOURCE_ROOT="${CMAKE_SOURCE_DIR}")
+        EL_TEST_SOURCE_ROOT="${CMAKE_SOURCE_DIR}"
+        EL_SANDBOX_INCLUDE_TEST_FORMATS=1)
 
 # Register all test suites with CTest
 add_test(NAME "AtomicValueTests" COMMAND test_element --run_test=AtomicValueTests)
@@ -73,6 +74,8 @@ add_test(NAME "SandboxAtomicRefDataIntegrityTests" COMMAND test_element --run_te
 set_tests_properties(SandboxAtomicRefDataIntegrityTests PROPERTIES RUN_SERIAL TRUE)
 add_test(NAME "SandboxSemaphoreCrossProcessTests" COMMAND test_element --run_test=SandboxSemaphoreCrossProcessTests)
 set_tests_properties(SandboxSemaphoreCrossProcessTests PROPERTIES RUN_SERIAL TRUE)
+add_test(NAME "SandboxRealProcessTests" COMMAND test_element --run_test=SandboxRealProcessTests)
+set_tests_properties(SandboxRealProcessTests PROPERTIES RUN_SERIAL TRUE TIMEOUT 30)
 
 # Phase H — service-layer test coverage extension (Team H batch 3).
 # Each <Service>Service<...>Tests sub-suite is registered as its own ctest

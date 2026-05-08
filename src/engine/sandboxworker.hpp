@@ -10,6 +10,10 @@
 #include "sandboxsemaphore.hpp"
 #include "sandboxsharedmemory.hpp"
 
+#if EL_SANDBOX_INCLUDE_TEST_FORMATS
+ #include "test_echo_plugin.hpp"
+#endif
+
 #include <atomic>
 #include <memory>
 #include <thread>
@@ -19,9 +23,11 @@
  #include <mach/thread_policy.h>
  #include <mach/thread_act.h>
  #include <pthread.h>
+ #include <unistd.h>
 #elif JUCE_LINUX || JUCE_BSD
  #include <pthread.h>
  #include <sched.h>
+ #include <unistd.h>
 #endif
 
 namespace element {
@@ -140,18 +146,30 @@ inline SandboxWorker::SandboxWorker()
 /** Called only when this process is confirmed as a sandbox worker. */
 inline void SandboxWorker::initializeWorker()
 {
-    // Set up crash handler to not show OS dialogs in sandbox worker process
     juce::SystemStats::setApplicationCrashHandler ([] (void*) {});
 
-    // Initialize logging
+    const int pid = static_cast<int> (::getpid());
+
+   #if EL_SANDBOX_INCLUDE_TEST_FORMATS
+    auto logFile = juce::File ("/tmp/element-sandbox-worker-" + juce::String (pid) + ".log");
+   #else
     auto logFile = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
                        .getChildFile ("Element/log/sandbox_worker.log");
+   #endif
     logFile.create();
     logger = std::make_unique<juce::FileLogger> (logFile, "Sandbox Worker");
     juce::Logger::setCurrentLogger (logger.get());
 
-    // Initialize plugin formats
+    juce::Logger::writeToLog ("[Sandbox] initializeWorker pid=" + juce::String (pid));
+
+   #if EL_SANDBOX_INCLUDE_TEST_FORMATS
+    formatManager.addFormat (std::make_unique<TestEchoPluginFormat>());
+    juce::Logger::writeToLog ("[Sandbox] TestEchoPluginFormat registered (test build)");
+   #endif
+
     juce::addDefaultFormatsToManager (formatManager);
+    juce::Logger::writeToLog ("[Sandbox] default plugin formats registered, total="
+                               + juce::String (formatManager.getNumFormats()));
 }
 
 inline SandboxWorker::~SandboxWorker()
@@ -197,10 +215,8 @@ inline void SandboxWorker::handleConnectionMade()
 {
     juce::Logger::writeToLog ("Connected to sandbox coordinator");
 
-    // Start heartbeat timer
     startTimer (EL_SANDBOX_HEARTBEAT_MS);
 
-    // Send initial heartbeat
     sendResponse (SandboxMessageType::Heartbeat);
 }
 
@@ -236,7 +252,6 @@ inline void SandboxWorker::handleConnectionLost()
 
 inline void SandboxWorker::timerCallback()
 {
-    // Send heartbeat
     sendResponse (SandboxMessageType::Heartbeat);
 
     // Check for latency changes
@@ -358,7 +373,6 @@ inline void SandboxWorker::handleLoadPlugin (const void* payload, uint32_t paylo
 
     juce::Logger::writeToLog ("Loading plugin: " + desc.name);
 
-    // Create the plugin instance
     juce::String errorMessage;
     plugin = formatManager.createPluginInstance (
         desc, sampleRate > 0 ? sampleRate : 44100.0,
@@ -535,7 +549,6 @@ inline void SandboxWorker::handlePrepareToPlay (const void* payload, uint32_t pa
         lastReportedLatency = plugin->getLatencySamples();
     }
 
-    // Start RT processing thread if not already running
     if (! rtThread)
     {
         rtThreadRunning.store (true, std::memory_order_release);
@@ -578,17 +591,16 @@ inline void SandboxWorker::processAudioBlock()
         deserializeMidiBuffer (audioBuffer.getMidiInputBuffer(), midiInSize, midiBuffer);
     }
 
-    // Process audio
     if (! isBypassed)
     {
         plugin->processBlock (processBuffer, midiBuffer);
     }
 
-    // Write output audio to shared buffer (write to inactive buffer)
     const uint32_t writeBuffer = 1 - readBuffer;
     const int outChannels = std::min (
         static_cast<int> (__atomic_load_n (&header->numOutputChannels, __ATOMIC_ACQUIRE)),
         processBuffer.getNumChannels());
+
     for (int ch = 0; ch < outChannels; ++ch)
     {
         float* dest = audioBuffer.getOutputBuffer (ch, writeBuffer);
@@ -658,17 +670,14 @@ inline void SandboxWorker::rtProcessingLoop()
 
     while (rtThreadRunning.load (std::memory_order_acquire))
     {
-        // Block until host signals new data (500ms timeout for shutdown check)
         if (! triggerSemaphore.timedWait (500000))
-            continue;  // timeout -- check if we should exit
+            continue;
 
         if (! rtThreadRunning.load (std::memory_order_acquire))
             break;
 
-        // Process the audio block
         processAudioBlock();
 
-        // Signal host that output is ready
         doneSemaphore.post();
     }
 }

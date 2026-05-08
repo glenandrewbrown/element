@@ -546,14 +546,21 @@ public:
         return __atomic_load_n (&header->coordinatorSequence, __ATOMIC_ACQUIRE) != lastProcessedSequence;
     }
 
-    /** Mark data as processed (worker side). */
+    /** Mark data as processed (worker side).
+
+        Updates the worker-local `lastProcessedSequence` so `hasNewData()` will
+        return false until the host writes new input. Does NOT touch
+        `header->workerSequence` — that is the dedicated "I've finished this
+        block" signal owned exclusively by `signalWorkerDone()`. The host's
+        `isWorkerDone(expectedSeq)` check assumes one worker-sequence increment
+        per host-trigger; double-incrementing here used to cause the host to
+        report `workerDone == true` a full cycle early and read stale output. */
     void markProcessed()
     {
         if (header == nullptr)
             return;
 
         lastProcessedSequence = __atomic_load_n (&header->coordinatorSequence, __ATOMIC_ACQUIRE);
-        __atomic_fetch_add (&header->workerSequence, 1u, __ATOMIC_RELEASE);
     }
 
     //==========================================================================
