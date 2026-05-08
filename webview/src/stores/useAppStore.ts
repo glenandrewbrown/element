@@ -32,6 +32,14 @@ interface AppState {
    * Consumers can gate startup loading-state UI on this. (T-P6-5)
    */
   hostReady: boolean;
+  /**
+   * Monotonic counter incremented whenever a consumer requests a full
+   * graph-state re-fetch (e.g. after a mode toggle). `useJuceBridge`
+   * subscribes to this and re-issues `elementGetGraphState` on every
+   * tick. Loosely coupled to avoid circular imports between the store
+   * and the bridge hook. (T-P6-4)
+   */
+  refreshNonce: number;
 }
 
 interface AppActions {
@@ -46,6 +54,7 @@ interface AppActions {
   toggleCableRouting: () => void;
   setCableRouting: (routing: CableRouting) => void;
   markHostReady: () => void;
+  requestGraphStateRefresh: () => void;
 }
 
 type AppStore = AppState & AppActions;
@@ -61,13 +70,18 @@ export const useAppStore = create<AppStore>()((set) => ({
   spatialBookmarks: {},
   cableRouting: "manhattan",
   hostReady: false,
+  refreshNonce: 0,
 
   markHostReady: () => set({ hostReady: true }),
 
+  requestGraphStateRefresh: () =>
+    set((s) => ({ refreshNonce: s.refreshNonce + 1 })),
+
   toggleMode: () =>
-    set((s) => ({
-      mode: s.mode === "edit" ? "perform" : "edit",
-    })),
+    set((s) => {
+      const next = s.mode === "edit" ? "perform" : "edit";
+      return { mode: next, refreshNonce: s.refreshNonce + 1 };
+    }),
 
   togglePanel: (panel) =>
     set((s) => {

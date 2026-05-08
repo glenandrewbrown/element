@@ -520,4 +520,23 @@ export function useJuceBridge() {
       sessionPollTimers.forEach((id) => window.clearTimeout(id));
     };
   }, []);
+
+  // T-P6-4: re-fetch the full graph state whenever a consumer
+  // increments `useAppStore.refreshNonce` (e.g. after `toggleMode`).
+  // Skipping the initial render avoids a duplicate fetch on mount —
+  // the boot effect above already handles first-load hydration.
+  const refreshNonce = useAppStore((s) => s.refreshNonce);
+  useEffect(() => {
+    if (refreshNonce === 0) return;
+    void (async () => {
+      try {
+        const json = await invokeElementNative("elementGetGraphState", []);
+        if (json === undefined) return;
+        if (typeof json === "string") applySnapshot(JSON.parse(json));
+        else applySnapshot(json);
+      } catch (err) {
+        logBridgeError("useJuceBridge.refreshGraphState", err);
+      }
+    })();
+  }, [refreshNonce]);
 }
