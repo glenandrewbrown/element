@@ -56,7 +56,74 @@ Edit Mode (workshop) / Perform Mode (stage) — structural change, NOT palette c
 
 ## Log (newest first)
 
-### 2026-04-28 (latest) — Audit P1 closeout (7 items, 9 commits, 48/48 ctest)
+### 2026-05-08 (day 2 — latest) — Classic-UI rescue + Storybook foundation
+
+**HEAD:** `5f2f576b` (was `0e67448b` at session start; +21 commits incl. Phase D)
+
+**Trigger:** Glen reported plugin scanner crashes, "completely broken React UI", "appalling" classic-UI nav icons, tiny unusable buttons. Hard pivot from F-block-3 design memo work to user-visible classic-UI polish.
+
+**12 commits this session (chronological):**
+
+| Commit | Subject |
+|---|---|
+| `0b3d3538` | docs(repo): hierarchical AGENTS.md (root + 7 children) |
+| `86dc121b` | test(webview): mockJuceBridge helper for bridge wrapper tests |
+| `5b70011a` | test(webview): H-cov-1 store tests +45 |
+| `76209438` | test(webview): H-cov-2 bridge wrapper tests +87 across 10 modules |
+| `09469b47` | test(webview): H-cov-3..5 hooks + stale-fetch + empty-state +11 |
+| `4b43590a` | fix(plugins): re-enable Phase D sandbox + crash-aware scan dialog |
+| `7eaf07a5` | feat(ui): port V3 colour palette into classic LookAndFeel_E1 |
+| `0dd06d5a` | feat(ui): V3 button polish + Release-build alloc-test fix |
+| `e7ba5c97` | fix(plugins): default sandbox mode 2->0 (Phase D not safe with real AUs) |
+| `12c85c82` | fix(ui): plugin tree by manufacturer + bump toolbar/nav/scale density |
+| `d0bad1ee` | fix(ui): redesign nav icons (folder/search/sliders/pencil) on 24x24 viewbox |
+| `5f2f576b` | feat(webview): install Storybook 10 + add 3 example stories |
+
+**User-visible improvements (classic UI):**
+- Plugin browser: replaced `KnownPluginList::createTree(sortByCategory)` (which produced "Fx|Delay|Modulation|Pitch Shift" garbage paths) with custom `buildElementPluginTree()` — clean Effect/Instrument/MIDI Effect/Other → Manufacturer → Plugin tree.
+- Nav icons: stair-step rectangle geometry on 12px viewbox → proper 24×24 lucide-style folder/magnifier/sliders/pencil paths.
+- Density: `toolBarSize 32→40`, `statusBarSize 22→28`, tempo bar `152×24→220×32`, font `18→22pt`, nav strip `24→36`, icon draw size `14→20`.
+- Desktop scale default `1.0→1.15` (universal 15% scale-up; user can adjust via Preferences slider).
+- LookAndFeel_E1 ported to V3 palette: canvas `#1e1e22`, panel `#222226`, surface `#252529`, text `#e5e5ea`, teal accent `#2bc4c4`. Major fix: PopupMenu was light-grey `#fff0f0f0` on dark host — now matches theme.
+- `drawButtonBackground` rewritten with 4px corners + neumorphic-style 1px highlight/shadow strokes.
+- Post-scan dialog now explains "plug-ins crashed in their OWN constructor, not Element" + points to Quick Scan workaround for crashy AUs.
+
+**Stability outcomes:**
+- Plugin scanner crash root-caused as 18 specific AU plugins (Antares/UAD/iZotope/PSP) crashing in own constructors — JUCE OOP scanner blacklists them via `crashed.txt` per-plugin. Element survives.
+- Phase D sandbox **re-enabled then reverted** within session: default-mode-2 hung the message thread on Glen's BRASS_4Horns workflow because Phase D's Gate 1.5 only validated `TestEchoPluginInstance`, not real third-party AUs. Stays opt-in via Preferences → Plugins → Sandbox Mode.
+- Test fix: `AudioThreadAllocationTests/GuardCountsWhenArmed` was failing in Release because `-O3` DCE'd the synthetic `new int(42); delete` probe. Added `volatile` + `juce::ignoreUnused` — 70/71 → **71/71 ctest in Release**.
+
+**Webview side:**
+- H-coverage Tier-1 PASS shipped: vitest **46 → 189** (+143 tests vs +24 master-plan target = 595% over). All 5 Tier-1 sub-tasks done across 5 atomic commits.
+- Storybook 10.3.6 installed + configured (`@storybook/react-vite` + `addon-themes` + `addon-a11y`). Compatible with React 19 / Vite 8 / Tailwind 4. 3 example stories shipped (NeuButton 5 variants, NeuKnob 5 variants, EmptyState 4 variants). `npm run storybook` (port 6006). **Note: applies only to React webview, NOT classic JUCE UI.**
+- `webview/src/test/mockJuceBridge.ts` (NEW) — reusable bridge mock for tests + future Storybook stories.
+
+**Build artifacts:** [`installer/output/Element-2.2.0.16.{pkg,dmg}`](installer/output/) — 89 MB, ad-hoc signed, x86_64. Built 22:52 with all 12 commits baked in.
+
+**Verification baseline:**
+- ctest (Release) **71 / 71** (excl. 2 known-slow service tests)
+- vitest **189 / 189** across 27 files
+- tsc clean
+- Webview unchanged at 213 kB main / 53 kB gzip
+
+**⚠️ CRITICAL OPEN ITEMS for next agent:**
+
+1. **React UI (`mainContentType="web"`) launches process but no window appears.** Root cause unknown — headless investigation inconclusive (testing-methodology-vs-bug ambiguity). Glen needs to launch latest DMG via Dock/Finder, observe specific symptom (blank window vs shell-renders-empty vs runtime error), and report.
+2. **Phase D sandbox not validated against real AUs.** Default stays at 0 (Disabled). Re-enabling needs a `SandboxRealAUTest` that proves handshake completes within 10s for 3-5 known-good AUs, OR a hardening pass on `attemptRestart` for the 30.4% audio-recovery-failure rate from Gate 1.5 evidence.
+3. **F-block-3 (per-Block CPU/VU bridge gaps)** PAUSED per Glen until React UI is functional. Design memo at [`.sisyphus/plans/snapshot-extension-design.md`](file:///Volumes/Projects/Development_Projects/Github_Repos/element/.sisyphus/plans/snapshot-extension-design.md) is decision-ready (D1-D6 picks made, 4 open Qs with defaults).
+
+**Latest local handover** (gitignored): `.sisyphus/HANDOVER_2026-05-08-day2.md` — full session record + outstanding-work list + verification commands + files-touched manifest.
+
+**Hard "do not regress" list:**
+1. `Settings::shouldSandboxPlugin` default = 0 — don't bump without real-AU test evidence.
+2. `KnownPluginList::createTree(sortByCategory)` MUST NOT return to plugin browser (custom builder exists for a Glen-visible reason).
+3. PopupMenu must be dark `#222226` + `#e5e5ea` text + teal `#2bc4c4` highlight — JUCE defaults are light-grey-on-dark and look broken.
+4. `AudioThreadAllocationTests/GuardCountsWhenArmed` requires `volatile` + `juce::ignoreUnused` in Release — don't simplify.
+5. ctest 71/71 + vitest 189/189 are the passing baselines.
+
+---
+
+### 2026-04-28 — Audit P1 closeout (7 items, 9 commits, 48/48 ctest)
 
 **HEAD:** `02a7a0c4` (was `3fdde348`)
 
