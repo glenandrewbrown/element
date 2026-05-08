@@ -160,12 +160,20 @@ BOOST_AUTO_TEST_CASE (GuardOnlyCountsWhenArmed)
 }
 
 // 2. Sanity: inside the guard, allocations ARE counted.
+//
+// In Release with -O3 the compiler dead-code-eliminates `new int(42); delete`
+// when the result is unused, which makes the alloc counter never increment
+// and the assertion fail. We force the side-effect to be observable so the
+// test's intent (verify the guard's counter increments on a real allocation)
+// is preserved across optimisation levels. juce::ignoreUnused is the project's
+// canonical "this value really is used" marker the optimiser cannot defeat.
 BOOST_AUTO_TEST_CASE (GuardCountsWhenArmed)
 {
     element_rt_test::resetAllocCount();
     {
         element_rt_test::ScopedAudioThread guard;
-        auto* probe = new int (42);
+        volatile auto* probe = new int (42);
+        juce::ignoreUnused (probe);
         delete probe;
     }
 

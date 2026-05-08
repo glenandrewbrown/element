@@ -803,12 +803,11 @@ void LookAndFeel_E1::drawProgressBar (Graphics& g, ProgressBar& progressBar, int
 //==============================================================================
 void LookAndFeel_E1::drawButtonBackground (Graphics& g, Button& button, const Colour& backgroundColour, bool isMouseOverButton, bool isButtonDown)
 {
-    Colour baseColour (backgroundColour.withMultipliedSaturation (button.hasKeyboardFocus (true) ? 1.3f : 0.9f)
-                           .withMultipliedAlpha (button.isEnabled() ? 0.9f : 0.5f));
-
-    if (isButtonDown || isMouseOverButton)
-        baseColour = baseColour.contrasting (isButtonDown ? 0.2f : 0.1f);
-
+    // V3 polish: larger 4px corners (Tailwind rounded-md) + neumorphic-ish
+    // 1px raised highlight on top-left and 1px shadow on bottom-right when
+    // raised; on press, the inner colour darkens to mimic the V3 inset look.
+    // No expensive blur — just two single-pixel strokes around the outline,
+    // which preserves cheap paint cost (Element renders many buttons).
     const bool flatOnLeft = button.isConnectedOnLeft();
     const bool flatOnRight = button.isConnectedOnRight();
     const bool flatOnTop = button.isConnectedOnTop();
@@ -816,12 +815,37 @@ void LookAndFeel_E1::drawButtonBackground (Graphics& g, Button& button, const Co
 
     const float width = button.getWidth() - 1.0f;
     const float height = button.getHeight() - 1.0f;
-    const float cornerSize = 2.0f;
+    const float cornerSize = 4.0f;
+
+    Colour baseColour (backgroundColour.withMultipliedSaturation (button.hasKeyboardFocus (true) ? 1.2f : 1.0f)
+                           .withMultipliedAlpha (button.isEnabled() ? 1.0f : 0.5f));
+
+    if (isButtonDown)
+        baseColour = baseColour.darker (0.18f);
+    else if (isMouseOverButton)
+        baseColour = baseColour.brighter (0.07f);
 
     Path outline;
     outline.addRoundedRectangle (0.5f, 0.5f, width, height, cornerSize, cornerSize, ! (flatOnLeft || flatOnTop), ! (flatOnRight || flatOnTop), ! (flatOnLeft || flatOnBottom), ! (flatOnRight || flatOnBottom));
 
     Style::drawButtonShape (g, outline, baseColour, height);
+
+    if (button.isEnabled())
+    {
+        if (isButtonDown)
+        {
+            g.setColour (Colours::black.withAlpha (0.18f));
+            g.strokePath (outline, PathStrokeType (1.0f), AffineTransform::translation (0.0f, 0.5f));
+        }
+        else
+        {
+            g.setColour (Colours::white.withAlpha (0.05f));
+            g.strokePath (outline, PathStrokeType (1.0f), AffineTransform::translation (0.0f, -0.5f));
+
+            g.setColour (Colours::black.withAlpha (0.22f));
+            g.strokePath (outline, PathStrokeType (1.0f), AffineTransform::translation (0.0f, 0.5f));
+        }
+    }
 }
 
 void LookAndFeel_E1::drawTableHeaderBackground (Graphics& g, TableHeaderComponent& header)
