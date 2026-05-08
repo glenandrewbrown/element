@@ -20,6 +20,13 @@ interface DashboardState {
   widgets: DashboardWidget[];
   editing: boolean;
   selectedId: string | null;
+  /**
+   * True once `loadDashboardLayoutFromHost()` has run to completion at
+   * least once, regardless of whether widgets were returned. Mirror of
+   * `useSessionStore.sessionLoaded`. Consumers gate "is dashboard
+   * still hydrating?" UI on this. (T-P6-6)
+   */
+  dashboardLoaded: boolean;
   addWidget: (kind: WidgetKind) => void;
   updateWidget: (id: string, patch: Partial<DashboardWidget>) => void;
   removeWidget: (id: string) => void;
@@ -61,21 +68,31 @@ function _scheduleSave(widgets: DashboardWidget[]): void {
  * re-fire and overwrite.
  */
 export async function loadDashboardLayoutFromHost(): Promise<void> {
-  const raw = await invokeElementNative("elementDashboardGetLayout", []);
-  if (!Array.isArray(raw)) return;
-  const widgets = raw as DashboardWidget[];
-  _hydrating = true;
   try {
-    useDashboardStore.setState({ widgets });
+    const raw = await invokeElementNative("elementDashboardGetLayout", []);
+    if (Array.isArray(raw)) {
+      const widgets = raw as DashboardWidget[];
+      _hydrating = true;
+      try {
+        useDashboardStore.setState({ widgets });
+      } finally {
+        _hydrating = false;
+      }
+    }
   } finally {
-    _hydrating = false;
+    useDashboardStore.setState({ dashboardLoaded: true });
   }
 }
+
+export const selectDashboardLoaded = (
+  s: { dashboardLoaded: boolean },
+): boolean => s.dashboardLoaded;
 
 export const useDashboardStore = create<DashboardState>()((set) => ({
   widgets: [],
   editing: false,
   selectedId: null,
+  dashboardLoaded: false,
 
   addWidget: (kind) =>
     set((s) => {

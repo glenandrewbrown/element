@@ -78,8 +78,20 @@ function PresetStrip({ nodeId }: { nodeId: string }) {
     });
   };
 
+  // T-P6-7: When `nodeId` changes mid-fetch the prior request's
+  // resolution would race the new fetch and briefly display the
+  // previous node's preset list. Reset the visible list immediately
+  // and use a `cancelled` ref-style flag to drop stale resolutions.
   useEffect(() => {
-    refreshPresets();
+    let cancelled = false;
+    setPresets([]);
+    void nativePresetList("").then((r) => {
+      if (cancelled) return;
+      if (r.ok) setPresets(r.presets);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [nodeId]);
 
   // Snapshot current live values into slot, then activate it.
