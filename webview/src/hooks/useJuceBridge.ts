@@ -460,6 +460,12 @@ export function useJuceBridge() {
         // it instead of swallowing — masks both dev-mode AND real
         // bridge failures (deep-review.md 8.15).
         logBridgeError("useJuceBridge.bootEffect", err);
+      } finally {
+        // T-P6-5: signal that the boot procedure has run to completion
+        // regardless of outcome. Consumers gating startup loading UI
+        // on `useAppStore.hostReady` will unblock now even when the
+        // initial round-trip resolved to `undefined` (dev / pre-host).
+        useAppStore.getState().markHostReady();
       }
     })();
 

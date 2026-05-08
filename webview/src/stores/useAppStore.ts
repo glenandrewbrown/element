@@ -23,6 +23,15 @@ interface AppState {
   openBlockTabs: string[];
   spatialBookmarks: Record<string, SpatialBookmark>;
   cableRouting: CableRouting;
+  /**
+   * True once the boot effect in `useJuceBridge` has finished its
+   * initial round-trip with the host (graph snapshot + plugin list).
+   * Distinct from `useSessionStore.sessionLoaded` (which signals a
+   * successful snapshot apply): `hostReady` means "the boot procedure
+   * ran to completion", whether it resulted in hydrated data or not.
+   * Consumers can gate startup loading-state UI on this. (T-P6-5)
+   */
+  hostReady: boolean;
 }
 
 interface AppActions {
@@ -36,6 +45,7 @@ interface AppActions {
   getSpatialBookmark: (slot: string) => SpatialBookmark | undefined;
   toggleCableRouting: () => void;
   setCableRouting: (routing: CableRouting) => void;
+  markHostReady: () => void;
 }
 
 type AppStore = AppState & AppActions;
@@ -50,6 +60,9 @@ export const useAppStore = create<AppStore>()((set) => ({
   openBlockTabs: [],
   spatialBookmarks: {},
   cableRouting: "manhattan",
+  hostReady: false,
+
+  markHostReady: () => set({ hostReady: true }),
 
   toggleMode: () =>
     set((s) => ({
