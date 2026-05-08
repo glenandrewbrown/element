@@ -2,6 +2,7 @@ import { create } from "zustand";
 import type { AlertData, MacroControl, SceneData } from "../data/types";
 import { nativePerformSetActiveScene } from "../bridge/nativePerform";
 import { invokeElementNative } from "../bridge/juceBackend";
+import { logBridgeError } from "../bridge/bridgeError";
 
 interface LiveHealth {
   cpu: number;
@@ -36,9 +37,24 @@ interface PerformState {
 
 interface PerformActions {
   updateMacro: (macroId: string, value: number) => void;
-  activateScene: (sceneIndex: number) => void;
+  /**
+   * Optimistically activate a scene then confirm with the host. If the
+   * bridge call fails or returns false, the local active-scene flag is
+   * rolled back to the prior state and the error is surfaced via
+   * `logBridgeError`. (T-P6-8)
+   */
+  activateScene: (sceneIndex: number) => Promise<void>;
   toggleMapMode: () => void;
-  markParameterMapped: (nodeId: string, paramIdx: number, mapped: boolean) => void;
+  /**
+   * Optimistically mark a parameter as mapped/unmapped then confirm
+   * with the host. On bridge failure, rolls back the local mapped-set
+   * to its prior value and surfaces the error. (T-P6-9)
+   */
+  markParameterMapped: (
+    nodeId: string,
+    paramIdx: number,
+    mapped: boolean,
+  ) => Promise<void>;
   /** Hydrate from native graph snapshot (`perform` + `session` + `engine`). */
   hydrateFromEngine: (data: {
     sessionName?: string;
@@ -75,7 +91,7 @@ const defaultHealth: LiveHealth = {
 /** True while hydrating mapped parameters from host — prevents bridge re-fire. */
 let _mappedHydrating = false;
 
-export const usePerformStore = create<PerformStore>()((set) => ({
+export const usePerformStore = create<PerformStore>()((set, get) => ({
   sessionName: "Project",
   macros: [],
   scenes: [],
@@ -89,19 +105,33 @@ export const usePerformStore = create<PerformStore>()((set) => ({
       macros: s.macros.map((m) => (m.id === macroId ? { ...m, value } : m)),
     })),
 
-  activateScene: (sceneIndex) => {
-    void nativePerformSetActiveScene(sceneIndex);
+  activateScene: async (sceneIndex) => {
+    const prevScenes = get().scenes;
     set((s) => ({
       scenes: s.scenes.map((sc, i) => ({
         ...sc,
         active: i === sceneIndex,
       })),
     }));
+    try {
+      const ok = await nativePerformSetActiveScene(sceneIndex);
+      if (!ok) {
+        logBridgeError(
+          "usePerformStore.activateScene",
+          `bridge rejected scene index ${sceneIndex}`,
+        );
+        set({ scenes: prevScenes });
+      }
+    } catch (err) {
+      logBridgeError("usePerformStore.activateScene", err);
+      set({ scenes: prevScenes });
+    }
   },
 
   toggleMapMode: () => set((s) => ({ mapModeActive: !s.mapModeActive })),
 
-  markParameterMapped: (nodeId, paramIdx, mapped) => {
+  markParameterMapped: async (nodeId, paramIdx, mapped) => {
+    const prev = get().mappedParameters;
     set((s) => {
       const key = `${nodeId}:${paramIdx}`;
       const next = new Set(s.mappedParameters);
@@ -112,10 +142,22 @@ export const usePerformStore = create<PerformStore>()((set) => ({
       }
       return { mappedParameters: next };
     });
-    if (!_mappedHydrating) {
-      void invokeElementNative("elementPerformMarkParameterMapped", [
-        { nodeId, paramIndex: paramIdx, mapped },
-      ]);
+    if (_mappedHydrating) return;
+    try {
+      const r = await invokeElementNative(
+        "elementPerformMarkParameterMapped",
+        [{ nodeId, paramIndex: paramIdx, mapped }],
+      );
+      if (r === false) {
+        logBridgeError(
+          "usePerformStore.markParameterMapped",
+          `bridge rejected ${nodeId}:${paramIdx} → ${mapped}`,
+        );
+        set({ mappedParameters: prev });
+      }
+    } catch (err) {
+      logBridgeError("usePerformStore.markParameterMapped", err);
+      set({ mappedParameters: prev });
     }
   },
 
