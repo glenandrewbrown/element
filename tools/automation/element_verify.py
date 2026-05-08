@@ -185,19 +185,18 @@ def _ensure_element_running():
 
 
 def _run_plugin_browser():
-    """Verify plugin browser panel elements: All, Favorites, Recent buttons + search box."""
+    """Verify plugin browser panel elements: Plugins and Projects tab buttons + search box."""
     checks = []
-    for label in ("All", "Favorites", "Recent"):
+    for label in ("Plugins", "Projects"):
         checks.append(assert_element_exists(label, role="AXButton", timeout_s=3.0))
     checks.append(assert_role_exists("AXTextArea", "Search box (text entry area)", timeout_s=3.0))
     return checks
 
 
 def _run_session_browser():
-    """Verify session browser panel elements: All Files, Recent buttons + search box."""
+    """Verify session browser panel elements: Projects tab button + search box."""
     checks = []
-    for label in ("All Files", "Recent"):
-        checks.append(assert_element_exists(label, role="AXButton", timeout_s=3.0))
+    checks.append(assert_element_exists("Projects", role="AXButton", timeout_s=3.0))
     checks.append(assert_role_exists("AXTextArea", "Search box (text entry area)", timeout_s=3.0))
     return checks
 
