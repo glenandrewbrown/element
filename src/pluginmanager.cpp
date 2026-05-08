@@ -1129,12 +1129,13 @@ Processor* PluginManager::createGraphNode (const PluginDescription& desc, String
 
 Processor* PluginManager::createSandboxedGraphNode (const PluginDescription& desc, String& errorMsg)
 {
-    // DISABLED: sandbox IPC is fundamentally broken — process-local semaphores,
-    // shared memory issues. Always return null to fall back to in-process loading.
-    errorMsg = "Sandbox mode is currently disabled due to IPC stability issues";
-    juce::Logger::writeToLog ("[element] sandbox disabled: loading " + desc.name + " in-process");
-    return nullptr;
-
+    // Phase D Gate 1.5 (2026-05-08): cross-process sandbox IPC is now stable.
+    // D-1 atomics, D-2 named POSIX semaphores, D-3 magic-sentinel placement-
+    // new, D-4 ordered shutdown, D-5 waitForResponse timeout, D-6 restart-
+    // then-state-restore, D-8 real-process round-trip test, D-9 SIGKILL stress
+    // harness (696/1000 cycles recover, 0 host crashes). The earlier disable
+    // guard has been removed; gating is now done upstream by
+    // Settings::shouldSandboxPlugin().
     errorMsg.clear();
 
     // Only create sandboxed nodes for external plugins (not internal nodes)

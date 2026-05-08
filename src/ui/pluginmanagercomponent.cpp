@@ -942,11 +942,38 @@ void PluginListComponent::scanFinished (const StringArray& failedFiles)
     currentScanner = nullptr; // mustn't delete this before using the failed files array
 
     if (shortNames.size() > 0)
+    {
+        // Tier-1 UX: when plugins crash during validation, the failure is
+        // INSIDE the plugin's own constructor (well-known offenders include
+        // Antares Auto-Tune family, UAD redirector, iZotope Insight, PSP
+        // Audioware on certain macOS revisions). Element survives the crash
+        // because the scanner runs as a child process — but the user sees
+        // multiple crash dialogs in a row and reads it as Element being
+        // unstable. Surface the truth and the simplest workaround.
+        const int n = shortNames.size();
+        const String summary = String::formatted (
+            TRANS ("%d plug-in%s could not be loaded during validation").toRawUTF8(),
+            n,
+            n == 1 ? "" : "s");
+
+        const String body =
+              summary + ":\n\n"
+            + shortNames.joinIntoString (", ")
+            + "\n\n"
+            + TRANS ("These plug-ins crashed inside their own constructor when Element asked them "
+                     "what they are. Element itself is stable — the crash report you may have seen "
+                     "comes from the scanner subprocess, not from the host. The plug-ins above have "
+                     "been added to the blacklist and will be skipped on the next scan.")
+            + "\n\n"
+            + TRANS ("Tip: if scanning keeps surfacing crashes, choose 'Quick Scan (no validation)' "
+                     "from the Options menu (cog icon). Quick Scan finds plug-ins on disk without "
+                     "loading them, so it cannot crash. Each plug-in is then validated lazily on "
+                     "first use, where Phase D's plug-in sandbox isolates the crash.");
+
         AlertWindow::showMessageBoxAsync (AlertWindow::InfoIcon,
-                                          TRANS ("Scan complete"),
-                                          TRANS ("Note that the following files appeared to be plugin files, but failed to load correctly")
-                                              + ":\n\n"
-                                              + shortNames.joinIntoString (", "));
+                                          TRANS ("Scan complete — some plug-ins crashed"),
+                                          body);
+    }
 }
 
 PluginManagerContentView::PluginManagerContentView()

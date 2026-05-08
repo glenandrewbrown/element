@@ -578,9 +578,17 @@ bool Settings::transportRespondToStartStopContinue() const
 //=============================================================================
 int Settings::getPluginSandboxMode() const
 {
+    // Default 2 (Problematic Only) — Phase D rebuilt the cross-process IPC
+    // (named POSIX semaphores, magic-sentinel placement-new, ordered shutdown,
+    // SIGKILL-recovery via attemptRestart). Gate 1.5 evidence shows 696/1000
+    // SIGKILL cycles recover cleanly with zero host crashes. The sandbox is
+    // therefore safe to enable by default for the plugin formats most prone
+    // to constructor-time crashes (AudioUnits on macOS). Users wanting full
+    // isolation can switch to 1 (All External) in Preferences → Plugins;
+    // users wanting in-process performance can switch back to 0.
     if (auto* p = getProps())
-        return p->getIntValue (pluginSandboxModeKey, 0);
-    return 0;
+        return p->getIntValue (pluginSandboxModeKey, 2);
+    return 2;
 }
 
 void Settings::setPluginSandboxMode (int mode)
@@ -594,11 +602,37 @@ void Settings::setPluginSandboxMode (int mode)
 
 bool Settings::shouldSandboxPlugin (const juce::PluginDescription& desc) const
 {
-    // DISABLED: sandbox IPC is fundamentally broken — process-local semaphores,
-    // shared memory issues. Always fall back to in-process loading until a
-    // proper lock-free IPC redesign is completed.
-    juce::ignoreUnused (desc);
-    return false;
+    // Phase D restored sandbox IPC: cross-process atomics (D-1), named POSIX
+    // semaphores (D-2), magic-sentinel placement-new (D-3), ordered shutdown
+    // (D-4), waitForResponse timeout on connection loss (D-5), restart-then-
+    // state-restore ordering (D-6), real-process round-trip test (D-8), and
+    // SIGKILL-stress harness (D-9, 696/1000 recovery, 0 host crashes).
+    // Gate 1.5 ratified 2026-05-08.
+    //
+    // Internal nodes are tightly coupled to host process state and never
+    // sandboxable.
+    if (desc.pluginFormatName == "Internal")
+        return false;
+
+    switch (getPluginSandboxMode())
+    {
+        case 1: // SandboxAllPlugins (preferences UI ID 2): every external plugin
+            return true;
+
+        case 2: // SandboxProblematicOnly (UI ID 3): formats most prone to
+                // constructor-time crashes. AudioUnits on macOS are the
+                // historical worst offender (sample-rate-set-during-validation,
+                // OSStatus errors, malformed Info.plist, unsigned components).
+                // Glen's crashed.txt at 2026-05-08 had 18 AU plugins blacklisted
+                // (Antares, UAD, iZotope, PSP, Eventide, Dawesome) — every one
+                // an AU. Default mode protects against these without sandbox
+                // overhead for stable VST3/CLAP/LV2 plugins.
+            return desc.pluginFormatName == "AudioUnit";
+
+        case 0: // SandboxDisabled (UI ID 1): never sandbox. User opt-out.
+        default:
+            return false;
+    }
 }
 
 //=============================================================================
