@@ -27,6 +27,11 @@ export interface EngineSnapshot {
   tempoBpm: number;
   /** Time signature [numerator, denominator]. */
   timeSig: [number, number];
+  /** Lossless playhead position in audio frames (samples). */
+  transportFrame: number;
+  /** Display-ready BBT string from `Monitor::getBarsAndBeats`, 1-indexed
+   *  ("1.1.0" = top of bar 1). Engine returns "1.1.0" when no transport. */
+  transportTimecode: string;
 }
 
 export const DEFAULT_ENGINE_SNAPSHOT: EngineSnapshot = {
@@ -41,6 +46,8 @@ export const DEFAULT_ENGINE_SNAPSHOT: EngineSnapshot = {
   transportRecording: false,
   tempoBpm: 120,
   timeSig: [4, 4],
+  transportFrame: 0,
+  transportTimecode: "1.1.0",
 };
 
 function num(v: unknown, fallback = 0): number {
@@ -89,6 +96,10 @@ export async function nativeGetEngineSnapshot(): Promise<EngineSnapshot | null> 
   if (Array.isArray(tsRaw) && tsRaw.length >= 2)
     timeSig = [num(tsRaw[0], 4), num(tsRaw[1], 4)];
 
+  const tcRaw = parsed.transportTimecode;
+  const transportTimecode =
+    typeof tcRaw === "string" && tcRaw.length > 0 ? tcRaw : "1.1.0";
+
   return {
     cpu: num(parsed.cpu),
     engineRunning: bool(parsed.engineRunning),
@@ -101,5 +112,7 @@ export async function nativeGetEngineSnapshot(): Promise<EngineSnapshot | null> 
     transportRecording: bool(parsed.transportRecording),
     tempoBpm: num(parsed.tempoBpm, 120),
     timeSig,
+    transportFrame: num(parsed.transportFrame),
+    transportTimecode,
   };
 }

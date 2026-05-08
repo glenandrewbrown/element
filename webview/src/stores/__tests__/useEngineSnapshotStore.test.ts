@@ -56,6 +56,8 @@ describe("useEngineSnapshotStore", () => {
       transportRecording: false,
       tempoBpm: 120,
       timeSig: [4, 4],
+      transportFrame: 0,
+      transportTimecode: "1.1.0",
       lastUpdated: 0,
       hasHostData: false,
     });

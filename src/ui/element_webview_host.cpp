@@ -925,11 +925,16 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             root->setProperty ("engineRunning", engineRunning);
 
             // Transport — playing/recording/tempo/timeSig from the message-thread
-            // accessible Monitor (atomics).
+            // accessible Monitor (atomics). transportFrame exposes the lossless
+            // sample-frame count from `Monitor::positionFrames`. transportTimecode
+            // is a display-ready BBT string ("bar.beat.subBeat", 1-indexed to
+            // match DAW convention) computed via `Monitor::getBarsAndBeats`.
             bool transportPlaying = false;
             bool transportRecording = false;
             double tempo = 120.0;
             int tsNum = 4, tsDen = 4;
+            int64_t transportFrame = 0;
+            String transportTimecode = "1.1.0";
             if (auto e = context.audio())
             {
                 if (auto mon = e->getTransportMonitor())
@@ -939,11 +944,18 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                     tempo = (double) mon->tempo.get();
                     tsNum = mon->beatsPerBar.get();
                     tsDen = mon->beatType.get();
+                    transportFrame = mon->positionFrames.get();
+                    int bars = 0, beats = 0, subBeats = 0;
+                    mon->getBarsAndBeats (bars, beats, subBeats);
+                    // 1-indexed display ("1.1.0" = top of bar 1, beat 1).
+                    transportTimecode = String (bars + 1) + "." + String (beats + 1) + "." + String (subBeats);
                 }
             }
             root->setProperty ("transportPlaying", transportPlaying);
             root->setProperty ("transportRecording", transportRecording);
             root->setProperty ("tempoBpm", tempo);
+            root->setProperty ("transportFrame", (double) transportFrame);
+            root->setProperty ("transportTimecode", transportTimecode);
 
             Array<var> ts;
             ts.add (var (tsNum));

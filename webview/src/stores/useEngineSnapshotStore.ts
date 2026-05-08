@@ -82,6 +82,13 @@ export const useEngineSnapshotStore = create<EngineSnapshotStore>()(
           sampleRateLabel:
             snap.sampleRate > 0 ? sampleRateLabel : s.liveHealth.sampleRateLabel,
           latency: latencyMs > 0 ? latencyMs : s.liveHealth.latency,
+          // Engine snapshot owns transport timecode (~4 Hz). Graph-state
+          // snapshot used to mis-write `sampleRateLabel` here — that path
+          // was dropped so this is now the single source of truth.
+          timecode:
+            snap.transportTimecode.length > 0
+              ? snap.transportTimecode
+              : s.liveHealth.timecode,
         },
       }));
     },
@@ -132,4 +139,8 @@ export const selectTransportPlaying = (s: EngineSnapshotStore) =>
   s.transportPlaying;
 export const selectTransportRecording = (s: EngineSnapshotStore) =>
   s.transportRecording;
+export const selectTransportFrame = (s: EngineSnapshotStore) =>
+  s.transportFrame;
+export const selectTransportTimecode = (s: EngineSnapshotStore) =>
+  s.transportTimecode;
 export const selectHasHostData = (s: EngineSnapshotStore) => s.hasHostData;

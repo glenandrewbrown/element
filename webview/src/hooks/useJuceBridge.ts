@@ -350,7 +350,10 @@ function applySnapshot(raw: unknown) {
     bpm: tempo,
     buffer: typeof bufferSize === "number" ? bufferSize : undefined,
     clock: typeof deviceName === "string" ? deviceName : undefined,
-    timecode: sampleRateLabel,
+    // `timecode` intentionally not written here — `useEngineSnapshotStore`
+    // owns the transport timecode write-through (it polls ~4 Hz from
+    // `elementGetEngineSnapshot.transportTimecode`). Previously this slot
+    // mis-routed `sampleRateLabel` (e.g. "48.0 kHz") into `timecode`.
     sampleRateLabel,
     latencyMs,
     isPlaying:
