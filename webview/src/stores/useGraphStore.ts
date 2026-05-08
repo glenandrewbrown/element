@@ -26,8 +26,18 @@ export type AlignDirection =
 export type DistributeAxis = "horizontal" | "vertical";
 import { useBusStore } from "./useBusStore";
 
-/** Standalone Vite: `VITE_USE_DEMO_GRAPH=1 npm run dev` seeds the demo board. Hosted Element starts empty until snapshot arrives. */
-const useDemoSeed = import.meta.env.VITE_USE_DEMO_GRAPH === "1";
+/**
+ * Standalone Vite: `VITE_USE_DEMO_GRAPH=1 npm run dev` seeds the demo
+ * board. Hosted Element starts empty until snapshot arrives.
+ *
+ * T-P1-1 hardening: also gate on `import.meta.env.DEV` so the demo
+ * graph can never seed a production build even if the env var leaks
+ * into a CI/release context. The demo's per-block `cpuLoad` /
+ * `latencyMs` fields are hand-authored values — they would be
+ * indistinguishable from real engine metrics if rendered in prod.
+ */
+const useDemoSeed =
+  import.meta.env.DEV && import.meta.env.VITE_USE_DEMO_GRAPH === "1";
 
 const initialNodes = useDemoSeed ? demoGraph.blocks : [];
 const initialEdges = useDemoSeed ? demoGraph.cables : [];

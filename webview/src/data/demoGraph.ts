@@ -1,3 +1,21 @@
+/**
+ * ⚠️ DEMO ONLY — NOT REAL ENGINE METRICS ⚠️
+ *
+ * Every value in this file is hand-authored placeholder data used
+ * exclusively when `VITE_USE_DEMO_GRAPH=1` in development. The
+ * per-block `cpuLoad` and `latencyMs` numbers in particular look
+ * like live telemetry but are NOT — they are static literals chosen
+ * to make the demo scene visually plausible.
+ *
+ * In hosted Element (production), this module is gated by both
+ * `import.meta.env.DEV` and the build-time env flag in
+ * `useGraphStore.ts`, so it never reaches users. If you need to add
+ * realistic-looking demo data, keep the values here — do NOT route
+ * them through the real metric paths in `mapBlock` or related code.
+ *
+ * Tracked under master-discovery-report T-P1-1.
+ */
+
 import type {
   BlockData,
   CableData,
