@@ -13,6 +13,7 @@
 #include "ui/pluginwindow.hpp"
 #include "plugineditor.hpp"
 #include "pluginprocessor.hpp"
+#include "verbose_log.hpp"
 
 #define EL_PLUGIN_MIN_WIDTH 546
 #define EL_PLUGIN_MIN_HEIGHT 266
@@ -306,6 +307,10 @@ protected:
 PluginEditor::PluginEditor (PluginProcessor& plugin)
     : AudioProcessorEditor (&plugin), processor (plugin)
 {
+    EL_LOG_THREAD ("AU", "PluginEditor ctor"
+                          << " this=" << juce::String::toHexString ((juce::pointer_sized_int) this)
+                          << " proc=" << juce::String::toHexString ((juce::pointer_sized_int) &plugin));
+
     setOpaque (true);
     paramTable.reset (new ParamTable());
     addAndMakeVisible (paramTable.get());
@@ -345,6 +350,9 @@ PluginEditor::PluginEditor (PluginProcessor& plugin)
 
 PluginEditor::~PluginEditor()
 {
+    EL_LOG_THREAD ("AU", "PluginEditor dtor begin"
+                          << " this=" << juce::String::toHexString ((juce::pointer_sized_int) this));
+
     auto* const app = processor.getServices();
     auto* const gui = app != nullptr ? app->find<UI>() : nullptr;
 
@@ -367,6 +375,8 @@ PluginEditor::~PluginEditor()
 
     removeChildComponent (content.getComponent());
     content = nullptr;
+
+    EL_LOG ("AU", "PluginEditor dtor done");
 }
 
 //==============================================================================

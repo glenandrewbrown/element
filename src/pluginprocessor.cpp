@@ -13,7 +13,12 @@
 
 #include "pluginprocessor.hpp"
 #include "plugineditor.hpp"
+#include "verbose_log.hpp"
 
+// PLUGIN_DBG is kept as a no-op for legacy call sites; new diagnostics go
+// through the EL_LOG* macros which write to element-verbose.log regardless
+// of debug/release builds. PLUGIN_DBG remains available for high-volume
+// per-block prints that should never ship.
 // #define PLUGIN_DBG(msg) DBG(msg)
 #define PLUGIN_DBG(msg)
 
@@ -60,6 +65,10 @@ PluginProcessor::PluginProcessor (Variant instanceType, int numBuses)
     : AudioProcessor (createDefaultBuses (instanceType, jmax (0, numBuses))),
       variant (instanceType)
 {
+    EL_LOG_THREAD ("AU", "PluginProcessor ctor variant=" << (int) instanceType
+                          << " numBuses=" << numBuses
+                          << " this=" << juce::String::toHexString ((juce::pointer_sized_int) this));
+
     setRateAndBufferSizeDetails (sampleRate, bufferSize);
     numIns = getTotalNumInputChannels();
     numOuts = getTotalNumOutputChannels();
@@ -75,6 +84,7 @@ PluginProcessor::PluginProcessor (Variant instanceType, int numBuses)
     prepared = controllerActive = false;
     shouldProcess.set (false);
     asyncPrepare.reset (new AsyncPrepare (*this));
+    asyncStateRestore.reset (new AsyncStateRestore (*this));
     _latency = std::make_unique<Latency> (*this);
 
     // Do NOT initialize the full Context here. During a host plugin scan,
@@ -86,7 +96,13 @@ PluginProcessor::PluginProcessor (Variant instanceType, int numBuses)
 
 PluginProcessor::~PluginProcessor()
 {
+    EL_LOG_THREAD ("AU", "PluginProcessor dtor begin"
+                          << " this=" << juce::String::toHexString ((juce::pointer_sized_int) this)
+                          << " controllerActive=" << (int) controllerActive
+                          << " prepared=" << (int) prepared);
+
     asyncPrepare.reset();
+    asyncStateRestore.reset();
 
     for (auto* param : perfparams)
         param->clearNode();
@@ -107,6 +123,9 @@ PluginProcessor::~PluginProcessor()
 
     engine = nullptr;
     context = nullptr;
+
+    EL_LOG ("AU", "PluginProcessor dtor done"
+                   << " this=" << juce::String::toHexString ((juce::pointer_sized_int) this));
 }
 
 const String PluginProcessor::getName() const
@@ -148,8 +167,14 @@ void PluginProcessor::changeProgramName (int index, const String& newName) { ign
 
 void PluginProcessor::prepareToPlay (double sr, int bs)
 {
+    EL_LOG_THREAD ("AU", "prepareToPlay sr=" << sr << " bs=" << bs
+                          << " ins=" << getTotalNumInputChannels()
+                          << " outs=" << getTotalNumOutputChannels()
+                          << " prepared=" << (int) prepared);
+
     if (! MessageManager::getInstance()->isThisTheMessageThread())
     {
+        EL_LOG ("AU", "prepareToPlay deferred to message thread via AsyncPrepare");
         asyncPrepare->prepare (sr, bs);
         shouldProcess.set (false);
         return;
@@ -203,7 +228,7 @@ void PluginProcessor::prepareToPlay (double sr, int bs)
 
 void PluginProcessor::releaseResources()
 {
-    PLUGIN_DBG ("[element] release resources: " << (int) prepared);
+    EL_LOG_THREAD ("AU", "releaseResources prepared=" << (int) prepared);
     _latency->stopTimer();
 
     if (engine)
@@ -297,18 +322,47 @@ bool PluginProcessor::hasEditor() const { return true; }
 
 AudioProcessorEditor* PluginProcessor::createEditor()
 {
+    EL_LOG_THREAD ("AU", "createEditor enter controllerActive=" << (int) controllerActive);
+
+    // createEditor must run on the message thread (PluginEditor builds
+    // JUCE Components and touches the GuiService). If a host violates that,
+    // refuse to construct an editor rather than crash inside JUCE.
+    jassert (MessageManager::getInstance()->isThisTheMessageThread());
+    if (! MessageManager::getInstance()->isThisTheMessageThread())
+    {
+        EL_LOG_ERR ("AU", "createEditor called off message thread - refusing");
+        return nullptr;
+    }
+
     if (! controllerActive)
         initialize();
-    if (context)
-        if (auto* gui = context->services().find<GuiService>())
-            gui->stabilizeContent();
-    return new PluginEditor (*this);
+
+    // initialize() can early-return; a PluginEditor without a valid context
+    // dereferences nullptr in its async update. Skip editor creation rather
+    // than crash the host.
+    if (! context)
+    {
+        EL_LOG_ERR ("AU", "createEditor: context still null after initialize - returning nullptr");
+        return nullptr;
+    }
+
+    if (auto* gui = context->services().find<GuiService>())
+        gui->stabilizeContent();
+
+    auto* ed = new PluginEditor (*this);
+    EL_LOG ("AU", "createEditor done"
+                   << " editor=" << juce::String::toHexString ((juce::pointer_sized_int) ed));
+    return ed;
 }
 
 void PluginProcessor::getStateInformation (MemoryBlock& destData)
 {
+    EL_LOG_THREAD ("AU", "getStateInformation enter controllerActive=" << (int) controllerActive);
     if (! controllerActive)
+    {
+        EL_LOG_WARN ("AU", "getStateInformation called before initialise - no state to save");
         return;
+    }
     if (auto session = context->session())
     {
         session->saveGraphState();
@@ -342,11 +396,38 @@ void PluginProcessor::getStateInformation (MemoryBlock& destData)
 
 void PluginProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
-    PLUGIN_DBG ("[element] restore state: prepared: " << (int) prepared);
+    EL_LOG_THREAD ("AU", "setStateInformation enter sizeInBytes=" << sizeInBytes
+                          << " prepared=" << (int) prepared
+                          << " controllerActive=" << (int) controllerActive);
+
+    // AU/VST3 hosts may invoke setStateInformation from a non-message thread
+    // (Logic Pro's MAAudioEngine fires it from an idle timer). Our Context
+    // construction depends on the message thread, so defer off-thread calls
+    // back to the message thread before touching anything.
+    if (! MessageManager::getInstance()->isThisTheMessageThread())
+    {
+        EL_LOG ("AU", "setStateInformation off message thread - deferring via AsyncStateRestore");
+        if (asyncStateRestore != nullptr)
+            asyncStateRestore->restore (data, sizeInBytes);
+        else
+            EL_LOG_ERR ("AU", "asyncStateRestore is null - state will be lost");
+        return;
+    }
+
     if (! controllerActive)
     {
-        PLUGIN_DBG ("[element] warning: initializing while restoring state");
+        EL_LOG_WARN ("AU", "initialising during setStateInformation");
         initialize();
+    }
+
+    // initialize() can early-return (e.g. re-entrant call); without context
+    // every subsequent dereference -- including context->session() -- crashes
+    // with KERN_INVALID_ADDRESS at a small offset. Bail out safely instead.
+    if (! context)
+    {
+        EL_LOG_ERR ("AU", "setStateInformation: context still null after initialize - aborting");
+        jassertfalse;
+        return;
     }
 
     auto session = context->session();
@@ -437,8 +518,17 @@ void PluginProcessor::processorLayoutsChanged()
 
 void PluginProcessor::initialize()
 {
-    if (controllerActive || ! MessageManager::getInstance()->isThisTheMessageThread())
+    if (controllerActive)
+    {
+        EL_LOG_V ("AU", "initialize: already active, skipping");
         return;
+    }
+    if (! MessageManager::getInstance()->isThisTheMessageThread())
+    {
+        EL_LOG_WARN ("AU", "initialize called off message thread - skipping (context remains null)");
+        return;
+    }
+    EL_LOG ("AU", "initialize begin");
     bool wasProc = shouldProcess.get();
     shouldProcess.set (false);
 
@@ -485,6 +575,7 @@ void PluginProcessor::initialize()
     devsctl->refresh();
 
     shouldProcess.set (wasProc);
+    EL_LOG ("AU", "initialize done controllerActive=1");
 }
 
 void PluginProcessor::handleAsyncUpdate()

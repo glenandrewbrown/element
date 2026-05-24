@@ -40,6 +40,8 @@
 // For molecule support
 #include "ui/moleculemanager.hpp"
 
+#include "verbose_log.hpp"
+
 namespace element {
 
 //=============================================================================
@@ -954,6 +956,8 @@ GraphEditorComponent::GraphEditorComponent()
     : ViewHelperMixin (this),
       selectedNodes (*this)
 {
+    EL_LOG ("GFX", "GraphEditorComponent ctor"
+                   << " this=" << juce::String::toHexString ((juce::pointer_sized_int) this));
     setOpaque (true);
     data.addListener (this);
     setSize (640, 360);
@@ -962,16 +966,39 @@ GraphEditorComponent::GraphEditorComponent()
 
 GraphEditorComponent::~GraphEditorComponent()
 {
+    EL_LOG ("GFX", "GraphEditorComponent dtor begin"
+                   << " this=" << juce::String::toHexString ((juce::pointer_sized_int) this)
+                   << " children=" << getNumChildComponents()
+                   << " commentBoxes=" << commentBoxes.size()
+                   << " ghostConnectors=" << ghostConnectors.size());
+
     stopTimer();
     if (graph.isValid())
         graph.setProperty (tags::vertical, verticalLayout);
     data.removeListener (this);
     graph = Node();
     data = ValueTree();
+
+    // `lasso` is a member Component held by value. If it is still in our
+    // child list (e.g. destructor fires mid-drag) deleteAllChildren() would
+    // call `delete` on a non-heap pointer and corrupt the allocator. Detach
+    // it explicitly first.
+    removeChildComponent (&lasso);
+
+    // unique_ptrs and OwnedArrays each own Components that are *also* added
+    // to our child list via addAndMakeVisible(). Releasing them here makes
+    // ~Component self-detach from the parent, so the subsequent
+    // deleteAllChildren() does not double-free them (which aborts via
+    // malloc_report -> SIGABRT during plugin editor teardown).
     draggingConnector = nullptr;
+    quickAdd = nullptr;
+    commentBoxes.clear();
+    ghostConnectors.clear();
+
     deleteAllChildren();
 
     factory.reset();
+    EL_LOG ("GFX", "GraphEditorComponent dtor done");
 }
 
 void GraphEditorComponent::timerCallback()
@@ -995,6 +1022,13 @@ void GraphEditorComponent::setNode (const Node& n)
         return;
     }
 
+    EL_LOG ("GFX", "setNode"
+                   << " nodeId=" << (int) n.getNodeId()
+                   << " isGraph=" << (int) isGraph
+                   << " isValid=" << (int) isValid
+                   << " children=" << getNumChildComponents()
+                   << " commentBoxes=" << commentBoxes.size());
+
     graph = ng;
     data.removeListener (this);
     data = graph.data();
@@ -1003,8 +1037,17 @@ void GraphEditorComponent::setNode (const Node& n)
 
     if (draggingConnector)
         removeChildComponent (draggingConnector.get());
-    deleteAllChildren();
+    removeChildComponent (&lasso);
+
+    // Clear OwnedArrays and unique-ptrs BEFORE deleteAllChildren(): each
+    // owns Components that were also addAndMakeVisible'd as our children.
+    // Clearing them first lets ~Component self-detach, so deleteAllChildren()
+    // does not double-free the same pointers (which aborts via malloc_report
+    // and brings down the host).
+    quickAdd = nullptr;
     commentBoxes.clear();
+    ghostConnectors.clear();
+    deleteAllChildren();
 
     // Load comment boxes before other components so they appear behind
     loadCommentBoxes();
@@ -1021,13 +1064,26 @@ void GraphEditorComponent::setVerticalLayout (const bool isVertical)
 {
     if (verticalLayout == isVertical)
         return;
+    EL_LOG ("GFX", "setVerticalLayout isVertical=" << (int) isVertical);
     verticalLayout = isVertical;
 
     if (graph.isValid() && graph.isGraph())
         graph.setProperty (tags::vertical, verticalLayout);
 
     draggingConnector = nullptr;
+    removeChildComponent (&lasso);
+
+    // Same double-free guard as setNode(): clear owning containers and
+    // unique-ptrs before deleteAllChildren() so we do not free the same
+    // Component twice when the layout toggles.
+    quickAdd = nullptr;
+    commentBoxes.clear();
+    ghostConnectors.clear();
     deleteAllChildren();
+
+    // Re-load comment boxes for the current graph (they live in the graph
+    // ValueTree, so a layout flip should not lose them).
+    loadCommentBoxes();
     updateComponents();
 }
 
