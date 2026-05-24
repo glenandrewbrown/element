@@ -38,6 +38,8 @@
 #include "appinfo.hpp"
 #include "nodes/scriptnode.hpp"
 
+#include "verbose_log.hpp"
+
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
@@ -728,48 +730,62 @@ static File resolveWebviewDistRoot()
     using juce::File;
 
    #if JUCE_MAC || JUCE_LINUX
-    // dladdr-based resolution works in both standalone and plugin contexts.
     Dl_info info {};
     if (dladdr (reinterpret_cast<const void*> (&resolveWebviewDistRoot), &info) != 0
         && info.dli_fname != nullptr)
     {
         const File binary (info.dli_fname);
        #if JUCE_MAC
-        // <Bundle>/Contents/MacOS/<binary>  -->  <Bundle>/Contents/Resources/webview
         const auto contents = binary.getParentDirectory().getParentDirectory();
         const auto bundled = contents.getChildFile ("Resources").getChildFile ("webview");
         if (bundled.getChildFile ("index.html").existsAsFile())
+        {
+            EL_LOG ("GFX", "resolveWebviewDistRoot: dladdr bundle hit " << bundled.getFullPathName());
             return bundled;
+        }
+        EL_LOG ("GFX", "resolveWebviewDistRoot: dladdr bundle miss " << bundled.getFullPathName());
        #else
-        // Linux: bundled next to the binary
         const auto bundled = binary.getParentDirectory().getChildFile ("webview");
         if (bundled.getChildFile ("index.html").existsAsFile())
+        {
+            EL_LOG ("GFX", "resolveWebviewDistRoot: dladdr linux hit " << bundled.getFullPathName());
             return bundled;
+        }
+        EL_LOG ("GFX", "resolveWebviewDistRoot: dladdr linux miss " << bundled.getFullPathName());
        #endif
     }
    #endif
 
    #if JUCE_MAC
-    // Standalone-app fallback: walk up from the running executable.
     {
         const auto exe = File::getSpecialLocation (File::currentExecutableFile);
         const auto contents = exe.getParentDirectory().getParentDirectory();
         const auto bundled = contents.getChildFile ("Resources").getChildFile ("webview");
         if (bundled.getChildFile ("index.html").existsAsFile())
+        {
+            EL_LOG ("GFX", "resolveWebviewDistRoot: exe fallback hit " << bundled.getFullPathName());
             return bundled;
+        }
+        EL_LOG ("GFX", "resolveWebviewDistRoot: exe fallback miss " << bundled.getFullPathName());
     }
    #elif JUCE_WINDOWS
-    // Windows: bundled next to the executable (or use dladdr equivalent if needed).
     {
         const auto exe = File::getSpecialLocation (File::currentExecutableFile);
         const auto bundled = exe.getParentDirectory().getChildFile ("webview");
         if (bundled.getChildFile ("index.html").existsAsFile())
+        {
+            EL_LOG ("GFX", "resolveWebviewDistRoot: exe fallback hit " << bundled.getFullPathName());
             return bundled;
+        }
+        EL_LOG ("GFX", "resolveWebviewDistRoot: exe fallback miss " << bundled.getFullPathName());
     }
    #endif
 
-    // Final fallback: compile-time dev tree path (hot-reload during development).
-    return File (element::webview_dist::kDistPath);
+    const File fallback (element::webview_dist::kDistPath);
+    EL_LOG_WARN ("GFX", "resolveWebviewDistRoot: all bundle paths missed, using compile-time fallback "
+                         << fallback.getFullPathName()
+                         << " exists=" << (int) fallback.getChildFile ("index.html").existsAsFile());
+    return fallback;
 }
 
 //==============================================================================
@@ -780,12 +796,14 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
 
     const File distRoot = resolveWebviewDistRoot();
 
-    const char* devUrlEnv = nullptr;
-   #if JUCE_DEBUG
-    devUrlEnv = std::getenv ("ELEMENT_WEBVIEW_DEV_URL");
-   #endif
+    const char* devUrlEnv = std::getenv ("ELEMENT_WEBVIEW_DEV_URL");
     const String devUrl = devUrlEnv != nullptr ? String (devUrlEnv) : String();
     const bool useDevServer = devUrl.isNotEmpty();
+
+    EL_LOG ("GFX", "ElementWebViewHost ctor"
+                    << " skipBrowser=" << (int) skipBrowser
+                    << " useDevServer=" << (int) useDevServer
+                    << " distRoot=" << distRoot.getFullPathName());
 
     WebBrowserComponent::Options opts;
 
@@ -3653,13 +3671,26 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
         addAndMakeVisible (*browser);
 
         if (useDevServer)
+        {
+            EL_LOG ("GFX", "WebView goToURL dev server: " << devUrl);
             browser->goToURL (devUrl);
+        }
         else
+        {
            #if JUCE_WEB_BROWSER_RESOURCE_PROVIDER_AVAILABLE
-            browser->goToURL (WebBrowserComponent::getResourceProviderRoot());
+            const auto providerRoot = WebBrowserComponent::getResourceProviderRoot();
+            EL_LOG ("GFX", "WebView goToURL resource provider: " << providerRoot
+                            << " distRoot=" << distRoot.getFullPathName());
+            browser->goToURL (providerRoot);
            #else
+            EL_LOG_ERR ("GFX", "JUCE_WEB_BROWSER_RESOURCE_PROVIDER_AVAILABLE=0 — cannot load WebView");
             jassertfalse;
            #endif
+        }
+    }
+    else
+    {
+        EL_LOG ("GFX", "WebView skipBrowser=true — no WebBrowserComponent created");
     }
 
     // P1-11: subscribe to additive engine-state-changed signal so graph is
