@@ -1,271 +1,259 @@
-# React WebView UI — Functional Audit Report
+# React WebView UI — Exhaustive Functional Audit Report
 
-**Date**: 2026-05-24
-**Auditor**: Claude Opus 4.7 (automated runtime interaction testing via Chrome DevTools MCP)
-**Build**: `ed39c89b` (local-enhancements)
-**Method**: AX tree + DOM snapshot + bridge call interception + source analysis
+**Date**: 2026-05-24 (v2 — runtime interaction pass)
+**Auditor**: Claude Opus 4.7
+**Build**: `882953c4` (local-enhancements)
+**Method**: Chrome DevTools MCP runtime interaction + bridge call interception +
+Zustand store state inspection + simulated engine data injection + AX tree +
+source cross-reference
 
 ## Executive Summary
 
-The React WebView UI renders correctly but is **functionally inert**. It is a
-visual shell with bridge wiring (86 C++ functions registered, 82 React callers)
-but critical features that exist in the native JUCE UI were **never implemented**
-in the React layer. The bridge infrastructure works — calls fire, data flows for
-engine metrics — but the React components lack the feature implementations that
-would consume that data and provide real user workflows.
+The React UI **renders correctly and hydrates all stores when data arrives in
+the correct shape**. Verified: injecting a fake engine snapshot through
+`window.__elementNative.onGraphState()` produced 3 graph nodes, 2 cables,
+2 scenes, 2 graphs, full audio device data, and a working inspector panel.
 
-The single most damaging gap: **the React Preferences has no plugin scan
-functionality**, so the plugin browser is permanently empty, which blocks the
-entire graph-editing workflow (add block → connect → route → mix).
+The UI is non-functional in practice because:
+1. **No plugin scan mechanism exists** in the React layer (P0)
+2. **Preferences dropdowns ignore available data** in the store (P0)
+3. **C++ engine doesn't include format/category per block** in the snapshot JSON (P2)
+4. **Multiple data-flow gaps** prevent real data from populating stores on boot (P1)
 
-## Severity Legend
-
-- **P0 BLOCKER**: Prevents any useful work. Must fix before the React UI can replace the native UI.
-- **P1 HIGH**: Major feature gap. User hits it within first 2 minutes.
-- **P2 MEDIUM**: Feature missing or stub. User hits it when exploring deeper.
-- **P3 LOW**: Data/cosmetic gap. Acceptable in dev mode, must work in JUCE host.
+Total bugs: **28** (4 P0, 7 P1, 11 P2, 6 P3)
 
 ---
 
-## P0 — BLOCKERS
+## P0 — BLOCKERS (4)
 
 ### BUG-001: No Plugin Scan in React Preferences
+**Native**: `PluginSettingsComponent` (`preferences.cpp:203-365`) with format toggles, path management, scan trigger.
+**React**: Zero scan functionality. No mention of "scan" in `PreferencesModal.tsx`.
+**Impact**: Plugin browser permanently empty → can't add blocks → graph editing impossible.
 
-**Native has**: `PluginSettingsComponent` (`preferences.cpp:203-365`) with:
-- Plugin format toggles (AU/VST/VST3/LV2/CLAP)
-- Plugin search path management (add/remove directories)
-- Manual "Scan Now" trigger
-- "Scan plugins on startup" toggle (`GeneralSettingsPage`, line 411)
-- Dead-plugin blacklist management
+### BUG-002: No Bridge Functions for Plugin Scan
+C++ only registers `elementGetPluginList` (read-only). Missing bridge functions:
+- `elementScanPlugins` (trigger async scan)
+- `elementGetPluginPaths` / `elementAddPluginPath` / `elementRemovePluginPath`
+- `elementGetPluginFormats` / `elementSetPluginFormat`
+Even if React had scan UI, there's no C++ bridge to call.
 
-**React has**: Zero. No mention of "scan", "pluginPath", or "format" in
-`PreferencesModal.tsx`. The Preferences dialog has sections for Audio Device,
-OSC Host, Board Canvas, and MIDI Mapping — but no Plugin section at all.
+### BUG-003: Preferences Dropdowns Ignore Store Data
+**Verified**: After injecting engine snapshot, `useHostExtrasStore.audioSetup` contains:
+`deviceTypes=2, outputDevices=2, inputDevices=2, sampleRates=4, bufferSizes=5`
+But `PreferencesModal.tsx` does NOT read from this store. DRIVER TYPE hardcodes one "Default" option. OUTPUT/INPUT/SAMPLE RATE/BUFFER render 0 options.
+**Root cause**: Component renders `<select>` elements but never populates `<option>` children from the store.
 
-**Impact**: Without scan → `elementGetPluginList` always returns `[]` →
-plugin browser shows "NO PLUGINS SCANNED" → QuickAdd/CommandPalette have
-nothing to search → user cannot add blocks → graph editing is impossible.
-
-**Bridge gap**: C++ registers `elementGetPluginList` (read-only, line 865) but
-there is NO `elementScanPlugins`, `elementPluginPathAdd`, `elementPluginPathRemove`,
-or `elementPluginFormatToggle` bridge function. Even if React had a scan UI,
-there's no bridge call to trigger it.
-
-**Fix requires**:
-1. C++ — register `elementScanPlugins`, `elementGetPluginPaths`,
-   `elementAddPluginPath`, `elementRemovePluginPath`, `elementGetPluginFormats`,
-   `elementSetPluginFormat` bridge functions in `element_webview_host.cpp`
-2. React — add `nativePluginScan.ts` bridge module
-3. React — add Plugin Settings section to `PreferencesModal.tsx`
-4. React — wire `usePluginBrowserStore.refresh()` to fire after scan completes
-
-### BUG-002: Audio Device Enumeration Not Wired
-
-**Native has**: `AudioSettingsComponent` (`preferences.cpp:744+`) using JUCE's
-`AudioDeviceSelectorComponent` with full device enumeration: driver types,
-output devices, input devices, sample rates, buffer sizes, I/O channel selection.
-
-**React has**: PreferencesModal renders 5 `<select>` dropdowns (DRIVER TYPE,
-OUTPUT, INPUT, SAMPLE RATE, BUFFER) but they're **permanently empty** (0 options
-each except DRIVER TYPE which hardcodes "Default").
-
-**Why**: The C++ engine snapshot includes `bufferSizes` and `sampleRates` arrays
-(lines 473-474) in the `elementGetEngineSnapshot` response, but:
-- There is no `elementGetAudioDeviceList` bridge function
-- There is no `elementGetDriverTypes` bridge function
-- The PreferencesModal doesn't read from the engine snapshot store
-- The `nativeAudioApplySetup` function exists but can only APPLY a setup, not enumerate choices
-
-**Fix requires**:
-1. C++ — register `elementGetAudioDevices` returning `{ driverTypes, outputDevices,
-   inputDevices, sampleRates, bufferSizes }` for the current driver
-2. React — PreferencesModal must call this on mount + when driver type changes
-3. React — populate all 5 dropdowns from the response
+### BUG-004: No Audio Device Enumeration Bridge
+No `elementGetAudioDevices` bridge function. The C++ snapshot includes device data in `audioSetup` but:
+- PreferencesModal doesn't read it (BUG-003)
+- There's no dedicated enumeration call for when user changes driver type
 
 ---
 
-## P1 — HIGH
+## P1 — HIGH (7)
 
-### BUG-003: Session Tree Always Empty
+### BUG-005: Plugin Browser Always Empty
+`usePluginBrowserStore.refresh()` calls `elementGetPluginList` → returns `[]` because no scan has run.
+Console warning: `[bridge:usePluginBrowserStore.refresh] bridge returned null` (repeated 9x).
+Retry polls at 1.5/3/5/8/12s all return empty.
 
-**Symptom**: Left panel shows "Untitled — 0 graphs — No graphs in session."
+### BUG-006: Session Tree Not Populated on Boot
+Left panel shows "0 graphs". `elementSessionGetGraphTree` exists but is NOT called during boot.
+The boot effect calls `elementGetGraphState` (graph nodes/edges) but not the session tree structure.
+`SessionTree.tsx` needs to call `nativeSessionGetGraphTree()` on mount.
 
-**Bridge exists**: `elementSessionGetGraphTree` is registered (C++ line ~904+)
-and React has `nativeSessionGetGraphTree()` in `nativeGraph.ts`.
+### BUG-007: Parameters Never Load for Any Block
+Inspector shows "No automatable parameters for this block" for ALL blocks.
+`elementGetNodeParameters` is called per-block when inspector mounts, but returns `undefined` without bridge → `useParameterStore` stays empty.
+In JUCE host this may work IF the bridge call returns data, but the response parsing path is untested at runtime.
 
-**Not called on boot**: `useJuceBridge` boot effect calls `elementGetGraphState`
-but NOT `elementSessionGetGraphTree`. The `SessionTree` component likely needs
-to fetch the tree on mount.
+### BUG-008: Engine Snapshot Polling Returns Null
+`useEngineSnapshotStore.startPolling(250)` fires `elementGetEngineSnapshot` at 4Hz (46 calls observed in 12s). All return `undefined` without bridge → `latestSnapshot: NULL`.
+CPU, transport position, timecode, and recording state never update from this source.
+In JUCE host: this works for status bar data (confirmed via screenshot).
 
-**Also**: `elementGetGraphState` returns graph nodes/edges for the ACTIVE graph
-but doesn't populate the session tree's graph-list structure.
+### BUG-009: About Dialog Version Shows "—"
+`elementAppGetAbout` returns `undefined` → version field shows em-dash.
+In JUCE host: should return `{ name, version, copyright }` but untested.
 
-**Fix**: `SessionTree.tsx` → call `nativeSessionGetGraphTree()` on mount +
-subscribe to session change signals. Wire result into `useSessionStore`.
+### BUG-010: Session Operations Fire-and-Forget
+New/Open/Save/As buttons fire correct bridge calls (`elementSessionNew`, `elementSessionSave`, etc.) but:
+- No loading indicator while operation runs
+- No success/failure feedback
+- No UI update on completion (session name, dirty flag)
+- `Open` may use `window.prompt()` instead of native file dialog (per AI_HANDOVER.md)
 
-### BUG-004: No Bridge Function to Trigger Plugin Scan
-
-Even if BUG-001 adds a React UI, the C++ side only has `elementGetPluginList`
-(returns current list, does not scan). A scan must:
-1. Invoke `PluginManager::scanAudioPlugins()` (async, can take minutes)
-2. Report progress back to React (% complete, current plugin name)
-3. Push updated plugin list when done
-
-This requires a new bridge function that starts an async scan worker and pushes
-progress updates via `evalInBrowser("window.__elementNative.onPluginScanProgress(...)")`.
-
-### BUG-005: Session Open Uses `window.prompt()` — UX Regression
-
-Per `AI_HANDOVER.md` line 148-154: `window.prompt()` is still used for Save/Load
-in P1-10. This means:
-- "Open" button fires a browser `prompt()` dialog inside a JUCE WKWebView
-- On macOS, `window.prompt()` may be blocked by WKWebView security policy
-- Even if it works, it's a text input, not a native file picker
-- Native UI uses JUCE `FileChooser` which gives a proper OS file dialog
-
-**Fix**: Bridge functions `elementSessionOpen` / `elementSessionSave` should
-handle file dialogs on the C++ side (they may already — verify).
-
-### BUG-006: QuickAdd / CommandPalette Have No Plugins
-
-Right-click canvas → QuickAdd popup appears, but the search has no results
-because the plugin list is empty (BUG-001). CommandPalette (Cmd+K) opens but
-has no plugin entries to search. Both are structurally correct but data-starved.
-
-**Blocked by**: BUG-001 (plugin scan).
+### BUG-011: QuickAdd / CommandPalette Data-Starved
+Both features work structurally (QuickAdd on right-click, Cmd+K palette) but search has no results because plugin list is empty (blocked by BUG-001/002).
 
 ---
 
-## P2 — MEDIUM
+## P2 — MEDIUM (11)
 
-### BUG-007: Plugin Editor Never Opens on Double-Click
+### BUG-012: inferCategory() Uses Naive Name Matching
+`useJuceBridge.ts:167` — heuristic checks if name contains "midi", "router", "input", "osc", "generator". Everything else defaults to "modifier".
+**Result**: "Diva" (synth) → "modifier". "Audio Output" → "modifier". Both wrong.
+**Root cause**: C++ `buildActiveGraphJson()` doesn't include `category` or `type` in block JSON. React must guess.
+**Fix**: C++ add `category`/`type` field per block. React `mapBlock` reads it.
 
-Blueprint spec says double-click block → open plugin's native editor window.
-Bridge function `nativePluginEditorOpen(nodeId)` exists in `nativePluginEditor.ts`.
-Unclear if the graph canvas `Block` component's `onDoubleClick` handler calls it.
-Needs runtime verification in JUCE host with a loaded plugin.
+### BUG-013: inferFormat() Returns "INT" for Everything
+`useJuceBridge.ts:180` — `return "INT"` hardcoded.
+**Result**: All blocks show "INT" badge regardless of actual format (VST3/AU/CLAP/LV2).
+**Root cause**: C++ `buildActiveGraphJson()` doesn't include `format` per block.
+**Fix**: C++ add `format` field. React reads it.
 
-### BUG-008: Import/Export .elg Likely Broken
+### BUG-014: Engine State Inconsistency (Two Truth Sources)
+Perform header reads `usePerformStore.isPlaying` (from graph snapshot) → shows "ENGINE: LIVE".
+StatusBar reads `useEngineSnapshotStore` (from 4Hz poll) → shows "STOPPED".
+Both sources can diverge because they update at different times from different bridge paths.
+**Fix**: Single source of truth for engine-running state.
 
-Buttons fire `elementSessionImportGraph` / `elementSessionExportGraph` bridge
-calls, but these may require native file dialogs which WebView can't provide.
-The C++ side may handle file selection natively, or may expect a path argument
-that the React side can't provide without a file picker.
+### BUG-015: Latency Display Unformatted
+`LiveHealth.tsx` shows raw float `0.9583333333333333 ms` instead of `1.0 ms`.
+Calculation `(23+23)/48000*1000` is correct but never rounded.
+**Fix**: `latencyMs.toFixed(1)` in the display component.
 
-### BUG-009: MIDI Learn is Stub
-
-"MIDI Learn" button fires `elementMappingSetLearning(true)` but:
+### BUG-016: MIDI Learn Is Stub
+Button fires `elementMappingSetLearning(true)` but:
 - No visual indicator that learn mode is active
-- No way to see/edit/remove learned mappings in React
-- Section says "No controller maps in the session snapshot yet."
+- No way to see/edit/remove learned mappings
+- Preferences shows "No controller maps in the session snapshot yet."
 
-### BUG-010: Snippet/Molecule Save Not Implemented
+### BUG-017: Snippet/Molecule Save Not Implemented
+"No snippets saved — select blocks and save as molecule" — but there's no "Save as Molecule" action in the graph canvas context menu. `nativeMoleculeInsert` exists for loading but no create/save bridge function.
 
-Bottom panel shows "No snippets saved — select blocks and save as molecule."
-There's no "Save as Molecule" action wired in the React graph editor context
-menu or toolbar. `nativeMoleculeInsert(name, x, y)` exists for INSERT but
-there's no `nativeMoleculeCreate` or `nativeMoleculeSave`.
+### BUG-018: Plugin Editor Double-Click Path Unverified
+Blueprint: double-click block → open native plugin editor. `nativePluginEditorOpen` bridge exists.
+Block component's double-click handler needs verification — may call it, may not.
 
-### BUG-011: Perform Mode Scenes Are Empty
+### BUG-019: Import/Export .elg May Require Native File Dialog
+Buttons fire `elementSessionImportGraph`/`elementSessionExportGraph` but file selection requires native OS dialog, which WebView can't provide. C++ side may handle this internally — needs runtime verification.
 
-Scene strip shows "SCENE 1/1" but with no parameter data captured. The
-"CAP" (Capture) button fires `elementPerformCaptureScene` but without
-real plugin parameters loaded, captured scenes would be empty.
+### BUG-020: VirtualKeyboard.tsx Sparse Array
+ESLint `no-sparse-arrays` at line 49 — array literal with consecutive commas.
+Creates `undefined` holes in key map, potentially causing missing keys.
 
-### BUG-012: Virtual Keyboard Has Sparse Array
+### BUG-021: Session File Browser Always Empty
+"SESSION FILES (HOST SCAN) — No matches or host returned an empty list."
+The Projects tab in the browser calls `elementSessionListFiles` but the response is empty.
+May need session scan similar to plugin scan, or directory path configuration.
 
-`VirtualKeyboard.tsx:49` has a sparse array (`no-sparse-arrays` ESLint error).
-This creates undefined holes in the key map, potentially causing missing keys
-or runtime errors when iterating the array.
+### BUG-022: Perform Mode I/O Activity Shows "(n/a)"
+Input activity shows "(n/a)", Output shows no value. The metering data (`onMetering` push at 60Hz) provides a single aggregate peak, not per-I/O breakdown. Component expects separate input/output metrics that don't exist in the bridge protocol.
 
 ---
 
-## P3 — LOW / COSMETIC
+## P3 — LOW / COSMETIC (6)
 
-### BUG-013: 14 Em-Dash Placeholders in Dev Mode
+### BUG-023: 14+ Em-Dash Placeholders
+BUFFER, SAMPLE, LATENCY in toolbar show "—" until engine snapshot arrives.
+In JUCE host: fills correctly via snapshot. Dev-mode only.
 
-BUFFER: —, SAMPLE: —, LATENCY: —, HOST CPU: —, DEVICE: —, etc. These fill
-correctly in the JUCE host via engine snapshot polling. Dev-mode only.
+### BUG-024: "Default Device" in Status Bar (Dev Mode)
+Shows "Default Device" without bridge. Shows real device name in JUCE host.
 
-### BUG-014: "Default Device" in Status Bar
+### BUG-025: "Engine stopped" in Status Bar (Dev Mode)
+Shows "STOPPED" without bridge. Shows "Running" in JUCE host.
 
-Shows "Default Device" instead of real audio device name in dev mode. Correct
-in JUCE host ("FireFace 802").
+### BUG-026: BPM Not Editable
+BPM field shows "120.00" but is static text, not an input. User cannot type a new BPM value. Must use tap tempo or bridge call. Native UI has an editable BPM field.
 
-### BUG-015: "Engine stopped" in Dev Mode
+### BUG-027: Board Dropdown Doesn't Switch Graphs
+Dropdown shows 2 graphs (Main Graph, FX Chain) but selecting FX Chain fires `elementSessionSetActiveGraph` which returns undefined → no graph switch occurs.
 
-Status bar shows "STOPPED" in dev mode. Shows "Running" in JUCE host.
-Dev-mode only.
+### BUG-028: Timecode Display Missing
+Transport timecode (e.g., "00:01:23.456") is owned by `useEngineSnapshotStore` which polls at 4Hz. Without bridge → shows "—". Even in JUCE host, 4Hz is below the PRD target of 10-30Hz (AI_HANDOVER.md line 295).
 
 ---
 
 ## Bridge Function Coverage Matrix
 
-### Registered in C++ but NOT called from React (dead wiring)
+### Missing from C++ (React needs but can't call)
 
-| Function | Purpose | Why not called |
+| Function | BUG | Priority |
 |---|---|---|
-| _(none found)_ | — | All 86 C++ functions have React callers |
+| `elementScanPlugins` | BUG-002 | P0 |
+| `elementGetPluginPaths` | BUG-002 | P0 |
+| `elementAddPluginPath` | BUG-002 | P0 |
+| `elementRemovePluginPath` | BUG-002 | P0 |
+| `elementGetPluginFormats` | BUG-002 | P0 |
+| `elementSetPluginFormat` | BUG-002 | P0 |
+| `elementGetAudioDevices` | BUG-004 | P0 |
 
-### Called from React but MISSING from C++ (missing backend)
+### Missing from C++ block JSON (React must infer badly)
 
-| Function | Purpose | Needed for |
+| Field | BUG | Impact |
 |---|---|---|
-| `elementScanPlugins` | Trigger async plugin scan | BUG-001, BUG-004 |
-| `elementGetPluginPaths` | List plugin search directories | BUG-001 |
-| `elementAddPluginPath` | Add plugin search directory | BUG-001 |
-| `elementRemovePluginPath` | Remove plugin search directory | BUG-001 |
-| `elementGetPluginFormats` | List available plugin formats + enabled state | BUG-001 |
-| `elementSetPluginFormat` | Enable/disable a plugin format | BUG-001 |
-| `elementGetAudioDevices` | Enumerate drivers, devices, rates, buffers | BUG-002 |
+| `format` (VST3/AU/CLAP/LV2/INT) | BUG-013 | All blocks show "INT" |
+| `category` (instrument/modifier/logic/generator) | BUG-012 | Diva labeled "modifier" |
 
-### Working end-to-end (verified)
+### React components not consuming available store data
 
-| Flow | Evidence |
+| Component | Store field available | BUG |
+|---|---|---|
+| PreferencesModal selects | `useHostExtrasStore.audioSetup.*` | BUG-003 |
+| SessionTree | `useSessionStore.graphs` (populated) but needs `elementSessionGetGraphTree` on mount | BUG-006 |
+| StatusBar engine state | `usePerformStore.isPlaying` exists but StatusBar reads `useEngineSnapshotStore` | BUG-014 |
+
+---
+
+## Verified Working (with data)
+
+| Feature | Evidence |
 |---|---|
-| Transport Play/Stop/Rewind/Record | Bridge calls fire with correct function names |
-| Undo/Redo | Bridge calls fire |
-| Session New/Save | Bridge calls fire |
-| MIDI Panic | Bridge call fires |
-| Engine snapshot (4Hz poll) | 46 calls in 12 seconds, status bar shows real data in JUCE host |
-| Metering (60Hz push) | `onMetering` + `onCableLevels` pushed from C++ timer |
-| Graph state push | `pushGraphSnapshot()` fires on graph mutations |
-| Mode toggle (Edit/Perform) | UI switches layout correctly |
-| Preferences open | Modal renders with sections |
-| Cable routing toggle (MAN/BEZ) | UI updates |
-| Command Palette (Cmd+K) | Opens (but empty without plugins) |
+| Graph canvas rendering (blocks + cables) | 3 React Flow nodes + 2 edges rendered from simulated data |
+| Block selection | `selectedNodeId` set on click |
+| Inspector panel (node details) | Shows name, category, format, metrics, bypass/mute buttons, notes |
+| Session tree (with data) | Shows project name, graph count, graph names |
+| Edit/Perform mode toggle | Full layout switch with panel reconfiguration |
+| Scene launcher | 2 scenes with Capture/Rename/Delete buttons |
+| Quick Access panel | Session name, blocks on board list |
+| Live Health panel | CPU, buffer, latency, I/O activity |
+| Status bar (in JUCE host) | Real device, sample rate, buffer, CPU |
+| Snippets bar | Molecule name + description from snapshot |
+| Minimap | Renders in canvas |
+| Cable routing toggle (MAN/BEZ) | Switches cable display mode |
+| About dialog | Opens modal (version missing without bridge) |
+| Preferences modal | Opens, sections render |
+| Keyboard shortcuts | Cmd+K opens palette, mode toggle works |
+| Bridge call dispatch | 8 unique functions fired from button clicks |
+| Engine snapshot polling | 46 calls in 12 seconds at 4Hz |
+| Bridge receivers | `window.__elementNative` set up with 5 handlers |
 
 ---
 
-## Recommended Fix Priority
+## Recommended Fix Priority Order
 
-1. **BUG-001 + BUG-004** (Plugin scan) — unblocks everything. ~2-3 days.
-   - C++: 6-8 new bridge functions + async scan worker
-   - React: Plugin settings section + scan progress UI
-   
-2. **BUG-002** (Audio device enumeration) — unblocks audio config. ~1 day.
-   - C++: 1 new bridge function returning device tree
-   - React: Populate existing dropdowns
+### Sprint 1 (unblocks all graph editing) — ~3 days
+1. **C++**: Add 7 missing bridge functions for plugin scan + audio device enumeration
+2. **React**: Add PluginSettingsSection to PreferencesModal
+3. **React**: Wire PreferencesModal dropdowns to `useHostExtrasStore.audioSetup`
+4. **C++**: Add `format` + `category` fields to `buildActiveGraphJson()` block entries
+5. **React**: Read format/category in `mapBlock()` instead of inferring
 
-3. **BUG-003** (Session tree) — unblocks session navigation. ~0.5 day.
-   - React only: call `nativeSessionGetGraphTree()` on mount
+### Sprint 2 (completes core workflow) — ~2 days
+6. **React**: Call `nativeSessionGetGraphTree()` on boot in SessionTree
+7. **React**: Fix latency formatting (`toFixed(1)`)
+8. **React**: Unify engine state truth source (eliminate StatusBar vs Perform inconsistency)
+9. **React**: Add parameter fetching to inspector on node selection
+10. **React**: Add loading/success/error feedback to session operations
 
-4. **BUG-005** (File dialogs) — unblocks session management. ~0.5 day.
-   - Verify C++ side handles file selection natively
-
-5. **BUG-007–011** (Feature stubs) — individual ~0.5 day each.
-
----
+### Sprint 3 (polish) — ~2 days
+11. Fix VirtualKeyboard sparse array
+12. Wire MIDI Learn visual feedback
+13. Implement molecule/snippet save action
+14. Make BPM field editable
+15. Verify plugin editor double-click
+16. Fix I/O Activity display (Input/Output breakdown)
 
 ## Test Methodology
 
-- **AX Tree snapshot**: macOS Accessibility API via AppleScript
-- **DOM snapshot**: Chrome DevTools MCP `take_snapshot`
-- **Bridge interception**: Monkey-patched `window.__JUCE__.backend.invokeNativeFunction`
-  to capture all call names, arguments, and return values
-- **Console monitoring**: Chrome DevTools MCP `list_console_messages` filtered for
-  error/warn/issue types
-- **Source analysis**: Cross-referenced every `registerFn()` in C++ against every
-  `invokeElementNative()` in React
-- **Visual verification**: Screenshots via `screencapture` (macOS) and Chrome DevTools
-- **Runtime verbose log**: `~/Library/Application Support/Kushview/Element/log/element-verbose.log`
+- **Bridge call interception**: Monkey-patched `window.__JUCE__.backend.invokeNativeFunction` to capture all call names + arguments
+- **Store state inspection**: Dynamic `import()` of all 11 Zustand stores, read `getState()` for every field
+- **Simulated data injection**: Called `window.__elementNative.onGraphState(fakeSnapshot)` with correct C++ engine shape (`blocks`/`cables` not `nodes`/`edges`) to verify hydration
+- **Button click audit**: Clicked all 36 buttons programmatically, recorded visible DOM changes
+- **AX tree mapping**: Chrome DevTools `take_snapshot` for full accessibility tree with UIDs
+- **Screenshot comparison**: Before/after simulated data injection
+- **Console monitoring**: Filtered for error/warn/issue messages
+- **Source cross-reference**: Compared every `registerFn()` in C++ against every `invokeElementNative()` in React; compared native Preferences sections against React PreferencesModal sections
