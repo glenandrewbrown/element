@@ -206,7 +206,7 @@ import type { CommentBoxData } from "../../data/types";
 
 const makeCommentBox = (id: string, x = 0, y = 0): CommentBoxData => ({
   id,
-  text: id,
+  label: id,
   color: "blue",
   position: { x, y },
   size: { width: 100, height: 80 },

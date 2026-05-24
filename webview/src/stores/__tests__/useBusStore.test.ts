@@ -110,6 +110,8 @@ const cable = (
   target: `dst-${id}`,
   targetPort: "in",
   signalType,
+  channelCount: 2,
+  isSidechain: false,
 });
 
 describe("deriveBuses", () => {

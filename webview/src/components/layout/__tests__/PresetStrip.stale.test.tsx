@@ -164,7 +164,7 @@ describe("PresetStrip — §3.7 stale-fetch cancellation", () => {
     // Slow response for node-alpha, fast for node-beta
     let callCount = 0;
     bridge.mock.mockImplementation(
-      async (name: string, args: unknown[]) => {
+      async (name: string, _args: unknown[]) => {
         if (name === "elementGetNodeParameters") return "[]";
         if (name === "elementPresetList") {
           callCount++;

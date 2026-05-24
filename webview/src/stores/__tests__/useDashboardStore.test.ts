@@ -139,7 +139,7 @@ describe("useDashboardStore", () => {
     // Advance timers past debounce window to confirm no save was scheduled
     vi.advanceTimersByTime(400);
     const setCalls = mockInvoke.mock.calls.filter(
-      (c: [string, unknown[]]) => c[0] === "elementDashboardSetLayout",
+      (c) => c[0] === "elementDashboardSetLayout",
     );
     expect(setCalls).toHaveLength(0);
   });
