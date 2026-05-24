@@ -174,6 +174,7 @@ function inferCategory(b: EngineBlock): BlockCategory {
     name.includes("generator")
   )
     return "generator";
+  if (name.includes("output")) return "generator";
   return "modifier";
 }
 
@@ -201,8 +202,8 @@ function mapBlock(b: EngineBlock): BlockData {
   return {
     id: b.id,
     name: b.name,
-    category: inferCategory(b),
-    format: inferFormat(b),
+    category: (b as any).category ?? inferCategory(b),
+    format: typeof (b as any).format === "string" ? (b as any).format : inferFormat(b),
     position: { x: b.x ?? 0, y: b.y ?? 0 },
     ports: mapPorts(b),
     cpuLoad: typeof b.cpuLoad === "number" && b.cpuLoad >= 0 ? b.cpuLoad : 0,
@@ -309,8 +310,7 @@ function applySnapshot(raw: unknown) {
     typeof inputLatencySamples === "number" &&
     typeof outputLatencySamples === "number"
   )
-    latencyMs =
-      ((inputLatencySamples + outputLatencySamples) / sampleRate) * 1000;
+    latencyMs = Math.round(((inputLatencySamples + outputLatencySamples) / sampleRate) * 1000 * 10) / 10;
 
   const graphRows =
     s.graphs?.map((g, i) => ({

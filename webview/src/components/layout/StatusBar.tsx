@@ -7,10 +7,13 @@ import { Icon } from "../neu";
 
 export function StatusBar() {
   const health = usePerformStore(selectLiveHealth);
+  const isPlaying = usePerformStore(s => s.isPlaying);
   // US-002: real engine-running state from the C++ snapshot — replaces the
   // old `cpu > 0` heuristic, which read STOPPED while audio sat idle even
   // though a device was open and the engine was live.
-  const engineRunning = useEngineSnapshotStore(selectEngineRunning);
+  // Fall back to usePerformStore.isPlaying when the snapshot store hasn't
+  // received a push yet (fixes inconsistency with Perform header ENGINE: LIVE).
+  const engineRunning = useEngineSnapshotStore(selectEngineRunning) || isPlaying;
 
   const deviceName =
     health.clock && health.clock !== "—" ? health.clock : "Default Device";

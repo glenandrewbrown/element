@@ -46,7 +46,7 @@ function WhiteKey({
   onRelease: (n: number) => void;
 }) {
   const octaveOffset = note % 12;
-  const noteName = ["C", , "D", , "E", "F", , "G", , "A", , "B"][octaveOffset] as string;
+  const noteName = ["C", null, "D", null, "E", "F", null, "G", null, "A", null, "B"][octaveOffset] as string;
   const isC = octaveOffset === 0;
 
   return (

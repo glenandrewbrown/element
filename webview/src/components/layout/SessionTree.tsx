@@ -1,10 +1,11 @@
-import { memo, useCallback, useState } from "react";
+import { memo, useCallback, useEffect, useState } from "react";
 import { useSessionStore, type SessionGraphRow } from "../../stores/useSessionStore";
 import {
   useHostExtrasStore,
   type GraphOutlineNode,
 } from "../../stores/useHostExtrasStore";
 import { nativeSessionSetActiveGraph } from "../../bridge/nativeSession";
+import { nativeSessionGetGraphTree } from "../../bridge/nativeGraph";
 
 // ── Inline icons (no external dep) ──
 
@@ -177,6 +178,24 @@ function SessionTreeComponent() {
   const filePath = useSessionStore((s) => s.filePath);
   const dirty = useSessionStore((s) => s.dirty);
   const outline = useHostExtrasStore((s) => s.activeGraphOutline);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const tree = await nativeSessionGetGraphTree();
+        if (tree.length > 0) {
+          useSessionStore.getState().hydrateFromEngine({
+            graphs: tree.map((g, i) => ({
+              id: String(g.id),
+              name: g.name,
+              index: g.index ?? i,
+              active: g.active,
+            })),
+          });
+        }
+      } catch { /* bridge not available in dev mode */ }
+    })();
+  }, []);
 
   const handleActivate = useCallback((index: number) => {
     void nativeSessionSetActiveGraph(index);
