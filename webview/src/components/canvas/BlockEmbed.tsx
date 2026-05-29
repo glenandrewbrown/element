@@ -1,4 +1,5 @@
 import { memo, useState } from "react";
+import { useShallow } from "zustand/react/shallow";
 import type { BlockCategory } from "../../data/types";
 import { useParameterStore } from "../../stores/useParameterStore";
 
@@ -110,20 +111,28 @@ function ParamStripEmbed({ nodeId, category, count = 4 }: ParamStripEmbedProps) 
   const visible = Math.max(3, Math.min(5, count));
 
   // Pull the first `visible` parameter values for this node from the store.
-  // Subscribe with a stable selector so unrelated updates don't re-render us.
-  const values = useParameterStore((st) => {
-    const out: number[] = new Array(visible);
-    if (!nodeId) {
-      for (let i = 0; i < visible; ++i) out[i] = NaN;
+  // The selector derives a fresh array on every call, so it MUST be wrapped
+  // in `useShallow`: Zustand v5 forwards the raw selector result to React's
+  // `useSyncExternalStore`, which compares it with `Object.is`. A new array
+  // each call is never `Object.is`-equal to the previous one, so React would
+  // treat the snapshot as perpetually changed and loop forever ("The result
+  // of getSnapshot should be cached" → "Maximum update depth exceeded").
+  // `useShallow` element-compares and returns the cached array when unchanged.
+  const values = useParameterStore(
+    useShallow((st) => {
+      const out: number[] = new Array(visible);
+      if (!nodeId) {
+        for (let i = 0; i < visible; ++i) out[i] = NaN;
+        return out;
+      }
+      const prefix = `${nodeId}:`;
+      for (let i = 0; i < visible; ++i) {
+        const v = st.values[prefix + i];
+        out[i] = typeof v === "number" ? v : NaN;
+      }
       return out;
-    }
-    const prefix = `${nodeId}:`;
-    for (let i = 0; i < visible; ++i) {
-      const v = st.values[prefix + i];
-      out[i] = typeof v === "number" ? v : NaN;
-    }
-    return out;
-  });
+    }),
+  );
 
   const params: MiniParam[] = values.map((v, i) => ({
     name: synthName(i),

@@ -41,6 +41,7 @@
 #include "verbose_log.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <vector>
@@ -857,15 +858,29 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
     registerFn (
         Identifier ("elementGetGraphState"),
         [this, postCompletion] (const Array<var>&, auto completion) {
-            const String j (buildActiveGraphJson());
-            postCompletion (completion, j);
+            // Structured var, NOT a pre-serialised JSON string — same JUCE
+            // emitCompletionEvent O(n²) String::replace quote-escape hazard as
+            // elementGetPluginList (see below). A large session (e.g. a ~2 MB
+            // graph) escaped every interior quote → ~100% main-thread spin in
+            // replaceSection on load. A var serialises structurally (quotes are
+            // not escaped) → O(n). The React consumers already accept
+            // object-or-string (useJuceBridge onGraphState + the three
+            // elementGetGraphState invoke sites).
+            postCompletion (completion, JSON::parse (buildActiveGraphJson()));
         });
 
     registerFn (
         Identifier ("elementGetPluginList"),
         [this, postCompletion] (const Array<var>&, auto completion) {
-            const String j (buildPluginListJson());
-            postCompletion (completion, j);
+            // Return a structured var, NOT a pre-serialised JSON string. JUCE's
+            // emitCompletionEvent does JSON::toString(result).replace("\\","\\\\"),
+            // and juce::String::replace is O(n × matches). A JSON *string* result
+            // gets every internal quote escaped to \", so matches == quote-count
+            // (~28k for the 1996-plugin, ~700 KB payload) → ~150 s main-thread
+            // hang on boot. A var serialises structurally (quotes are not
+            // escaped) → ~0 backslashes → O(n). The React store already accepts
+            // object-or-string (usePluginBrowserStore.ts).
+            postCompletion (completion, JSON::parse (buildPluginListJson()));
         });
 
     registerFn (
@@ -874,8 +889,10 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             String uuid;
             if (args.size() > 0)
                 uuid = args[0].toString();
-            const String j (buildNodeParametersJson (uuid));
-            postCompletion (completion, j);
+            // Structured var, not JSON string — same JUCE emitEvent O(n²) escape
+            // hazard as elementGetPluginList; matters for high-parameter-count
+            // plugins (Kontakt). nativeGetNodeParameters accepts object-or-string.
+            postCompletion (completion, JSON::parse (buildNodeParametersJson (uuid)));
         });
 
     registerFn (
@@ -906,7 +923,15 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             DynamicObject::Ptr root (new DynamicObject());
 
             // CPU — fraction 0..1 of the audio thread (matches content.cpp:314).
-            const double cpuFrac = context.devices().getCpuUsage();
+            // Guard against NaN/Inf — JUCE's JSON serializer emits NaN as the
+            // literal token "NaN", which is not valid JSON. JSON.parse on the
+            // JS side throws, nativeGetEngineSnapshot swallows the error, and
+            // the React store silently keeps its zero defaults. That presents
+            // to the user as a permanently 0.0% / "engine stopped" indicator
+            // even though audio is live.
+            double cpuFrac = context.devices().getCpuUsage();
+            if (! std::isfinite (cpuFrac))
+                cpuFrac = 0.0;
             root->setProperty ("cpu", cpuFrac);
 
             // Audio device — sample rate, buffer, name, latency.
@@ -914,22 +939,31 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             if (auto* dev = context.devices().getCurrentAudioDevice())
             {
                 engineRunning = true;
-                const double sr = dev->getCurrentSampleRate();
-                const int buf = dev->getCurrentBufferSizeSamples();
+                double sr = dev->getCurrentSampleRate();
+                if (! std::isfinite (sr) || sr < 0.0)
+                    sr = 0.0;
+                const int buf = juce::jmax (0, dev->getCurrentBufferSizeSamples());
                 root->setProperty ("sampleRate", sr);
                 root->setProperty ("bufferSize", buf);
                 root->setProperty ("deviceName", dev->getName());
 
-                const int inLat = dev->getInputLatencyInSamples();
-                const int outLat = dev->getOutputLatencyInSamples();
+                const int inLat = juce::jmax (0, dev->getInputLatencyInSamples());
+                const int outLat = juce::jmax (0, dev->getOutputLatencyInSamples());
                 root->setProperty ("inputLatencySamples", inLat);
                 root->setProperty ("outputLatencySamples", outLat);
                 if (sr > 0.0)
                 {
+                    const double inMs = (double) inLat / sr * 1000.0;
+                    const double outMs = (double) outLat / sr * 1000.0;
                     root->setProperty ("deviceLatencyInputMs",
-                                       (double) inLat / sr * 1000.0);
+                                       std::isfinite (inMs) ? inMs : 0.0);
                     root->setProperty ("deviceLatencyOutputMs",
-                                       (double) outLat / sr * 1000.0);
+                                       std::isfinite (outMs) ? outMs : 0.0);
+                }
+                else
+                {
+                    root->setProperty ("deviceLatencyInputMs", 0.0);
+                    root->setProperty ("deviceLatencyOutputMs", 0.0);
                 }
             }
             else
@@ -969,10 +1003,15 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                     transportTimecode = String (bars + 1) + "." + String (beats + 1) + "." + String (subBeats);
                 }
             }
+            // Tempo / transportFrame both serialized as JSON numbers — guard
+            // against NaN/Inf for the same JSON-parse-failure reason as cpu.
+            if (! std::isfinite (tempo) || tempo <= 0.0)
+                tempo = 120.0;
             root->setProperty ("transportPlaying", transportPlaying);
             root->setProperty ("transportRecording", transportRecording);
             root->setProperty ("tempoBpm", tempo);
-            root->setProperty ("transportFrame", (double) transportFrame);
+            root->setProperty ("transportFrame",
+                               (double) juce::jmax<int64_t> (0, transportFrame));
             root->setProperty ("transportTimecode", transportTimecode);
 
             Array<var> ts;

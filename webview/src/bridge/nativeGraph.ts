@@ -279,9 +279,11 @@ export async function nativeGetNodeParameters(
   nodeId: string,
 ): Promise<{ parameters: NodeParameterRow[] }> {
   const r = await invokeElementNative("elementGetNodeParameters", [nodeId]);
-  if (typeof r !== "string") return { parameters: [] };
+  if (r == null) return { parameters: [] };
   try {
-    const o = JSON.parse(r) as { parameters?: NodeParameterRow[] };
+    const o = (typeof r === "string" ? JSON.parse(r) : r) as {
+      parameters?: NodeParameterRow[];
+    };
     return { parameters: Array.isArray(o.parameters) ? o.parameters : [] };
   } catch (err) {
     logBridgeError("nativeGetNodeParameters.parse", err);
