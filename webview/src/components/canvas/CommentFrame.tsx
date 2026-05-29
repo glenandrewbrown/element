@@ -2,7 +2,17 @@ import { memo } from "react";
 import { type NodeProps } from "@xyflow/react";
 import type { CommentBoxData } from "../../data/types";
 
-/** Neumorphic comment / grouping frame (blueprint: same chassis, no glass). */
+/**
+ * CommentFrame — a labelled, colour-coded grouping frame drawn behind Blocks on
+ * the Board (the "comment box"). Registered as the `comment` React Flow node
+ * type; rendered for every entry in `useGraphStore.commentBoxes`, not mounted
+ * directly. Use it to visually annotate and cluster regions of a large Board
+ * (e.g. "Drum Bus", "FX Chain") so an expert can navigate signal flow at a
+ * glance. It is an inset (pressed-in) neumorphic surface — same dark chassis as
+ * the rest of the UI, never glass — and sits at z-index 0 so Blocks render on
+ * top. Props are React Flow's injected `NodeProps`; `data` is cast to
+ * `CommentBoxData` (label + frame colour).
+ */
 function CommentFrameInner({ data }: NodeProps) {
   const c = data as unknown as CommentBoxData;
   const raw = c.color?.replace(/^#/, "") ?? "4a4a52";

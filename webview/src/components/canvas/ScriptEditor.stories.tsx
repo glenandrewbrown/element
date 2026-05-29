@@ -14,7 +14,15 @@ import { ScriptEditor } from "./ScriptEditor";
 const meta = {
   title: "Canvas/ScriptEditor",
   component: ScriptEditor,
-  parameters: { layout: "fullscreen" },
+  parameters: {
+    layout: "fullscreen",
+    docs: {
+      description: {
+        component:
+          "ScriptEditor — the embedded Lua source editor for a Script (`el.Script`) Block. A line-numbered textarea with Cmd/Ctrl+Enter to Save & Compile, inline compile status, and a live ~1 Hz variable inspector. Source + runtime state load over the native bridge for a given nodeId; without a JUCE backend (as in Storybook) it mounts with an empty editor — variables strip and compile status require live backend responses and can't be seeded from a store.",
+      },
+    },
+  },
 } satisfies Meta<typeof ScriptEditor>;
 
 export default meta;
@@ -29,11 +37,27 @@ const framed = (Story: React.ComponentType) => (
 // Default editor — empty source, Save & Compile enabled.
 export const Default: Story = {
   args: { nodeId: "script-1" },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Default editor — empty source, line numbers, Save & Compile + bottom hint. The baseline embedded-in-Inspector state.",
+      },
+    },
+  },
   decorators: [(Story) => framed(Story)],
 };
 
 // With a close button in the top bar.
 export const WithCloseButton: Story = {
   args: { nodeId: "script-1", onClose: () => {} },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "With onClose supplied — adds the × close button to the top bar, for when the editor is opened as a dismissible pane rather than a persistent Inspector tab.",
+      },
+    },
+  },
   decorators: [(Story) => framed(Story)],
 };

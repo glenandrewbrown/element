@@ -134,7 +134,15 @@ function seedEmpty() {
 const meta = {
   title: "Layout/ToolPalette",
   component: ToolPalette,
-  parameters: { layout: "fullscreen" },
+  parameters: {
+    layout: "fullscreen",
+    docs: {
+      description: {
+        component:
+          "Edit-mode left browser for adding Blocks: tabs between a Plugins view (favourites, recents, molecules, category-filtered AU/VST3/CLAP/LV2 list) and a Projects view (host-scanned session files), with a Board outline, .elg import/export, recent sessions, and a live CPU meter. Reads usePluginBrowserStore, useSessionStore, useHostExtrasStore, and usePerformStore; the mount refreshPlugins() is overridden with a no-op so seeded plugins survive.",
+      },
+    },
+  },
   tags: ["autodocs"],
 } satisfies Meta<typeof ToolPalette>;
 
@@ -143,6 +151,14 @@ type Story = StoryObj<typeof meta>;
 
 // ── Populated: plugins, favourites, recents, molecules ──
 export const Populated: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "The fully-stocked browser an expert user works from: scanned plugins, favourites, recents, molecules, a Board outline, and moderate CPU — the primary add-a-Block workflow.",
+      },
+    },
+  },
   decorators: [
     (Story) => {
       seedPopulated();
@@ -157,6 +173,14 @@ export const Populated: Story = {
 
 // ── Empty: no plugins scanned yet ──
 export const Empty: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "First-run state with nothing scanned: shows the EmptyState illustration and the 'Open Preferences' call-to-action to scan plugins.",
+      },
+    },
+  },
   decorators: [
     (Story) => {
       seedEmpty();
@@ -171,6 +195,14 @@ export const Empty: Story = {
 
 // ── Plugins only, no molecules or recents ──
 export const PluginsNoExtras: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Plugins scanned but no favourites, recents, or molecules yet: the bare plugin list + category filters, the state right after a first scan.",
+      },
+    },
+  },
   decorators: [
     (Story) => {
       seedEmpty();
@@ -194,6 +226,14 @@ export const PluginsNoExtras: Story = {
 
 // ── High CPU load ──
 export const HighCpu: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Fully populated but with CPU at ~91%: the footer meter fills toward the danger zone, the cue that the Project is near overload while browsing.",
+      },
+    },
+  },
   decorators: [
     (Story) => {
       seedPopulated();

@@ -37,7 +37,15 @@ function seed(node: BlockData) {
 const meta = {
   title: "Canvas/NodeContextMenu",
   component: NodeContextMenu,
-  parameters: { layout: "fullscreen" },
+  parameters: {
+    layout: "fullscreen",
+    docs: {
+      description: {
+        component:
+          "NodeContextMenu — the right-click action menu for a Block: rename, bypass/enable, mute/unmute (output and input), duplicate, delete (each with its shortcut). With 2+ Blocks selected it also surfaces align tools, and at 3+ distribute tools. Mount it transiently from GraphCanvas at the click position. Stories seed useGraphStore.nodes and wrap it in ReactFlowProvider (it calls useReactFlow); the single-selection menu is the representative state.",
+      },
+    },
+  },
 } satisfies Meta<typeof NodeContextMenu>;
 
 export default meta;
@@ -54,6 +62,14 @@ const framed = (Story: React.ComponentType) => (
 // Default block menu — Rename / Bypass / Mute / Mute Input / Duplicate / Delete.
 export const Default: Story = {
   args: { nodeId: NODE_ID, position: { x: 80, y: 40 }, onClose: () => {} },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Single-selection menu on an active Block — the full per-Block action set with default (not-yet-toggled) labels. The primary in-use state.",
+      },
+    },
+  },
   decorators: [
     (Story) => {
       seed(makeNode());
@@ -65,6 +81,14 @@ export const Default: Story = {
 // Bypassed + muted block — toggle items show their active "Enable" / "Unmute" labels.
 export const BypassedAndMuted: Story = {
   args: { nodeId: NODE_ID, position: { x: 80, y: 40 }, onClose: () => {} },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Bypassed + muted Block — confirms the toggle items flip to their active \"Enable\" / \"Unmute\" labels (orange accent) so the current engine state is legible from the menu.",
+      },
+    },
+  },
   decorators: [
     (Story) => {
       seed(makeNode({ name: "Valhalla Reverb", category: "modifier", bypassed: true, muted: true }));

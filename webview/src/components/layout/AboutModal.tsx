@@ -35,7 +35,22 @@ type CheckStatus =
   | { kind: "requested" }
   | { kind: "error"; message: string };
 
-export function AboutModal({ onClose }: { onClose: () => void }) {
+export interface AboutModalProps {
+  /**
+   * Called when the user dismisses the modal (Close button or ESC key). The
+   * parent owns visibility — this component does not unmount itself.
+   */
+  onClose: () => void;
+}
+
+/**
+ * Neumorphic "About Element" modal with a Check-for-updates affordance. Show it
+ * from the app/Help menu when the user wants the Project's build version,
+ * licence line, or to trigger the host's native updater. The bridge call is
+ * fire-and-forget: the actual update result surfaces in a separate native
+ * window, so the modal tracks idle / checking / requested / error states only.
+ */
+export function AboutModal({ onClose }: AboutModalProps) {
   const [info, setInfo] = useState<AboutInfo | null>(null);
   const [status, setStatus] = useState<CheckStatus>({ kind: "idle" });
 

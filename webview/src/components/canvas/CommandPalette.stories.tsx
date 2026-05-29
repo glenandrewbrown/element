@@ -93,7 +93,15 @@ function seed(opts: {
 const meta = {
   title: "Canvas/CommandPalette",
   component: CommandPalette,
-  parameters: { layout: "fullscreen" },
+  parameters: {
+    layout: "fullscreen",
+    docs: {
+      description: {
+        component:
+          "CommandPalette — the Cmd+K \"search everything\" overlay. One keyboard-first entry point to actions (undo, save, bypass all, toggle Edit/Perform), Blocks on the Board, scannable plugins, Scenes, and host settings — grouped and runnable without leaving the keyboard. Results are aggregated live from useGraphStore, usePluginBrowserStore, and usePerformStore, which these stories seed directly.",
+      },
+    },
+  },
 } satisfies Meta<typeof CommandPalette>;
 
 export default meta;
@@ -101,6 +109,14 @@ type Story = StoryObj<typeof meta>;
 
 export const Open: Story = {
   args: { open: true, onClose: () => {} },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Open palette with a populated Board — shows grouped Actions / Blocks / Plugins / Scenes / Settings with favourites and recents ordered first. The primary in-use state.",
+      },
+    },
+  },
   decorators: [
     (Story) => {
       seed();
@@ -115,6 +131,14 @@ export const Open: Story = {
 
 export const EmptyResults: Story = {
   args: { open: true, onClose: () => {} },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Empty Project — no Blocks, plugins, or Scenes seeded. Confirms the palette shows the \"No results\" state rather than fabricated entries.",
+      },
+    },
+  },
   decorators: [
     (Story) => {
       seed({ plugins: [], blocks: [], scenes: [] });

@@ -54,8 +54,16 @@ const nodeTypes = { block: Block };
 const meta = {
   title: "Canvas/BlockExpandedHeight",
   component: Block,
-  parameters: { layout: "fullscreen" },
-  tags: ["!autodocs"],
+  parameters: {
+    layout: "fullscreen",
+    docs: {
+      description: {
+        component:
+          "Measurement-only harness for the BLOCK-OVERLAP (LAYOUT-P1) layout fix — not a usage pattern. Forces the store into the expanded zoom tier and renders the tallest Block variant so `.storybook/measure-block.mjs` can assert the expanded modifier height stays within the column-gap budget. Excluded from the agent manifest.",
+      },
+    },
+  },
+  tags: ["!autodocs", "!manifest"],
 } as Meta<typeof Block>;
 
 export default meta;

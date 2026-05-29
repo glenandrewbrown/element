@@ -7,6 +7,12 @@ const meta = {
   component: NeuToggle,
   parameters: {
     layout: "centered",
+    docs: {
+      description: {
+        component:
+          "NeuToggle — a compact neumorphic on/off switch (ARIA `role=\"switch\"`) for binary settings: bypass, mute, snap-to-grid, monitor on/off, and similar toggles in panels and Perform-mode dashboards. The active track lights up in the chosen semantic hue (blue = generator, orange = modifier, teal = logic) while the off state is recessed/inset, so its state reads at a glance.",
+      },
+    },
   },
   tags: ["autodocs"],
   argTypes: {
@@ -26,6 +32,13 @@ export const Default: Story = {
     color: "blue",
     onChange: () => {},
   },
+  parameters: {
+    docs: {
+      description: {
+        story: "Off state — recessed inset track, the resting state of a binary setting.",
+      },
+    },
+  },
 };
 
 export const ActiveBlue: Story = {
@@ -33,6 +46,13 @@ export const ActiveBlue: Story = {
     active: true,
     color: "blue",
     onChange: () => {},
+  },
+  parameters: {
+    docs: {
+      description: {
+        story: "On state with blue generator accent — the lit track signals an engaged setting.",
+      },
+    },
   },
 };
 
@@ -42,6 +62,13 @@ export const ActiveOrange: Story = {
     color: "orange",
     onChange: () => {},
   },
+  parameters: {
+    docs: {
+      description: {
+        story: "On state with orange modifier accent — match the hue to the controlled Block's role.",
+      },
+    },
+  },
 };
 
 export const ActiveTeal: Story = {
@@ -50,9 +77,17 @@ export const ActiveTeal: Story = {
     color: "teal",
     onChange: () => {},
   },
+  parameters: {
+    docs: {
+      description: {
+        story: "On state with teal logic accent — e.g. a logic/MIDI-related toggle.",
+      },
+    },
+  },
 };
 
 export const VariantMatrix: Story = {
+  tags: ["!manifest"],
   args: { active: false, onChange: () => {} },
   render: () => (
     <div className="flex flex-col gap-4 p-6">
@@ -75,6 +110,14 @@ export const VariantMatrix: Story = {
 
 export const Interactive: Story = {
   args: { active: false, onChange: () => {} },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Live controlled usage: each switch flips its own boolean state — the real settings/dashboard binding pattern.",
+      },
+    },
+  },
   render: () => {
     const [blue, setBlue] = useState(false);
     const [orange, setOrange] = useState(true);

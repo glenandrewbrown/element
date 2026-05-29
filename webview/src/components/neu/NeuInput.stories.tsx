@@ -7,6 +7,12 @@ const meta = {
   component: NeuInput,
   parameters: {
     layout: "centered",
+    docs: {
+      description: {
+        component:
+          "NeuInput — a neumorphic single-line text input, pressed into the chassis to signal an editable slot. Use for search boxes, rename-in-place, and short text entry (Block names, Project names, filter queries). Controlled via `value`/`onChange`; forwards its ref so callers can focus it programmatically (e.g. autofocusing a QuickAdd or rename field).",
+      },
+    },
   },
   tags: ["autodocs"],
 } satisfies Meta<typeof NeuInput>;
@@ -18,6 +24,13 @@ export const Default: Story = {
   args: {
     placeholder: "Search blocks…",
   },
+  parameters: {
+    docs: {
+      description: {
+        story: "Baseline empty field — the common Block-search input with placeholder text.",
+      },
+    },
+  },
 };
 
 export const WithValue: Story = {
@@ -26,15 +39,30 @@ export const WithValue: Story = {
     placeholder: "Name",
     onChange: () => {},
   },
+  parameters: {
+    docs: {
+      description: {
+        story: "Populated field — a controlled value, e.g. a Block name during rename-in-place.",
+      },
+    },
+  },
 };
 
 export const Placeholder: Story = {
   args: {
     placeholder: "Enter project name",
   },
+  parameters: {
+    docs: {
+      description: {
+        story: "Placeholder-only state prompting for entry — e.g. naming a new Project.",
+      },
+    },
+  },
 };
 
 export const VariantMatrix: Story = {
+  tags: ["!manifest"],
   args: {},
   parameters: { layout: "padded" },
   render: () => (
@@ -49,6 +77,14 @@ export const VariantMatrix: Story = {
 
 export const Interactive: Story = {
   args: {},
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Live controlled usage: typing drives state — the real search/rename binding pattern with a character count.",
+      },
+    },
+  },
   render: () => {
     const [val, setVal] = useState("");
     return (

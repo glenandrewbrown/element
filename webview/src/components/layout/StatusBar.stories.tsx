@@ -9,7 +9,15 @@ import { useEngineSnapshotStore } from "../../stores/useEngineSnapshotStore";
 const meta = {
   title: "Layout/StatusBar",
   component: StatusBar,
-  parameters: { layout: "fullscreen" },
+  parameters: {
+    layout: "fullscreen",
+    docs: {
+      description: {
+        component:
+          "Slim 24px global footer: audio device, engine RUNNING/STOPPED, sample rate, buffer, latency, severity-coloured CPU, and transport timecode. Reads liveHealth from usePerformStore and engineRunning from useEngineSnapshotStore (falling back to isPlaying); seed both per story. Known issue F-04: the SAMPLE field can render the version string instead of the sample rate — not fixed here.",
+      },
+    },
+  },
   tags: ["autodocs"],
 } satisfies Meta<typeof StatusBar>;
 
@@ -52,6 +60,14 @@ function seedHealth(overrides: {
 
 // Primary: engine running with realistic device info and healthy CPU.
 export const Running: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Healthy live state — engine running, 48kHz/256, low latency, sub-50% CPU (logic green). The bar's normal on-stage appearance.",
+      },
+    },
+  },
   decorators: [
     (Story) => {
       seedHealth({
@@ -70,6 +86,14 @@ export const Running: Story = {
 
 // Stopped: engine not running, all fields at defaults.
 export const Stopped: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Engine idle with no host data: STOPPED indicator and em-dash fallbacks for device/rate/buffer/latency — what the bar shows before audio is open.",
+      },
+    },
+  },
   decorators: [
     (Story) => {
       seedHealth({ engineRunning: false });
@@ -80,6 +104,14 @@ export const Stopped: Story = {
 
 // High CPU: > 80% triggers text-error colouring.
 export const HighCpu: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "CPU above 80% — the percentage turns error-red, the dropout-risk warning threshold.",
+      },
+    },
+  },
   decorators: [
     (Story) => {
       seedHealth({
@@ -98,6 +130,14 @@ export const HighCpu: Story = {
 
 // Medium CPU: 51–80% triggers text-modifier colouring.
 export const MediumCpu: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "CPU in the 51–80% band — the percentage turns modifier-orange, the mid-severity caution between green and red.",
+      },
+    },
+  },
   decorators: [
     (Story) => {
       seedHealth({
@@ -117,6 +157,14 @@ export const MediumCpu: Story = {
 // isPlaying fallback (BUG-014): engineRunning=false but isPlaying=true
 // should still show RUNNING to match Perform header behaviour.
 export const IsPlayingFallback: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Regression guard (BUG-014): snapshot engineRunning=false but the perform store reports isPlaying=true, so the bar must still read RUNNING to stay consistent with the Perform header.",
+      },
+    },
+  },
   decorators: [
     (Story) => {
       seedHealth({
@@ -136,6 +184,14 @@ export const IsPlayingFallback: Story = {
 
 // Default device: clock="—" shows "Default Device" fallback.
 export const DefaultDevice: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Engine running but no named clock (clock='—'): verifies the 'Default Device' label fallback.",
+      },
+    },
+  },
   decorators: [
     (Story) => {
       seedHealth({

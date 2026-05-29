@@ -12,6 +12,13 @@ const categoryDot: Record<string, string> = {
   logic: "bg-logic",
 };
 
+/**
+ * Perform-mode left rail giving a flat, read-only roster of every Block on the
+ * active Board, ordered top-to-bottom / left-to-right by canvas position and
+ * colour-dotted by category (generator/modifier/logic). Use it on stage to scan
+ * the signal chain at a glance and watch the live audio-device/CPU footer
+ * without diving into the Board. It surfaces state — it does not edit the graph.
+ */
 export function QuickAccess() {
   const nodes = useGraphStore(selectNodes);
   const projectName = usePerformStore(selectSessionName);

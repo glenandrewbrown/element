@@ -1,12 +1,23 @@
 import { forwardRef } from "react";
 
 interface NeuInputProps {
+  /** Placeholder shown when the field is empty (e.g. "Search blocks…"). */
   placeholder?: string;
+  /** Controlled string value. */
   value?: string;
+  /** Called with the new string on each keystroke. Omit for read-only display. */
   onChange?: (value: string) => void;
+  /** Optional className appended to the input. */
   className?: string;
 }
 
+/**
+ * Neumorphic single-line text input — a pressed-in field for search boxes,
+ * rename-in-place, and short text entry (Block names, Project names, filter
+ * queries). Forwards its ref so callers can focus it programmatically (e.g.
+ * autofocusing a QuickAdd or rename field). Inset styling signals an editable
+ * slot recessed into the chassis.
+ */
 export const NeuInput = forwardRef<HTMLInputElement, NeuInputProps>(
   function NeuInput({ placeholder, value, onChange, className = "" }, ref) {
     return (

@@ -7,6 +7,12 @@ const meta = {
   component: Icon,
   parameters: {
     layout: "centered",
+    docs: {
+      description: {
+        component:
+          "Icon — the canonical icon component for the Element webview. Renders a Lucide glyph by export name from an explicit allowlist (kept static so the bundler tree-shakes unused icons). Single-tone, 1.5px stroke, 24×24 grid. `tone` applies a semantic hue (audio/midi/cv/primary/secondary). Decorative by default (`aria-hidden`); pass `aria-label` for content icons. Unknown names render a HelpCircle fallback. Use it for every icon across toolbars, panels, and Blocks.",
+      },
+    },
   },
   tags: ["autodocs"],
   argTypes: {
@@ -29,6 +35,14 @@ export const Default: Story = {
     tone: "audio",
     strokeWidth: 1.5,
   },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Baseline usage — a named Lucide glyph at the brand 1.5px stroke with an audio (blue) tone applied.",
+      },
+    },
+  },
 };
 
 export const UnknownFallback: Story = {
@@ -36,6 +50,14 @@ export const UnknownFallback: Story = {
     name: "ThisIconDoesNotExist",
     size: 24,
     strokeWidth: 1.5,
+  },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Resilience case: an unknown `name` renders the HelpCircle fallback (and warns once in dev) instead of crashing.",
+      },
+    },
   },
 };
 
@@ -86,6 +108,7 @@ const TONE_LABELS: Record<IconTone, string> = {
 };
 
 export const AllIcons: Story = {
+  tags: ["!manifest"],
   args: { name: "Play" },
   parameters: { layout: "padded" },
   render: () => (
@@ -112,6 +135,7 @@ export const AllIcons: Story = {
 };
 
 export const ToneMatrix: Story = {
+  tags: ["!manifest"],
   args: { name: "AudioWaveform" },
   parameters: { layout: "padded" },
   render: () => (
@@ -135,6 +159,7 @@ export const ToneMatrix: Story = {
 };
 
 export const SizeMatrix: Story = {
+  tags: ["!manifest"],
   args: { name: "AudioWaveform" },
   parameters: { layout: "padded" },
   render: () => (
@@ -150,6 +175,7 @@ export const SizeMatrix: Story = {
 };
 
 export const UnknownFallbackGrid: Story = {
+  tags: ["!manifest"],
   args: { name: "BadName" },
   parameters: { layout: "padded" },
   render: () => (

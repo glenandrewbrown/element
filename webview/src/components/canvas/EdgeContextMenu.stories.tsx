@@ -30,7 +30,15 @@ function seed(busName?: string) {
 const meta = {
   title: "Canvas/EdgeContextMenu",
   component: EdgeContextMenu,
-  parameters: { layout: "fullscreen" },
+  parameters: {
+    layout: "fullscreen",
+    docs: {
+      description: {
+        component:
+          "EdgeContextMenu — the right-click menu for a Cable, surfacing the wireless-patching operations: Make Wireless (move to a named bus), Rename Bus, Make Wired (restore the drawn curve), and Delete Cable. Which items appear depends on whether the Cable is already on a bus (useBusStore). Mount it transiently from GraphCanvas at the click position; stories seed useGraphStore.edges + useBusStore so the menu has a Cable to act on.",
+      },
+    },
+  },
 } satisfies Meta<typeof EdgeContextMenu>;
 
 export default meta;
@@ -39,6 +47,14 @@ type Story = StoryObj<typeof meta>;
 // Wired cable — offers "Make Wireless…".
 export const Wired: Story = {
   args: { edgeId: EDGE_ID, position: { x: 80, y: 60 }, onClose: () => {} },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Wired Cable (no bus) — the menu offers \"Make Wireless…\" + \"Delete Cable\". The entry point into wireless patching.",
+      },
+    },
+  },
   decorators: [
     (Story) => {
       seed();
@@ -54,6 +70,14 @@ export const Wired: Story = {
 // Wireless cable — offers "Rename Bus" + "Make Wired".
 export const Wireless: Story = {
   args: { edgeId: EDGE_ID, position: { x: 80, y: 60 }, onClose: () => {} },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Wireless Cable (on bus \"Reverb Send A\") — the menu swaps to \"Rename Bus\" + \"Make Wired\", reflecting the alternate state of the same component.",
+      },
+    },
+  },
   decorators: [
     (Story) => {
       seed("Reverb Send A");

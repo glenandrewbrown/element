@@ -87,7 +87,15 @@ const demoNodes = [
 const meta = {
   title: "Layout/QuickAccess",
   component: QuickAccess,
-  parameters: { layout: "fullscreen" },
+  parameters: {
+    layout: "fullscreen",
+    docs: {
+      description: {
+        component:
+          "Perform-mode left rail: a flat, read-only roster of every Block on the active Board, ordered by canvas position and category-dotted (generator/modifier/logic), with a live audio-device/CPU footer. Reads useGraphStore.nodes and usePerformStore (sessionName, liveHealth); seed both per story.",
+      },
+    },
+  },
   tags: ["autodocs"],
 } satisfies Meta<typeof QuickAccess>;
 
@@ -96,6 +104,14 @@ type Story = StoryObj<typeof meta>;
 
 // ── Populated board with several blocks ──
 export const WithBlocks: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "The real on-stage use: a mixed chain (generator + modifiers + logic) with one bypassed Block, showing the category dots, format/bypass sub-labels, and a healthy CPU footer.",
+      },
+    },
+  },
   decorators: [
     (Story) => {
       useGraphStore.setState((s) => ({ ...s, nodes: demoNodes, edges: [] }));
@@ -114,6 +130,14 @@ export const WithBlocks: Story = {
 
 // ── Empty board (no blocks) ──
 export const Empty: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Fresh Project with nothing on the Board: shows the 'No blocks yet' prompt directing the user to the palette or QuickAdd.",
+      },
+    },
+  },
   decorators: [
     (Story) => {
       useGraphStore.setState((s) => ({ ...s, nodes: [], edges: [] }));
@@ -132,6 +156,14 @@ export const Empty: Story = {
 
 // ── High CPU warning state ──
 export const HighCpu: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "CPU above the 85% threshold: the footer status dot turns error-red, the cue that the Project is overloading the audio device.",
+      },
+    },
+  },
   decorators: [
     (Story) => {
       useGraphStore.setState((s) => ({ ...s, nodes: demoNodes, edges: [] }));

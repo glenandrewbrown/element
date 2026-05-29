@@ -61,7 +61,15 @@ const criticalAlert: AlertData = {
 const meta = {
   title: "Layout/LiveHealth",
   component: LiveHealth,
-  parameters: { layout: "fullscreen" },
+  parameters: {
+    layout: "fullscreen",
+    docs: {
+      description: {
+        component:
+          "Read-only engine vitals panel: CPU load bar, input/output metering ladders, buffer size, latency, and any active alerts. Use it as a persistent monitor so the user can catch dropouts or runaway CPU mid-session. Reflects the live engine snapshot from the perform store; warning/critical alerts render inline.",
+      },
+    },
+  },
 } satisfies Meta<typeof LiveHealth>;
 
 export default meta;
@@ -89,6 +97,14 @@ export const Nominal: Story = {
     },
   ],
   render: () => framed,
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Healthy session: low CPU, mid-level output meter, no alerts — the all-clear state the user expects most of the time.",
+      },
+    },
+  },
 };
 
 export const Warning: Story = {
@@ -107,6 +123,14 @@ export const Warning: Story = {
     },
   ],
   render: () => framed,
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Elevated CPU with one warning alert (heavy reverb) — shows the inline alert card so the user can act before it becomes a dropout.",
+      },
+    },
+  },
 };
 
 export const Critical: Story = {
@@ -125,6 +149,14 @@ export const Critical: Story = {
     },
   ],
   render: () => framed,
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Near-overload: CPU at 96%, output peaking, and multiple stacked alerts including a buffer underrun — the worst-case state the panel must surface clearly.",
+      },
+    },
+  },
 };
 
 export const Empty: Story = {
@@ -143,4 +175,12 @@ export const Empty: Story = {
     },
   ],
   render: () => framed,
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Engine idle / no data: zeroed CPU, buffer and latency and a flat output meter — how the panel reads before audio is running.",
+      },
+    },
+  },
 };

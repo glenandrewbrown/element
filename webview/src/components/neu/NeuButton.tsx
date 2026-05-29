@@ -12,13 +12,29 @@ const sizeStyles = {
 } as const;
 
 interface NeuButtonProps {
+  /** Button label / content (typically text, optionally an <Icon />). */
   children: ReactNode;
+  /** Click handler. Omit for a non-interactive, display-only button. */
   onClick?: () => void;
+  /**
+   * Visual role. `default` is a neutral extruded button; `active` adds the
+   * teal logic accent + status dot for engaged toggles (e.g. snap-to-grid on);
+   * `panic` is the always-visible red emergency control (e.g. all-notes-off).
+   */
   variant?: "default" | "panic" | "active";
+  /** Size tier; `sm` for dense toolbars, `md` (default) for primary actions. */
   size?: "sm" | "md";
+  /** Optional className appended to the button. */
   className?: string;
 }
 
+/**
+ * Neumorphic action button — the workhorse control of the Element chassis.
+ * Extrudes from the surface at rest and presses INTO it on click. Use for any
+ * command/action in toolbars, panels, and dashboards; reach for `variant="panic"`
+ * for the emergency MIDI-panic control and `variant="active"` to signal an
+ * engaged toggle state rather than swapping the button out.
+ */
 export function NeuButton({
   children,
   onClick,

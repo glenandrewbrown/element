@@ -8,7 +8,15 @@ import { NeuPromptModal } from "./NeuPromptModal";
 const meta = {
   title: "Layout/NeuPromptModal",
   component: NeuPromptModal,
-  parameters: { layout: "fullscreen" },
+  parameters: {
+    layout: "fullscreen",
+    docs: {
+      description: {
+        component:
+          "Neumorphic single-field prompt modal — the V3.0 replacement for the browser's window.prompt(). Use it for short, blocking text entry inside the Project chassis (naming a preset, renaming a Block, creating a Container). Controlled via `open`; confirms on Enter or Confirm, cancels on ESC. Backdrop click is intentionally not a dismiss so destructive ops require an explicit choice.",
+      },
+    },
+  },
   tags: ["autodocs"],
   argTypes: {
     onConfirm: { action: "confirmed" },
@@ -32,6 +40,14 @@ export const Open: Story = {
     onConfirm: () => {},
     onCancel: () => {},
   },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Canonical use: a Save-preset prompt opened with a pre-filled, pre-selected default value so the user can overwrite immediately. Confirm is enabled because the field is non-empty.",
+      },
+    },
+  },
 };
 
 // Empty input — confirm button should be disabled until text is entered.
@@ -45,6 +61,14 @@ export const EmptyInput: Story = {
     cancelLabel: "Cancel",
     onConfirm: () => {},
     onCancel: () => {},
+  },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Opened with no default value — the Confirm button is disabled until the user types, preventing an empty (non-actionable) submission.",
+      },
+    },
   },
 };
 
@@ -60,6 +84,14 @@ export const NoDescription: Story = {
     onConfirm: () => {},
     onCancel: () => {},
   },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "The `description` prop omitted — the helper line collapses and the title sits directly above the input. The minimal layout for a self-explanatory prompt.",
+      },
+    },
+  },
 };
 
 // Closed state — renders nothing (verifies open=false guard).
@@ -69,6 +101,14 @@ export const Closed: Story = {
     title: "Save Preset",
     onConfirm: () => {},
     onCancel: () => {},
+  },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "open=false — the component renders nothing. Documents that the parent owns visibility and an unopened modal has no DOM footprint.",
+      },
+    },
   },
 };
 
@@ -113,4 +153,12 @@ export const Interactive: Story = {
     onCancel: () => {},
   },
   render: () => <InteractiveWrapper />,
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Full open/confirm/cancel cycle driven by a trigger button — exercises the real controlled-component flow (focus, Enter-to-confirm, ESC-to-cancel) and echoes the last confirmed value.",
+      },
+    },
+  },
 };

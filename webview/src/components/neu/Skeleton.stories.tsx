@@ -6,6 +6,12 @@ const meta = {
   component: Skeleton,
   parameters: {
     layout: "centered",
+    docs: {
+      description: {
+        component:
+          "Skeleton — a neumorphic loading placeholder for content that is still resolving (plugin lists, Block cards, panels). Renders one of three variants (`block`, `text`, `circle`) on the recessed pressed surface with a subtle shimmer, so it reads as scaffolding rather than raised content. Announced via `role=\"status\"`. Compose multiple Skeletons to mirror the shape of the real content while it loads.",
+      },
+    },
   },
   tags: ["autodocs"],
   argTypes: {
@@ -28,12 +34,26 @@ export const Default: Story = {
     width: 200,
     height: 40,
   },
+  parameters: {
+    docs: {
+      description: {
+        story: "Block variant — a rounded rectangle placeholder for a thumbnail, card, or panel region.",
+      },
+    },
+  },
 };
 
 export const TextVariant: Story = {
   args: {
     variant: "text",
     width: 160,
+  },
+  parameters: {
+    docs: {
+      description: {
+        story: "Text variant — a single-line placeholder for a label or paragraph line.",
+      },
+    },
   },
 };
 
@@ -42,9 +62,17 @@ export const CircleVariant: Story = {
     variant: "circle",
     size: 40,
   },
+  parameters: {
+    docs: {
+      description: {
+        story: "Circle variant — for round placeholders such as an avatar or Block icon.",
+      },
+    },
+  },
 };
 
 export const VariantMatrix: Story = {
+  tags: ["!manifest"],
   args: {},
   parameters: { layout: "padded" },
   render: () => (
@@ -78,7 +106,15 @@ export const VariantMatrix: Story = {
 
 export const CardSkeleton: Story = {
   args: {},
-  parameters: { layout: "centered" },
+  parameters: {
+    layout: "centered",
+    docs: {
+      description: {
+        story:
+          "Composition pattern: Skeletons arranged to mirror a Block card (avatar, title lines, thumbnail, body, badges) while it loads.",
+      },
+    },
+  },
   render: () => (
     <div
       className="flex flex-col gap-3 p-4 rounded"
@@ -119,7 +155,15 @@ export const CardSkeleton: Story = {
 
 export const PluginListSkeleton: Story = {
   args: {},
-  parameters: { layout: "padded" },
+  parameters: {
+    layout: "padded",
+    docs: {
+      description: {
+        story:
+          "Composition pattern: repeated row Skeletons standing in for the plugin browser list during an async scan.",
+      },
+    },
+  },
   render: () => (
     <div className="flex flex-col gap-px w-72">
       {Array.from({ length: 5 }).map((_, i) => (

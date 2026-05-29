@@ -46,6 +46,13 @@ function MeterBars({ heights, color }: { heights: number[]; color: string }) {
   );
 }
 
+/**
+ * At-a-glance engine vitals panel: CPU load, I/O metering ladders, buffer size,
+ * latency, and any active alerts. Use it as a persistent monitor so the user
+ * can spot dropouts or runaway CPU mid-session without opening settings.
+ * Read-only — it reflects the live engine snapshot from the perform store and
+ * surfaces warning/critical alerts inline.
+ */
 export function LiveHealth() {
   const health = usePerformStore(selectLiveHealth);
   const alerts = usePerformStore(selectAlerts);

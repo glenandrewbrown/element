@@ -77,7 +77,15 @@ function seedPerform() {
 const meta = {
   title: "Layout/Toolbar",
   component: Toolbar,
-  parameters: { layout: "fullscreen" },
+  parameters: {
+    layout: "fullscreen",
+    docs: {
+      description: {
+        component:
+          "Top application toolbar / command centre: session file actions, undo/redo, transport (play/stop/record/rewind), tempo + tap-tempo, time signature, Edit/Perform mode switch, cable routing, and Scene add/capture. Reads useAppStore, useGraphStore, usePerformStore, useEngineSnapshotStore, and useSessionStore — seed all five per story; native bridge calls no-op without a JUCE backend.",
+      },
+    },
+  },
   tags: ["autodocs"],
 } satisfies Meta<typeof Toolbar>;
 
@@ -86,6 +94,14 @@ type Story = StoryObj<typeof meta>;
 
 // ── Edit mode, populated session ──
 export const EditMode: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "The workshop view: Edit mode with a saved Project, one Board, scenes present, and the engine running — the toolbar's default working state.",
+      },
+    },
+  },
   decorators: [
     (Story) => {
       seedEdit();
@@ -100,6 +116,14 @@ export const EditMode: Story = {
 
 // ── Edit mode, multiple boards ──
 export const EditModeMultiBoard: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Multi-Board Project with a deeper breadcrumb (Main Project › Synth Layer) and a dirty file dot — shows board-switching and nested-navigation context.",
+      },
+    },
+  },
   decorators: [
     (Story) => {
       seedEdit();
@@ -124,6 +148,15 @@ export const EditModeMultiBoard: Story = {
 
 // ── Edit mode narrow — tests responsive flex-wrap collapse ──
 export const EditModeNarrow: Story = {
+  tags: ["!manifest"],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Visual-only: same Edit state rendered at 640px to verify the responsive flex-wrap collapse of optional controls. Excluded from the agent manifest — it is a layout breakpoint test, not a distinct usage pattern.",
+      },
+    },
+  },
   decorators: [
     (Story) => {
       seedEdit();
@@ -138,6 +171,14 @@ export const EditModeNarrow: Story = {
 
 // ── Perform mode with engine live ──
 export const PerformMode: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "The stage view: Perform mode with transport playing at 128 BPM and the engine LIVE — shows the structural shift from the Edit toolbar.",
+      },
+    },
+  },
   decorators: [
     (Story) => {
       seedPerform();
@@ -152,6 +193,14 @@ export const PerformMode: Story = {
 
 // ── Perform mode, engine idle (IDLE badge) ──
 export const PerformModeIdle: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Perform mode with the engine stopped: the LIVE badge drops to IDLE and the play icon resets — the pre-performance standby state.",
+      },
+    },
+  },
   decorators: [
     (Story) => {
       seedPerform();
@@ -167,6 +216,14 @@ export const PerformModeIdle: Story = {
 
 // ── Edit mode, untitled (no file path, dirty) ──
 export const EditModeUntitled: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "A brand-new unsaved Project: no file path, dirty=true, and no scenes — verifies the 'Untitled •' display name and the empty-session toolbar.",
+      },
+    },
+  },
   decorators: [
     (Story) => {
       seedEdit();

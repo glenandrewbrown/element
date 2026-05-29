@@ -9,7 +9,15 @@ import { AboutModal } from "./AboutModal";
 const meta = {
   title: "Layout/AboutModal",
   component: AboutModal,
-  parameters: { layout: "fullscreen" },
+  parameters: {
+    layout: "fullscreen",
+    docs: {
+      description: {
+        component:
+          "Neumorphic About Element modal with a Check-for-updates button. Shows the Project's build version and licence, and triggers the host's native updater (fire-and-forget — the result appears in a separate native window). Tracks idle / checking / requested / error states. Dismissed via Close or ESC.",
+      },
+    },
+  },
   tags: ["autodocs"],
   argTypes: {
     onClose: { action: "closed" },
@@ -25,6 +33,14 @@ export const Idle: Story = {
   args: {
     onClose: () => {},
   },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Default open state: the Check-for-updates button is enabled and no status banner is shown. This is what the user sees on opening About.",
+      },
+    },
+  },
 };
 
 // Variant: same open state with a no-op close handler, shown in fullscreen context
@@ -32,6 +48,14 @@ export const Idle: Story = {
 export const WithBackdrop: Story = {
   args: {
     onClose: () => {},
+  },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Same idle modal rendered over a full-viewport canvas so the dimmed backdrop overlay is visible — confirms the modal reads as a focused, blocking layer.",
+      },
+    },
   },
   render: (args) => (
     <div

@@ -80,10 +80,24 @@ const panelVariants = {
 };
 
 interface CommandPaletteProps {
+  /** Whether the palette is visible. Drives the mount/enter/exit animation. */
   open: boolean;
+  /** Called to dismiss the palette (overlay click, Escape, or after a command runs). */
   onClose: () => void;
 }
 
+/**
+ * CommandPalette — the Cmd+K "search everything" overlay, the keyboard-first
+ * spine of Element's speed-first navigation. Use it to give expert users one
+ * fuzzy-searchable entry point to actions (undo, save, bypass all, toggle
+ * Edit/Perform), Blocks currently on the Board, scannable plugins, Scenes, and
+ * host settings — each grouped and executed without leaving the keyboard
+ * (↑↓ to move, ↵ to run, esc to close).
+ *
+ * Mount it once near the app root and toggle `open`; it aggregates its results
+ * live from `useGraphStore`, `usePluginBrowserStore`, and `usePerformStore`,
+ * and dispatches selected commands through the native bridge.
+ */
 export function CommandPalette({ open, onClose }: CommandPaletteProps) {
   const [search, setSearch] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);

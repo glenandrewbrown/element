@@ -10,11 +10,25 @@ import {
 import { Icon } from "../neu";
 
 interface NodeContextMenuProps {
+  /** Id of the right-clicked Block. Looked up in `useGraphStore.nodes`; the menu renders nothing if the id is absent. */
   nodeId: string;
+  /** Viewport (clientX/clientY) coordinates of the right-click; the menu is fixed-positioned here and clamped to stay on-screen. */
   position: { x: number; y: number };
+  /** Called to dismiss the menu (outside click, Escape, or after an action completes). */
   onClose: () => void;
 }
 
+/**
+ * NodeContextMenu — the right-click action menu for a Block on the Board. Use
+ * it to give expert users fast per-Block operations without leaving the
+ * canvas: rename, bypass/enable, mute/unmute (output and input), duplicate, and
+ * delete, each with its keyboard shortcut shown. When two or more Blocks are
+ * selected it additionally surfaces alignment and (at 3+) distribution tools,
+ * read live from React Flow's selection state.
+ *
+ * Mount it transiently from `GraphCanvas`'s `onNodeContextMenu` handler at the
+ * click position; mutations go through `useGraphStore` and the native bridge.
+ */
 export function NodeContextMenu({
   nodeId,
   position,

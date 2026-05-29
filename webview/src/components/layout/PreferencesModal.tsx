@@ -11,7 +11,23 @@ import {
 } from "../../bridge/nativePrefs";
 import { nativeGraphSetCanvasOptions } from "../../bridge/nativeGraph";
 
-export function PreferencesModal({ onClose }: { onClose: () => void }) {
+interface PreferencesModalProps {
+  /**
+   * Invoked when the user dismisses the modal (Close button). The parent owns
+   * open/closed state — this component never unmounts itself.
+   */
+  onClose: () => void;
+}
+
+/**
+ * Full-screen modal for host-wide preferences: audio device + driver, OSC host,
+ * Board canvas snap grid, and MIDI controller mapping/learn. Reach for it when
+ * the user needs to change the audio interface, scan for OSC, or inspect/clear
+ * the MIDI maps that drive Block parameters from a hardware controller. Settings
+ * are staged locally and pushed to the C++ host only on each section's Apply
+ * button, so opening it is non-destructive.
+ */
+export function PreferencesModal({ onClose }: PreferencesModalProps) {
   const audio = useHostExtrasStore((s) => s.audioSetup);
   const osc = useHostExtrasStore((s) => s.oscHost);
   const canvas = useHostExtrasStore((s) => s.canvas);

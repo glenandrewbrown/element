@@ -14,6 +14,14 @@ import {
 } from "../../bridge/nativePerform";
 import { NeuButton, Icon } from "../neu";
 
+/**
+ * Perform-mode grid of Scenes (parameter snapshots of the Project) laid out as
+ * launch-pad slots. Use it on stage to switch between saved parameter states
+ * with one click — no plugin reload — and to capture, rename, or delete those
+ * snapshots inline. Clicking a card routes through the optimistic
+ * activate-with-rollback path so a failed host call reverts cleanly; the active
+ * Scene is highlighted in the modifier (orange) accent.
+ */
 export function SceneLauncher() {
   const scenes = usePerformStore(selectScenes);
   const activeScene = usePerformStore(selectActiveScene);

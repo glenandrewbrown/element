@@ -53,7 +53,15 @@ const tabNodes = [
 const meta = {
   title: "Layout/BlockTabStrip",
   component: BlockTabStrip,
-  parameters: { layout: "fullscreen" },
+  parameters: {
+    layout: "fullscreen",
+    docs: {
+      description: {
+        component:
+          "Editor-style tab bar of open Blocks above the canvas. Lets the user pin several Blocks for fast switching — click a tab to select that Block, click the X to close it. Renders nothing when no Blocks are open, so it can sit unconditionally in the layout.",
+      },
+    },
+  },
   tags: ["autodocs"],
 } satisfies Meta<typeof BlockTabStrip>;
 
@@ -73,6 +81,14 @@ export const MultipleTabs: Story = {
       );
     },
   ],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Typical multi-Block workflow: three tabs open with the first selected (inset/active styling), the others showing the muted resting state.",
+      },
+    },
+  },
 };
 
 // ── Single tab, active ──
@@ -88,6 +104,14 @@ export const SingleTab: Story = {
       );
     },
   ],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Single open Block — the minimum non-empty strip. Verifies a lone tab renders in its active state.",
+      },
+    },
+  },
 };
 
 // ── Middle tab active ──
@@ -103,6 +127,14 @@ export const MiddleTabActive: Story = {
       );
     },
   ],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Active selection sits in the middle of the strip — confirms the active tab is highlighted independent of position, with inactive tabs on both sides.",
+      },
+    },
+  },
 };
 
 // ── Empty — BlockTabStrip returns null; wrapper shows empty area ──
@@ -125,4 +157,12 @@ export const NoTabs: Story = {
       );
     },
   ],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Empty state: with no open Blocks the component renders null (it does not reserve space). The wrapper text stands in for the otherwise-blank area.",
+      },
+    },
+  },
 };

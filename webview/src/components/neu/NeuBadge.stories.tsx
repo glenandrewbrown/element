@@ -6,6 +6,12 @@ const meta = {
   component: NeuBadge,
   parameters: {
     layout: "centered",
+    docs: {
+      description: {
+        component:
+          "NeuBadge — a small neumorphic pill for terse, colour-coded metadata: plugin-format tags (VST3, AU, CLAP, LV2) and signal-type labels (Audio, MIDI, CV). Colour maps to Element's semantic palette (blue = generator, orange = modifier, teal = logic) plus purple/grey for plugin formats. Use it inline on Block headers and browser rows to convey role at a glance; it is non-interactive.",
+      },
+    },
   },
   tags: ["autodocs"],
   argTypes: {
@@ -24,12 +30,26 @@ export const Default: Story = {
     text: "VST3",
     color: "blue",
   },
+  parameters: {
+    docs: {
+      description: {
+        story: "Baseline format tag — the common VST3 plugin-format badge.",
+      },
+    },
+  },
 };
 
 export const Orange: Story = {
   args: {
     text: "AU",
     color: "orange",
+  },
+  parameters: {
+    docs: {
+      description: {
+        story: "Orange modifier accent applied to a format tag — the hue reserved for modifier/CV roles.",
+      },
+    },
   },
 };
 
@@ -38,12 +58,26 @@ export const Teal: Story = {
     text: "CLAP",
     color: "teal",
   },
+  parameters: {
+    docs: {
+      description: {
+        story: "Teal logic accent — used for CLAP format and MIDI signal labels.",
+      },
+    },
+  },
 };
 
 export const Purple: Story = {
   args: {
     text: "AU",
     color: "purple",
+  },
+  parameters: {
+    docs: {
+      description: {
+        story: "Purple — the dedicated tone for the AudioUnit (AU) plugin format.",
+      },
+    },
   },
 };
 
@@ -52,9 +86,17 @@ export const Grey: Story = {
     text: "LV2",
     color: "grey",
   },
+  parameters: {
+    docs: {
+      description: {
+        story: "Neutral grey — for low-emphasis format tags such as LV2.",
+      },
+    },
+  },
 };
 
 export const ColorMatrix: Story = {
+  tags: ["!manifest"],
   args: { text: "x" },
   render: () => (
     <div className="flex flex-col gap-4 p-6">

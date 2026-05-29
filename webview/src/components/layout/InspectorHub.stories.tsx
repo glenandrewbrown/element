@@ -128,7 +128,15 @@ function seedNodeSelected(node: BlockData) {
 const meta = {
   title: "Layout/InspectorHub",
   component: InspectorHub,
-  parameters: { layout: "fullscreen" },
+  parameters: {
+    layout: "fullscreen",
+    docs: {
+      description: {
+        component:
+          "Tabbed right-hand inspector for the selected Block. The INSPECTOR tab shows the Block header, A/B preset compare, parameter sliders, plugin-window embed, bypass/mute controls and notes; CABLES, LOG and METERS cover routing and diagnostics, and a SCRIPT tab appears for Script Blocks. With no Block selected it falls back to a Project Overview plus the wireless Bus inspector.",
+      },
+    },
+  },
   tags: ["autodocs"],
 } satisfies Meta<typeof InspectorHub>;
 
@@ -147,6 +155,14 @@ export const NothingSelected: Story = {
       );
     },
   ],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "No Block selected — the inspector falls back to the Project Overview (Blocks/Cables count, engine CPU, sample rate, device) plus the wireless Bus inspector. The default resting state.",
+      },
+    },
+  },
 };
 
 // ── Modifier plugin selected ──
@@ -161,6 +177,14 @@ export const ModifierSelected: Story = {
       );
     },
   ],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "A modifier Block (EQ) selected — the full INSPECTOR tab: header, preset A/B strip, parameter list, plugin-window embed, bypass/mute controls and notes. The primary single-Block editing view.",
+      },
+    },
+  },
 };
 
 // ── Generator selected ──
@@ -175,6 +199,14 @@ export const GeneratorSelected: Story = {
       );
     },
   ],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "A generator Block (instrument) selected — confirms the generator category styling and a MIDI-in port summary in the header.",
+      },
+    },
+  },
 };
 
 // ── Bypassed block selected ──
@@ -196,6 +228,14 @@ export const BypassedBlockSelected: Story = {
       );
     },
   ],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Selected Block is bypassed — the BYPASS control reads its active 'BYPASSED' state, confirming the toggle reflects engine truth.",
+      },
+    },
+  },
 };
 
 // ── Empty graph (no nodes) ──
@@ -211,4 +251,12 @@ export const EmptyGraph: Story = {
       );
     },
   ],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Empty Project (no Blocks): the Project Overview shows zero Blocks/Cables and the Bus inspector its tip — the inspector on a brand-new Board.",
+      },
+    },
+  },
 };

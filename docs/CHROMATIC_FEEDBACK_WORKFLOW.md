@@ -18,6 +18,39 @@ how that feedback ties into design-asset creation (Stitch / image tools).
 
 ---
 
+## 0. The agentic feedback system (design)
+
+Three layers form a closed loop so the agent builds against real context, you steer per-component,
+and every change is auto-verified:
+
+```
+            ┌─────────────────────────── CONTEXT IN (no hallucination) ───────────────────────────┐
+            │  Storybook MCP  (@storybook/addon-mcp @ http://localhost:6006/mcp)                    │
+            │  • list-all-documentation / get-documentation  → real components + props              │
+            │  • get-storybook-story-instructions            → how to write stories here           │
+            │  • run-story-tests                             → interaction + a11y, self-healing     │
+            └──────────────────────────────────────────────────────────────────────────────────────┘
+                         │  agent reuses real components, writes/fixes, self-tests
+                         ▼
+   DESIGN INTENT ──▶  Component + story  ──▶  Chromatic publish  ──▶  UI Review (PR)  ──▶  YOU comment
+   (Stitch via                                  (canonical context)     per component         per element
+    addon-designs)            ▲                                                                  │
+                              └──────────────── agent resolves comment, re-tests, re-publishes ──┘
+```
+
+- **Storybook MCP** = the agent's eyes/hands on the real UI: it reads the actual component catalog &
+  props (so it can't invent components), gets project story conventions, and runs real browser tests
+  (interaction + accessibility) — iterating until green before anything reaches you. *(Verified live:
+  the endpoint answers MCP `initialize`. React-only, preview API. Requires `npm run storybook` up.)*
+- **Chromatic** = the canonical published UI + your per-component **UI Review** comment surface, and
+  the visual-diff governance gate.
+- **addon-designs + Stitch MCP** = design intent: a `parameters.design` reference (Figma / Stitch
+  export / image) sits beside each component; Stitch MCP generates/edits those assets on demand.
+
+**The loop in practice:** you comment on a component in Chromatic UI Review → the agent pulls that
+component's real props/docs via the Storybook MCP → fixes it → `run-story-tests` self-heals (a11y +
+interaction) → re-publishes → Chromatic shows the diff → you approve or comment again.
+
 ## 1. What is now set up
 
 - `chromatic` (v17) installed; `npm run chromatic` script added (uses `CHROMATIC_PROJECT_TOKEN` or `--project-token`).
@@ -26,6 +59,9 @@ how that feedback ties into design-asset creation (Stitch / image tools).
   reference (Stitch export / Figma / image / iframe) in a **Design** panel next to each live component.
 - Already present: `addon-a11y` (accessibility), `addon-docs`, `addon-themes`, plus SB10 **core** toolbar:
   **Measure**, **Outline**, **Controls**, **Viewport**, **Backgrounds**.
+- `@storybook/addon-mcp` installed + wired — exposes the **Storybook MCP** at `http://localhost:6006/mcp`
+  (live when `npm run storybook` runs). Registered in project `.mcp.json` as server `storybook`
+  (available to Claude Code after a session reload). Agent directive added to `CLAUDE.md`.
 - `.gitignore` updated so the project token / `.env` is never committed.
 
 ---

@@ -37,7 +37,15 @@ const nodeTypes = { block: Block };
 const meta = {
   title: "Canvas/Block",
   component: Block,
-  parameters: { layout: "fullscreen" },
+  parameters: {
+    layout: "fullscreen",
+    docs: {
+      description: {
+        component:
+          "Block — the neumorphic node representing a single instrument/effect/utility on the Board. Registered as the React Flow `block` node type and rendered for every entry in `useGraphStore.nodes`. Colour-coded by category (generator = blue ●, modifier = orange ◆, logic = teal ▲), draws audio/MIDI/value ports as connectable handles, and adapts its body to the active semantic-zoom tier. Container and Portal Blocks, plus bypass/mute/error states, get distinct visual treatments. Mounted on a MiniFlow canvas in these stories so its React Flow handles resolve.",
+      },
+    },
+  },
   // Block is a React Flow node — autodocs can't introspect NodeProps usefully.
   tags: ["!autodocs"],
   // Loose Meta (not `satisfies`) — Block is a React Flow node whose NodeProps
@@ -47,20 +55,46 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof Block>;
 
-const story = (data: BlockData, height = 320): Story => ({
+const story = (data: BlockData, doc: string, height = 320): Story => ({
   render: () => <MiniFlow nodes={[flowNode(data)]} nodeTypes={nodeTypes} height={height} />,
+  parameters: { docs: { description: { story: doc } } },
 });
 
-export const Generator: Story = story(makeBlock({ name: "Serum", category: "generator", format: "VST3" }));
-export const Modifier: Story = story(makeBlock({ name: "Pro-Q 4", category: "modifier", format: "AU" }));
-export const Logic: Story = story(makeBlock({ name: "MIDI Split", category: "logic", format: "INT" }));
-export const Bypassed: Story = story(makeBlock({ name: "Reverb", category: "modifier", bypassed: true }));
-export const Errored: Story = story(makeBlock({ name: "Missing.dll", error: true }));
+export const Generator: Story = story(
+  makeBlock({ name: "Serum", category: "generator", format: "VST3" }),
+  "Generator (instrument) Block — blue ● accent. The baseline sound-source state with a waveform viz in the body.",
+);
+export const Modifier: Story = story(
+  makeBlock({ name: "Pro-Q 4", category: "modifier", format: "AU" }),
+  "Modifier (effect) Block — orange ◆ accent. Confirms the effect signal role reads at a glance.",
+);
+export const Logic: Story = story(
+  makeBlock({ name: "MIDI Split", category: "logic", format: "INT" }),
+  "Logic (routing/MIDI) Block — teal ▲ accent. The control/utility signal role.",
+);
+export const Bypassed: Story = story(
+  makeBlock({ name: "Reverb", category: "modifier", bypassed: true }),
+  "Bypassed Block — diagonal-stripe overlay + dimmed header signals the engine is passing signal through untouched.",
+);
+export const Errored: Story = story(
+  makeBlock({ name: "Missing.dll", error: true }),
+  "Errored Block — pulsing red ring flags a failed/missing plugin so the user spots the broken node in a large Board.",
+);
 export const Container: Story = story(
   makeBlock({ name: "Drum Bus", category: "logic", containerNodeCount: 6 }),
+  "Container Block — inset surface with child slots; double-click dives into the nested Board it represents.",
 );
 
 export const CategoryRow: Story = {
+  tags: ["!manifest"],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Visual showcase of the three category accents side by side — reference only, not a usage pattern.",
+      },
+    },
+  },
   render: () => (
     <MiniFlow
       height={360}

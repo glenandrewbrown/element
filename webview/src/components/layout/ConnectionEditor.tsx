@@ -294,6 +294,15 @@ function AddCableForm({ nodes, onConfirm, onCancel }: AddCableFormProps) {
 
 type SignalFilter = SignalType | "all";
 
+/**
+ * Inspector panel that lists every Cable on the current Board as a searchable,
+ * filterable table and lets the user add or remove connections without drawing
+ * on the canvas. Use it for precise, list-driven routing edits — e.g. auditing
+ * all MIDI Cables, or wiring a specific source-port → target-port pair via the
+ * Add Cable form. Filter chips scope by signal type (Audio/MIDI/Value); rows
+ * stay live-synced to the graph store and fall back to the native connection
+ * list when the store is empty.
+ */
 export function ConnectionEditor() {
   const nodes = useGraphStore(selectNodes);
   const storeEdges = useGraphStore(selectEdges);

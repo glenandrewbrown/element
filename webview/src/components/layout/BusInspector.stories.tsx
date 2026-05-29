@@ -10,7 +10,15 @@ import type { BlockData, CableData } from "../../data/types";
 const meta = {
   title: "Layout/BusInspector",
   component: BusInspector,
-  parameters: { layout: "centered" },
+  parameters: {
+    layout: "centered",
+    docs: {
+      description: {
+        component:
+          "Inspector section listing every named wireless Bus on the current Board. Use it to audit where signal is routed without drawn Cables (reverb/delay sends, parallel chains): each row shows the Bus name, signal-type colour, Cable count and endpoints. Click a Bus to select its first Cable, or dissolve it back to wired. Shows an explanatory tip when no Buses exist.",
+      },
+    },
+  },
   tags: ["autodocs"],
 } satisfies Meta<typeof BusInspector>;
 
@@ -75,6 +83,14 @@ export const Empty: Story = {
       );
     },
   ],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "No wireless Buses yet — the panel teaches the feature, prompting the user to right-click a Cable and choose Make Wireless. The common first-run state.",
+      },
+    },
+  },
 };
 
 // Single audio bus.
@@ -90,6 +106,14 @@ export const SingleBus: Story = {
       );
     },
   ],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "One audio Bus (FX Send A) carrying a single Cable — the minimal populated row, showing the blue audio swatch, Cable count and source/target endpoints.",
+      },
+    },
+  },
 };
 
 // Multiple buses: audio + midi, to show different signal-type colours.
@@ -113,6 +137,14 @@ export const MultipleBuses: Story = {
       );
     },
   ],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Several Buses mixing audio and MIDI signal types — demonstrates the per-signal colour coding (blue audio, teal MIDI) that lets the user tell routes apart at a glance.",
+      },
+    },
+  },
 };
 
 // Bus with unknown block ID — endpoint falls back to "?".
@@ -128,4 +160,12 @@ export const OrphanEndpoint: Story = {
       );
     },
   ],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Edge case: a Bus endpoint references a Block that no longer exists — the row degrades gracefully to a \"?\" label instead of crashing.",
+      },
+    },
+  },
 };

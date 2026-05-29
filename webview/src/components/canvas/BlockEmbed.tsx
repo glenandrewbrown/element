@@ -310,12 +310,31 @@ function SpectrumEmbed() {
 // ── BlockEmbed (root component) ──
 
 export interface BlockEmbedProps {
+  /**
+   * Id of the Block this embed belongs to. Used to key live parameter values
+   * out of `useParameterStore` (`${nodeId}:${index}`) so the mini faders track
+   * the host's 15 Hz delta channel for this specific Block.
+   */
   nodeId: string;
+  /**
+   * Block category — selects the semantic accent colour and the sub-embed
+   * layout: generators/modifiers get a meter (modifiers also get a spectrum
+   * curve), logic Blocks get a param strip + compact meter only.
+   */
   category: BlockCategory;
-  /** When true, suppress all sub-embeds (semantic zoom compact mode) */
+  /** When true, suppress all sub-embeds (semantic zoom compact mode). */
   compact?: boolean;
 }
 
+/**
+ * BlockEmbed — the rich in-Block instrument panel shown only at the expanded
+ * semantic-zoom tier. Rendered inside `Block` when the user zooms in close, it
+ * surfaces a Block's live parameters (mini fader strip), output level (meter),
+ * and — for modifiers — a spectrum/EQ curve, so an expert can read and trust a
+ * Block's state without opening the full plugin window. Mount it via `Block`'s
+ * zoom gating rather than standalone; it reads parameter values live from
+ * `useParameterStore` keyed by `nodeId`.
+ */
 function BlockEmbedComponent({ nodeId, category, compact = false }: BlockEmbedProps) {
   if (compact) return null;
 

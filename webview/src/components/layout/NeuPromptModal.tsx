@@ -57,6 +57,14 @@ export interface NeuPromptModalProps {
   onCancel: () => void;
 }
 
+/**
+ * Neumorphic single-field prompt modal — the V3.0 replacement for the browser's
+ * native `window.prompt()`. Use it for short, blocking text entry inside the
+ * Project chassis (naming a preset, renaming a Block, creating a Container)
+ * where a full Inspector form is overkill. Controlled via `open`; confirms on
+ * Enter or the Confirm button, cancels on ESC. Backdrop click is intentionally
+ * NOT a dismiss so destructive data ops require an explicit choice.
+ */
 export function NeuPromptModal({
   open,
   title,

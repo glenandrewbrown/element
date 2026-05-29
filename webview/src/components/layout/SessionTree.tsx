@@ -252,4 +252,11 @@ function SessionTreeComponent() {
   );
 }
 
+/**
+ * Sidebar tree of the Project's Boards (graphs) with the active Board's Block
+ * outline expanded beneath it — Containers shown as folders, Blocks as boxes.
+ * Use it to navigate between Boards (double-click or Open to activate) and to
+ * see the nested structure of the live Board. The header shows the Project file
+ * name with a modifier dot when there are unsaved changes.
+ */
 export const SessionTree = memo(SessionTreeComponent);

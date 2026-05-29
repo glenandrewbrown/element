@@ -7,16 +7,32 @@ const colorHex = {
 } as const;
 
 interface NeuFaderProps {
-  /** 0–100 */
+  /** Current position, 0–100 (clamped). */
   value: number;
+  /**
+   * Layout: `horizontal` (default, slim track + inline readout, matches
+   * mixer GAIN/PAN rows) or `vertical` (tall channel-strip style with thumb).
+   */
   orientation?: "vertical" | "horizontal";
+  /** Optional caption (e.g. "GAIN", "LEVEL", "CH1"). */
   label?: string;
+  /**
+   * Fill/readout colour, mapped to Element's semantic palette: `blue` = generator,
+   * `orange` = modifier, `teal` = logic. Default `blue`.
+   */
   color?: "blue" | "orange" | "teal";
-  /** Called with new 0–100 value during drag */
+  /** Called with the new 0–100 value during drag. Omit to render read-only. */
   onChange?: (value: number) => void;
+  /** Optional className on the wrapper; set track length here (e.g. "w-48"). */
   className?: string;
 }
 
+/**
+ * Neumorphic linear fader for continuous level/position parameters — mixer gain,
+ * pan, sends, dashboard sliders. Drag along the inset track to set a 0–100 value;
+ * draws a coloured fill and a peak-hold tick. Use it where a linear feel beats a
+ * rotary NeuKnob (channel strips, level rows); pass `onChange` to make it live.
+ */
 export function NeuFader({
   value,
   orientation = "horizontal",

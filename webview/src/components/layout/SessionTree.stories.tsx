@@ -50,7 +50,15 @@ function seedEmpty() {
 const meta = {
   title: "Layout/SessionTree",
   component: SessionTree,
-  parameters: { layout: "fullscreen" },
+  parameters: {
+    layout: "fullscreen",
+    docs: {
+      description: {
+        component:
+          "Sidebar tree of the Project's Boards (graphs) with the active Board's Block outline expanded beneath — Containers as folders, Blocks as boxes. Double-click or Open activates a Board. Reads useSessionStore (graphs/filePath/dirty) and useHostExtrasStore.activeGraphOutline; seed both per story.",
+      },
+    },
+  },
   tags: ["autodocs"],
 } satisfies Meta<typeof SessionTree>;
 
@@ -59,6 +67,14 @@ type Story = StoryObj<typeof meta>;
 
 // ── Nested session with graphs and outline ──
 export const WithGraphs: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Multi-Board Project with the active Board expanded to show a nested Container (Synth Layer) holding two Blocks plus a flat Block — the primary navigation case.",
+      },
+    },
+  },
   decorators: [
     (Story) => {
       seedNested();
@@ -73,6 +89,14 @@ export const WithGraphs: Story = {
 
 // ── Empty session (no graphs) ──
 export const Empty: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Untitled Project with no Boards: shows the 'No graphs in session' placeholder and the Untitled header.",
+      },
+    },
+  },
   decorators: [
     (Story) => {
       seedEmpty();
@@ -87,6 +111,14 @@ export const Empty: Story = {
 
 // ── Single graph (singular label) ──
 export const SingleGraph: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "One Board with no nested outline: verifies the singular 'graph' header label and a flat root Board with no expander.",
+      },
+    },
+  },
   decorators: [
     (Story) => {
       seedEmpty();
@@ -108,6 +140,14 @@ export const SingleGraph: Story = {
 
 // ── Dirty indicator (unsaved changes) ──
 export const DirtyFile: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Unsaved Project (dirty=true): the modifier-coloured dot appears next to the file name, signalling pending changes that need saving.",
+      },
+    },
+  },
   decorators: [
     (Story) => {
       seedNested();

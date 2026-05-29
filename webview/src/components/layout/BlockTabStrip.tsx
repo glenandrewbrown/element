@@ -2,6 +2,14 @@ import { useAppStore } from "../../stores/useAppStore";
 import { useGraphStore } from "../../stores/useGraphStore";
 import { Icon } from "../neu";
 
+/**
+ * Horizontal strip of open Block editor tabs above the canvas, mirroring a code
+ * editor's tab bar. Use it to keep several Blocks "pinned" for quick switching
+ * while working a Board — clicking a tab selects that Block, the X closes it.
+ * Renders nothing when no Blocks are open, so it can sit unconditionally in the
+ * layout. Reads the open-tab list from the app store and Block names from the
+ * graph store.
+ */
 export function BlockTabStrip() {
   const openTabs = useAppStore((s) => s.openBlockTabs);
   const closeTab = useAppStore((s) => s.closeBlockTab);

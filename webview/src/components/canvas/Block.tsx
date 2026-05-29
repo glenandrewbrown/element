@@ -273,6 +273,25 @@ function hostColourOutline(raw: string | undefined): string | undefined {
 
 // ── Block component ──
 
+/**
+ * Block — the neumorphic node that represents a single instrument, effect, or
+ * utility (a "Block") on the Board canvas. Registered as the React Flow
+ * `block` node type and rendered for every node in `useGraphStore.nodes`; you
+ * do not mount it directly, you register it via `nodeTypes={{ block: Block }}`
+ * on `<ReactFlow>`.
+ *
+ * Use it as the visual unit of the routing graph: it colour-codes by category
+ * (generator = blue circle, modifier = orange diamond, logic = teal triangle),
+ * draws audio/MIDI/value ports as connectable React Flow Handles, and adapts
+ * its body to the current semantic-zoom tier (compact name-chip → standard
+ * with viz + CPU/latency → expanded with a live `BlockEmbed` fader/meter strip).
+ * Container and Portal variants get distinct treatments. Bypass/mute/error
+ * states are reflected as overlays so the engine state is legible at a glance.
+ *
+ * Props are React Flow's injected `NodeProps`; `data` is cast to `BlockData`
+ * (the per-Block model from `useGraphStore`) and `selected` drives the
+ * category micro-glow.
+ */
 function BlockComponent({ data, selected }: NodeProps) {
   const d = data as unknown as BlockData;
   const cat = catConfig[d.category] ?? catConfig.generator;

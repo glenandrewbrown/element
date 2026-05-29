@@ -535,6 +535,14 @@ function AddPalette({ onAdd, onClose }: AddPaletteProps) {
 
 // ── DashboardBuilder ──
 
+/**
+ * Free-form Perform-mode dashboard: a draggable, snap-to-grid canvas of knob,
+ * fader, button and meter widgets that the user composes and binds to Block
+ * parameters. Use it to build a custom stage surface for live performance —
+ * toggle Edit Layout to add/move/bind widgets, then leave edit mode so the
+ * widgets drive the live engine. Each widget binds to one Block parameter via
+ * the Bind modal; persists its layout to the host ValueTree.
+ */
 export function DashboardBuilder() {
   const widgets = useDashboardStore((s) => s.widgets);
   const editing = useDashboardStore((s) => s.editing);

@@ -8,7 +8,15 @@ import { useGraphStore } from "../../stores/useGraphStore";
 const meta = {
   title: "Layout/Breadcrumb",
   component: Breadcrumb,
-  parameters: { layout: "fullscreen" },
+  parameters: {
+    layout: "fullscreen",
+    docs: {
+      description: {
+        component:
+          "Breadcrumb trail for the current depth inside nested Boards (Containers/Portals). Clicking an earlier crumb pops back up to that level. Renders nothing at the root (depth ≤ 1), so it can live permanently above the canvas. Driven by the graph store's breadcrumb stack.",
+      },
+    },
+  },
   tags: ["autodocs"],
 } satisfies Meta<typeof Breadcrumb>;
 
@@ -34,6 +42,14 @@ export const RootOnly: Story = {
       );
     },
   ],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "At the root Board the breadcrumb is intentionally absent (depth ≤ 1). Documents the no-render guard so it is not mistaken for a bug.",
+      },
+    },
+  },
 };
 
 // Two levels: Root → Container A.
@@ -48,6 +64,14 @@ export const TwoLevels: Story = {
       );
     },
   ],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "First level of nesting (Root → Container A) — the minimum case where the breadcrumb appears, with the trailing crumb shown as the current, non-clickable level.",
+      },
+    },
+  },
 };
 
 // Three levels: Root → Container A → Nested B.
@@ -62,6 +86,14 @@ export const ThreeLevels: Story = {
       );
     },
   ],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Typical mid-depth path with two clickable ancestors and one current level — the everyday navigation case.",
+      },
+    },
+  },
 };
 
 // Deep nesting: five levels to test truncation and chevron spacing.
@@ -82,6 +114,14 @@ export const DeepNesting: Story = {
       );
     },
   ],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Five-level deep nesting — stress-tests chevron spacing and horizontal density when the user has dived several Containers down.",
+      },
+    },
+  },
 };
 
 // Long crumb names: tests truncation behaviour.
@@ -100,4 +140,12 @@ export const LongNames: Story = {
       );
     },
   ],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Long crumb labels — verifies truncation/overflow behaviour when users name Containers verbosely.",
+      },
+    },
+  },
 };

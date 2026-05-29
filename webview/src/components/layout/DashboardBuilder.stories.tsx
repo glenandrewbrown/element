@@ -82,7 +82,15 @@ const demoWidgets: DashboardWidget[] = [
 const meta = {
   title: "Layout/DashboardBuilder",
   component: DashboardBuilder,
-  parameters: { layout: "fullscreen" },
+  parameters: {
+    layout: "fullscreen",
+    docs: {
+      description: {
+        component:
+          "Composable Perform-mode control surface: a snap-to-grid canvas of knob, fader, button and meter widgets bound to Block parameters. Use it to build a bespoke live stage — toggle Edit Layout to add, drag and bind widgets, then leave edit mode so they drive the live engine. Layout persists to the host ValueTree.",
+      },
+    },
+  },
 } satisfies Meta<typeof DashboardBuilder>;
 
 export default meta;
@@ -102,6 +110,14 @@ export const Populated: Story = {
     },
   ],
   render: () => framed,
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Live (non-editing) dashboard with bound knob/fader/button/meter widgets — how the surface looks in performance, where widgets drive the engine and are not draggable.",
+      },
+    },
+  },
 };
 
 export const EditingMode: Story = {
@@ -112,6 +128,14 @@ export const EditingMode: Story = {
     },
   ],
   render: () => framed,
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Edit Layout active: widgets show delete handles, selection outlines and Bind affordances (including the unbound 'Drive' widget's placeholder). This is the build/compose state.",
+      },
+    },
+  },
 };
 
 export const Empty: Story = {
@@ -122,6 +146,14 @@ export const Empty: Story = {
     },
   ],
   render: () => framed,
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "No widgets in performance mode — shows the prompt directing the user to enable Edit Layout. The first-run live state.",
+      },
+    },
+  },
 };
 
 export const EmptyEditing: Story = {
@@ -132,4 +164,12 @@ export const EmptyEditing: Story = {
     },
   ],
   render: () => framed,
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Empty canvas with Edit Layout on — the Add palette is reachable and the blank grid invites the first widget. The starting point for building a dashboard.",
+      },
+    },
+  },
 };

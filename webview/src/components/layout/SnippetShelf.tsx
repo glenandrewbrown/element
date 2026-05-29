@@ -4,6 +4,13 @@ import { nativeMoleculeInsert } from "../../bridge/nativeGraph";
 import { nativeTransportPanic } from "../../bridge/nativeGraph";
 import { NeuButton, Icon } from "../neu";
 
+/**
+ * Edit-mode bottom shelf of saved Snippets (reusable Block + Cable groups,
+ * a.k.a. molecules) shown as click-to-insert thumbnails. Use it to drop a
+ * pre-wired chain (sidechain comp, reverb send, etc.) onto the Board in one
+ * click instead of rebuilding it. Also hosts the always-visible red PANIC
+ * button that sends Note Off to all MIDI outputs.
+ */
 export function SnippetShelf() {
   const molecules = useHostExtrasStore((s) => s.molecules);
 

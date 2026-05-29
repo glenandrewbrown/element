@@ -25,17 +25,35 @@ const sizeMap = {
 } as const;
 
 interface NeuKnobProps {
-  /** 0–100 */
+  /** Current value, 0–100 (clamped), shown numerically and as a 270° arc. */
   value: number;
+  /** Parameter caption shown under the knob (e.g. "GAIN", "FILTER"). */
   label: string;
+  /** Optional sub-caption naming the mapped Block/source (e.g. "Reverb 1"). */
   sourceLabel?: string;
+  /**
+   * Indicator/arc colour, mapped to Element's semantic palette: `blue` =
+   * generator, `orange` = modifier, `teal` = logic. Default `blue`.
+   */
   color?: "blue" | "orange" | "teal";
+  /** Diameter tier: `sm` / `md` (default) / `lg`. */
   size?: "sm" | "md" | "lg";
-  /** Called with new 0–100 value during drag */
+  /**
+   * Called with the new 0–100 value during a vertical drag (hold Shift for
+   * fine control). Omit to render a read-only indicator knob.
+   */
   onChange?: (value: number) => void;
+  /** Optional className appended to the wrapper. */
   className?: string;
 }
 
+/**
+ * Neumorphic rotary knob for a single continuous parameter — the canonical
+ * control surface for mapped Block parameters in Inspector and Perform-mode
+ * dashboards. Drag vertically to adjust (Shift = fine); the value drives both
+ * a sweeping arc ring and the indicator line. Use `color` to match the source
+ * Block's signal role and `sourceLabel` to show which Block it controls.
+ */
 export function NeuKnob({
   value,
   label,

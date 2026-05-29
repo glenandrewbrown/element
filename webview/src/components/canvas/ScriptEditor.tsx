@@ -18,12 +18,24 @@ function buildLineNumbers(source: string): string[] {
   return Array.from({ length: count }, (_, i) => String(i + 1));
 }
 
-interface Props {
+interface ScriptEditorProps {
+  /** Id of the Lua Script Block being edited. Source + runtime variables are fetched from / pushed to the native bridge for this Block. */
   nodeId: string;
+  /** Optional dismiss callback; when provided a close (×) button is shown in the editor's top bar. */
   onClose?: () => void;
 }
 
-export function ScriptEditor({ nodeId, onClose }: Props) {
+/**
+ * ScriptEditor — the embedded Lua source editor for a Script Block. Use it to
+ * author and live-compile the Lua that drives a `el.Script` Block without
+ * leaving Element: a line-numbered textarea with Cmd/Ctrl+Enter to
+ * "Save & Compile", inline compile-success/error status, and a live variable
+ * inspector polled at ~1 Hz from the running script so an expert can watch
+ * state change as they iterate. Mount it inside an Inspector tab or a Block's
+ * detail pane; it loads source and runtime state for `nodeId` over the native
+ * bridge and is `h-full`, so give it a sized container.
+ */
+export function ScriptEditor({ nodeId, onClose }: ScriptEditorProps) {
   const [source, setSource] = useState("");
   const [loading, setLoading] = useState(true);
   const [result, setResult] = useState<ScriptCompileResult | null>(null);

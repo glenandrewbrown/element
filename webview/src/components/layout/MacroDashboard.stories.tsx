@@ -86,7 +86,15 @@ const demoMacros: MacroControl[] = [
 const meta = {
   title: "Layout/MacroDashboard",
   component: MacroDashboard,
-  parameters: { layout: "fullscreen" },
+  parameters: {
+    layout: "fullscreen",
+    docs: {
+      description: {
+        component:
+          "Perform-mode hub tabbed into Macro Controls, Scene Launch and Performance FX. The main live surface: the Macros tab lays out assigned macro knobs/faders plus master VU meters and BPM/timecode; Scenes hosts the SceneLauncher; FX gives per-effect bypass toggles. The Map Mode switch arms parameter-to-macro assignment.",
+      },
+    },
+  },
 } satisfies Meta<typeof MacroDashboard>;
 
 export default meta;
@@ -106,6 +114,14 @@ export const Populated: Story = {
     },
   ],
   render: () => framed,
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Full Macros tab: assigned knobs and faders (audio blue, Value teal) alongside the master VU meters and BPM/timecode block. The everyday live-performance view.",
+      },
+    },
+  },
 };
 
 export const MapModeActive: Story = {
@@ -116,6 +132,14 @@ export const MapModeActive: Story = {
     },
   ],
   render: () => framed,
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Map Mode armed (toggle lit) with a hot output meter — the state for assigning Block parameters to macro controls.",
+      },
+    },
+  },
 };
 
 export const KnobsOnly: Story = {
@@ -130,6 +154,14 @@ export const KnobsOnly: Story = {
     },
   ],
   render: () => framed,
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Only knob-type macros assigned (no faders) — verifies the layout collapses cleanly when one control type is absent.",
+      },
+    },
+  },
 };
 
 export const Empty: Story = {
@@ -140,4 +172,12 @@ export const Empty: Story = {
     },
   ],
   render: () => framed,
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "No macros assigned — the master VU/BPM section remains while the knob and fader areas are empty. The starting state before any macro mapping.",
+      },
+    },
+  },
 };

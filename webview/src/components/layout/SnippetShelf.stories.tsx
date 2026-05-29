@@ -17,7 +17,15 @@ const demoMolecules = [
 const meta = {
   title: "Layout/SnippetShelf",
   component: SnippetShelf,
-  parameters: { layout: "fullscreen" },
+  parameters: {
+    layout: "fullscreen",
+    docs: {
+      description: {
+        component:
+          "Edit-mode bottom shelf of saved Snippets (reusable Block + Cable groups, a.k.a. molecules) as click-to-insert thumbnails, plus the always-visible red PANIC button. Reads useHostExtrasStore.molecules; seed it per story.",
+      },
+    },
+  },
   tags: ["autodocs"],
 } satisfies Meta<typeof SnippetShelf>;
 
@@ -26,6 +34,14 @@ type Story = StoryObj<typeof meta>;
 
 // ── Populated: several snippets ──
 export const WithSnippets: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "The typical shelf with a handful of saved chains ready to drop onto the Board — the primary insert-a-Snippet use case.",
+      },
+    },
+  },
   decorators: [
     (Story) => {
       useHostExtrasStore.setState((s) => ({
@@ -43,6 +59,14 @@ export const WithSnippets: Story = {
 
 // ── Empty: no snippets saved yet ──
 export const Empty: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "No Snippets saved: shows the 'select blocks and save as molecule' prompt while still rendering the PANIC button.",
+      },
+    },
+  },
   decorators: [
     (Story) => {
       useHostExtrasStore.setState((s) => ({ ...s, molecules: [] }));
@@ -57,6 +81,14 @@ export const Empty: Story = {
 
 // ── Single snippet ──
 export const SingleSnippet: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "One saved Snippet: the minimal populated state, useful for checking thumbnail sizing and the count badge.",
+      },
+    },
+  },
   decorators: [
     (Story) => {
       useHostExtrasStore.setState((s) => ({
@@ -74,6 +106,15 @@ export const SingleSnippet: Story = {
 
 // ── Many snippets — scrollable overflow ──
 export const ManySnippets: Story = {
+  tags: ["!manifest"],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Visual-only: 12 auto-generated Snippets to exercise horizontal scroll/overflow. Excluded from the agent manifest — it is a layout stress test, not a distinct usage pattern.",
+      },
+    },
+  },
   decorators: [
     (Story) => {
       useHostExtrasStore.setState((s) => ({

@@ -52,6 +52,15 @@ function sessionDisplayName(filePath: string, dirty: boolean): string {
   return dirty ? `${stem} •` : stem;
 }
 
+/**
+ * Top application toolbar: the command centre for the Project. Holds session
+ * file actions (new/open/save), undo/redo, transport (play/stop/record/rewind),
+ * tempo with tap-tempo, time signature, Edit/Perform mode switch, cable-routing
+ * style, Scene add/capture, and the Preferences/About entry points. Use it as
+ * the persistent header across modes; controls reflect live engine state via
+ * the 4 Hz snapshot, so external triggers (Lua, MIDI, native menu) keep the
+ * buttons in sync.
+ */
 export function Toolbar() {
   const [prefsOpen, setPrefsOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);

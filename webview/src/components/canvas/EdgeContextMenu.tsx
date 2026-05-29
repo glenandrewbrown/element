@@ -15,8 +15,11 @@ import {
 import { Icon } from "../neu";
 
 export interface EdgeContextMenuProps {
+  /** Id of the Cable (React Flow edge) this menu acts on. Looked up in `useGraphStore.edges`; the menu renders nothing if the id is absent. */
   edgeId: string;
+  /** Viewport (clientX/clientY) coordinates of the right-click; the menu is fixed-positioned here and clamped to stay on-screen. */
   position: { x: number; y: number };
+  /** Called to dismiss the menu (outside click, Escape, or after an action completes). */
   onClose: () => void;
 }
 

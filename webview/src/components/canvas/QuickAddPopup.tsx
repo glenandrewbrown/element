@@ -108,11 +108,27 @@ function PluginRow({ plugin, isActive, onSelect, onHover }: PluginRowProps) {
 }
 
 interface QuickAddPopupProps {
+  /** Viewport X (clientX) of the cursor where the popup opens; clamped to keep the popup on-screen. */
   x: number;
+  /** Viewport Y (clientY) of the cursor where the popup opens; clamped to keep the popup on-screen. */
   y: number;
+  /** Called to dismiss the popup (backdrop click, Escape, or after a Block is inserted). */
   onClose: () => void;
 }
 
+/**
+ * QuickAddPopup — the right-click-at-cursor block inserter for the Board. Use
+ * it as the fastest path to add a Block where you're already looking: a small
+ * search popup anchored at the click point, opening focused with favourites
+ * pinned on top, navigable entirely by keyboard (type to filter, ↑↓ to move, ↵
+ * to insert, esc to cancel). Each result is shape- and colour-coded by category
+ * (● instrument / ◆ effect / ▲ MIDI) so the signal role reads instantly.
+ *
+ * Mount it transiently from `GraphCanvas`'s `onPaneContextMenu` handler at the
+ * click position. It reads the scanned plugin list from `usePluginBrowserStore`
+ * and, when no plugins have been scanned, shows an empty state with a link to
+ * Preferences instead of fabricated entries.
+ */
 export function QuickAddPopup({ x, y, onClose }: QuickAddPopupProps) {
   const [search, setSearch] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);

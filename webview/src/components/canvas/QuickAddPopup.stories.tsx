@@ -49,7 +49,15 @@ function seed(plugins: BrowserPlugin[], favorites: string[] = []) {
 const meta = {
   title: "Canvas/QuickAddPopup",
   component: QuickAddPopup,
-  parameters: { layout: "fullscreen" },
+  parameters: {
+    layout: "fullscreen",
+    docs: {
+      description: {
+        component:
+          "QuickAddPopup — the right-click-at-cursor Block inserter. A small keyboard-first search popup anchored at the click point, opening focused with favourites pinned on top and results shape/colour-coded by category (● instrument / ◆ effect / ▲ MIDI). Mount it transiently from GraphCanvas at the cursor; it reads the scanned plugin list from usePluginBrowserStore (seeded here) and shows an empty state when nothing is scanned.",
+      },
+    },
+  },
 } satisfies Meta<typeof QuickAddPopup>;
 
 export default meta;
@@ -57,6 +65,14 @@ type Story = StoryObj<typeof meta>;
 
 export const Open: Story = {
   args: { x: 80, y: 60, onClose: () => {} },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Open with a favourite pinned — shows the \"Favorites\" section above the rest of the scanned plugins. The primary in-use state.",
+      },
+    },
+  },
   decorators: [
     (Story) => {
       seed(demoPlugins, ["com.vendor.SurgeXT"]);
@@ -71,6 +87,14 @@ export const Open: Story = {
 
 export const NoFavorites: Story = {
   args: { x: 80, y: 60, onClose: () => {} },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "No favourites — confirms the popup renders a single flat plugin list (no \"Favorites\" header) when nothing is starred.",
+      },
+    },
+  },
   decorators: [
     (Story) => {
       seed(demoPlugins);
@@ -85,6 +109,14 @@ export const NoFavorites: Story = {
 
 export const NoPluginsScanned: Story = {
   args: { x: 80, y: 60, onClose: () => {} },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "No plugins scanned — shows the empty state with an \"Open Preferences\" CTA instead of fabricated entries. The honest first-run state.",
+      },
+    },
+  },
   decorators: [
     (Story) => {
       seed([]);

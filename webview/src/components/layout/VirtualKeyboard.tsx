@@ -115,12 +115,27 @@ function BlackKey({
 // ── Main component ────────────────────────────────────────────────────────────
 
 interface VirtualKeyboardProps {
-  /** Defaults to 1 */
+  /**
+   * MIDI channel (1-16) that emitted note-on/note-off messages are sent on.
+   * Sets the initial value of the channel selector; the user can change it
+   * live. Defaults to 1.
+   */
   defaultChannel?: number;
-  /** Defaults to 0.75 */
+  /**
+   * Initial note velocity as a 0-1 fraction (scaled to 0-127 on send). Sets
+   * the starting position of the velocity slider, adjustable at play time.
+   * Defaults to 0.75.
+   */
   defaultVelocity?: number;
 }
 
+/**
+ * On-screen two-octave (C3-B4) piano for auditioning Blocks without external
+ * hardware. Use it in the bottom panel to trigger MIDI note-on/note-off into
+ * the active Board — click or drag across keys to play. A channel selector and
+ * velocity slider control what each press emits. The note range is fixed; only
+ * the initial channel/velocity are configurable.
+ */
 export function VirtualKeyboard({
   defaultChannel = 1,
   defaultVelocity = 0.75,

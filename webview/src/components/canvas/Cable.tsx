@@ -54,6 +54,24 @@ if (typeof document !== "undefined") {
   }
 }
 
+/**
+ * Cable — the React Flow edge that draws a signal path ("Cable") between two
+ * Block ports on the Board. Registered as the `cable` edge type
+ * (`edgeTypes={{ cable: Cable }}`); rendered for every connection in
+ * `useGraphStore.edges`, not mounted directly.
+ *
+ * Use it as the visual carrier of signal semantics: stroke colour encodes the
+ * signal type (audio = blue, MIDI = teal, value/CV = orange), width encodes
+ * channel count (1/2/6), a dashed stroke marks a sidechain, and the cable's
+ * brightness + animated signal-pulse track the live engine RMS level from
+ * `useCableMeterStore`. When the Cable is assigned to a named bus via
+ * `useBusStore` it becomes "wireless" — the curve is hidden (drawn only as a
+ * faint dotted ghost while selected) and the connection is represented by
+ * per-port bus badges in `Block`. Routing geometry (bezier vs. manhattan, with
+ * fan-out for multi-output Blocks) follows `useAppStore.cableRouting`.
+ *
+ * Props are React Flow's injected `EdgeProps`; `data` is cast to `CableData`.
+ */
 function CableComponent({
   id,
   source,

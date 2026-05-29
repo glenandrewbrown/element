@@ -94,6 +94,20 @@ npx tsc -b
 npm run build
 ```
 
+### Agentic UI workflow — Storybook MCP + Chromatic (USE for `webview/**` UI work)
+
+Before editing/answering on `webview/**` UI, use the **Storybook MCP** (server `storybook`,
+`http://localhost:6006/mcp` — requires `cd webview && npm run storybook` running):
+- `list-all-documentation` / `get-documentation` — find + reuse existing components, verify REAL
+  props. Do NOT invent components or hallucinate props.
+- `get-storybook-story-instructions` — how to author stories + interaction tests here.
+- `run-story-tests` — validate changes (interaction + a11y); iterate until green (self-healing loop).
+
+Human feedback + visual governance run through **Chromatic** UI Review (per-component comments on
+PRs); design references attach per story via `@storybook/addon-designs` (`parameters.design` =
+Figma / Stitch export / image). Full workflow + how to give/consume feedback:
+`docs/CHROMATIC_FEEDBACK_WORKFLOW.md`.
+
 ### Frontend Architecture
 
 ```

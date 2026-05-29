@@ -50,7 +50,15 @@ function resetStores() {
 const meta: Meta<typeof Cable> = {
   title: "Canvas/Cable",
   component: Cable,
-  parameters: { layout: "fullscreen" },
+  parameters: {
+    layout: "fullscreen",
+    docs: {
+      description: {
+        component:
+          "Cable — the React Flow edge that draws a signal path between two Block ports. Registered as the `cable` edge type and rendered for every entry in `useGraphStore.edges`. Stroke colour encodes signal type (audio = blue, MIDI = teal, value/CV = orange), width encodes channel count (1/2/6), a dashed stroke marks a sidechain, and brightness + signal-pulse track the live engine RMS level (`useCableMeterStore`). A Cable assigned to a named bus (`useBusStore`) becomes wireless: the curve is hidden and the connection shows as per-port badges instead. Mounted on a MiniFlow canvas with two plain nodes here so the edge binds to default handles.",
+      },
+    },
+  },
   // Cable is a React Flow edge — autodocs can't introspect EdgeProps usefully.
   tags: ["!autodocs"],
 };
@@ -58,11 +66,12 @@ const meta: Meta<typeof Cable> = {
 export default meta;
 type Story = StoryObj;
 
-function signalStory(signalType: SignalType): Story {
+function signalStory(signalType: SignalType, doc: string): Story {
   return {
     render: () => (
       <MiniFlow nodes={nodes} edges={[edge(makeCable({ signalType }))]} edgeTypes={edgeTypes} height={220} />
     ),
+    parameters: { docs: { description: { story: doc } } },
     decorators: [
       (Story) => {
         resetStores();
@@ -73,12 +82,29 @@ function signalStory(signalType: SignalType): Story {
 }
 
 // Signal types — audio (blue), midi (teal), value/CV (orange).
-export const Audio: Story = signalStory("audio");
-export const Midi: Story = signalStory("midi");
-export const Value: Story = signalStory("value");
+export const Audio: Story = signalStory(
+  "audio",
+  "Audio Cable — blue stroke. The default signal type; verifies audio routing reads as blue.",
+);
+export const Midi: Story = signalStory(
+  "midi",
+  "MIDI Cable — teal stroke. Distinguishes note/CC routing from audio at a glance.",
+);
+export const Value: Story = signalStory(
+  "value",
+  "Value/CV Cable — orange stroke. The third signal type, carrying control data independent of MIDI.",
+);
 
 // 6-channel surround cable renders at max stroke width.
 export const SurroundSixChannel: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "6-channel surround Cable — max stroke width encodes channel count, so wide buses read as heavier than mono/stereo.",
+      },
+    },
+  },
   render: () => (
     <MiniFlow
       nodes={nodes}
@@ -97,6 +123,14 @@ export const SurroundSixChannel: Story = {
 
 // Sidechain cable uses a dashed stroke.
 export const Sidechain: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Sidechain Cable — dashed stroke marks a sidechain/key input so it's not mistaken for the main signal path.",
+      },
+    },
+  },
   render: () => (
     <MiniFlow
       nodes={nodes}
@@ -115,6 +149,14 @@ export const Sidechain: Story = {
 
 // Active cable — engine RMS level drives glow + signal pulse animation.
 export const ActiveWithSignal: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Active Cable — a high engine RMS level (0.8) drives the glow + animated signal pulse, the visual feedback that signal is flowing.",
+      },
+    },
+  },
   render: () => (
     <MiniFlow nodes={nodes} edges={[edge(makeCable())]} edgeTypes={edgeTypes} height={220} />
   ),
@@ -131,6 +173,14 @@ export const ActiveWithSignal: Story = {
 // itself draws only a faint dotted ghost, and only when selected — so the
 // edge is rendered selected here to make the wireless state visible.
 export const WirelessBusBadge: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Wireless Cable on a named bus — the curve is suppressed (faint dotted ghost only while selected); the connection is shown via per-port badges in Block. Demonstrates the de-cluttering wireless-patching state.",
+      },
+    },
+  },
   render: () => (
     <MiniFlow
       nodes={nodes}

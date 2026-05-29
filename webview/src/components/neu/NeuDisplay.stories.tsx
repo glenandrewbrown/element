@@ -6,6 +6,12 @@ const meta = {
   component: NeuDisplay,
   parameters: {
     layout: "centered",
+    docs: {
+      description: {
+        component:
+          "NeuDisplay — a neumorphic inset \"screen\" for read-only numeric readouts (frequency, dB, BPM) and meter/value bars. Pressed INTO the chassis rather than extruded, so it reads as an instrument display, not a control. Size it via `className` (e.g. \"w-24 h-8\") and place any readout content as children. Use it to surface a live value driven by a sibling NeuKnob/NeuFader.",
+      },
+    },
   },
   tags: ["autodocs"],
 } satisfies Meta<typeof NeuDisplay>;
@@ -22,11 +28,25 @@ export const Default: Story = {
       </span>
     ),
   },
+  parameters: {
+    docs: {
+      description: {
+        story: "Baseline display — a single numeric readout (frequency) inside the inset screen.",
+      },
+    },
+  },
 };
 
 export const EmptyDisplay: Story = {
   args: {
     className: "w-24 h-8",
+  },
+  parameters: {
+    docs: {
+      description: {
+        story: "Empty screen — the recessed surface with no content, e.g. before a value is available.",
+      },
+    },
   },
 };
 
@@ -39,9 +59,17 @@ export const NumericReadout: Story = {
       </span>
     ),
   },
+  parameters: {
+    docs: {
+      description: {
+        story: "Coloured readout — a dB value tinted with the generator (blue) hue to match its source.",
+      },
+    },
+  },
 };
 
 export const VariantMatrix: Story = {
+  tags: ["!manifest"],
   args: {},
   parameters: { layout: "padded" },
   render: () => (

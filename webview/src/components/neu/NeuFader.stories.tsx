@@ -7,6 +7,12 @@ const meta = {
   component: NeuFader,
   parameters: {
     layout: "centered",
+    docs: {
+      description: {
+        component:
+          "NeuFader — a neumorphic linear fader for continuous (0–100) level/position parameters: mixer gain, pan, sends, dashboard sliders. Drag along the inset track to set a value; draws a coloured fill (blue = generator, orange = modifier, teal = logic) and a peak-hold tick. `orientation` switches between an inline horizontal level row and a vertical channel-strip thumb. Use it where a linear feel beats a rotary NeuKnob; pass `onChange` to make it live.",
+      },
+    },
   },
   tags: ["autodocs"],
   argTypes: {
@@ -32,6 +38,13 @@ export const Default: Story = {
     color: "blue",
     orientation: "horizontal",
   },
+  parameters: {
+    docs: {
+      description: {
+        story: "Baseline horizontal fader — the inline GAIN/level row used across mixer-style panels.",
+      },
+    },
+  },
 };
 
 export const Vertical: Story = {
@@ -40,6 +53,13 @@ export const Vertical: Story = {
     label: "LEVEL",
     color: "teal",
     orientation: "vertical",
+  },
+  parameters: {
+    docs: {
+      description: {
+        story: "Vertical channel-strip layout with a draggable thumb — for level columns and mixer strips.",
+      },
+    },
   },
 };
 
@@ -50,9 +70,17 @@ export const Orange: Story = {
     color: "orange",
     orientation: "horizontal",
   },
+  parameters: {
+    docs: {
+      description: {
+        story: "Orange modifier accent — use the fill colour to match the controlled Block's signal role.",
+      },
+    },
+  },
 };
 
 export const VariantMatrix: Story = {
+  tags: ["!manifest"],
   args: { value: 50 },
   parameters: { layout: "padded" },
   render: () => (
@@ -76,6 +104,14 @@ export const VariantMatrix: Story = {
 
 export const Interactive: Story = {
   args: { value: 50 },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Live controlled usage: drag either fader to drive state — the real mixer/dashboard binding pattern.",
+      },
+    },
+  },
   render: () => {
     const [hVal, setHVal] = useState(50);
     const [vVal, setVVal] = useState(60);

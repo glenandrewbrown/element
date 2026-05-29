@@ -12,6 +12,13 @@ const CHEVRON = (
   </svg>
 );
 
+/**
+ * Breadcrumb trail showing the path from the root Board down into nested
+ * Containers/Portals. Use it for upward navigation when the user has dived into
+ * a Block's nested Board — clicking any earlier crumb pops back to that level.
+ * Renders nothing at the root (depth ≤ 1), so it can live permanently above the
+ * canvas. Driven entirely by the graph store's breadcrumb stack.
+ */
 export function Breadcrumb() {
   const breadcrumbs = useGraphStore(selectBreadcrumbs);
   const navigate = useGraphStore((s) => s.navigateToBreadcrumb);

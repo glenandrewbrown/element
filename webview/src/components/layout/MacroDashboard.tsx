@@ -46,6 +46,14 @@ function VuMeter({ level }: { level: number }) {
 
 // ── MacroDashboard ──
 
+/**
+ * Perform-mode hub at the bottom of the stage, tabbed into Macro Controls,
+ * Scene Launch and Performance FX. Use it as the main live-performance surface:
+ * the Macros tab lays out assigned macro knobs/faders plus master VU meters and
+ * BPM/timecode; Scenes hosts the SceneLauncher; FX gives per-effect bypass
+ * toggles. The Map Mode switch arms parameter-to-macro assignment. Reads macros
+ * and live health from the perform store; effect Blocks from the graph store.
+ */
 export function MacroDashboard() {
   const [activeTab, setActiveTab] = useState<DashTab>("macros");
   const macros = usePerformStore(selectMacros);
@@ -267,6 +275,11 @@ export function MacroDashboard() {
 
 // ── Floating Panic Button (rendered in canvas area) ──
 
+/**
+ * Always-visible red panic button. Use it as the live-performance safety net:
+ * one click fires the native transport Panic (Note Off to all MIDI outputs) to
+ * silence stuck notes. Floats bottom-right over the canvas; takes no props.
+ */
 export function PanicButton() {
   return (
     <button

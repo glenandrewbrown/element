@@ -634,6 +634,14 @@ function PluginEditorControls({ block }: { block: BlockData }) {
   );
 }
 
+/**
+ * Tabbed right-hand inspector for the selected Block. Use it as the primary
+ * detail surface in Edit mode: the INSPECTOR tab shows the Block header,
+ * A/B preset compare, parameter sliders, plugin-window embed, bypass/mute
+ * controls and notes; CABLES, LOG and METERS tabs cover routing and
+ * diagnostics, and a SCRIPT tab appears for Script Blocks. With no Block
+ * selected it falls back to a Project Overview plus the wireless Bus inspector.
+ */
 export function InspectorHub() {
   const [activeTab, setActiveTab] = useState<Tab>("inspector");
   const selectedBlock = useGraphStore(selectSelectedNode);

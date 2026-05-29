@@ -8,7 +8,15 @@ import { useHostExtrasStore } from "../../stores/useHostExtrasStore";
 const meta = {
   title: "Layout/PreferencesModal",
   component: PreferencesModal,
-  parameters: { layout: "fullscreen" },
+  parameters: {
+    layout: "fullscreen",
+    docs: {
+      description: {
+        component:
+          "Host-wide preferences modal: audio device + driver, OSC host, Board canvas snap grid, and MIDI controller mapping/learn. Settings are staged locally and pushed to the C++ host only on each section's Apply button. Reads its current values from useHostExtrasStore (audio/osc/canvas/midiMapping); seed that store per story.",
+      },
+    },
+  },
   tags: ["autodocs"],
   argTypes: {
     onClose: { action: "closed" },
@@ -53,6 +61,14 @@ export const Populated: Story = {
     },
   ],
   args: { onClose: () => {} },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "The everyday state an expert user opens: a configured interface, OSC on, snap grid set, and a mix of valid + invalid (greyed) MIDI maps to demonstrate the mapping table.",
+      },
+    },
+  },
 };
 
 // Empty state: no audio setup, no OSC, no MIDI maps.
@@ -72,6 +88,14 @@ export const Empty: Story = {
     },
   ],
   args: { onClose: () => {} },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "First-run / no-hardware state: audioSetup is null and there are no MIDI maps, exercising the empty-fallbacks and the 'no controller maps' message.",
+      },
+    },
+  },
 };
 
 // MIDI learn active: the "Stop MIDI learn" button state.
@@ -102,4 +126,12 @@ export const MidiLearning: Story = {
     },
   ],
   args: { onClose: () => {} },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "MIDI learn armed (midiMapping.learning=true): the button flips to the active modifier-coloured 'Stop MIDI learn' state, the cue to wiggle a hardware control and bind it.",
+      },
+    },
+  },
 };

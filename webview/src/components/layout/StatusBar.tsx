@@ -5,6 +5,16 @@ import {
 } from "../../stores/useEngineSnapshotStore";
 import { Icon } from "../neu";
 
+/**
+ * Slim 24px footer bar showing global engine vitals: audio device, engine
+ * RUNNING/STOPPED state, sample rate, buffer, latency, CPU load (colour-coded
+ * by severity), and transport timecode. Use it as the persistent at-a-glance
+ * health readout across both Edit and Perform modes. Reads engine-running from
+ * the C++ snapshot, falling back to the perform store's isPlaying.
+ *
+ * Known issue F-04: the SAMPLE field can show the version string instead of the
+ * sample rate — tracked separately; not addressed here.
+ */
 export function StatusBar() {
   const health = usePerformStore(selectLiveHealth);
   const isPlaying = usePerformStore(s => s.isPlaying);

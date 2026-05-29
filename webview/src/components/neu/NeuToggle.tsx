@@ -14,12 +14,25 @@ const colorMap = {
 } as const;
 
 interface NeuToggleProps {
+  /** On/off state. On = filled, glowing track; off = inset (recessed) track. */
   active: boolean;
+  /** Called with the next boolean state when the switch is clicked. */
   onChange: (active: boolean) => void;
+  /**
+   * Accent colour of the active track, mapped to Element's semantic palette:
+   * `blue` = generator, `orange` = modifier, `teal` = logic. Default `blue`.
+   */
   color?: "blue" | "orange" | "teal";
+  /** Optional className appended to the switch. */
   className?: string;
 }
 
+/**
+ * Compact neumorphic on/off switch (ARIA `role="switch"`) for binary settings —
+ * bypass, mute, snap-to-grid, monitor on/off, and similar toggles in panels and
+ * Perform-mode dashboards. The active track lights up in the chosen semantic hue
+ * so its on-state reads at a glance.
+ */
 export function NeuToggle({
   active,
   onChange,

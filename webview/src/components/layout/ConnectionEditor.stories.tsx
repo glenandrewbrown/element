@@ -9,7 +9,15 @@ import type { BlockData, CableData } from "../../data/types";
 const meta = {
   title: "Layout/ConnectionEditor",
   component: ConnectionEditor,
-  parameters: { layout: "fullscreen" },
+  parameters: {
+    layout: "fullscreen",
+    docs: {
+      description: {
+        component:
+          "List-driven Cable editor for the current Board. Use it for precise routing without drawing on the canvas: search and signal-type filter chips (Audio/MIDI/Value) narrow the Cable list, each row can be removed, and the Add Cable form wires a specific source-port → target-port pair. Stays live-synced to the graph store.",
+      },
+    },
+  },
   tags: ["autodocs"],
 } satisfies Meta<typeof ConnectionEditor>;
 
@@ -82,6 +90,14 @@ export const Populated: Story = {
       );
     },
   ],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "The everyday view: a board with mixed audio and MIDI Cables, the count badge, search field and signal-type filter chips all active. Primary reference for the editor's full layout.",
+      },
+    },
+  },
 };
 
 // Empty board: no connections at all.
@@ -96,6 +112,14 @@ export const Empty: Story = {
       );
     },
   ],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "No Cables on the board — shows the empty-state message and the Add Cable affordance, the starting point before any routing exists.",
+      },
+    },
+  },
 };
 
 // Audio-only cables.
@@ -113,6 +137,14 @@ export const AudioOnly: Story = {
       );
     },
   ],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Audio-only routing — the typical signal-chain view (synth → reverb → delay) with blue Audio pills and no MIDI noise.",
+      },
+    },
+  },
 };
 
 // Single MIDI cable — demonstrates MIDI signal-type chip filter.
@@ -130,4 +162,12 @@ export const MidiOnly: Story = {
       );
     },
   ],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "A lone MIDI Cable — verifies the teal MIDI pill and the MIDI filter chip in isolation from audio routing.",
+      },
+    },
+  },
 };

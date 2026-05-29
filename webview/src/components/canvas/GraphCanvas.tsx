@@ -123,6 +123,15 @@ interface EdgeContextMenuState extends ContextMenuPos {
 
 // ── GraphCanvas ──
 
+/**
+ * GraphCanvas — the full Board: the React-Flow routing canvas that hosts every
+ * Block, Cable, and CommentFrame, plus the transient QuickAdd / node / edge
+ * context menus, minimap, semantic-zoom tier tracking, and the empty-Board
+ * watermark. It is the primary Edit-mode surface where an expert wires up a
+ * Project. Mount it once (inside a `ReactFlowProvider`) as the canvas pane; it
+ * reads its model from `useGraphStore` and pushes interactions (connect, move,
+ * rename, viewport) through the native bridge. Takes no props.
+ */
 export function GraphCanvas() {
   const blocks = useGraphStore((s) => s.nodes);
   const cables = useGraphStore((s) => s.edges);

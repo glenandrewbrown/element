@@ -25,7 +25,15 @@ const demoScenes: SceneData[] = [
 const meta = {
   title: "Layout/SceneLauncher",
   component: SceneLauncher,
-  parameters: { layout: "fullscreen" },
+  parameters: {
+    layout: "fullscreen",
+    docs: {
+      description: {
+        component:
+          "Perform-mode launch-pad grid of Scenes (parameter snapshots of the Project). Click a slot to switch parameter states with no plugin reload; capture/rename/delete inline. Reads scenes from usePerformStore and the active index from useAppStore; activation uses optimistic-update-with-rollback. Seed both stores per story.",
+      },
+    },
+  },
 } satisfies Meta<typeof SceneLauncher>;
 
 export default meta;
@@ -38,6 +46,14 @@ const framed = (
 );
 
 export const Populated: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "A set list of five Scenes with the first active: shows the active-slot highlight, the logic-coloured 'has capture' dots, and the Slot/Ready/Active labelling used on stage.",
+      },
+    },
+  },
   decorators: [
     (Story) => {
       seed(demoScenes, 0);
@@ -48,6 +64,14 @@ export const Populated: Story = {
 };
 
 export const Empty: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "No Scenes yet: shows the centred 'No scenes — press Add' empty state before the performer has captured any snapshots.",
+      },
+    },
+  },
   decorators: [
     (Story) => {
       seed([], 0);
@@ -58,6 +82,14 @@ export const Empty: Story = {
 };
 
 export const SingleScene: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "A single captured Scene: verifies the singular 'scene' label and the one-slot grid layout.",
+      },
+    },
+  },
   decorators: [
     (Story) => {
       seed([{ id: "s1", name: "Main", index: 0, active: true, hasCapture: true }], 0);

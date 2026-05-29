@@ -90,6 +90,14 @@ function PluginIcon({ icon }: { icon: string }) {
 
 // ── ToolPalette ──
 
+/**
+ * Edit-mode left browser panel for adding Blocks to the Board. Tabs between a
+ * Plugins view (favourites, recents, molecules, category-filtered AU/VST3/CLAP/
+ * LV2 list with grid/list toggle) and a Projects view (host-scanned session
+ * files). Use it as the primary source for dragging/double-clicking instruments
+ * and effects onto the canvas; also surfaces the active Board outline, .elg
+ * import/export, recent sessions, and a live CPU-load meter.
+ */
 export function ToolPalette() {
   const [browseTab, setBrowseTab] = useState<"plugins" | "projects">("plugins");
   const [search, setSearch] = useState("");

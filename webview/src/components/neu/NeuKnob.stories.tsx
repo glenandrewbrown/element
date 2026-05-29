@@ -7,6 +7,12 @@ const meta = {
   component: NeuKnob,
   parameters: {
     layout: "centered",
+    docs: {
+      description: {
+        component:
+          "NeuKnob — the canonical neumorphic rotary control for a single continuous (0–100) parameter, used for mapped Block parameters in the Inspector and Perform-mode dashboards. Drag vertically to adjust (hold Shift for fine control); the value drives a 270° arc ring and the indicator line. `color` matches the source Block's signal role (blue = generator, orange = modifier, teal = logic); `sourceLabel` names the controlled Block.",
+      },
+    },
   },
   tags: ["autodocs"],
   argTypes: {
@@ -32,6 +38,14 @@ export const Default: Story = {
     color: "blue",
     size: "md",
   },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Baseline knob — blue generator accent, the default for a mapped instrument parameter at mid-travel.",
+      },
+    },
+  },
 };
 
 export const Teal: Story = {
@@ -42,6 +56,14 @@ export const Teal: Story = {
     size: "md",
     sourceLabel: "Reverb 1",
   },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Teal logic accent with a `sourceLabel` — shows the dashboard pattern where the knob names which Block it controls.",
+      },
+    },
+  },
 };
 
 export const Orange: Story = {
@@ -51,9 +73,18 @@ export const Orange: Story = {
     color: "orange",
     size: "md",
   },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Orange modifier accent — use for effect/modifier parameters so the knob's signal role reads at a glance.",
+      },
+    },
+  },
 };
 
 export const SizeMatrix: Story = {
+  tags: ["!manifest"],
   args: { value: 50, label: "VAL" },
   render: () => (
     <div className="flex items-end gap-6 p-6">
@@ -66,6 +97,14 @@ export const SizeMatrix: Story = {
 
 export const Interactive: Story = {
   args: { value: 50, label: "DRAG ME" },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Live controlled usage: drag vertically (Shift = fine) to drive state — the real Inspector/dashboard binding pattern.",
+      },
+    },
+  },
   render: () => {
     const [v, setV] = useState(50);
     return (

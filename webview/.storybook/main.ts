@@ -15,6 +15,7 @@ const config: StorybookConfig = {
     // `parameters.design` on a story. Lets Glen compare impl-vs-design per
     // component and anchor feedback to a Stitch-generated asset.
     "@storybook/addon-designs",
+    "@storybook/addon-mcp"
   ],
   framework: {
     name: "@storybook/react-vite",
@@ -22,6 +23,15 @@ const config: StorybookConfig = {
   },
   typescript: {
     check: false,
+    // Extract prop types + JSDoc prop descriptions so the Storybook MCP
+    // (get-documentation) and Docs panel expose real, documented props to agents.
+    reactDocgen: "react-docgen-typescript",
+    reactDocgenTypescriptOptions: {
+      shouldExtractLiteralValuesFromEnum: true,
+      shouldRemoveUndefinedFromOptional: true,
+      propFilter: (prop) =>
+        prop.parent ? !/node_modules/.test(prop.parent.fileName) : true,
+    },
   },
 };
 
