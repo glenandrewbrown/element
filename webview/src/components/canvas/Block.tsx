@@ -472,44 +472,51 @@ function BlockComponent({ data, selected }: NodeProps) {
 
       {/* Body — tight 8px padding, UE5-like density */}
       {/* Hidden by .perform-mode .block-body { display:none } */}
-      <div
-        className="block-body p-2 space-y-1.5"
-        style={{ opacity: d.bypassed ? 0.6 : 1 }}
-      >
-        {/* Category-specific viz */}
-        {d.category === "generator" && <MiniWaveform color={cat.hex} />}
+      {/* At the expanded tier the BlockEmbed below renders real faders/meter, so
+          the placeholder viz + latency/cpu rows are redundant and only add
+          vertical height. Gating them at expanded tier keeps the block under the
+          ~140px legacy column gap so vertically-adjacent blocks don't overlap
+          (LAYOUT-P1 / BLOCK-OVERLAP). They still show at the standard tier. */}
+      {zoomTier !== "expanded" && (
+        <div
+          className="block-body p-2 space-y-1.5"
+          style={{ opacity: d.bypassed ? 0.6 : 1 }}
+        >
+          {/* Category-specific viz */}
+          {d.category === "generator" && <MiniWaveform color={cat.hex} />}
 
-        {d.category === "modifier" && (
-          <div className="text-[9px] text-white/30 tracking-widest text-center uppercase font-medium">
-            Signal Processing
-          </div>
-        )}
+          {d.category === "modifier" && (
+            <div className="text-[9px] text-white/30 tracking-widest text-center uppercase font-medium">
+              Signal Processing
+            </div>
+          )}
 
-        {d.category === "logic" && (
-          <div className="text-[9px] text-white/30 tracking-widest text-center uppercase font-medium">
-            Routing
-          </div>
-        )}
+          {d.category === "logic" && (
+            <div className="text-[9px] text-white/30 tracking-widest text-center uppercase font-medium">
+              Routing
+            </div>
+          )}
 
-        {/* Latency readout */}
-        {d.latencyMs > 0 && (
-          <div className="flex justify-between items-center text-[10px] text-text-secondary font-medium uppercase tracking-tighter">
-            <span>LATENCY</span>
-            <span className="tabular-nums" style={{ color: cat.hex }}>
-              {d.latencyMs}ms
-            </span>
-          </div>
-        )}
+          {/* Latency readout */}
+          {d.latencyMs > 0 && (
+            <div className="flex justify-between items-center text-[10px] text-text-secondary font-medium uppercase tracking-tighter">
+              <span>LATENCY</span>
+              <span className="tabular-nums" style={{ color: cat.hex }}>
+                {d.latencyMs}ms
+              </span>
+            </div>
+          )}
 
-        {/* CPU readout — tiny, bottom-right */}
-        {d.cpuLoad > 0 && (
-          <div className="text-right">
-            <span className="text-[10px] tabular-nums text-text-dim font-medium">
-              {d.cpuLoad.toFixed(1)}ms
-            </span>
-          </div>
-        )}
-      </div>
+          {/* CPU readout — tiny, bottom-right */}
+          {d.cpuLoad > 0 && (
+            <div className="text-right">
+              <span className="text-[10px] tabular-nums text-text-dim font-medium">
+                {d.cpuLoad.toFixed(1)}ms
+              </span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Macro strip — only visible in .perform-mode via CSS */}
       {/* .perform-mode .block-macro-strip { display:flex } */}

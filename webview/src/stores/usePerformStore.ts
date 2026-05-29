@@ -172,7 +172,8 @@ export const usePerformStore = create<PerformStore>()((set, get) => ({
           const idx = data.activeSceneIndex ?? 0;
           scenes = data.scenes.map((sc, i) => ({
             ...sc,
-            active: sc.index === idx || i === idx,
+            active:
+              typeof sc.index === "number" ? sc.index === idx : i === idx,
           }));
         }
       }

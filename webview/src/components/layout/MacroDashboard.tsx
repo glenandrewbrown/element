@@ -90,12 +90,19 @@ export function MacroDashboard() {
 
         {/* Right controls */}
         <div className="flex items-center gap-4">
-          <button type="button" onClick={toggleMapMode} className="flex items-center gap-2 px-3 py-1 bg-surface rounded border border-white/5 hover:border-generator/50 cursor-pointer transition-colors">
-            <span className="text-[10px] font-black uppercase text-text-primary">
+          {/* Not a <button>: NeuToggle renders its own <button role="switch">,
+              and a nested button is invalid HTML (DOM-nesting error). The
+              label toggles via its own onClick; the toggle handles its own. */}
+          <div className="flex items-center gap-2 px-3 py-1 bg-surface rounded border border-white/5 hover:border-generator/50 transition-colors">
+            <button
+              type="button"
+              onClick={toggleMapMode}
+              className="text-[10px] font-black uppercase text-text-primary cursor-pointer"
+            >
               Map Mode
-            </span>
+            </button>
             <NeuToggle active={mapMode} onChange={toggleMapMode} color="blue" />
-          </button>
+          </div>
           <div className="h-6 w-px bg-white/10" />
           <button className="text-text-secondary" aria-label="More options">
             <Icon name="MoreVertical" size={16} aria-hidden />

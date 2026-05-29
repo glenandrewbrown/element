@@ -128,31 +128,29 @@ export function VirtualKeyboard({
   const [channel, setChannel] = useState(defaultChannel);
   const [velocity, setVelocity] = useState(defaultVelocity);
   const [activeNotes, setActiveNotes] = useState<ReadonlySet<number>>(new Set());
+  // Source of truth for dedup. setState updaters must be pure — bridge calls
+  // there would double-fire under React StrictMode / concurrent rendering and
+  // emit duplicate MIDI noteOn/noteOff messages.
+  const activeNotesRef = useRef<Set<number>>(new Set());
   // Track whether mouse button is held so dragging across keys triggers notes.
   const mouseDown = useRef(false);
 
   const pressNote = useCallback(
     (note: number) => {
-      setActiveNotes((prev) => {
-        if (prev.has(note)) return prev;
-        void nativeVirtualKeyboardNoteOn(note, velocity, channel);
-        const next = new Set(prev);
-        next.add(note);
-        return next;
-      });
+      if (activeNotesRef.current.has(note)) return;
+      activeNotesRef.current.add(note);
+      void nativeVirtualKeyboardNoteOn(note, velocity, channel);
+      setActiveNotes(new Set(activeNotesRef.current));
     },
     [velocity, channel],
   );
 
   const releaseNote = useCallback(
     (note: number) => {
-      setActiveNotes((prev) => {
-        if (!prev.has(note)) return prev;
-        void nativeVirtualKeyboardNoteOff(note, channel);
-        const next = new Set(prev);
-        next.delete(note);
-        return next;
-      });
+      if (!activeNotesRef.current.has(note)) return;
+      activeNotesRef.current.delete(note);
+      void nativeVirtualKeyboardNoteOff(note, channel);
+      setActiveNotes(new Set(activeNotesRef.current));
     },
     [channel],
   );

@@ -284,26 +284,49 @@ export function GraphCanvas() {
   );
 
   const onNodeDragStop = useCallback(
-    (_: MouseEvent | globalThis.MouseEvent, node: Node) => {
-      const p = node.position;
-      if (node.type === "comment") {
-        const c = node.data as unknown as CommentBoxData;
-        const w = c.size.width;
-        const h = c.size.height;
-        updateCommentBoxLayout(c.id, { x: p.x, y: p.y, width: w, height: h });
-        void nativeGraphCommentUpsert({
-          id: c.id,
-          title: c.label,
-          color: c.color,
-          x: p.x,
-          y: p.y,
-          width: w,
-          height: h,
-        });
-        return;
+    (
+      _: MouseEvent | globalThis.MouseEvent,
+      node: Node,
+      draggedNodes?: Node[],
+    ) => {
+      // React Flow fires onNodeDragStop ONCE per drag operation but passes
+      // all participating nodes as `draggedNodes` (the primary plus every
+      // co-selected sibling). Without iterating that list, multi-select
+      // drag persists only the primary node — sibling positions get reset
+      // on the next snapshot sync.
+      const all =
+        draggedNodes && draggedNodes.length > 0 ? draggedNodes : [node];
+
+      const blockMoves: Array<{ id: string; x: number; y: number }> = [];
+      for (const n of all) {
+        const p = n.position;
+        if (n.type === "comment") {
+          const c = n.data as unknown as CommentBoxData;
+          const w = c.size.width;
+          const h = c.size.height;
+          updateCommentBoxLayout(c.id, {
+            x: p.x,
+            y: p.y,
+            width: w,
+            height: h,
+          });
+          void nativeGraphCommentUpsert({
+            id: c.id,
+            title: c.label,
+            color: c.color,
+            x: p.x,
+            y: p.y,
+            width: w,
+            height: h,
+          });
+        } else {
+          blockMoves.push({ id: n.id, x: p.x, y: p.y });
+        }
       }
-      updateNodePositions([{ id: node.id, x: p.x, y: p.y }]);
-      void nativeGraphMoveNodes([{ id: node.id, x: p.x, y: p.y }]);
+      if (blockMoves.length > 0) {
+        updateNodePositions(blockMoves);
+        void nativeGraphMoveNodes(blockMoves);
+      }
     },
     [updateNodePositions, updateCommentBoxLayout],
   );

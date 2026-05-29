@@ -41,6 +41,35 @@ export function useKeyboard({ onToggleCommandPalette }: UseKeyboardOptions) {
       const meta = e.metaKey || e.ctrlKey;
       const shift = e.shiftKey;
       const key = e.key;
+      // Digit number from physical key code (1 for Digit1 … 9 for Digit9,
+      // 0 for Digit0). Independent of shift state, so Shift+0 → ")" still
+      // resolves to the digit "0". Returns "" when not a digit row key.
+      const codeDigit = e.code.startsWith("Digit")
+        ? e.code.slice(5)
+        : "";
+
+      // ── Ctrl+0-9 — save spatial bookmark ──
+      // Checked BEFORE the meta switch so Ctrl+0 doesn't fall through to
+      // the `case "0"` fitView branch (meta = metaKey || ctrlKey, so Ctrl
+      // alone would otherwise be swallowed).
+      if (
+        e.ctrlKey &&
+        !e.metaKey &&
+        !e.shiftKey &&
+        !e.altKey &&
+        codeDigit !== ""
+      ) {
+        e.preventDefault();
+        const vp = reactFlow.getViewport();
+        useAppStore
+          .getState()
+          .saveSpatialBookmark(codeDigit, {
+            x: vp.x,
+            y: vp.y,
+            zoom: vp.zoom,
+          });
+        return;
+      }
 
       // ── Cmd+Shift+L/R/T/B/H/V — multi-select alignment & distribute (P1-13) ──
       // Handled BEFORE the main `switch(key)` so we get first refusal on
@@ -210,22 +239,15 @@ export function useKeyboard({ onToggleCommandPalette }: UseKeyboardOptions) {
         }
       }
 
-      // ── Ctrl+0-9: save spatial bookmark ──
-
-      if (e.ctrlKey && !e.metaKey && key >= "0" && key <= "9") {
-        e.preventDefault();
-        const vp = reactFlow.getViewport();
-        useAppStore.getState().saveSpatialBookmark(key, { x: vp.x, y: vp.y, zoom: vp.zoom });
-        return;
-      }
-
       // ── Shift combos (no meta) ──
 
       if (shift && !meta) {
-        // Shift+0-9: recall spatial bookmark
-        if (key >= "0" && key <= "9") {
+        // Shift+0-9: recall spatial bookmark. Use `codeDigit` because
+        // `e.key` is the shifted character (")", "!" …) on US layouts,
+        // which would never match the "0"–"9" range.
+        if (codeDigit !== "") {
           e.preventDefault();
-          const bm = useAppStore.getState().getSpatialBookmark(key);
+          const bm = useAppStore.getState().getSpatialBookmark(codeDigit);
           if (bm) {
             reactFlow.setViewport({ x: bm.x, y: bm.y, zoom: bm.zoom }, { duration: 150 });
           }

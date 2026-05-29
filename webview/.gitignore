@@ -13,6 +13,15 @@ dist-ssr
 storybook-static
 *.local
 
+# Secrets / Chromatic (NEVER commit the project token)
+.env
+.env.*
+chromatic-diagnostics.json
+chromatic.log
+
+# Agent tooling artifacts
+.claude-flow/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

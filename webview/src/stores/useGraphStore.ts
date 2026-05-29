@@ -7,6 +7,7 @@ import {
   nativeGraphSetMute,
   nativeGraphSetMuteInput,
 } from "../bridge/nativeGraph";
+import { logBridgeError } from "../bridge/bridgeError";
 
 // Reference dimensions for align center/middle math. Block.tsx renders at
 // roughly these dimensions at standard zoom — exact pixel-precision is not
@@ -80,9 +81,14 @@ interface GraphActions {
   toggleMinimap: () => void;
   /** Update semantic zoom tier from React Flow viewport zoom value. */
   setZoomTier: (tier: ZoomTier) => void;
-  toggleBypass: (nodeId: string) => void;
-  toggleMute: (nodeId: string) => void;
-  toggleMuteInput: (nodeId: string) => void;
+  /**
+   * Optimistically flip bypass then confirm with host. Rolls back local
+   * flag on bridge failure (rejection or `false` return) and surfaces
+   * the error via `logBridgeError` — matches usePerformStore pattern.
+   */
+  toggleBypass: (nodeId: string) => Promise<void>;
+  toggleMute: (nodeId: string) => Promise<void>;
+  toggleMuteInput: (nodeId: string) => Promise<void>;
   /** Replace board state from C++ ValueTree / JSON snapshot (native host). */
   hydrateFromEngine: (data: {
     nodes: BlockData[];
@@ -157,41 +163,107 @@ export const useGraphStore = create<GraphStore>()((set) => ({
 
   setZoomTier: (tier) => set({ zoomTier: tier }),
 
-  toggleBypass: (nodeId) =>
+  toggleBypass: async (nodeId) => {
+    let prev = false;
     set((s) => {
       const node = s.nodes.find((n) => n.id === nodeId);
-      const next = !(node?.bypassed ?? false);
-      void nativeGraphSetBypass(nodeId, next);
+      prev = node?.bypassed ?? false;
       return {
         nodes: s.nodes.map((n) =>
-          n.id === nodeId ? { ...n, bypassed: next } : n,
+          n.id === nodeId ? { ...n, bypassed: !prev } : n,
         ),
       };
-    }),
+    });
+    try {
+      const ok = await nativeGraphSetBypass(nodeId, !prev);
+      if (!ok) {
+        logBridgeError(
+          "useGraphStore.toggleBypass",
+          `bridge rejected bypass ${nodeId} → ${!prev}`,
+        );
+        set((s) => ({
+          nodes: s.nodes.map((n) =>
+            n.id === nodeId ? { ...n, bypassed: prev } : n,
+          ),
+        }));
+      }
+    } catch (err) {
+      logBridgeError("useGraphStore.toggleBypass", err);
+      set((s) => ({
+        nodes: s.nodes.map((n) =>
+          n.id === nodeId ? { ...n, bypassed: prev } : n,
+        ),
+      }));
+    }
+  },
 
-  toggleMute: (nodeId) =>
+  toggleMute: async (nodeId) => {
+    let prev = false;
     set((s) => {
       const node = s.nodes.find((n) => n.id === nodeId);
-      const next = !(node?.muted ?? false);
-      void nativeGraphSetMute(nodeId, next);
+      prev = node?.muted ?? false;
       return {
         nodes: s.nodes.map((n) =>
-          n.id === nodeId ? { ...n, muted: next } : n,
+          n.id === nodeId ? { ...n, muted: !prev } : n,
         ),
       };
-    }),
+    });
+    try {
+      const ok = await nativeGraphSetMute(nodeId, !prev);
+      if (!ok) {
+        logBridgeError(
+          "useGraphStore.toggleMute",
+          `bridge rejected mute ${nodeId} → ${!prev}`,
+        );
+        set((s) => ({
+          nodes: s.nodes.map((n) =>
+            n.id === nodeId ? { ...n, muted: prev } : n,
+          ),
+        }));
+      }
+    } catch (err) {
+      logBridgeError("useGraphStore.toggleMute", err);
+      set((s) => ({
+        nodes: s.nodes.map((n) =>
+          n.id === nodeId ? { ...n, muted: prev } : n,
+        ),
+      }));
+    }
+  },
 
-  toggleMuteInput: (nodeId) =>
+  toggleMuteInput: async (nodeId) => {
+    let prev = false;
     set((s) => {
       const node = s.nodes.find((n) => n.id === nodeId);
-      const next = !(node?.muteInput ?? false);
-      void nativeGraphSetMuteInput(nodeId, next);
+      prev = node?.muteInput ?? false;
       return {
         nodes: s.nodes.map((n) =>
-          n.id === nodeId ? { ...n, muteInput: next } : n,
+          n.id === nodeId ? { ...n, muteInput: !prev } : n,
         ),
       };
-    }),
+    });
+    try {
+      const ok = await nativeGraphSetMuteInput(nodeId, !prev);
+      if (!ok) {
+        logBridgeError(
+          "useGraphStore.toggleMuteInput",
+          `bridge rejected muteInput ${nodeId} → ${!prev}`,
+        );
+        set((s) => ({
+          nodes: s.nodes.map((n) =>
+            n.id === nodeId ? { ...n, muteInput: prev } : n,
+          ),
+        }));
+      }
+    } catch (err) {
+      logBridgeError("useGraphStore.toggleMuteInput", err);
+      set((s) => ({
+        nodes: s.nodes.map((n) =>
+          n.id === nodeId ? { ...n, muteInput: prev } : n,
+        ),
+      }));
+    }
+  },
 
   hydrateFromEngine: (data) => {
     // Phase 5B — repopulate useBusStore from any busName fields the engine

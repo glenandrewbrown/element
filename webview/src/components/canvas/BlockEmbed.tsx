@@ -52,27 +52,28 @@ function MiniFader({ param, color }: MiniFaderProps) {
 
   return (
     <div
-      className="flex flex-col items-center gap-0.5"
+      className="flex flex-col items-center gap-0.5 relative"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      {/* Value tooltip on hover */}
+      {/* Value tooltip on hover — absolutely positioned so it stays OUT of the
+          flex flow; an in-flow row would add ~11px of permanent height to every
+          expanded block (LAYOUT-P1). Floats above the track on hover instead. */}
       <div
-        className="text-[9px] tabular-nums font-bold transition-opacity duration-100"
+        className="absolute -top-2.5 text-[9px] tabular-nums font-bold transition-opacity duration-100 pointer-events-none z-10"
         style={{
           color,
           opacity: hovered ? 1 : 0,
-          minHeight: 11,
         }}
       >
         {Math.round(param.value * 100)}
       </div>
 
-      {/* Track */}
+      {/* Track — compressed 32→20px to keep the expanded block within budget */}
       <div
         className="w-1 rounded-sm relative overflow-hidden"
         style={{
-          height: 32,
+          height: 20,
           backgroundColor: "#1A1A1E",
           boxShadow: SHADOW_PRESSED,
         }}
@@ -140,7 +141,7 @@ function ParamStripEmbed({ nodeId, category, count = 4 }: ParamStripEmbedProps) 
   }));
 
   return (
-    <div className="flex items-end justify-around px-1 py-1">
+    <div className="flex items-end justify-around px-1 py-0.5">
       {params.map((p, i) => (
         <MiniFader key={i} param={p} color={color} />
       ))}
@@ -170,7 +171,7 @@ function MeterBar({ level, peak }: MeterBarProps) {
       className="relative rounded-sm overflow-hidden"
       style={{
         width: 3,
-        height: 32,
+        height: 24,
         backgroundColor: "#1A1A1E",
         boxShadow: SHADOW_PRESSED,
       }}
@@ -222,7 +223,7 @@ function MeterEmbed({
       style={{
         backgroundColor: "#1A1A1E",
         boxShadow: SHADOW_PRESSED,
-        height: 40,
+        height: 32,
       }}
     >
       <MeterBar level={leftLevel} peak={leftPeak} />
@@ -242,7 +243,7 @@ function MeterEmbed({
 function SpectrumEmbed() {
   // Static bezier placeholder — a gentle EQ-style curve
   const w = 80;
-  const h = 32;
+  const h = 24;
   const mid = h / 2;
 
   // Control points for a subtle S-curve EQ shape
@@ -321,7 +322,7 @@ function BlockEmbedComponent({ nodeId, category, compact = false }: BlockEmbedPr
   const isModifier = category === "modifier";
 
   return (
-    <div className="flex flex-col gap-1.5 px-1 pb-1">
+    <div className="flex flex-col gap-1 px-1 pb-1">
       {/* Param strip — shown for all categories */}
       <ParamStripEmbed nodeId={nodeId} category={category} count={isModifier ? 5 : 3} />
 

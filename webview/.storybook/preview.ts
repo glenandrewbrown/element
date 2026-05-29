@@ -3,6 +3,9 @@ import { withThemeByClassName } from "@storybook/addon-themes";
 import "../src/index.css";
 
 const preview: Preview = {
+  // Every component gets an autodocs page unless a story opts out with
+  // tags: ["!autodocs"].
+  tags: ["autodocs"],
   parameters: {
     backgrounds: {
       default: "element-canvas",
@@ -17,6 +20,17 @@ const preview: Preview = {
       matchers: {
         color: /(background|color)$/i,
         date: /Date$/i,
+      },
+    },
+    // a11y addon: surface violations but don't hard-fail the test run yet.
+    // Flip to "error" once the catalogue is green to enforce in CI.
+    a11y: {
+      test: "todo",
+    },
+    options: {
+      // Stable A→Z ordering so the catalogue reads predictably.
+      storySort: {
+        order: ["Neu", "Layout", "Canvas", "*"],
       },
     },
   },

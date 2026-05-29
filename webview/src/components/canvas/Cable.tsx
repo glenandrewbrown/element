@@ -32,6 +32,10 @@ const channelWidth: Record<number, number> = {
 };
 
 // ── Signal pulse animation ──
+// Injected once at module load. Previously a <style> tag was rendered
+// inside every Cable component — on a graph with N cables that's N
+// duplicate style nodes mounted/unmounted per render. Single injection
+// is functionally equivalent and avoids the O(N) DOM churn.
 
 const pulseKeyframes = `
 @keyframes signalPulse {
@@ -39,6 +43,16 @@ const pulseKeyframes = `
   100% { stroke-dashoffset: 0; }
 }
 `;
+
+if (typeof document !== "undefined") {
+  const ID = "element-cable-pulse-keyframes";
+  if (!document.getElementById(ID)) {
+    const tag = document.createElement("style");
+    tag.id = ID;
+    tag.textContent = pulseKeyframes;
+    document.head.appendChild(tag);
+  }
+}
 
 function CableComponent({
   id,
@@ -128,8 +142,6 @@ function CableComponent({
 
   return (
     <>
-      <style>{pulseKeyframes}</style>
-
       {/* Selection glow — Section 5.2 Micro-glow */}
       {(selected || amp > 0.01) && (
         <BaseEdge

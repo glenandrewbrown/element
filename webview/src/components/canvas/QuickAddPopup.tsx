@@ -204,8 +204,17 @@ export function QuickAddPopup({ x, y, onClose }: QuickAddPopupProps) {
 
   const popupW = 224;
   const popupMaxH = 320;
-  const clampedX = Math.min(x, window.innerWidth - popupW - 8);
-  const clampedY = Math.min(y, window.innerHeight - popupMaxH - 8);
+  // Clamp both axes — Math.min stops the popup escaping the right/bottom
+  // edge, Math.max stops it from running off the left/top on small windows
+  // or when invoked from a viewport corner.
+  const clampedX = Math.max(
+    8,
+    Math.min(x, window.innerWidth - popupW - 8),
+  );
+  const clampedY = Math.max(
+    8,
+    Math.min(y, window.innerHeight - popupMaxH - 8),
+  );
 
   return (
     <>

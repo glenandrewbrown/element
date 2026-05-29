@@ -25,7 +25,9 @@ export function SceneLauncher() {
 
   const handleActivate = useCallback(
     (index: number) => {
-      void nativePerformSetActiveScene(index);
+      // setScene routes through usePerformStore.activateScene which fires the
+      // bridge with optimistic-update + rollback. Don't call the bridge again
+      // here — that would double-fire and bypass rollback safety.
       setScene(index);
     },
     [setScene],
@@ -37,11 +39,19 @@ export function SceneLauncher() {
 
   const handleCaptureScene = useCallback(
     (index: number) => {
+      // Bridge-first ordering matters: activate on host so capture snapshots
+      // into the right slot, then capture. Update local state directly at the
+      // end — going through setScene would fire setActiveScene a third time.
       void nativePerformSetActiveScene(index)
         .then(() => nativePerformCaptureScene())
-        .then(() => setScene(index));
+        .then(() => {
+          useAppStore.setState({ activeScene: index });
+          usePerformStore.setState((s) => ({
+            scenes: s.scenes.map((sc, i) => ({ ...sc, active: i === index })),
+          }));
+        });
     },
-    [setScene],
+    [],
   );
 
   const handleDelete = useCallback(
@@ -113,12 +123,26 @@ export function SceneLauncher() {
             const isRenaming = renamingIndex === index;
 
             return (
-              <button
+              // Scene card is a div (not a <button>) because it contains nested
+              // interactive controls (rename input, capture/rename/delete
+              // buttons) — a <button> may not contain interactive descendants
+              // (invalid HTML + a11y violation). role="button" + keyboard
+              // handler preserves the activate-on-click/Enter/Space behaviour.
+              <div
                 key={scene.id}
-                type="button"
+                role="button"
+                tabIndex={isRenaming ? -1 : 0}
+                aria-pressed={isActive}
                 onClick={() => !isRenaming && handleActivate(index)}
+                onKeyDown={(e) => {
+                  if (isRenaming) return;
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    handleActivate(index);
+                  }
+                }}
                 className={[
-                  "relative p-3 rounded-lg text-left transition-all border",
+                  "relative p-3 rounded-lg text-left transition-all border cursor-pointer outline-none focus-visible:ring-1 focus-visible:ring-modifier",
                   isActive
                     ? "bg-modifier/20 border-modifier shadow-[0_0_12px_rgba(232,168,56,0.25)]"
                     : "bg-surface border-white/5 hover:border-white/10 hover:bg-elevated",
@@ -206,7 +230,7 @@ export function SceneLauncher() {
                     </button>
                   </div>
                 </div>
-              </button>
+              </div>
             );
           })}
         </div>
