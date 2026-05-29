@@ -474,6 +474,23 @@ uint32 GraphManager::addNode (const PluginDescription* desc, double rx, double r
             }
         }
 
+        // Seed a sensible ABSOLUTE position so webview-added nodes don't all
+        // pile at the origin. addNode only receives relative coords (rx=ry=0.5
+        // for webview adds), and buildActiveGraphJson reads getPosition()
+        // (tags::x/tags::y); without an absolute seed every fresh add reports
+        // (0,0). Spread by current node count in a grid. Message-thread only —
+        // no audio-thread alloc/lock touched. Guard so an explicit position
+        // already on `data` is never clobbered.
+        if (! data.hasProperty (tags::x) && ! data.hasProperty (tags::y))
+        {
+            constexpr int columns = 4;
+            const int slot = nodes.getNumChildren(); // 0-based: this child not added yet
+            const double seedX = 80.0 + static_cast<double> (slot % columns) * 220.0;
+            const double seedY = 80.0 + static_cast<double> (slot / columns) * 180.0;
+            data.setProperty (tags::x, seedX, nullptr)
+                .setProperty (tags::y, seedY, nullptr);
+        }
+
         nodes.addChild (data, -1, nullptr);
         changed();
     }

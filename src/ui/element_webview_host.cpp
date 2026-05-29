@@ -157,6 +157,53 @@ static const PluginDescription* findKnownPluginByIdentifier (const KnownPluginLi
     return nullptr;
 }
 
+// Normalise a JUCE plugin format name to the React `PluginFormat` union the
+// badge renderer expects: "VST3" | "AU" | "CLAP" | "LV2" | "INT". `mapBlock`
+// (useJuceBridge.ts) casts the raw value straight to PluginFormat, so anything
+// outside this set breaks the badge — unknown / internal / empty all collapse
+// to "INT".
+static String normalizeBlockFormat (const String& rawFormat)
+{
+    if (rawFormat == "VST3" || rawFormat == "VST")
+        return "VST3";
+    if (rawFormat == "AudioUnit" || rawFormat == "AU")
+        return "AU";
+    if (rawFormat == "CLAP")
+        return "CLAP";
+    if (rawFormat == "LV2")
+        return "LV2";
+    // "Element", "Internal", empty, and any unrecognised token → internal node.
+    return "INT";
+}
+
+// Map a node to the React `BlockCategory` union: "generator" | "modifier" |
+// "logic". Mirrors the JS `inferCategory` intent (useJuceBridge.ts) but is
+// driven by the plugin's vendor category when available, falling back to a
+// name-based heuristic. Logic keywords are tested before generator keywords so
+// e.g. "MIDI Effect" / "MIDI Output" classify as logic, matching the JS order.
+static String mapBlockCategory (const Node& n, const String& pluginCategory)
+{
+    if (n.isGraph())
+        return "logic";
+
+    const String haystack = (pluginCategory + " " + n.getName()).toLowerCase();
+
+    if (haystack.contains ("midi") || haystack.contains ("router")
+        || haystack.contains ("mixer") || haystack.contains ("utility")
+        || haystack.contains ("control"))
+        return "logic";
+
+    if (haystack.contains ("instrument") || haystack.contains ("synth")
+        || haystack.contains ("generator") || haystack.contains ("source")
+        || haystack.contains ("input") || haystack.contains ("output")
+        || haystack.contains ("osc"))
+        return "generator";
+
+    // Effects / fx / dynamics / eq / reverb / delay / filter and everything
+    // else fall through to modifier.
+    return "modifier";
+}
+
 static String nodeUuidFromGraphNodeId (const Graph& g, uint32_t nid)
 {
     for (int i = 0; i < g.getNumNodes(); ++i)
@@ -4217,6 +4264,26 @@ String ElementWebViewHost::buildActiveGraphJson() const
         DynamicObject::Ptr b (new DynamicObject());
         b->setProperty ("id", n.getUuidString());
         b->setProperty ("name", n.getName());
+
+        // Block plugin format + category for the React badge / colour-coding.
+        // Additive: `mapBlock` reads these when present and only falls back to
+        // its JS infer* heuristics when absent. Emit structured values (no
+        // pre-serialised JSON) so the snapshot shape stays consistent.
+        b->setProperty ("format", normalizeBlockFormat (n.getFormat().toString()));
+
+        // Source the vendor category from the matching KnownPluginList entry
+        // (keyed on the createIdentifierString form stored in
+        // tags::pluginIdentifierString). Internal / el.* nodes won't match and
+        // fall through to the name-based heuristic in mapBlockCategory.
+        String pluginCategory;
+        {
+            const String pidString (n.getProperty (tags::pluginIdentifierString).toString());
+            if (pidString.isNotEmpty())
+                if (const auto* desc = findKnownPluginByIdentifier (context.plugins().getKnownPlugins(), pidString))
+                    pluginCategory = desc->category;
+        }
+        b->setProperty ("category", mapBlockCategory (n, pluginCategory));
+
         double x = 0, y = 0;
         n.getPosition (x, y);
         b->setProperty ("x", x);
