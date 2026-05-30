@@ -1,5 +1,25 @@
 # Change Log
 
+## [2.2.0] - 2026-05-30 (UI/UX overhaul — in progress)
+
+### Added
+- Web UI: in-Storybook feedback channel (per-component notes → JSONL, persistent history + status).
+- Web UI: 4-category block taxonomy replacing Generator/Modifier/Logic — Virtual Instruments (blue ●), MIDI Effects (teal ▲), Audio Effects (orange ◆), Modulators/Utilities (purple ⬡); each colour paired with a distinct shape for colour-blind safety.
+- Design system: split the formerly overloaded colour tokens into 3 axes — block category, signal type (audio/midi/value), and generic UI accent.
+- Host: `mapBlockCategory` emits the 4 new category strings (header-only helper + unit test).
+
+### Changed
+- Web UI: Edit/Perform mode now persists across reload.
+- Block/sample-count labels now read "smp" (was "SPL").
+- Spec docs (CLAUDE.md, blueprint, stitch DESIGN.md) updated to the 4-category taxonomy and the new Module grouping tier.
+
+### Fixed
+- NeuFader: handle no longer overhangs the track at 0%/100%; horizontal fader gets the recessed neumorphic groove (matching the vertical fader).
+- NeuToggle: knob dot vertically centred.
+
+### Shelved (hide-UI, keep-code)
+- Dashboard Builder, MacroDashboard, and the Scene/Preset system removed from the UI/navigation; code preserved (reversible).
+
 ## [1.1.0] - 2026-03-29
 
 ### Added

@@ -30,12 +30,14 @@ No glassmorphism. No backdrop-blur. No transparency. The entire UI is one contin
 - Pressed: inner shadows inverted. Buttons press INTO the surface on click.
 - Micro-glow: 4px outer glow of semantic hue at 25% opacity on active elements
 
-**SEMANTIC COLOURS (colour-blind safe, each with shape indicator):**
+**SEMANTIC COLOURS — 4-category taxonomy (ratified D1, 2026-05-30; replaces Generator/Modifier/Logic):**
 
-- Generators: `#4A90D9` Blue + Circle
-- Modifiers: `#E8A838` Orange + Diamond
-- Logic: `#2BC4C4` Teal + Triangle
+- Virtual Instruments: `#4A90D9` Blue + Circle (●)
+- MIDI Effects: `#2BC4C4` Teal + Triangle (▲)
+- Audio Effects: `#E8A838` Orange + Diamond (◆)
+- Modulators / Utilities: `#A87FE0` Purple + Hexagon (⬡)
 - Text: `#E5E5EA` primary, `#8E8E93` secondary
+- Signal-type colours are a SEPARATE axis: Audio `#4A90D9`, MIDI `#2BC4C4`, Value/CV `#E8A838`.
 
 **SPEED-FIRST NAVIGATION:**
 
@@ -48,13 +50,24 @@ No glassmorphism. No backdrop-blur. No transparency. The entire UI is one contin
 - Escape = deselect / close / back out one level
 
 **KEY FEATURES:**  
-Edit Mode (workshop) / Perform Mode (stage) — structural change, NOT palette change. Dashboard Builder in Perform Mode. Scene/Preset system. Panic button (red, always visible). Value Events as third signal type.
+Edit Mode (workshop) / Perform Mode (stage) — structural change, NOT palette change. Panic button (red, always visible). Value Events as third signal type. SHELVED (hide-UI, keep-code — D3, 2026-05-30): Dashboard Builder, MacroDashboard, Scene/Preset system — removed from UI/nav, code preserved, do not re-wire.
 
-**TERMINOLOGY (mandatory):** Project, Board, Block, Cable, Snippet, Container, Portal, Scene.
+**TERMINOLOGY (mandatory):** Project, Board, Block, Module (grouping tier above Blocks — breadcrumb-navigable, multi-use), Cable, Snippet, Container, Portal.
 
 ---
 
 ## Log (newest first)
+
+### 2026-05-30 (latest) — UI/UX overhaul Waves 0–2 + fresh release installer
+
+Branch `chromatic-ui-review` (4 commits ahead of origin, not pushed; backup ref `wave2-backup`).
+
+- **Phase 1 — feedback channel:** in-Storybook "💬 Feedback" manager panel → `.omo/audit/ui-comments.jsonl` (per-component notes, persistent history + status). Local-only (no cloud — desktop app). Plus 3 creative skills (neumorphism-generator, uiverse-galaxy, reactbits-components), neu.ts generator, galaxy indexer. Commit `564f80e6`.
+- **Wave 1 — UI quick-wins** (commit `a29ebbfc`): NeuFader thumb clamp + horizontal inset groove (G-02/03); NeuToggle dot centring (G-04); buffer labels "SPL"/"spl"→"smp" across LiveHealth/StatusBar/QuickAccess/InspectorHub (G-07/G-16); Edit/Perform mode persists across reload via zustand persist (G-19).
+- **Wave 0 + Wave 2 — 4-category taxonomy** (commit `dadc2c67`, 77 files, Option A zero-debt): replaced Generator/Modifier/Logic with Virtual Instruments (● blue) / MIDI Effects (▲ teal) / Audio Effects (◆ orange) / Modulators-Utilities (⬡ purple). Split the 3 overloaded token meanings into 3 axes — category / signal (audio,midi,value) / accent. C++ `mapBlockCategory` emits the 4 strings via header-only `src/ui/blockcategory.hpp` (+ Boost test). Spec docs (CLAUDE.md, ELEMENT_UNIFIED_BLUEPRINT.md, stitch-reference/DESIGN.md) updated to taxonomy + Module tier + shelved-features note. D5 resolved: category is never persisted to .els → no migration needed.
+- **Gates green:** tsc 0 · vitest unit 888 · Storybook story-tests 170/170 · vite prod build 0 · release build 0.
+- **Release installer (fresh clean build, 2026-05-30):** clean `build-release` (PLUGINS=ON, TESTS=OFF — TESTS off because 4 untracked WIP test files don't compile and would break the GLOB build). App + AU/VST3/CLAP/LV2 (instrument + effect ×4 formats, midi-effect AU). Ad-hoc signed (no Developer ID; LV2 ships unsigned — codesign can't sign .lv2 bundles). Output: `installer/output/Element-2.2.0.17.{dmg,pkg}` (DMG CRC valid, PKG 32 payload entries, embedded webview `index-CIzTTsEA.js`). Note: build_pkg.sh reads version from the built app Info.plist — it does NOT auto-increment build_number.txt; this rebuilt 2.2.0.17 in place.
+- **Pending:** Glen runtime-confirm of Waves 1–2 in the app; push (awaiting go); fix/exclude the 4 broken untracked WIP tests; Wave 3 redesigns (VirtualKeyboard G-01, LiveHealth IO G-08, CommandPalette G-30).
 
 ### 2026-05-08 (day 2 — latest) — Classic-UI rescue + Storybook foundation
 
