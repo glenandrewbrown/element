@@ -59,7 +59,7 @@ public:
         juce::ignoreUnused (audio, midi);
     }
 
-    void getState (MemoryBlock& block) override
+    void getState (juce::MemoryBlock& block) override
     {
         block.append (&mode, sizeof (Mode));
     }
@@ -70,7 +70,7 @@ public:
             mode = *static_cast<const Mode*> (data);
     }
 
-    void getPluginDescription (PluginDescription& desc) const override
+    void getPluginDescription (juce::PluginDescription& desc) const override
     {
         desc.fileOrIdentifier = EL_NODE_ID_REROUTE;
         desc.name = "Reroute";
@@ -134,7 +134,7 @@ public:
         setName ("Audio Reroute");
     }
 
-    void getPluginDescription (PluginDescription& desc) const override
+    void getPluginDescription (juce::PluginDescription& desc) const override
     {
         RerouteNode::getPluginDescription (desc);
         desc.fileOrIdentifier = EL_NODE_ID_AUDIO_REROUTE;
@@ -153,7 +153,7 @@ public:
         setName ("MIDI Reroute");
     }
 
-    void getPluginDescription (PluginDescription& desc) const override
+    void getPluginDescription (juce::PluginDescription& desc) const override
     {
         RerouteNode::getPluginDescription (desc);
         desc.fileOrIdentifier = EL_NODE_ID_MIDI_REROUTE;
