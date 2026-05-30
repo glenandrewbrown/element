@@ -58,7 +58,22 @@ Edit Mode (workshop) / Perform Mode (stage) — structural change, NOT palette c
 
 ## Log (newest first)
 
-### 2026-05-30 (latest) — UI/UX overhaul Waves 0–2 + fresh release installer
+### 2026-05-30 (latest, eve) — UI-redesign Pass-1 DENIED + reverted · Stitch-first pivot · stabilise-first · CF1 host crash
+
+Branch `chromatic-ui-review`, tip `ab363329` (NOT pushed). Denied work preserved on branch `shelved/denied-ui-redesign-pass1`.
+
+- **UI-redesign Pass-1 (Waves F/A/B) was BUILT then DENIED by Glen ("absolute trash") and REVERTED (`8d9575f9`). Net new product UI code this session = 0.** Current UI on the branch is still the shipped Waves 1–2 only.
+- **Root cause (inexcusable, now in permanent memory `feedback-explicit-design-tools-mandatory`):** the orchestrator dropped the explicitly-required premium design tools (Stitch / ui-ux-pro-max / uiverse / image-gen) from sub-agent prompts "for surgical scope" → components were hand-authored React against tokens → trash. **Lesson: a user's named how-to-build tools are mandatory and override prompt-trimming; bake them into every worker + verify they were used.**
+- **Pivot to STITCH-FIRST (the new UI method).** Corrected design system **"Element Instrument V3"** → `.stitch/DESIGN.md` (4-cat + `#A87FE0`, locked neu surfaces, no-glass, Inter + JetBrains Mono, ui-ux-pro-max-reviewed). Stitch project **"Element V3 - Component Studio"** `5588354666030058264`, DS asset `3cf5097be5ab4a9f9aeab1d164ca9c53`. The old Stitch `neomorph` DS was spec-stale (3-cat, M3 tonal) — see `audit/neomorph-vs-blueprint-comparison.md`.
+- **Approved per-component DIRECTIONS (Glen-confirmed):** Browser = streamlined **palette / library-search** (search the library, not active plugins) · Block = **tiered** (collapsed/standard/expanded) with **on-block direct controls** + Container + Portal · Inspector = **contextual floating** · Nav = **rail-tree** (Board/Module/Container/Portal) · Command palette → **QuickAdd-at-cursor + right-click context menu** (G-30). Refined coherent set: `.stitch/designs/v3c-*.png`. Glen's own refs: `.stitch/designs/glendesigns/`.
+- **CF1 — Element-as-plugin crashed Logic Pro** (`EXC_BAD_ACCESS`, macOS Accessibility use-after-free of an `NSAccessibilityElement` peer during JUCE editor teardown). Element **standalone did not crash**. HIGH severity, **investigated, NOT fixed** → `audit/crash-element-logic-2026-05-30.md` (fix lane = JUCE AX-peer lifetime in `src/plugineditor.cpp/.hpp`, gated behind a VoiceOver repro that attributes it to Element).
+- **SHIP DEFINITION (Glen):** ship = **full V3 UI redesign implemented**, but **STABILISE FIRST.** Sequenced: **M0 stabilise** (CF1 → 28-bug reconciliation → numeric perf re-verify → tests/`ctest` green) → **M1 full V3 UI** (Stitch→React component-by-component, wired to real stores/bridge, `addon-designs`→real Stitch export, per-component Glen+Chromatic gate, pilot-then-scale).
+- **Tooling lessons:** gate UI against a **STATIC storybook build** `verify-stories` (the dev-server one false-fails on Vite "504 Outdated Optimize Dep"); G-29 Bus node = **2-node, Package B (hidden arcs)** per `audit/g29-busnode-spec.md`; G-30 = branch 20b (native menu bridge).
+- **CANONICAL doc now `.omo/PROJECT-STATE.md`** (committed `ab363329`): state + ship def + honest reflection + gap analysis + sequenced plan + doc index (read-vs-dead) + fresh-session kickoff. The 28-lane `plans/ui-redesign-OMC-execution.md` + `audit/OMC-PROGRESS.md` are now 🔴 **SUPERSEDED/DEAD** (banners added).
+- **Fresh session starts at M0 (CF1 repro→fix).** Do NOT resume the dead OMC 28-lane plan or hand-author UI. Stitch-first, tools mandatory, pilot-then-scale.
+- **Minor loose ends:** team `ui-redesign-omc` won't `TeamDelete` (`worker-b5` hung, ignored 3 shutdowns — `rm -rf ~/.claude/teams/ui-redesign-omc ~/.claude/tasks/ui-redesign-omc` to clear); running Element pid 55904 still holds the reverted Pass-1 webview bundle (`pkill -x Element` if unwanted). Pre-existing WIP (`SessionChangedTest.cpp`, settings.json, build_number.txt, package-lock) left untouched.
+
+### 2026-05-30 — UI/UX overhaul Waves 0–2 + fresh release installer
 
 Branch `chromatic-ui-review` (4 commits ahead of origin, not pushed; backup ref `wave2-backup`).
 
