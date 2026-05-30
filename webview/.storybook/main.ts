@@ -1,4 +1,5 @@
 import type { StorybookConfig } from "@storybook/react-vite";
+import { uiCommentSink } from "./ui-comment-sink";
 
 const config: StorybookConfig = {
   stories: ["../src/**/*.mdx", "../src/**/*.stories.@(js|jsx|mjs|ts|tsx)"],
@@ -20,6 +21,12 @@ const config: StorybookConfig = {
   framework: {
     name: "@storybook/react-vite",
     options: {},
+  },
+  // Dev-server only: adds POST /__ui_comment which appends Glen's in-Storybook
+  // feedback to .omo/audit/ui-comments.jsonl. See ui-comment-sink.ts.
+  viteFinal: async (viteConfig) => {
+    viteConfig.plugins = [...(viteConfig.plugins ?? []), uiCommentSink()];
+    return viteConfig;
   },
   typescript: {
     check: false,

@@ -32,3 +32,4 @@ chromatic.log
 *.njsproj
 *.sln
 *.sw?
+vendor/
