@@ -6,7 +6,6 @@ import {
   selectMapMode,
 } from "../../stores/usePerformStore";
 import { useGraphStore } from "../../stores/useGraphStore";
-import { useAppStore } from "../../stores/useAppStore";
 import { NeuKnob, NeuFader, NeuToggle } from "../neu";
 import { SceneLauncher } from "./SceneLauncher";
 import { nativeTransportPanic } from "../../bridge/nativeGraph";
@@ -66,8 +65,6 @@ export function MacroDashboard() {
   const allNodes = useGraphStore((s) => s.nodes);
   const toggleBypass = useGraphStore((s) => s.toggleBypass);
   const effectBlocks = allNodes.filter((n) => n.category !== "instrument");
-  // D3 shelve: gate SceneLauncher mount (G-11). Component + store intact; reversible.
-  const hiddenScenes = useAppStore((s) => s.hiddenPanels.has("scenes"));
 
   const tabs: { id: DashTab; label: string; iconName: string }[] = [
     { id: "macros", label: "Macro Controls", iconName: "SlidersHorizontal" },
@@ -216,8 +213,7 @@ export function MacroDashboard() {
           </>
         )}
 
-        {/* D3 shelve: SceneLauncher mount site (G-11) — gated, not deleted */}
-        {activeTab === "scenes" && !hiddenScenes && <SceneLauncher />}
+        {activeTab === "scenes" && <SceneLauncher />}
 
         {activeTab === "fx" && (
           <div className="flex-1 overflow-y-auto">

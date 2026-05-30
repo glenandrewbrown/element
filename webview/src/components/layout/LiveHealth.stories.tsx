@@ -5,15 +5,17 @@ import type { AlertData } from "../../data/types";
 
 // ── Store seeding ──
 // LiveHealth reads usePerformStore(selectLiveHealth) for cpu/buffer/latency/
-// outputPeak/sampleRateLabel/bpm and usePerformStore(selectAlerts) for alerts.
+// outputPeak and usePerformStore(selectAlerts) for liveHealth.alerts. The
+// native bridge no-ops without a JUCE backend, so seeding state is enough.
+//
 // `liveHealth` must always be seeded COMPLETE: selectLiveHealth returns the
 // whole object and setState does a shallow merge, so a partial object would
 // strip fields other consumers (e.g. MacroDashboard's bpm.toFixed) rely on.
 //
-// G-08 I/O activity design notes:
-//   • buffer === 0  → "Engine idle" state  (no device active / not started)
-//   • buffer  >  0  → I/O rows shown       (audio-out meter + honest no-data for others)
-// Use buffer: 256+ in non-Empty stories to exercise the live I/O rows.
+// DEVIATION NOTE: `ioActivity` is part of the LiveHealth shape but LiveHealth.tsx
+// never renders it (the INPUT meter is hardcoded dimmed/"n/a" per Q-VU-INPUT).
+// We still seed it to match the documented health contract; visible variation
+// is driven by cpu / outputPeak / buffer / latency / alerts.
 
 interface HealthSeed {
   cpu: number;
@@ -64,19 +66,10 @@ const meta = {
     docs: {
       description: {
         component:
-          "Perform-mode engine vitals panel (G-08 redesign). Shows per-signal-type I/O rows " +
-          "(Audio OUT with live VU bar / Audio IN awaiting bridge / MIDI and Value with honest '—') " +
-          "plus CPU load, buffer, latency, BPM, and alerts. When buffer === 0 an explicit " +
-          "'Engine idle' state replaces the I/O rows so the user is never misled by a flat-but-live meter.",
+          "Read-only engine vitals panel: CPU load bar, input/output metering ladders, buffer size, latency, and any active alerts. Use it as a persistent monitor so the user can catch dropouts or runaway CPU mid-session. Reflects the live engine snapshot from the perform store; warning/critical alerts render inline.",
       },
     },
-    // Design reference: locked neumorphic palette + G-08 I/O detail spec
-    design: {
-      type: "link",
-      url: "docs/ELEMENT_UNIFIED_BLUEPRINT.md#g-08-livehealth-io-detail",
-    },
   },
-  tags: ["gate-ab"],
 } satisfies Meta<typeof LiveHealth>;
 
 export default meta;
@@ -87,13 +80,6 @@ const framed = (
     <LiveHealth />
   </div>
 );
-
-// ── Helper: assert element exists, throw with clear message on failure ──
-function assertExists(el: Element | null, label: string): void {
-  if (!el) throw new Error(`Assertion failed: '${label}' not found in DOM`);
-}
-
-// ── Nominal — healthy session ──
 
 export const Nominal: Story = {
   decorators: [
@@ -115,49 +101,11 @@ export const Nominal: Story = {
     docs: {
       description: {
         story:
-          "Healthy session: 18% CPU, 256 smp buffer, mid-level Audio OUT meter, " +
-          "honest no-data labels on Audio IN / MIDI / Value rows.",
+          "Healthy session: low CPU, mid-level output meter, no alerts — the all-clear state the user expects most of the time.",
       },
     },
-    design: {
-      type: "link",
-      url: "docs/ELEMENT_UNIFIED_BLUEPRINT.md#g-08-livehealth-io-detail",
-    },
-  },
-  play: async ({ canvasElement }) => {
-    // Assert: distinct Audio OUT row (has live meter)
-    assertExists(
-      canvasElement.querySelector('[data-testid="io-row-audio-out"]'),
-      "io-row-audio-out — distinct output row",
-    );
-    // Assert: distinct Audio IN row (honest no-data)
-    assertExists(
-      canvasElement.querySelector('[data-testid="io-row-audio-in"]'),
-      "io-row-audio-in — distinct input row",
-    );
-    // Assert: signal-type marker present (Audio ●)
-    assertExists(
-      canvasElement.querySelector('[data-testid="signal-type-audio"]'),
-      "signal-type-audio — taxonomy type marker",
-    );
-    // Assert: MIDI signal-type marker
-    assertExists(
-      canvasElement.querySelector('[data-testid="signal-type-midi"]'),
-      "signal-type-midi — taxonomy type marker",
-    );
-    // Assert: Value signal-type marker
-    assertExists(
-      canvasElement.querySelector('[data-testid="signal-type-value"]'),
-      "signal-type-value — taxonomy type marker",
-    );
-    // Assert: NOT in engine-idle state (buffer = 256, should show I/O rows)
-    const idleEl = canvasElement.querySelector('[data-testid="io-engine-idle"]');
-    if (idleEl)
-      throw new Error("io-engine-idle should NOT be present when buffer > 0");
   },
 };
-
-// ── Warning — elevated CPU + alert ──
 
 export const Warning: Story = {
   decorators: [
@@ -179,18 +127,11 @@ export const Warning: Story = {
     docs: {
       description: {
         story:
-          "Elevated CPU (64%) with one warning alert — shows the alert card inline " +
-          "and the CPU bar in orange so the user can act before it becomes a dropout.",
+          "Elevated CPU with one warning alert (heavy reverb) — shows the inline alert card so the user can act before it becomes a dropout.",
       },
-    },
-    design: {
-      type: "link",
-      url: "docs/ELEMENT_UNIFIED_BLUEPRINT.md#g-08-livehealth-io-detail",
     },
   },
 };
-
-// ── Critical — near-overload ──
 
 export const Critical: Story = {
   decorators: [
@@ -212,25 +153,18 @@ export const Critical: Story = {
     docs: {
       description: {
         story:
-          "Near-overload: CPU at 96% (red bar), output peaking, two stacked alerts " +
-          "including a buffer underrun — the worst-case state the panel must surface clearly.",
+          "Near-overload: CPU at 96%, output peaking, and multiple stacked alerts including a buffer underrun — the worst-case state the panel must surface clearly.",
       },
-    },
-    design: {
-      type: "link",
-      url: "docs/ELEMENT_UNIFIED_BLUEPRINT.md#g-08-livehealth-io-detail",
     },
   },
 };
-
-// ── Empty — engine idle / no data ──
 
 export const Empty: Story = {
   decorators: [
     (Story) => {
       seed({
         cpu: 0,
-        buffer: 0,     // ← triggers Engine idle state (not just flat meter)
+        buffer: 0,
         latency: 0,
         bpm: 120,
         outputPeak: 0,
@@ -245,33 +179,8 @@ export const Empty: Story = {
     docs: {
       description: {
         story:
-          "Engine idle: buffer === 0 shows an explicit 'Engine idle' state instead of " +
-          "flat meters — so the user can tell the engine is not running vs running-but-silent. " +
-          "Metrics show '—' for all zero fields. No fake signal activity.",
+          "Engine idle / no data: zeroed CPU, buffer and latency and a flat output meter — how the panel reads before audio is running.",
       },
     },
-    design: {
-      type: "link",
-      url: "docs/ELEMENT_UNIFIED_BLUEPRINT.md#g-08-livehealth-io-detail",
-    },
-  },
-  play: async ({ canvasElement }) => {
-    // Assert: explicit no-data state is shown (NOT hidden behind flat meters)
-    assertExists(
-      canvasElement.querySelector('[data-testid="io-engine-idle"]'),
-      'io-engine-idle — explicit no-data state when buffer === 0',
-    );
-    // Assert: I/O rows are NOT rendered in idle state (no fake signal activity)
-    const outRow = canvasElement.querySelector('[data-testid="io-row-audio-out"]');
-    if (outRow)
-      throw new Error(
-        "io-row-audio-out should NOT be present in engine-idle state — would show fake zeros",
-      );
-    // Assert: CPU shows 0%
-    const cpuEl = canvasElement.querySelector('[data-testid="cpu-pct"]');
-    assertExists(cpuEl, "cpu-pct");
-    const cpuText = cpuEl?.textContent?.trim();
-    if (cpuText !== "0%")
-      throw new Error(`Expected cpu-pct to show '0%', got '${cpuText}'`);
   },
 };

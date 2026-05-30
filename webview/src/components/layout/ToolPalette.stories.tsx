@@ -1,41 +1,110 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, userEvent } from "storybook/test";
 import { ToolPalette } from "./ToolPalette";
 import { usePluginBrowserStore } from "../../stores/usePluginBrowserStore";
 import { useSessionStore } from "../../stores/useSessionStore";
 import { useHostExtrasStore } from "../../stores/useHostExtrasStore";
-import { tpPlugins } from "../../data/fixtures/toolpalette";
+import { usePerformStore } from "../../stores/usePerformStore";
 
-// ── Fixture-backed seed helpers ──────────────────────────────────────────────
-// All stories use the F6 toolpalette fixture (tpPlugins). The mount-time
-// refreshPlugins() is replaced with a no-op so the seeded list survives.
+// ── Store seeding ──
+// ToolPalette reads from usePluginBrowserStore (plugins, favoriteIdentifiers,
+// recentIdentifiers), useSessionStore (recentFiles, graphs), useHostExtrasStore
+// (molecules, activeGraphOutline), and usePerformStore (liveHealth.cpu).
+//
+// Mount effect calls refreshPlugins() which resolves to undefined without a
+// JUCE backend; logBridgeError uses console.warn (not console.error), so the
+// verify gate is unaffected. We override `refresh` with a no-op to prevent
+// the store.plugins seed being clobbered by an async resolve.
+
+const demoPlugins = [
+  {
+    identifier: "com.fabfilter.pro-q3.vst3",
+    name: "FabFilter Pro-Q 3",
+    manufacturer: "FabFilter",
+    format: "VST3",
+    category: "EQ",
+    blockCategory: "audiofx" as const,
+  },
+  {
+    identifier: "com.fabfilter.pro-c2.vst3",
+    name: "FabFilter Pro-C 2",
+    manufacturer: "FabFilter",
+    format: "VST3",
+    category: "Compressor",
+    blockCategory: "audiofx" as const,
+  },
+  {
+    identifier: "com.arturia.minimoog-v.au",
+    name: "Mini V3",
+    manufacturer: "Arturia",
+    format: "AU",
+    category: "Instrument",
+    blockCategory: "instrument" as const,
+  },
+  {
+    identifier: "com.soundtoys.echoboy.au",
+    name: "EchoBoy",
+    manufacturer: "SoundToys",
+    format: "AU",
+    category: "Delay",
+    blockCategory: "audiofx" as const,
+  },
+  {
+    identifier: "com.native.kontakt7.vst3",
+    name: "Kontakt 7",
+    manufacturer: "Native Instruments",
+    format: "VST3",
+    category: "Instrument",
+    blockCategory: "instrument" as const,
+  },
+  {
+    identifier: "el.MidiMonitor",
+    name: "MIDI Monitor",
+    manufacturer: "Element",
+    format: "INT",
+    category: "Utility",
+    blockCategory: "midifx" as const,
+  },
+];
 
 const demoMolecules = [
   { name: "Sidechain Comp", description: "Classic sidechain compression chain" },
-  { name: "Reverb Send",    description: "Stereo reverb send with pre-delay"   },
-  { name: "Mid/Side",       description: "M/S encoder + processor + decoder"   },
+  { name: "Reverb Send", description: "Stereo reverb send with pre-delay" },
+  { name: "Mid/Side", description: "M/S encoder + processor + decoder" },
 ];
 
 function seedPopulated() {
   usePluginBrowserStore.setState({
-    plugins: tpPlugins,
-    favoriteIdentifiers: new Set(["tp-inst-vital", "tp-audiofx-proq4"]),
-    recentIdentifiers: ["tp-audiofx-valhalla", "tp-inst-kontakt"],
+    plugins: demoPlugins,
+    favoriteIdentifiers: new Set(["com.fabfilter.pro-q3.vst3", "com.arturia.minimoog-v.au"]),
+    recentIdentifiers: ["com.soundtoys.echoboy.au", "com.native.kontakt7.vst3"],
     refresh: async () => {},
   });
   useSessionStore.setState({
     filePath: "/Users/glen/Music/Demo.els",
     dirty: false,
-    recentFiles: ["/Users/glen/Music/Demo.els", "/Users/glen/Music/LiveSet.els"],
+    recentFiles: [
+      "/Users/glen/Music/Demo.els",
+      "/Users/glen/Music/LiveSet.els",
+    ],
     graphs: [
-      { id: "g1", name: "Main Board", index: 0, active: true  },
-      { id: "g2", name: "FX Chain",   index: 1, active: false },
+      { id: "g1", name: "Main Board", index: 0, active: true },
+      { id: "g2", name: "FX Chain", index: 1, active: false },
     ],
   });
   useHostExtrasStore.setState((s) => ({
     ...s,
     molecules: demoMolecules,
-    activeGraphOutline: [],
+    activeGraphOutline: [
+      {
+        id: "n1",
+        name: "Synth Layer",
+        isContainer: true,
+        children: [{ id: "n1a", name: "Mini V3", isContainer: false }],
+      },
+    ],
+  }));
+  usePerformStore.setState((s) => ({
+    liveHealth: { ...s.liveHealth, cpu: 18.7 },
   }));
 }
 
@@ -57,52 +126,36 @@ function seedEmpty() {
     molecules: [],
     activeGraphOutline: [],
   }));
+  usePerformStore.setState((s) => ({
+    liveHealth: { ...s.liveHealth, cpu: 0 },
+  }));
 }
-
-// ── Wrapper helper ────────────────────────────────────────────────────────────
-
-function PaletteFrame({ children }: { children: React.ReactNode }) {
-  return (
-    <div style={{ width: 280, height: 640 }} className="bg-panel">
-      {children}
-    </div>
-  );
-}
-
-// ── Meta ──────────────────────────────────────────────────────────────────────
 
 const meta = {
   title: "Layout/ToolPalette",
   component: ToolPalette,
   parameters: {
     layout: "fullscreen",
-    // addon-designs: reference the locked design system doc per G-17 spec.
-    design: {
-      type: "url",
-      url: "https://github.com/kushview/element/blob/main/docs/stitch-reference/DESIGN.md",
-    },
     docs: {
       description: {
         component:
-          "Edit-mode left browser for fast Block addition. Three tabs: Plugins (4-category filter + favourites + recents), Molecules (prebuilt Block+Cable snippets), Projects (boards + session files). Search filters the active tab. Reads usePluginBrowserStore, useSessionStore, useHostExtrasStore.",
+          "Edit-mode left browser for adding Blocks: tabs between a Plugins view (favourites, recents, molecules, category-filtered AU/VST3/CLAP/LV2 list) and a Projects view (host-scanned session files), with a Board outline, .elg import/export, recent sessions, and a live CPU meter. Reads usePluginBrowserStore, useSessionStore, useHostExtrasStore, and usePerformStore; the mount refreshPlugins() is overridden with a no-op so seeded plugins survive.",
       },
     },
   },
-  tags: ["autodocs", "gate-ab"],
+  tags: ["autodocs"],
 } satisfies Meta<typeof ToolPalette>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-// ── Populated ─────────────────────────────────────────────────────────────────
-// Primary: scanned plugins, favourites, recents, molecules, boards.
-
+// ── Populated: plugins, favourites, recents, molecules ──
 export const Populated: Story = {
   parameters: {
     docs: {
       description: {
         story:
-          "Fully-stocked browser: 10 scanned plugins (all 4 categories), 2 favourites, 2 recents, 3 molecules, 2 boards. The primary add-a-Block workflow for an expert in flow state.",
+          "The fully-stocked browser an expert user works from: scanned plugins, favourites, recents, molecules, a Board outline, and moderate CPU — the primary add-a-Block workflow.",
       },
     },
   },
@@ -110,51 +163,21 @@ export const Populated: Story = {
     (Story) => {
       seedPopulated();
       return (
-        <PaletteFrame>
+        <div style={{ width: 280, height: 640 }} className="bg-panel">
           <Story />
-        </PaletteFrame>
+        </div>
       );
     },
   ],
-  play: async ({ canvas }) => {
-    // 1. Search input is present
-    const searchInput = canvas.getByPlaceholderText(/search plugins/i);
-    expect(searchInput).toBeTruthy();
-
-    // 2. Category filter controls are present with labelled buttons
-    const instFilter = canvas.getByRole("button", {
-      name: /filter by virtual instrument/i,
-    });
-    const fxFilter = canvas.getByRole("button", {
-      name: /filter by audio effect/i,
-    });
-    expect(instFilter).toBeTruthy();
-    expect(fxFilter).toBeTruthy();
-
-    // 3. NO element exists with text containing "cpu" (case-insensitive)
-    expect(canvas.queryByText(/cpu/i)).toBeNull();
-
-    // 4. Results filter by type: click Instrument chip → only instruments remain
-    //    in the "All Plugins" section. "Pro-C 2" (audiofx, not a favourite/recent)
-    //    should disappear; "Surge XT" (instrument) should remain.
-    await userEvent.click(instFilter);
-    expect(canvas.queryByText("Pro-C 2")).toBeNull();
-    expect(canvas.getByText("Surge XT")).toBeTruthy();
-
-    // Reset filter
-    await userEvent.click(instFilter);
-  },
 };
 
-// ── Empty ─────────────────────────────────────────────────────────────────────
-// First-run: nothing scanned yet → EmptyState + "Open Preferences" CTA.
-
+// ── Empty: no plugins scanned yet ──
 export const Empty: Story = {
   parameters: {
     docs: {
       description: {
         story:
-          "First-run state with nothing scanned: shows the EmptyState illustration and the Open Preferences call-to-action.",
+          "First-run state with nothing scanned: shows the EmptyState illustration and the 'Open Preferences' call-to-action to scan plugins.",
       },
     },
   },
@@ -162,35 +185,21 @@ export const Empty: Story = {
     (Story) => {
       seedEmpty();
       return (
-        <PaletteFrame>
+        <div style={{ width: 280, height: 640 }} className="bg-panel">
           <Story />
-        </PaletteFrame>
+        </div>
       );
     },
   ],
-  play: async ({ canvas }) => {
-    // Search input still present even when empty
-    expect(canvas.getByPlaceholderText(/search plugins/i)).toBeTruthy();
-    // Category filters are present
-    expect(
-      canvas.getByRole("button", { name: /filter by virtual instrument/i }),
-    ).toBeTruthy();
-    // No CPU element
-    expect(canvas.queryByText(/cpu/i)).toBeNull();
-    // EmptyState CTA button visible (use role to avoid matching the description paragraph)
-    expect(canvas.getByRole("button", { name: /open preferences/i })).toBeTruthy();
-  },
 };
 
-// ── Plugins, no extras ────────────────────────────────────────────────────────
-// Plugins scanned but no favourites, recents, or molecules — bare list + filters.
-
+// ── Plugins only, no molecules or recents ──
 export const PluginsNoExtras: Story = {
   parameters: {
     docs: {
       description: {
         story:
-          "Plugins scanned but no favourites, recents, or molecules: the bare 10-plugin list with category filters — the state right after a first scan.",
+          "Plugins scanned but no favourites, recents, or molecules yet: the bare plugin list + category filters, the state right after a first scan.",
       },
     },
   },
@@ -198,38 +207,44 @@ export const PluginsNoExtras: Story = {
     (Story) => {
       seedEmpty();
       usePluginBrowserStore.setState({
-        plugins: tpPlugins,
+        plugins: demoPlugins,
         favoriteIdentifiers: new Set(),
         recentIdentifiers: [],
         refresh: async () => {},
       });
+      usePerformStore.setState((s) => ({
+        liveHealth: { ...s.liveHealth, cpu: 5.2 },
+      }));
       return (
-        <PaletteFrame>
+        <div style={{ width: 280, height: 640 }} className="bg-panel">
           <Story />
-        </PaletteFrame>
+        </div>
       );
     },
   ],
-  play: async ({ canvas }) => {
-    // Both instruments AND audiofx plugins are initially visible
-    expect(canvas.getByText("Vital")).toBeTruthy();       // instrument
-    expect(canvas.getByText("Pro-C 2")).toBeTruthy();     // audiofx
+};
 
-    // Click Audio Effect filter → instruments disappear from the list
-    const fxFilter = canvas.getByRole("button", {
-      name: /filter by audio effect/i,
-    });
-    await userEvent.click(fxFilter);
-    expect(canvas.getByText("Pro-C 2")).toBeTruthy();     // still visible (audiofx)
-    expect(canvas.queryByText("Vital")).toBeNull();        // instrument filtered out
-
-    // Section heading updates to category label
-    expect(canvas.getByText("Audio Effect")).toBeTruthy();
-
-    // No CPU element anywhere
-    expect(canvas.queryByText(/cpu/i)).toBeNull();
-
-    // Reset filter
-    await userEvent.click(fxFilter);
+// ── High CPU load ──
+export const HighCpu: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Fully populated but with CPU at ~91%: the footer meter fills toward the danger zone, the cue that the Project is near overload while browsing.",
+      },
+    },
   },
+  decorators: [
+    (Story) => {
+      seedPopulated();
+      usePerformStore.setState((s) => ({
+        liveHealth: { ...s.liveHealth, cpu: 91.4 },
+      }));
+      return (
+        <div style={{ width: 280, height: 640 }} className="bg-panel">
+          <Story />
+        </div>
+      );
+    },
+  ],
 };

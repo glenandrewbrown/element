@@ -53,36 +53,6 @@
 
   /* Font */
   --font-sans: "Inter", system-ui, -apple-system, sans-serif;
-
-  /* ── Density / Sizing Token Ramp (G-14) ── */
-  /* Base unit: 4px. Dense audio-instrument UI — readability over comfort. */
-
-  /* Spacing scale */
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-5: 20px;
-  --space-6: 24px;
-  --space-7: 32px;
-  --space-8: 48px;
-
-  /* Text sizes — optimised for information density in a plugin chassis */
-  --text-xs: 10px;   /* port labels, tiny badges, captions */
-  --text-sm: 11px;   /* secondary params, stat readouts */
-  --text-md: 12px;   /* body default, param names */
-  --text-lg: 14px;   /* panel headings, block names */
-
-  /* Interactive control heights */
-  --control-h-sm: 20px;  /* inline labels, pill toggles, knob rings */
-  --control-h-md: 28px;  /* standard buttons, text inputs, tabs */
-  --control-h-lg: 36px;  /* toolbar primaries, large action buttons */
-
-  /* Panel padding — inner gutter for panels and cards */
-  --panel-padding-xs: 4px;   /* header strips, toolbar chrome */
-  --panel-padding-sm: 8px;   /* compact side panels, list rows */
-  --panel-padding-md: 12px;  /* standard inspector / browser panels */
-  --panel-padding-lg: 16px;  /* detail views, settings sections */
 }
 
 /* ── Motion vocabulary tokens — Phase F.0.9 ── */
