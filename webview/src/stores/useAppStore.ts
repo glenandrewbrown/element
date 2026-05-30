@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { persist, createJSONStorage } from "zustand/middleware";
 import type { AppMode } from "../data/types";
 import { usePerformStore } from "./usePerformStore";
 
@@ -59,7 +60,9 @@ interface AppActions {
 
 type AppStore = AppState & AppActions;
 
-export const useAppStore = create<AppStore>()((set) => ({
+export const useAppStore = create<AppStore>()(
+  persist(
+    (set) => ({
   mode: "edit",
   leftPanelOpen: true,
   rightPanelOpen: true,
@@ -129,7 +132,23 @@ export const useAppStore = create<AppStore>()((set) => ({
     })),
 
   setCableRouting: (routing) => set({ cableRouting: routing }),
-}));
+    }),
+    {
+      // G-19: persist the Edit/Perform mode so it survives reload instead of
+      // snapping back to "edit". Narrow partialize — only `mode` is stored;
+      // panel/scene/bookmark state stays session-local.
+      //
+      // NOTE: in the embedded JUCE WKWebView, localStorage MAY be cleared on
+      // a full plugin reload depending on the data-store config — if Glen's
+      // "flips back" symptom persists at runtime, the durable fix is to back
+      // this with the C++ ValueTree via the bridge (tracked follow-up). This
+      // fixes Storybook/dev-build and standalone immediately.
+      name: "element-app-ui",
+      storage: createJSONStorage(() => localStorage),
+      partialize: (s) => ({ mode: s.mode }),
+    },
+  ),
+);
 
 export const selectCableRouting = (s: AppStore) => s.cableRouting;
 

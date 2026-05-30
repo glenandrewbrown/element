@@ -30,7 +30,7 @@ export function StatusBar() {
   const sampleRate = health.sampleRateLabel || "—";
   const buffer =
     typeof health.buffer === "number" && health.buffer > 0
-      ? `${health.buffer} spl`
+      ? `${health.buffer} smp`
       : "—";
   const latency =
     typeof health.latency === "number" && health.latency > 0

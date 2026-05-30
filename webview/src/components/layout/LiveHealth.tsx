@@ -123,7 +123,7 @@ export function LiveHealth() {
               Buffer
             </span>
             <div className="text-xs font-bold text-text-primary tabular">
-              {health.buffer} SPL
+              {health.buffer} smp
             </div>
           </div>
           <div className="p-2 bg-surface border border-white/5 rounded">

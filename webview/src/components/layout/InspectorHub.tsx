@@ -450,7 +450,7 @@ function ProjectOverview() {
     engineSampleRate > 0
       ? `${(engineSampleRate / 1000).toFixed(1)} kHz`
       : "—";
-  const bufferLabel = engineBufferSize > 0 ? `${engineBufferSize} spl` : "—";
+  const bufferLabel = engineBufferSize > 0 ? `${engineBufferSize} smp` : "—";
   const deviceLatencyLabel =
     engineDeviceLatencyMs > 0
       ? `${engineDeviceLatencyMs.toFixed(1)} ms`

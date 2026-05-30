@@ -105,7 +105,7 @@ export function QuickAccess() {
             <span className="text-[10px] text-text-secondary uppercase tracking-tighter truncate">
               CPU {health.cpu.toFixed(0)}% · {health.sampleRateLabel} ·{" "}
               {typeof health.buffer === "number" && health.buffer > 0
-                ? `${health.buffer} spl`
+                ? `${health.buffer} smp`
                 : "buffer —"}
             </span>
           </div>

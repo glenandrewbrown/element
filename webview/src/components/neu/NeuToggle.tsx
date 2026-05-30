@@ -57,7 +57,9 @@ export function NeuToggle({
     >
       <span
         className={[
-          "absolute top-0.5 w-2 h-2 rounded-full bg-text-primary transition-all duration-150",
+          // G-04: top-1/2 + -translate-y-1/2 centres the knob dot vertically.
+          // (top-0.5 left it ~2px high once the 1px border ate the bottom gap.)
+          "absolute top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-text-primary transition-all duration-150",
           active ? "right-0.5" : "left-0.5",
         ].join(" ")}
       />

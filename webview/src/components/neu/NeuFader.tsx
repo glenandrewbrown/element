@@ -42,7 +42,8 @@ export function NeuFader({
   className = "",
 }: NeuFaderProps) {
   const hex = colorHex[color];
-  const pct = `${Math.max(0, Math.min(100, value))}%`;
+  const clamped = Math.max(0, Math.min(100, value));
+  const pct = `${clamped}%`;
   const isVert = orientation === "vertical";
   const trackRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
@@ -110,10 +111,11 @@ export function NeuFader({
             className="absolute w-4 h-px bg-white/40"
             style={{ bottom: `calc(${pct} + 8px)` }}
           />
-          {/* Thumb */}
+          {/* Thumb — G-02: translateY by its own height-fraction keeps it
+              fully inside the track at both extremes (0% and 100%). */}
           <div
             className="absolute w-6 h-3 bg-[#252529] shadow-[-2px_-2px_8px_rgba(255,255,255,0.04),2px_2px_8px_rgba(0,0,0,0.35)] border-y border-white/5 z-10 rounded-sm"
-            style={{ bottom: pct }}
+            style={{ bottom: pct, transform: `translateY(${clamped}%)` }}
           />
         </div>
         {/* Label stack */}
@@ -142,11 +144,12 @@ export function NeuFader({
           {label}
         </span>
       )}
-      {/* Track */}
+      {/* Track — G-03: recessed inset groove to match the vertical fader
+          (was a flat bg-canvas bar with no neumorphic indent). */}
       <div
         ref={trackRef}
         className={[
-          "flex-1 h-1.5 bg-canvas rounded-full relative overflow-visible",
+          "flex-1 h-1.5 bg-pressed neu-inset rounded-full relative overflow-visible",
           onChange ? "cursor-ew-resize" : "",
         ].join(" ")}
         onPointerDown={onPointerDown}
@@ -163,10 +166,11 @@ export function NeuFader({
           className="absolute top-0 h-full w-px bg-white/40"
           style={{ left: `calc(${pct} + 2px)` }}
         />
-        {/* Thumb */}
+        {/* Thumb — G-02: translateX by its own width-fraction keeps it fully
+            inside the track at both extremes (no overhang past the rail). */}
         <div
           className="absolute -top-[5px] w-2 h-4 bg-[#252529] rounded shadow-[-2px_-2px_8px_rgba(255,255,255,0.04),2px_2px_8px_rgba(0,0,0,0.35)] border border-white/10"
-          style={{ left: pct }}
+          style={{ left: pct, transform: `translateX(-${clamped}%)` }}
         />
       </div>
       <span

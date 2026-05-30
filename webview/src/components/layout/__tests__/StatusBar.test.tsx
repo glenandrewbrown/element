@@ -143,7 +143,7 @@ describe("sample rate and buffer", () => {
       liveHealth: { ...s.liveHealth, buffer: 256 },
     }));
     render(<StatusBar />);
-    expect(screen.getByText("256 spl")).toBeInTheDocument();
+    expect(screen.getByText("256 smp")).toBeInTheDocument();
   });
 
   it("shows '—' for buffer when 0", () => {
