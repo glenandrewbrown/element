@@ -40,6 +40,7 @@ const meta = {
     defaultOctaveStart: { control: { type: "range", min: 0, max: 7, step: 1 } },
     defaultOctaveCount: { control: { type: "range", min: 1, max: 5, step: 1 } },
   },
+  tags: ["gate-ab"],
 } satisfies Meta<typeof VirtualKeyboard>;
 
 export default meta;

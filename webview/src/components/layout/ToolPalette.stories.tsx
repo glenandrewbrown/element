@@ -88,7 +88,7 @@ const meta = {
       },
     },
   },
-  tags: ["autodocs"],
+  tags: ["autodocs", "gate-ab"],
 } satisfies Meta<typeof ToolPalette>;
 
 export default meta;

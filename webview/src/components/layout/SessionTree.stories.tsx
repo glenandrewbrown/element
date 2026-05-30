@@ -137,7 +137,7 @@ const meta = {
       url: "docs/stitch-reference/DESIGN.md",
     },
   },
-  tags: ["autodocs"],
+  tags: ["autodocs", "gate-ab"],
 } satisfies Meta<typeof SessionTree>;
 
 export default meta;

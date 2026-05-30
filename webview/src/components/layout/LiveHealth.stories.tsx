@@ -76,6 +76,7 @@ const meta = {
       url: "docs/ELEMENT_UNIFIED_BLUEPRINT.md#g-08-livehealth-io-detail",
     },
   },
+  tags: ["gate-ab"],
 } satisfies Meta<typeof LiveHealth>;
 
 export default meta;

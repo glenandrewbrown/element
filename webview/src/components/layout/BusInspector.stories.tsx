@@ -29,7 +29,7 @@ const meta = {
       url: "https://placeholder.design/bus-inspector-spec.png",
     },
   },
-  tags: ["autodocs"],
+  tags: ["autodocs", "gate-ab"],
 } satisfies Meta<typeof BusInspector>;
 
 export default meta;
