@@ -1,4 +1,6 @@
+import type { ReactNode } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { expect } from "storybook/test";
 import { SnippetShelf } from "./SnippetShelf";
 import { useHostExtrasStore } from "../../stores/useHostExtrasStore";
 
@@ -14,15 +16,28 @@ const demoMolecules = [
   { name: "Vocal Chain", description: "EQ → comp → de-esser" },
 ];
 
+// Wrapper matching the left-nav vertical context (G-15 relocation)
+function LeftNavPanel({ children }: { children: ReactNode }) {
+  return (
+    <div style={{ width: 240, height: 420 }} className="bg-panel">
+      {children}
+    </div>
+  );
+}
+
 const meta = {
   title: "Layout/SnippetShelf",
   component: SnippetShelf,
   parameters: {
     layout: "fullscreen",
+    design: {
+      type: "link",
+      url: "/docs/stitch-reference/DESIGN.md",
+    },
     docs: {
       description: {
         component:
-          "Edit-mode bottom shelf of saved Snippets (reusable Block + Cable groups, a.k.a. molecules) as click-to-insert thumbnails, plus the always-visible red PANIC button. Reads useHostExtrasStore.molecules; seed it per story.",
+          "Left-nav panel of saved Snippets (pre-wired Block + Cable groups, a.k.a. molecules) presented as click-to-insert items, plus the always-visible PANIC button. Reads useHostExtrasStore.molecules; seed it per story. Relocated from the bottom edit-mode shelf (G-15).",
       },
     },
   },
@@ -38,7 +53,7 @@ export const WithSnippets: Story = {
     docs: {
       description: {
         story:
-          "The typical shelf with a handful of saved chains ready to drop onto the Board — the primary insert-a-Snippet use case.",
+          "The typical panel with a handful of saved chains ready to drop onto the Board — the primary insert-a-Snippet use case.",
       },
     },
   },
@@ -49,12 +64,26 @@ export const WithSnippets: Story = {
         molecules: demoMolecules,
       }));
       return (
-        <div style={{ width: 900, height: 48 }} className="bg-panel">
+        <LeftNavPanel>
           <Story />
-        </div>
+        </LeftNavPanel>
       );
     },
   ],
+  play: async ({ canvas }) => {
+    // Explanatory label clarifying what snippets are (AC: G-15)
+    await expect(
+      canvas.getByText(/pre-wired block \+ cable groups/i),
+    ).toBeInTheDocument();
+    // Each molecule renders as a named insert button
+    const buttons = canvas.getAllByRole("button", { name: /insert snippet/i });
+    await expect(buttons.length).toBeGreaterThan(0);
+    await expect(buttons[0]).toBeEnabled();
+    // PANIC button always visible
+    await expect(
+      canvas.getByRole("button", { name: /panic/i }),
+    ).toBeInTheDocument();
+  },
 };
 
 // ── Empty: no snippets saved yet ──
@@ -63,7 +92,7 @@ export const Empty: Story = {
     docs: {
       description: {
         story:
-          "No Snippets saved: shows the 'select blocks and save as molecule' prompt while still rendering the PANIC button.",
+          "No Snippets saved: shows the explanatory label plus guidance on how to create one. PANIC button still visible.",
       },
     },
   },
@@ -71,12 +100,29 @@ export const Empty: Story = {
     (Story) => {
       useHostExtrasStore.setState((s) => ({ ...s, molecules: [] }));
       return (
-        <div style={{ width: 900, height: 48 }} className="bg-panel">
+        <LeftNavPanel>
           <Story />
-        </div>
+        </LeftNavPanel>
       );
     },
   ],
+  play: async ({ canvas }) => {
+    // Explanatory label in header always present
+    await expect(
+      canvas.getByText(/pre-wired block \+ cable groups/i),
+    ).toBeInTheDocument();
+    // Empty state guidance
+    await expect(canvas.getByText(/no snippets yet/i)).toBeInTheDocument();
+    // PANIC always visible
+    await expect(
+      canvas.getByRole("button", { name: /panic/i }),
+    ).toBeInTheDocument();
+    // No insert buttons when list is empty
+    const insertButtons = canvas.queryAllByRole("button", {
+      name: /insert snippet/i,
+    });
+    await expect(insertButtons).toHaveLength(0);
+  },
 };
 
 // ── Single snippet ──
@@ -85,7 +131,7 @@ export const SingleSnippet: Story = {
     docs: {
       description: {
         story:
-          "One saved Snippet: the minimal populated state, useful for checking thumbnail sizing and the count badge.",
+          "One saved Snippet: the minimal populated state, useful for checking item sizing and action affordance.",
       },
     },
   },
@@ -96,12 +142,21 @@ export const SingleSnippet: Story = {
         molecules: [{ name: "My Chain", description: "Custom signal chain" }],
       }));
       return (
-        <div style={{ width: 900, height: 48 }} className="bg-panel">
+        <LeftNavPanel>
           <Story />
-        </div>
+        </LeftNavPanel>
       );
     },
   ],
+  play: async ({ canvas }) => {
+    await expect(
+      canvas.getByText(/pre-wired block \+ cable groups/i),
+    ).toBeInTheDocument();
+    const btn = canvas.getByRole("button", {
+      name: /insert snippet: my chain/i,
+    });
+    await expect(btn).toBeEnabled();
+  },
 };
 
 // ── Many snippets — scrollable overflow ──
@@ -111,7 +166,7 @@ export const ManySnippets: Story = {
     docs: {
       description: {
         story:
-          "Visual-only: 12 auto-generated Snippets to exercise horizontal scroll/overflow. Excluded from the agent manifest — it is a layout stress test, not a distinct usage pattern.",
+          "Visual-only: 12 auto-generated Snippets to exercise vertical scroll/overflow in the left-nav context. Excluded from agent manifest.",
       },
     },
   },
@@ -125,9 +180,9 @@ export const ManySnippets: Story = {
         })),
       }));
       return (
-        <div style={{ width: 900, height: 48 }} className="bg-panel">
+        <LeftNavPanel>
           <Story />
-        </div>
+        </LeftNavPanel>
       );
     },
   ],

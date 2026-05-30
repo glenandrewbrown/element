@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { expect } from "storybook/test";
 import { QuickAccess } from "./QuickAccess";
 import { useGraphStore } from "../../stores/useGraphStore";
 import { usePerformStore } from "../../stores/usePerformStore";
@@ -89,10 +90,14 @@ const meta = {
   component: QuickAccess,
   parameters: {
     layout: "fullscreen",
+    design: {
+      type: "link",
+      url: "/docs/stitch-reference/DESIGN.md",
+    },
     docs: {
       description: {
         component:
-          "Perform-mode left rail: a flat, read-only roster of every Block on the active Board, ordered by canvas position and category-dotted (generator/modifier/logic), with a live audio-device/CPU footer. Reads useGraphStore.nodes and usePerformStore (sessionName, liveHealth); seed both per story.",
+          "Perform-mode left rail: a flat, read-only roster of every Block on the active Board, ordered by canvas position. Each entry shows category colour swatch, name, format, per-block CPU load bar + latency so the user can scan the signal chain at a glance. Footer mirrors the LiveHealth CPU gradient bar + a 4-bar output peak LED. Reads useGraphStore.nodes and usePerformStore (sessionName, liveHealth); seed both per story.",
       },
     },
   },
@@ -108,7 +113,7 @@ export const WithBlocks: Story = {
     docs: {
       description: {
         story:
-          "The real on-stage use: a mixed chain (generator + modifiers + logic) with one bypassed Block, showing the category dots, format/bypass sub-labels, and a healthy CPU footer.",
+          "The real on-stage use: a mixed chain (instrument + audiofx + midifx) with one bypassed Block showing category swatches, CPU mini bars, latency, bypass label, and the health footer.",
       },
     },
   },
@@ -126,6 +131,23 @@ export const WithBlocks: Story = {
       );
     },
   ],
+  play: async ({ canvas }) => {
+    // Block names visible (G-10: richer info)
+    await expect(canvas.getByText("Mini V3")).toBeInTheDocument();
+    await expect(canvas.getByText("Pro-Q 3")).toBeInTheDocument();
+    // CPU % shown per block — not just a category dot (the key G-10 upgrade)
+    await expect(canvas.getByText("4.2%")).toBeInTheDocument();
+    // Bypass badge for EchoBoy
+    await expect(canvas.getByText("BYP")).toBeInTheDocument();
+    // Latency shown for EchoBoy
+    await expect(canvas.getByText("22.5 ms")).toBeInTheDocument();
+    // Footer device name always present
+    await expect(canvas.getByText("Built-in Output")).toBeInTheDocument();
+    // CPU progress bar accessible
+    await expect(
+      canvas.getByRole("progressbar", { name: /cpu load/i }),
+    ).toBeInTheDocument();
+  },
 };
 
 // ── Empty board (no blocks) ──
@@ -152,6 +174,13 @@ export const Empty: Story = {
       );
     },
   ],
+  play: async ({ canvas }) => {
+    await expect(canvas.getByText(/no blocks yet/i)).toBeInTheDocument();
+    // Footer still present even with empty board
+    await expect(
+      canvas.getByRole("progressbar", { name: /cpu load/i }),
+    ).toBeInTheDocument();
+  },
 };
 
 // ── High CPU warning state ──
@@ -160,7 +189,7 @@ export const HighCpu: Story = {
     docs: {
       description: {
         story:
-          "CPU above the 85% threshold: the footer status dot turns error-red, the cue that the Project is overloading the audio device.",
+          "CPU above the 85% threshold: the footer CPU bar turns orange/red and the status dot turns error-red, cueing the user that the Project is overloading the audio device.",
       },
     },
   },
@@ -178,4 +207,11 @@ export const HighCpu: Story = {
       );
     },
   ],
+  play: async ({ canvas }) => {
+    // High CPU value in footer
+    await expect(canvas.getByText("92%")).toBeInTheDocument();
+    // Progress bar accessible in warning state
+    const bar = canvas.getByRole("progressbar", { name: /cpu load/i });
+    await expect(bar).toBeInTheDocument();
+  },
 };
