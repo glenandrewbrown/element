@@ -171,7 +171,13 @@ export function AppShell({
   // Compute canvas insets
   const leftInset = leftOpen ? LEFT_W : LEFT_COLLAPSED_W;
   const rightInset = rightOpen ? RIGHT_W : RIGHT_COLLAPSED_W;
-  const bottomInset = (bottomOpen ? bottomH : 0) + STATUS_H;
+  // null  = slot explicitly suppressed — no BottomSlot rendered, no inset reserved.
+  // undefined (prop omitted) = PlaceholderPanel fallback (Storybook smoke stories use this).
+  // This lets App.tsx pass null when all perform-bottom tabs are shelved (D3) or when
+  // SnippetShelf has been relocated out of the bottom strip (G-15).
+  const rawBottomContent = isEdit ? editBottomPanel : performBottomPanel;
+  const hasBottomContent = rawBottomContent !== null;
+  const bottomInset = (bottomOpen && hasBottomContent ? bottomH : 0) + STATUS_H;
 
   // Resolve panel content by mode
   const leftContent = isEdit
@@ -182,9 +188,13 @@ export function AppShell({
     ? (editRightPanel ?? <PlaceholderPanel label="Inspector" />)
     : (performRightPanel ?? <PlaceholderPanel label="Live Health" />);
 
-  const bottomContent = isEdit
-    ? (editBottomPanel ?? <PlaceholderPanel label="Snippet Shelf" />)
-    : (performBottomPanel ?? <PlaceholderPanel label="Macro Dashboard" />);
+  // null → suppressed entirely; undefined (omitted) → placeholder fallback
+  const bottomContent =
+    rawBottomContent !== undefined
+      ? rawBottomContent
+      : (isEdit
+          ? <PlaceholderPanel label="Snippet Shelf" />
+          : <PlaceholderPanel label="Macro Dashboard" />);
 
   return (
     <div className="w-full h-full overflow-hidden bg-canvas">
@@ -232,7 +242,7 @@ export function AppShell({
 
       {/* ── Bottom Panel ── */}
       <AnimatePresence mode="wait">
-        {bottomOpen && (
+        {bottomOpen && hasBottomContent && (
           <BottomSlot
             key={`bottom-${mode}`}
             panelKey={`bottom-${mode}`}

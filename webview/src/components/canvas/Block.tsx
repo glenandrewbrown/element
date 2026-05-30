@@ -10,34 +10,41 @@ import { useBusStore } from "../../stores/useBusStore";
 import { BlockEmbed } from "./BlockEmbed";
 
 // ── Category config ──
+// FROZEN (Wave F): all 5 fields are locked. Do NOT change values/colors (Wave 2 decision D1).
+// `label` added Wave F for G-12 SessionTree tree-row display + G-17 ToolPalette filter tabs.
+// To consume: `import { catConfig } from "../../components/canvas/Block"` — do NOT add new local Records.
 
-const catConfig: Record<
+export const catConfig: Record<
   BlockCategory,
-  { hex: string; bg: string; shape: string; glowClass: string }
+  { hex: string; bg: string; shape: string; glowClass: string; label: string }
 > = {
   instrument: {
     hex: "#4A90D9",
     bg: "bg-[#4A90D9]",
     shape: "w-1.5 h-1.5 rounded-full bg-[#4A90D9]",
     glowClass: "glow-blue",
+    label: "Virtual Instrument",
   },
   audiofx: {
     hex: "#E8A838",
     bg: "bg-[#E8A838]",
     shape: "w-1.5 h-1.5 rotate-45 bg-[#E8A838]",
     glowClass: "glow-orange",
+    label: "Audio Effect",
   },
   midifx: {
     hex: "#2BC4C4",
     bg: "bg-[#2BC4C4]",
     shape: "w-1.5 h-1.5 bg-[#2BC4C4]",
     glowClass: "glow-teal",
+    label: "MIDI Effect",
   },
   modulator: {
     hex: "#A87FE0",
     bg: "bg-[#A87FE0]",
     shape: "w-1.5 h-1.5 bg-[#A87FE0]",
     glowClass: "glow-purple",
+    label: "Modulator / Utility",
   },
 };
 

@@ -41,6 +41,16 @@ interface AppState {
    * and the bridge hook. (T-P6-4)
    */
   refreshNonce: number;
+  /**
+   * D3 shelve flags — features hidden from the UI but code/stores/components
+   * remain intact (reversible backlog). Current shelved IDs:
+   *   "dashboard"  → DashboardBuilder (G-06)
+   *   "macros"     → MacroDashboard   (G-09)
+   *   "scenes"     → SceneLauncher    (G-11)
+   * Mount sites gate on `hiddenPanels.has(id)`; imports are never deleted.
+   * To restore a feature: remove its ID from this Set and re-wire its mount.
+   */
+  hiddenPanels: Set<string>;
 }
 
 interface AppActions {
@@ -74,6 +84,7 @@ export const useAppStore = create<AppStore>()(
   cableRouting: "manhattan",
   hostReady: false,
   refreshNonce: 0,
+  hiddenPanels: new Set<string>(["dashboard", "macros", "scenes"]),
 
   markHostReady: () => set({ hostReady: true }),
 
@@ -163,3 +174,11 @@ export const selectBottomPanel = (s: AppStore) => s.bottomPanelOpen;
 export const selectVirtualKeyboardOpen = (s: AppStore) => s.virtualKeyboardOpen;
 export const selectActiveScene = (s: AppStore) => s.activeScene;
 export const selectOpenBlockTabs = (s: AppStore) => s.openBlockTabs;
+
+/**
+ * Factory selector — returns a primitive boolean so callers don't need
+ * useShallow (Zustand v5 mount-loop guard). Usage:
+ *   const hidden = useAppStore(selectIsPanelHidden("scenes"));
+ */
+export const selectIsPanelHidden = (id: string) => (s: AppStore) =>
+  s.hiddenPanels.has(id);
