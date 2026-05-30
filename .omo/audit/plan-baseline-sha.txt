@@ -1,0 +1,13 @@
+0936d558
+
+# Baseline SHA for the UI-redesign OMC plan (.omo/plans/ui-redesign-OMC-execution.md).
+# R4 scope-fidelity diffs against THIS SHA (post Pre-Flight hygiene), never HEAD~N.
+# 2026-05-30: advanced from 340f94c9 -> 0936d558 after the §4 hygiene commit
+#   (chore(nodes): qualify juce:: types in reroutenode.hpp header), so the
+#   hygiene commit is NOT counted as plan drift.
+#
+# test:all baseline (§4 step 6) — captured 2026-05-30
+# Test Files: 100 passed (100)
+# Tests:      1058 passed (1058)
+# Exit:       0  (CLEAN — no pre-existing failures on chromatic-ui-review)
+# => DoD "0 NEW failures vs baseline" == "0 failures" absolute on this branch.

@@ -8,6 +8,8 @@ You are working on the Element audio plugin host UI/UX overhaul.
 
 **CRITICAL CONTEXT:** Load and read `docs/ELEMENT_UNIFIED_BLUEPRINT.md` before doing anything. This is the single source of truth. V3.0 — the Instrument Paradigm.
 
+**WHERE WE ARE (read first):** `.omo/PROJECT-STATE.md` — canonical project state, ship definition, gap analysis, sequenced plan, and the doc index (what to read / what is dead). As of 2026-05-30: UI-redesign Pass-1 was denied + reverted; current method is **Stitch-first** (`.omo/plans/pass2-stitch-redesign.md`); priority is **stabilise (incl. the CF1 host-crash) before resuming UI**.
+
 ### Key Facts
 
 - Element is a modular audio plugin host (VST3/AU/LV2/CLAP) built with JUCE 8 / C++20
