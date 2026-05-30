@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "CMD=$(python3 -c \"import json,sys; d=json.load(sys.stdin); print(d.get('tool_input',d).get('command',''))\" 2>/dev/null || true); case \"$CMD\" in *grep*|*rg\\ *|*ripgrep*|*find\\ *|*fd\\ *|*ack\\ *|*ag\\ *)   [ -f graphify-out/graph.json ] &&   echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"additionalContext\":\"graphify: knowledge graph at graphify-out/. For focused questions, run `graphify query \\\"<question>\\\"` (scoped subgraph, usually much smaller than GRAPH_REPORT.md) instead of grepping raw files. Read GRAPH_REPORT.md only for broad architecture context.\"}}'   || true ;; esac"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_response.filePath // .tool_input.file_path // empty' | { read -r f; [ -z \"$f\" ] && exit 0; case \"$f\" in */engine/*|*/nodes/*) matches=$(grep -nE '(\\bnew\\b |\\bdelete\\b |\\bmalloc\\b|\\bfree\\b|\\bmutex\\b|\\block_guard\\b|\\bunique_lock\\b|juce::CriticalSection|juce::SpinLock)' \"$f\" 2>/dev/null | grep -v '//.*no-rt-check' | grep -v 'prepareToRender\\|releaseResources\\|setState\\|getState' | head -5); if [ -n \"$matches\" ]; then echo \"{\\\"decision\\\": \\\"block\\\", \\\"reason\\\": \\\"RT-SAFETY: Potential real-time unsafe code in audio path. Found:\\n${matches}\\nUse pre-allocated buffers/atomics, or add //no-rt-check comment if intentional.\\\"}\"; fi;; esac; } 2>/dev/null || true"
+          }
+        ]
+      }
+    ]
+  }
+}

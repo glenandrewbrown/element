@@ -115,3 +115,6 @@ repomix-output_*.md
 /installer/output/
 webview/.tmp/
 .tmp/
+
+# OMO scratch dir (ephemeral; audit/plans under .omo/ stay tracked)
+.omo/tmp/
