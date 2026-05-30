@@ -18,19 +18,19 @@ const PLUGINS = [
   {
     identifier: "com.vendor.SurgeXT",
     name: "Surge XT",
-    blockCategory: "generator" as const,
+    blockCategory: "instrument" as const,
     format: "VST3",
   },
   {
     identifier: "com.vendor.EQPro",
     name: "EQ Pro",
-    blockCategory: "modifier" as const,
+    blockCategory: "audiofx" as const,
     format: "AU",
   },
   {
     identifier: "com.vendor.Arp",
     name: "Arp",
-    blockCategory: "logic" as const,
+    blockCategory: "midifx" as const,
     format: "VST3",
   },
 ];
@@ -143,7 +143,7 @@ describe("<QuickAddPopup />", () => {
 
   // ── Category icons ────────────────────────────────────────────────────────
 
-  it("shows generator (●) icon for generator plugins", async () => {
+  it("shows instrument (●) icon for instrument plugins", async () => {
     render(<QuickAddPopup {...defaultProps} />);
     await waitFor(() => {
       const el = screen.getByLabelText("Instrument");
@@ -151,18 +151,18 @@ describe("<QuickAddPopup />", () => {
     });
   });
 
-  it("shows modifier (◆) icon for modifier plugins", async () => {
+  it("shows audiofx (◆) icon for audiofx plugins", async () => {
     render(<QuickAddPopup {...defaultProps} />);
     await waitFor(() => {
-      const el = screen.getByLabelText("Effect");
+      const el = screen.getByLabelText("Audio FX");
       expect(el).toBeInTheDocument();
     });
   });
 
-  it("shows MIDI (▲) icon for logic plugins", async () => {
+  it("shows midifx (▲) icon for midifx plugins", async () => {
     render(<QuickAddPopup {...defaultProps} />);
     await waitFor(() => {
-      const el = screen.getByLabelText("MIDI");
+      const el = screen.getByLabelText("MIDI FX");
       expect(el).toBeInTheDocument();
     });
   });

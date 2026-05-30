@@ -143,6 +143,7 @@ Legacy engineering terminology is replaced with physical, recognisable analogies
 | Session | **Project** | The master file containing all audio routings, scripts, and layouts |
 | Graph | **Board** | The visual routing canvas where Blocks are connected |
 | Node / Plugin | **Block** | An individual instrument, effect, or utility on the Board |
+| *(new tier)* | **Module** | Named grouping ABOVE Blocks; breadcrumb-navigable, multi-use across Boards in a Project. A logical hierarchy label, NOT a nested Board (distinct from Container). |
 | Sub-Graph | **Container** | A nested Board housed within a single Block (local to the project) |
 | Sub-Graph (linked) | **Portal** | A nested Board linked to an external global master file (.elboard) |
 | Connection / Arc | **Cable** | A signal path between two Block ports |
@@ -205,13 +206,16 @@ One palette. No mode-switching. Dark backgrounds are the industry standard for p
 
 **Semantic Block Headers (Colour + Shape - colour-blindness safe):**
 
+> ⚠️ Decision D1 (2026-05-30) — OVERTURN: the 3-category Generator/Modifier/Logic taxonomy is replaced by the 4 categories below. Use --color-instrument/midifx/audiofx/modulator; do not use --block-generator/modifier/logic.
+
 | Category | Hex | Token | Shape | Examples |
 |---|---|---|---|---|
-| Generators | `#4A90D9` | `--block-generator` | Circle | Synths, Samplers, Audio Input |
-| Modifiers | `#E8A838` | `--block-modifier` | Diamond | EQ, Compressor, Reverb, Delay |
-| Logic | `#2BC4C4` | `--block-logic` | Triangle | MIDI Router, CV, Scripting |
+| Virtual Instruments | `#4A90D9` | `--color-instrument` | ● Circle | Synths, Samplers, Audio Input |
+| MIDI Effects | `#2BC4C4` | `--color-midifx` | ▲ Triangle | MIDI Router, MIDI I/O, Processors |
+| Audio Effects | `#E8A838` | `--color-audiofx` | ◆ Diamond | EQ, Compressor, Reverb, Delay |
+| Modulators / Utilities | `#A87FE0` | `--color-modulator` | ⬡ Hexagon | LFO, Value/CV nodes, Scripting, Routing logic |
 
-Blue/orange/teal maximises distinction for deuteranopia and protanopia (~8% of male users).
+Colour-blind safety carried by the 4 distinct shapes. Blue/teal/orange/purple maximises distinction for deuteranopia and protanopia (~8% of male users).
 
 **Format Badges:** VST3 `#4A90D9` Blue, AU `#A855F7` Purple, CLAP `#2BC4C4` Teal, LV2 `#6B7280` Gray.
 
@@ -234,7 +238,7 @@ Blue/orange/teal maximises distinction for deuteranopia and protanopia (~8% of m
 
 ### 5.3 Icons
 
-Lucide set, 24px base. Plugin types: filled circle (instrument), diamond (effect), triangle (MIDI). Tooltips show immediately on hover (zero delay for expert users).
+Lucide set, 24px base. Plugin type shapes: ● circle (Virtual Instruments), ▲ triangle (MIDI Effects), ◆ diamond (Audio Effects), ⬡ hexagon (Modulators/Utilities). Tooltips show immediately on hover (zero delay for expert users).
 
 ---
 
@@ -254,7 +258,9 @@ Everything exposed. Full tooling. Maximum freedom.
 - All keyboard shortcuts active
 - Full Lua Scripting, MIDI Mapping, Hardware I/O access
 
-### 6.2 Perform Mode ("The Stage")
+### 6.2 Perform Mode ("The Stage") [SHELVED: Dashboard Builder + Scene system — D3]
+
+> ⚠️ Decision D3 (2026-05-30) — SHELVED (hide-UI, keep-code): Dashboard Builder and the Scene/Preset system are removed from UI/nav, code preserved, do not add nav entry. Text below preserved for reference.
 
 Locked down for live use. A custom instrument panel, not just a stripped-down graph.
 
@@ -266,7 +272,7 @@ Locked down for live use. A custom instrument panel, not just a stripped-down gr
 - Structural editing disabled (no drag, no delete, no new connections)
 - Transport controls, Virtual Keyboard, and **Panic Button** prominent
 
-**The Dashboard Builder (inspired by Soundigy MIDI Lab's Custom Tab Editor):**
+**[SHELVED D3] The Dashboard Builder (inspired by Soundigy MIDI Lab's Custom Tab Editor):**
 
 Perform Mode is NOT just "show tagged macro knobs." It is a **bespoke instrument panel** that the user designs in Edit Mode and uses in Perform Mode. The user can compose a custom control surface containing:
 
@@ -280,7 +286,7 @@ Perform Mode is NOT just "show tagged macro knobs." It is a **bespoke instrument
 
 All freely positionable on a canvas. Saved per-Project and per-Scene. This is what makes the Edit/Perform split genuinely powerful - Perform Mode becomes a **custom instrument**, not a reduced view.
 
-**Scene/Preset System (inspired by MIDI Lab):**
+**[SHELVED D3] Scene/Preset System (inspired by MIDI Lab):**
 
 A single Project can contain multiple **Scenes** - complete parameter snapshots within the same graph topology. The engine is optimised to not reload plugins between scene switches when the topology is unchanged. Scenes are switchable via:
 - Scene list in Perform Mode toolbar
@@ -467,12 +473,12 @@ Bottom-right of canvas. Shows bird's-eye view of the full Board with a viewport 
 ### 7.8 Top Toolbar
 
 ```
-[Rewind] [Play/Stop] [BPM: 120] [4/4] [TAP] | [EDIT / PERFORM toggle] | [Scene: 1/8 < >] | [Undo (5)] [Redo] | [PANIC] | [EXT] [48kHz / 512] [Latency: 23ms]
+[Rewind] [Play/Stop] [BPM: 120] [4/4] [TAP] | [EDIT / PERFORM toggle] | [Scene: 1/8 < >] [SHELVED D3] | [Undo (5)] [Redo] | [PANIC] | [EXT] [48kHz / 512] [Latency: 23ms]
 ```
 
 - Transport: Rewind, Play/Stop, BPM (editable), Time Signature, TAP tempo
 - Mode toggle: prominent Edit/Perform switch
-- Scene selector: current scene number, previous/next arrows, dropdown list
+- Scene selector: current scene number, previous/next arrows, dropdown list **[SHELVED D3] — do not render in nav**
 - Undo/Redo: buttons with depth counter
 - **Panic button:** Sends Note Offs to all active MIDI outputs. Red, always visible. Essential for live safety.
 - EXT sync indicator
@@ -829,6 +835,9 @@ Full Lua scripting (existing `el.Script`) is powerful but heavyweight. Expressio
 | V13 | Adopted React Flow v12 (@xyflow/react) as graph engine | Research validated: handles 50-200 nodes with proper memoisation. Built-in minimap, viewport culling, custom node components. CSS containment provides 13x layout improvement. |
 | V14 | Integrated Soundigy MIDI Lab reference: Value Events, Dashboard Builder, Scene system, expanded built-in nodes | MIDI Lab demonstrates the third signal type (Value Events) that transforms Element from plugin chainer to creative routing lab. Dashboard Builder enables custom Perform Mode instrument panels. Scene presets enable live set management. 30+ new built-in node types planned across MIDI, Value, Logic, and Utility categories. |
 | V15 | Adopted neumorphism over glassmorphism for all depth/elevation | Neumorphism ("controls extruded from the same surface material") fits the physical instrument paradigm better than glass/blur transparency. Dark glass says "modern web app." Neumorphic shadows say "hardware faceplate with machined controls." Narrow tonal range between surfaces is critical. No backdrop-blur, no transparency layers. |
+| D1 (2026-05-30) | **4-category block taxonomy replaces Generator/Modifier/Logic.** New categories: Virtual Instruments (● #4A90D9), MIDI Effects (▲ #2BC4C4), Audio Effects (◆ #E8A838), Modulators/Utilities (⬡ #A87FE0). CSS tokens: --color-instrument/midifx/audiofx/modulator. Old tokens --block-generator/modifier/logic are deprecated. | Prior 3-category taxonomy conflated signal type with function. The 4-category system cleanly separates instrument sources, MIDI processors, audio processors, and modulators/utilities — matching user mental models and enabling a distinct purple/hexagon slot for LFO/CV/scripting nodes that had no clean home in the old system. |
+| D2 (2026-05-30) | **Module tier added above Block in the hierarchy.** A Module is a named grouping, breadcrumb-navigable, reusable across Boards in a Project. Distinct from Container (which is a nested Board). | Users needed a way to name and navigate logical groupings of Blocks without creating full nested Boards. Module provides a lightweight hierarchy label that preserves spatial context and breadcrumb continuity without the overhead of a Container. |
+| D3 (2026-05-30) | **Dashboard Builder, MacroDashboard, and Scene/Preset system shelved (hide-UI, keep-code).** Removed from all UI, nav, and toolbar. Stores and C++ code preserved intact as reversible backlog. | Complexity/scope reduction for current development phase. The Perform Mode structural changes (panel hiding, port hiding, editing lock) remain. Dashboard Builder and Scene system are deferred rather than deleted — the code stays in place for future reactivation. Do not add nav entries or wire UI for these features. |
 
 ---
 

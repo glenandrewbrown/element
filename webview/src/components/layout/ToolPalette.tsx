@@ -25,17 +25,25 @@ import { EV_OPEN_PREFERENCES } from "../../events";
 
 // ── Category shape components ──
 
-function GenShape() {
-  return <div className="w-2 h-2 rounded-full bg-generator" />;
+function InstrumentShape() {
+  return <div className="w-2 h-2 rounded-full bg-instrument" />;
 }
-function ModShape() {
-  return <div className="w-2 h-2 rotate-45 bg-modifier" />;
+function AudioFxShape() {
+  return <div className="w-2 h-2 rotate-45 bg-audiofx" />;
 }
-function LogicShape() {
+function MidiFxShape() {
   return (
     <div
-      className="w-2 h-2 bg-logic"
+      className="w-2 h-2 bg-midifx"
       style={{ clipPath: "polygon(50% 0%, 0% 100%, 100% 100%)" }}
+    />
+  );
+}
+function ModulatorShape() {
+  return (
+    <div
+      className="w-2 h-2 bg-modulator"
+      style={{ clipPath: "polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)" }}
     />
   );
 }
@@ -57,7 +65,7 @@ function OutlineRow({
   return (
     <div className="pl-1">
       <div
-        className={`text-[10px] truncate ${node.isContainer ? "text-logic font-bold" : "text-text-dim"}`}
+        className={`text-[10px] truncate ${node.isContainer ? "text-accent-teal font-bold" : "text-text-dim"}`}
         style={{ paddingLeft: depth * 10 }}
         title={node.id}
       >
@@ -139,9 +147,9 @@ export function ToolPalette() {
       name: p.name,
       category: p.blockCategory,
       icon:
-        p.blockCategory === "generator"
+        p.blockCategory === "instrument"
           ? "radio"
-          : p.blockCategory === "logic"
+          : p.blockCategory === "midifx"
             ? "waves"
             : "filter_alt",
     }));
@@ -189,7 +197,7 @@ export function ToolPalette() {
               type="button"
               className={
                 browseTab === "plugins"
-                  ? "px-2 py-1 bg-generator/25 text-generator"
+                  ? "px-2 py-1 bg-accent-blue/25 text-accent-blue"
                   : "px-2 py-1 text-text-secondary hover:bg-white/5"
               }
               onClick={() => setBrowseTab("plugins")}
@@ -200,7 +208,7 @@ export function ToolPalette() {
               type="button"
               className={
                 browseTab === "projects"
-                  ? "px-2 py-1 bg-generator/25 text-generator"
+                  ? "px-2 py-1 bg-accent-blue/25 text-accent-blue"
                   : "px-2 py-1 text-text-secondary hover:bg-white/5"
               }
               onClick={() => setBrowseTab("projects")}
@@ -215,7 +223,7 @@ export function ToolPalette() {
               className={[
                 "p-1 rounded",
                 viewMode === "grid"
-                  ? "shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] text-generator"
+                  ? "shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] text-accent-blue"
                   : "text-text-secondary hover:bg-white/5",
               ].join(" ")}
             >
@@ -227,7 +235,7 @@ export function ToolPalette() {
               className={[
                 "p-1 rounded",
                 viewMode === "list"
-                  ? "shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] text-generator"
+                  ? "shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] text-accent-blue"
                   : "text-text-secondary hover:bg-white/5",
               ].join(" ")}
             >
@@ -270,7 +278,7 @@ export function ToolPalette() {
                 <button
                   key={e.path}
                   type="button"
-                  className="w-full text-left text-[10px] px-2 py-1 rounded text-text-secondary hover:bg-white/5 hover:text-generator truncate"
+                  className="w-full text-left text-[10px] px-2 py-1 rounded text-text-secondary hover:bg-white/5 hover:text-accent-blue truncate"
                   title={e.path}
                   onClick={() => void nativeSessionOpenPath(e.path)}
                   onDoubleClick={() => void nativeSessionOpenPath(e.path)}
@@ -296,7 +304,7 @@ export function ToolPalette() {
                       type="button"
                       className={`w-full text-left text-[10px] px-2 py-1 rounded truncate ${
                         g.active
-                          ? "bg-generator/20 text-generator"
+                          ? "bg-accent-blue/20 text-accent-blue"
                           : "text-text-secondary hover:bg-white/5"
                       }`}
                       onClick={() => void nativeSessionSetActiveGraph(g.index)}
@@ -334,7 +342,7 @@ export function ToolPalette() {
 
             {favPlugins.length > 0 && (
               <div className="mb-3 pb-2 border-b border-white/5 space-y-1">
-                <div className="text-[9px] font-bold text-modifier tracking-widest uppercase">
+                <div className="text-[9px] font-bold text-accent-orange tracking-widest uppercase">
                   Favourites
                 </div>
                 {favPlugins.map((p) => (
@@ -352,7 +360,7 @@ export function ToolPalette() {
 
             {recentPlugins.length > 0 && (
               <div className="mb-3 pb-2 border-b border-white/5 space-y-1">
-                <div className="text-[9px] font-bold text-logic tracking-widest uppercase">
+                <div className="text-[9px] font-bold text-accent-teal tracking-widest uppercase">
                   Recent plugins
                 </div>
                 {recentPlugins.map((p) => (
@@ -377,7 +385,7 @@ export function ToolPalette() {
                   <button
                     key={m.name}
                     type="button"
-                    className="w-full text-left text-[10px] px-2 py-1 rounded text-text-secondary hover:bg-white/5 hover:text-generator truncate"
+                    className="w-full text-left text-[10px] px-2 py-1 rounded text-text-secondary hover:bg-white/5 hover:text-accent-blue truncate"
                     title={
                       m.description || "Insert molecule at default position"
                     }
@@ -393,9 +401,10 @@ export function ToolPalette() {
             <div className="flex justify-around py-2 border-b border-white/5 mb-2">
               {(
                 [
-                  { cat: "generator" as const, label: "GEN", Shape: GenShape },
-                  { cat: "modifier" as const, label: "MOD", Shape: ModShape },
-                  { cat: "logic" as const, label: "LOGIC", Shape: LogicShape },
+                  { cat: "instrument" as const, label: "INST", Shape: InstrumentShape },
+                  { cat: "audiofx" as const, label: "FX", Shape: AudioFxShape },
+                  { cat: "midifx" as const, label: "MIDI", Shape: MidiFxShape },
+                  { cat: "modulator" as const, label: "MOD", Shape: ModulatorShape },
                 ] as const
               ).map(({ cat, label, Shape }) => (
                 <button
@@ -430,7 +439,7 @@ export function ToolPalette() {
                   action={
                     <button
                       type="button"
-                      className="px-3 py-1 rounded bg-pressed text-[11px] uppercase tracking-widest text-generator hover:bg-elevated transition-colors"
+                      className="px-3 py-1 rounded bg-pressed text-[11px] uppercase tracking-widest text-accent-blue hover:bg-elevated transition-colors"
                       onClick={() =>
                         window.dispatchEvent(new Event(EV_OPEN_PREFERENCES))
                       }
@@ -461,7 +470,7 @@ export function ToolPalette() {
                     className={[
                       "p-2 flex items-center gap-3 rounded transition-all cursor-pointer",
                       isSelected
-                        ? "bg-surface shadow-[-2px_-2px_8px_rgba(255,255,255,0.04),2px_2px_8px_rgba(0,0,0,0.35)] border border-white/5 text-generator"
+                        ? "bg-surface shadow-[-2px_-2px_8px_rgba(255,255,255,0.04),2px_2px_8px_rgba(0,0,0,0.35)] border border-white/5 text-accent-blue"
                         : "text-text-secondary opacity-60 hover:opacity-100 hover:bg-elevated",
                     ].join(" ")}
                   >
@@ -489,7 +498,7 @@ export function ToolPalette() {
                 <li key={path}>
                   <button
                     type="button"
-                    className="text-left w-full text-[10px] text-text-secondary hover:text-generator truncate"
+                    className="text-left w-full text-[10px] text-text-secondary hover:text-accent-blue truncate"
                     title={path}
                     onClick={() => void nativeSessionOpenPath(path)}
                   >
@@ -507,13 +516,13 @@ export function ToolPalette() {
         <div className="flex flex-col gap-2">
           <div className="flex justify-between items-end">
             <span className="text-[10px] text-text-secondary">CPU LOAD</span>
-            <span className="text-[10px] text-logic font-bold tabular">
+            <span className="text-[10px] text-accent-teal font-bold tabular">
               {cpuLoad.toFixed(1)}%
             </span>
           </div>
           <div className="w-full h-1.5 bg-[#131317] rounded-full shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] overflow-hidden">
             <div
-              className="h-full bg-logic rounded-full"
+              className="h-full bg-accent-teal rounded-full"
               style={{
                 width: `${Math.min(100, Math.max(0, cpuLoad))}%`,
                 boxShadow: "0 0 8px rgba(43, 196, 196, 0.4)",

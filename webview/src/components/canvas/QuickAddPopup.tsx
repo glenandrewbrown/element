@@ -20,7 +20,7 @@ interface PluginEntry {
   format: string;
 }
 
-/** Filled circle for Instrument/Generator (●) */
+/** Filled circle for Instrument (●) */
 function InstrumentDot() {
   return (
     <span
@@ -33,36 +33,50 @@ function InstrumentDot() {
   );
 }
 
-/** Filled diamond for Effect/Modifier (◆) */
+/** Filled diamond for AudioFx (◆) */
 function EffectDot() {
   return (
     <span
       className="shrink-0 text-[10px] leading-none"
       style={{ color: "#E8A838" }}
-      aria-label="Effect"
+      aria-label="Audio FX"
     >
       ◆
     </span>
   );
 }
 
-/** Filled triangle for MIDI/Logic (▲) */
+/** Filled triangle for MidiFx (▲) */
 function MidiDot() {
   return (
     <span
       className="shrink-0 text-[10px] leading-none"
       style={{ color: "#2BC4C4" }}
-      aria-label="MIDI"
+      aria-label="MIDI FX"
     >
       ▲
     </span>
   );
 }
 
+/** Hexagon for Modulator (⬡) */
+function ModulatorDot() {
+  return (
+    <span
+      className="shrink-0 text-[10px] leading-none"
+      style={{ color: "#A87FE0" }}
+      aria-label="Modulator"
+    >
+      ⬡
+    </span>
+  );
+}
+
 const CAT_ICON: Record<BlockCategory, () => ReactElement> = {
-  generator: InstrumentDot,
-  modifier: EffectDot,
-  logic: MidiDot,
+  instrument: InstrumentDot,
+  audiofx: EffectDot,
+  midifx: MidiDot,
+  modulator: ModulatorDot,
 };
 
 function CategoryIcon({ category }: { category: BlockCategory }) {
@@ -275,7 +289,7 @@ export function QuickAddPopup({ x, y, onClose }: QuickAddPopupProps) {
                   action={
                     <button
                       type="button"
-                      className="px-3 py-1 rounded bg-pressed text-[10px] uppercase tracking-widest text-generator hover:bg-elevated transition-colors"
+                      className="px-3 py-1 rounded bg-pressed text-[10px] uppercase tracking-widest text-accent-blue hover:bg-elevated transition-colors"
                       onClick={() => {
                         window.dispatchEvent(new Event(EV_OPEN_PREFERENCES));
                         onClose();

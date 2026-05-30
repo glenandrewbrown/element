@@ -40,13 +40,13 @@ const framed = (children: React.ReactNode) => (
   </div>
 );
 
-export const Generator: Story = {
-  args: { nodeId: "gen-1", category: "generator" },
+export const Instrument: Story = {
+  args: { nodeId: "gen-1", category: "instrument" },
   parameters: {
     docs: {
       description: {
         story:
-          "Generator embed — 3-fader param strip + stereo meter, blue accent. The default instrument layout.",
+          "Instrument embed — 3-fader param strip + stereo meter, blue accent. The default instrument layout.",
       },
     },
   },
@@ -58,13 +58,13 @@ export const Generator: Story = {
   ],
 };
 
-export const Modifier: Story = {
-  args: { nodeId: "mod-1", category: "modifier" },
+export const AudioFx: Story = {
+  args: { nodeId: "mod-1", category: "audiofx" },
   parameters: {
     docs: {
       description: {
         story:
-          "Modifier embed — the tallest variant: 5 faders + meter + spectrum/EQ curve, orange accent. Drives the BLOCK-OVERLAP height budget.",
+          "AudioFx embed — the tallest variant: 5 faders + meter + spectrum/EQ curve, orange accent. Drives the BLOCK-OVERLAP height budget.",
       },
     },
   },
@@ -76,19 +76,37 @@ export const Modifier: Story = {
   ],
 };
 
-export const Logic: Story = {
-  args: { nodeId: "log-1", category: "logic" },
+export const MidiFx: Story = {
+  args: { nodeId: "log-1", category: "midifx" },
   parameters: {
     docs: {
       description: {
         story:
-          "Logic embed — param strip + compact meter only (no spectrum), teal accent. The lean routing/utility layout.",
+          "MidiFx embed — param strip + compact meter only (no spectrum), teal accent. The lean routing/MIDI layout.",
       },
     },
   },
   decorators: [
     (Story) => {
       seedParams("log-1", [0.4, 0.6, 0.8]);
+      return framed(<Story />);
+    },
+  ],
+};
+
+export const Modulator: Story = {
+  args: { nodeId: "mod2-1", category: "modulator" },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Modulator embed — param strip + compact meter, purple accent. CV/modulation sources like LFOs and envelopes.",
+      },
+    },
+  },
+  decorators: [
+    (Story) => {
+      seedParams("mod2-1", [0.3, 0.7, 0.5]);
       return framed(<Story />);
     },
   ],

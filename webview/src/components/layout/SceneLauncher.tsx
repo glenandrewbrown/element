@@ -100,7 +100,7 @@ export function SceneLauncher() {
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between px-4 py-3 bg-pressed border-b border-white/5">
         <div className="flex items-center gap-2">
-          <Icon name="LayoutGrid" size={16} className="text-modifier" aria-hidden />
+          <Icon name="LayoutGrid" size={16} className="text-accent-orange" aria-hidden />
           <span className="text-[11px] font-bold text-text-primary uppercase tracking-widest">
             Scene Launcher
           </span>
@@ -150,9 +150,9 @@ export function SceneLauncher() {
                   }
                 }}
                 className={[
-                  "relative p-3 rounded-lg text-left transition-all border cursor-pointer outline-none focus-visible:ring-1 focus-visible:ring-modifier",
+                  "relative p-3 rounded-lg text-left transition-all border cursor-pointer outline-none focus-visible:ring-1 focus-visible:ring-accent-orange",
                   isActive
-                    ? "bg-modifier/20 border-modifier shadow-[0_0_12px_rgba(232,168,56,0.25)]"
+                    ? "bg-accent-orange/20 border-accent-orange shadow-[0_0_12px_rgba(232,168,56,0.25)]"
                     : "bg-surface border-white/5 hover:border-white/10 hover:bg-elevated",
                 ].join(" ")}
               >
@@ -171,7 +171,7 @@ export function SceneLauncher() {
                         e.stopPropagation();
                       }}
                       onClick={(e) => e.stopPropagation()}
-                      className="flex-1 min-w-0 bg-pressed text-text-primary text-[11px] font-bold rounded px-1 py-0.5 border border-generator outline-none"
+                      className="flex-1 min-w-0 bg-pressed text-text-primary text-[11px] font-bold rounded px-1 py-0.5 border border-accent-blue outline-none"
                     />
                   ) : (
                     <span className="text-[11px] font-bold text-text-primary truncate flex-1">
@@ -180,7 +180,7 @@ export function SceneLauncher() {
                   )}
                   {scene.hasCapture && !isRenaming ? (
                     <span
-                      className="w-2 h-2 rounded-full bg-logic shadow-[0_0_6px_rgba(43,196,196,0.5)] shrink-0"
+                      className="w-2 h-2 rounded-full bg-accent-teal shadow-[0_0_6px_rgba(43,196,196,0.5)] shrink-0"
                       aria-hidden
                     />
                   ) : null}
@@ -195,7 +195,7 @@ export function SceneLauncher() {
                   <span
                     className={[
                       "text-[10px] font-bold uppercase tracking-widest",
-                      isActive ? "text-modifier" : "text-text-dim",
+                      isActive ? "text-accent-orange" : "text-text-dim",
                     ].join(" ")}
                   >
                     {isActive ? "Active" : "Ready"}
@@ -220,7 +220,7 @@ export function SceneLauncher() {
                       <button
                         type="button"
                         title="Rename scene"
-                        className="inline-flex items-center gap-0.5 text-[10px] text-text-secondary hover:text-generator"
+                        className="inline-flex items-center gap-0.5 text-[10px] text-text-secondary hover:text-accent-blue"
                         onClick={(e) => beginRename(index, scene.name, e)}
                       >
                         <Icon name="Pencil" size={11} aria-label="Rename scene" />

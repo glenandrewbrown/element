@@ -12,7 +12,7 @@ function makeBlock(over: Partial<BlockData> = {}): BlockData {
   return {
     id: `n${n}`,
     name: "Serum",
-    category: "generator",
+    category: "instrument",
     format: "VST3",
     position: { x: 0, y: 0 },
     ports: [
@@ -60,20 +60,24 @@ const story = (data: BlockData, doc: string, height = 320): Story => ({
   parameters: { docs: { description: { story: doc } } },
 });
 
-export const Generator: Story = story(
-  makeBlock({ name: "Serum", category: "generator", format: "VST3" }),
-  "Generator (instrument) Block — blue ● accent. The baseline sound-source state with a waveform viz in the body.",
+export const Instrument: Story = story(
+  makeBlock({ name: "Serum", category: "instrument", format: "VST3" }),
+  "Instrument Block — blue ● accent. The baseline sound-source state with a waveform viz in the body.",
 );
-export const Modifier: Story = story(
-  makeBlock({ name: "Pro-Q 4", category: "modifier", format: "AU" }),
-  "Modifier (effect) Block — orange ◆ accent. Confirms the effect signal role reads at a glance.",
+export const AudioFx: Story = story(
+  makeBlock({ name: "Pro-Q 4", category: "audiofx", format: "AU" }),
+  "AudioFx Block — orange ◆ accent. Confirms the effect signal role reads at a glance.",
 );
-export const Logic: Story = story(
-  makeBlock({ name: "MIDI Split", category: "logic", format: "INT" }),
-  "Logic (routing/MIDI) Block — teal ▲ accent. The control/utility signal role.",
+export const MidiFx: Story = story(
+  makeBlock({ name: "MIDI Split", category: "midifx", format: "INT" }),
+  "MidiFx (routing/MIDI) Block — teal ▲ accent. The MIDI/routing signal role.",
+);
+export const Modulator: Story = story(
+  makeBlock({ name: "LFO Tool", category: "modulator", format: "CLAP" }),
+  "Modulator Block — purple ⬡ accent. CV/modulation sources like LFOs, envelopes, automation curves.",
 );
 export const Bypassed: Story = story(
-  makeBlock({ name: "Reverb", category: "modifier", bypassed: true }),
+  makeBlock({ name: "Reverb", category: "audiofx", bypassed: true }),
   "Bypassed Block — diagonal-stripe overlay + dimmed header signals the engine is passing signal through untouched.",
 );
 export const Errored: Story = story(
@@ -81,7 +85,7 @@ export const Errored: Story = story(
   "Errored Block — pulsing red ring flags a failed/missing plugin so the user spots the broken node in a large Board.",
 );
 export const Container: Story = story(
-  makeBlock({ name: "Drum Bus", category: "logic", containerNodeCount: 6 }),
+  makeBlock({ name: "Drum Bus", category: "midifx", containerNodeCount: 6 }),
   "Container Block — inset surface with child slots; double-click dives into the nested Board it represents.",
 );
 
@@ -91,7 +95,7 @@ export const CategoryRow: Story = {
     docs: {
       description: {
         story:
-          "Visual showcase of the three category accents side by side — reference only, not a usage pattern.",
+          "Visual showcase of all four category accents side by side — reference only, not a usage pattern.",
       },
     },
   },
@@ -100,9 +104,10 @@ export const CategoryRow: Story = {
       height={360}
       nodeTypes={nodeTypes}
       nodes={[
-        { id: "a", type: "block", position: { x: 0, y: 0 }, data: makeBlock({ name: "Serum", category: "generator" }) },
-        { id: "b", type: "block", position: { x: 240, y: 0 }, data: makeBlock({ name: "Pro-Q 4", category: "modifier", format: "AU" }) },
-        { id: "c", type: "block", position: { x: 480, y: 0 }, data: makeBlock({ name: "Arp", category: "logic", format: "CLAP" }) },
+        { id: "a", type: "block", position: { x: 0, y: 0 }, data: makeBlock({ name: "Serum", category: "instrument" }) },
+        { id: "b", type: "block", position: { x: 240, y: 0 }, data: makeBlock({ name: "Pro-Q 4", category: "audiofx", format: "AU" }) },
+        { id: "c", type: "block", position: { x: 480, y: 0 }, data: makeBlock({ name: "Arp", category: "midifx", format: "CLAP" }) },
+        { id: "d", type: "block", position: { x: 720, y: 0 }, data: makeBlock({ name: "LFO Tool", category: "modulator", format: "CLAP" }) },
       ]}
     />
   ),

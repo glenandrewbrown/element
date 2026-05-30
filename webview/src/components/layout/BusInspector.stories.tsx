@@ -46,10 +46,10 @@ function makeBlock(id: string, name: string, category: BlockData["category"]): B
   };
 }
 
-const SYNTH  = makeBlock("synth-1",  "Synth Lead",   "generator");
-const REVERB = makeBlock("reverb-1", "Hall Reverb",  "modifier");
-const DELAY  = makeBlock("delay-1",  "Tape Delay",   "modifier");
-const CHOIR  = makeBlock("choir-1",  "Choir Layer",  "generator");
+const SYNTH  = makeBlock("synth-1",  "Synth Lead",   "instrument");
+const REVERB = makeBlock("reverb-1", "Hall Reverb",  "audiofx");
+const DELAY  = makeBlock("delay-1",  "Tape Delay",   "audiofx");
+const CHOIR  = makeBlock("choir-1",  "Choir Layer",  "instrument");
 
 const makeEdge = (id: string, source: string, target: string, signalType: CableData["signalType"]): CableData => ({
   id,

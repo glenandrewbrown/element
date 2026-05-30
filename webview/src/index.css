@@ -14,10 +14,22 @@
   --color-panel-border: #3a3a3e;
   --color-surface-elevated: #333338;
 
-  /* Semantic Block Colours */
-  --color-generator: #4a90d9;
-  --color-modifier: #e8a838;
-  --color-logic: #2bc4c4;
+  /* Block Category tokens (block category only) */
+  --color-instrument: #4a90d9;
+  --color-audiofx: #e8a838;
+  --color-midifx: #2bc4c4;
+  --color-modulator: #a87fe0;
+
+  /* Signal tokens (audio/MIDI/value signal type — cables, signal pills) */
+  --color-audio: #4a90d9;
+  --color-midi: #2bc4c4;
+  --color-value: #e8a838;
+
+  /* Accent tokens (generic UI chrome — neither category nor signal) */
+  --color-accent-blue: #4a90d9;
+  --color-accent-orange: #e8a838;
+  --color-accent-teal: #2bc4c4;
+  --color-accent-purple: #a87fe0;
 
   /* Format Badges */
   --color-badge-vst3: #4a90d9;
@@ -56,6 +68,7 @@
   --shadow-glow-audio: 0 0 4px rgba(74, 144, 217, 0.25);
   --shadow-glow-midi: 0 0 4px rgba(43, 196, 196, 0.25);
   --shadow-glow-cv: 0 0 4px rgba(232, 168, 56, 0.25);
+  --shadow-glow-modulator: 0 0 4px rgba(168, 127, 224, 0.25);
 
   /* Motion durations + easings */
   --motion-press: 100ms cubic-bezier(0.4, 0, 0.2, 1);
@@ -124,6 +137,10 @@ body {
 
 .glow-teal {
   filter: drop-shadow(0 0 4px rgba(43, 196, 196, 0.4));
+}
+
+.glow-purple {
+  filter: drop-shadow(0 0 4px rgba(168, 127, 224, 0.4));
 }
 
 /* ── Typography Utilities ── */

@@ -33,7 +33,7 @@ function makeBlock(id: string): BlockData {
   return {
     id,
     name: `Block ${id}`,
-    category: "generator",
+    category: "instrument",
     format: "INT",
     position: { x: 0, y: 0 },
     ports: [],

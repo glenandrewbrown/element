@@ -12,7 +12,15 @@
 | Elevated  | `#2A2A2E` | Hover                         |
 | Pressed   | `#1A1A1E` | Inset fields                  |
 
-Semantic hues: Generator `#4A90D9`, Modifier `#E8A838`, Logic `#2BC4C4`.  
+Semantic hues (4-category taxonomy, D1 2026-05-30):
+
+| Category | Token | Hex | Shape |
+|----------|-------|-----|-------|
+| Virtual Instruments | `--color-instrument` | `#4A90D9` | ● Circle |
+| MIDI Effects | `--color-midifx` | `#2BC4C4` | ▲ Triangle |
+| Audio Effects | `--color-audiofx` | `#E8A838` | ◆ Diamond |
+| Modulators/Utilities | `--color-modulator` | `#A87FE0` | ⬡ Hexagon |
+
 No glassmorphism, no backdrop blur on primary chrome.
 
 ## HTML companions

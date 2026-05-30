@@ -39,9 +39,17 @@ No glassmorphism. No backdrop-blur. No transparency. The entire UI is one contin
 
 ### Semantic Colours (colour-blind safe, each with shape indicator)
 
-- Generators: `#4A90D9` Blue + Circle (●)
-- Modifiers: `#E8A838` Orange + Diamond (◆)
-- Logic: `#2BC4C4` Teal + Triangle (▲)
+4-category taxonomy (ratified D1, 2026-05-30 — replaces Generator/Modifier/Logic):
+
+| Category | Hex | Shape | Role |
+|----------|-----|-------|------|
+| Virtual Instruments | `#4A90D9` Blue | ● Circle | Synths, samplers, audio input |
+| MIDI Effects | `#2BC4C4` Teal | ▲ Triangle | MIDI routers, processors, MIDI I/O |
+| Audio Effects | `#E8A838` Orange | ◆ Diamond | EQ, compressor, reverb, delay |
+| Modulators / Utilities | `#A87FE0` Purple | ⬡ Hexagon | LFO, value/CV nodes, scripting, routing logic |
+
+Colour-blind safety carried by the 4 distinct shapes. Signal-type colours are a SEPARATE system: Audio `#4A90D9`, MIDI `#2BC4C4`, Value/CV `#E8A838`.
+
 - Text: `#E5E5EA` primary, `#8E8E93` secondary
 
 ### Speed-First Navigation
@@ -59,10 +67,10 @@ No glassmorphism. No backdrop-blur. No transparency. The entire UI is one contin
 ### Key Features
 
 - Edit Mode (workshop) / Perform Mode (stage) — structural change, NOT palette change
-- Dashboard Builder in Perform Mode (freely composable knobs/faders/buttons/meters/pads)
-- Scene/Preset system (multiple parameter snapshots per project, switchable without plugin reload)
 - Panic button (red, always visible, sends Note Off to all MIDI outputs)
 - Value Events as third signal type (CV/control data independent of MIDI)
+
+> **Shelved (hide-UI, keep-code — decision D3, 2026-05-30):** Dashboard Builder, MacroDashboard, and the Scene/Preset system are removed from the UI and navigation. Their stores + C++ code remain intact (reversible backlog). Do NOT wire them into new UI or nav.
 
 ### Terminology (mandatory)
 
@@ -71,6 +79,7 @@ No glassmorphism. No backdrop-blur. No transparency. The entire UI is one contin
 | Session | **Project** | Master file containing all routings |
 | Graph | **Board** | Visual routing canvas |
 | Node/Plugin | **Block** | Individual instrument/effect/utility |
+| *(new tier)* | **Module** | Named grouping ABOVE Blocks; breadcrumb-navigable, multi-use across Boards in a Project. A logical hierarchy label, NOT a nested Board (distinct from Container). |
 | Sub-Graph | **Container** | Nested Board local to project |
 | Sub-Graph (linked) | **Portal** | Nested Board linked to external `.elboard` |
 | Connection/Arc | **Cable** | Signal path between ports |

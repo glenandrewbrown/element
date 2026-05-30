@@ -133,7 +133,7 @@ function CheckStatusBanner({ status }: { status: CheckStatus }) {
     status.kind === "error"
       ? "text-error border-error/30 bg-error/10"
       : status.kind === "requested"
-        ? "text-logic border-logic/30 bg-logic/10"
+        ? "text-accent-teal border-accent-teal/30 bg-accent-teal/10"
         : "text-text-secondary border-white/10 bg-pressed";
 
   const message =

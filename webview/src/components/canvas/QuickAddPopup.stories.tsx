@@ -18,7 +18,7 @@ const demoPlugins: BrowserPlugin[] = [
     manufacturer: "Surge Synth Team",
     format: "VST3",
     category: "Synth",
-    blockCategory: "generator",
+    blockCategory: "instrument",
   },
   {
     identifier: "com.vendor.ProQ4",
@@ -26,7 +26,7 @@ const demoPlugins: BrowserPlugin[] = [
     manufacturer: "FabFilter",
     format: "AU",
     category: "EQ",
-    blockCategory: "modifier",
+    blockCategory: "audiofx",
   },
   {
     identifier: "com.vendor.Stepic",
@@ -34,7 +34,7 @@ const demoPlugins: BrowserPlugin[] = [
     manufacturer: "Audiomodern",
     format: "CLAP",
     category: "MIDI",
-    blockCategory: "logic",
+    blockCategory: "midifx",
   },
 ];
 

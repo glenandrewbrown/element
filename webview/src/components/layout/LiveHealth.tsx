@@ -64,7 +64,7 @@ export function LiveHealth() {
         <span className="text-[11px] font-bold text-text-primary uppercase tracking-widest">
           Live Health
         </span>
-        <Icon name="HeartPulse" size={16} className="text-logic" aria-label="Live health monitor" />
+        <Icon name="HeartPulse" size={16} className="text-accent-teal" aria-label="Live health monitor" />
       </div>
 
       {/* Content */}
@@ -75,11 +75,11 @@ export function LiveHealth() {
             <span className="text-text-secondary uppercase font-bold">
               CPU Load
             </span>
-            <span className="text-logic tabular">{health.cpu}%</span>
+            <span className="text-accent-teal tabular">{health.cpu}%</span>
           </div>
           <div className="h-3 bg-pressed shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] rounded-full overflow-hidden p-0.5">
             <div
-              className="h-full bg-gradient-to-r from-logic to-generator rounded-full"
+              className="h-full bg-gradient-to-r from-accent-teal to-accent-blue rounded-full"
               style={{ width: `${health.cpu}%` }}
             />
           </div>
@@ -145,14 +145,14 @@ export function LiveHealth() {
             <Icon
               name="TriangleAlert"
               size={18}
-              className="text-modifier shrink-0 mt-0.5"
+              className="text-accent-orange shrink-0 mt-0.5"
               aria-label="Alert"
             />
             <div className="flex flex-col">
-              <span className="text-[10px] font-bold text-modifier">
+              <span className="text-[10px] font-bold text-accent-orange">
                 {alert.title}
               </span>
-              <span className="text-[10px] text-modifier/80">
+              <span className="text-[10px] text-accent-orange/80">
                 {alert.message}
               </span>
             </div>

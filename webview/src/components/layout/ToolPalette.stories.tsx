@@ -22,7 +22,7 @@ const demoPlugins = [
     manufacturer: "FabFilter",
     format: "VST3",
     category: "EQ",
-    blockCategory: "modifier" as const,
+    blockCategory: "audiofx" as const,
   },
   {
     identifier: "com.fabfilter.pro-c2.vst3",
@@ -30,7 +30,7 @@ const demoPlugins = [
     manufacturer: "FabFilter",
     format: "VST3",
     category: "Compressor",
-    blockCategory: "modifier" as const,
+    blockCategory: "audiofx" as const,
   },
   {
     identifier: "com.arturia.minimoog-v.au",
@@ -38,7 +38,7 @@ const demoPlugins = [
     manufacturer: "Arturia",
     format: "AU",
     category: "Instrument",
-    blockCategory: "generator" as const,
+    blockCategory: "instrument" as const,
   },
   {
     identifier: "com.soundtoys.echoboy.au",
@@ -46,7 +46,7 @@ const demoPlugins = [
     manufacturer: "SoundToys",
     format: "AU",
     category: "Delay",
-    blockCategory: "modifier" as const,
+    blockCategory: "audiofx" as const,
   },
   {
     identifier: "com.native.kontakt7.vst3",
@@ -54,7 +54,7 @@ const demoPlugins = [
     manufacturer: "Native Instruments",
     format: "VST3",
     category: "Instrument",
-    blockCategory: "generator" as const,
+    blockCategory: "instrument" as const,
   },
   {
     identifier: "el.MidiMonitor",
@@ -62,7 +62,7 @@ const demoPlugins = [
     manufacturer: "Element",
     format: "INT",
     category: "Utility",
-    blockCategory: "logic" as const,
+    blockCategory: "midifx" as const,
   },
 ];
 

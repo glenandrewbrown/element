@@ -1,14 +1,14 @@
 const colorMap = {
   blue: {
-    track: "bg-generator",
+    track: "bg-accent-blue",
     glow: "shadow-[0_0_8px_rgba(74,144,217,0.5)]",
   },
   orange: {
-    track: "bg-modifier",
+    track: "bg-accent-orange",
     glow: "shadow-[0_0_8px_rgba(232,168,56,0.5)]",
   },
   teal: {
-    track: "bg-logic",
+    track: "bg-accent-teal",
     glow: "shadow-[0_0_8px_rgba(43,196,196,0.5)]",
   },
 } as const;

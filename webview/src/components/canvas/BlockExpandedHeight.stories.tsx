@@ -30,7 +30,7 @@ function modifierBlock(): BlockData {
   return {
     id: "mod-measure",
     name: "Infinite Brass 4 Horns",
-    category: "modifier",
+    category: "audiofx",
     format: "VST3",
     position: { x: 0, y: 0 },
     ports: [
@@ -75,7 +75,7 @@ type Story = StoryObj<typeof Block>;
  * measured `offsetHeight` is in flow coordinates (directly comparable to the
  * 140px column gap).
  */
-export const ExpandedModifier: Story = {
+export const ExpandedAudioFx: Story = {
   render: () => {
     // Drive the embed: real fader fills + force the expanded zoom tier.
     useParameterStore.setState({

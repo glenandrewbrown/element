@@ -136,7 +136,7 @@ function PresetStrip({ nodeId }: { nodeId: string }) {
       : undefined;
 
   const activeBtn =
-    "px-2 py-0.5 text-[10px] font-bold rounded border-b-2 border-generator text-generator bg-pressed shadow-[inset_1px_1px_4px_rgba(0,0,0,0.4)]";
+    "px-2 py-0.5 text-[10px] font-bold rounded border-b-2 border-accent-blue text-accent-blue bg-pressed shadow-[inset_1px_1px_4px_rgba(0,0,0,0.4)]";
   const inactiveBtn =
     "px-2 py-0.5 text-[10px] font-bold rounded text-text-secondary bg-surface hover:bg-elevated transition-colors shadow-[-1px_-1px_4px_rgba(255,255,255,0.04),1px_1px_4px_rgba(0,0,0,0.3)]";
   const swapBtn =
@@ -195,19 +195,19 @@ function PresetStrip({ nodeId }: { nodeId: string }) {
 
 function BlockHeader({ block }: { block: BlockData }) {
   const { name, category, format } = block;
-  const colorClass =
-    category === "generator"
-      ? "bg-generator/20 border-generator/30 text-generator"
-      : category === "modifier"
-        ? "bg-modifier/20 border-modifier/30 text-modifier"
-        : "bg-logic/20 border-logic/30 text-logic";
+  const colorClass: Record<import("../../data/types").BlockCategory, string> = {
+    instrument: "bg-instrument/20 border-instrument/30 text-instrument",
+    audiofx: "bg-audiofx/20 border-audiofx/30 text-audiofx",
+    midifx: "bg-midifx/20 border-midifx/30 text-midifx",
+    modulator: "bg-modulator/20 border-modulator/30 text-modulator",
+  };
 
   const portSummary = `${block.ports.filter((p) => p.direction === "input").length} in · ${block.ports.filter((p) => p.direction === "output").length} out`;
 
   return (
     <div className="flex items-center gap-3 p-2 bg-surface rounded shadow-[-2px_-2px_8px_rgba(255,255,255,0.04),2px_2px_8px_rgba(0,0,0,0.35)]">
       <div
-        className={`w-8 h-8 rounded-full flex items-center justify-center border ${colorClass}`}
+        className={`w-8 h-8 rounded-full flex items-center justify-center border ${colorClass[category]}`}
       >
         <svg width={18} height={18} viewBox="0 0 24 24" fill="currentColor">
           <path d="M20 6H8l-4 4h16l-4-4zm2 6H2v8h20v-8zM4 16h2v2H4v-2z" />
@@ -308,7 +308,7 @@ function BlockNoteEditor({ block }: { block: BlockData }) {
         onChange={(e) => setDraft(e.target.value)}
         placeholder="Add a note for this block…"
         rows={3}
-        className="w-full text-[11px] bg-pressed text-text-primary rounded-md p-2 outline-none border border-white/5 focus:border-generator/40 placeholder-text-secondary/60 resize-y shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)]"
+        className="w-full text-[11px] bg-pressed text-text-primary rounded-md p-2 outline-none border border-white/5 focus:border-accent-blue/40 placeholder-text-secondary/60 resize-y shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)]"
         spellCheck={false}
       />
     </div>
@@ -406,7 +406,7 @@ function BlockParameterList({ nodeId }: { nodeId: string }) {
                 const n = Number(e.target.value);
                 onChangeNorm(p.index, n / 1000);
               }}
-              className="w-full h-1.5 rounded-full appearance-none bg-[#131317] accent-generator cursor-pointer"
+              className="w-full h-1.5 rounded-full appearance-none bg-[#131317] accent-accent-blue cursor-pointer"
               aria-label={label}
             />
             {hasRange && (
@@ -673,7 +673,7 @@ export function InspectorHub() {
             className={[
               "flex-1 py-3 text-center transition-colors",
               effectiveTab === tab.id
-                ? "border-b-2 border-generator text-text-primary bg-surface"
+                ? "border-b-2 border-accent-blue text-text-primary bg-surface"
                 : "hover:bg-white/5 cursor-pointer",
             ].join(" ")}
           >

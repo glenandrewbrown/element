@@ -1,7 +1,7 @@
 const colorMap = {
-  blue: { border: "border-generator", text: "text-generator" },
-  orange: { border: "border-modifier", text: "text-modifier" },
-  teal: { border: "border-logic", text: "text-logic" },
+  blue: { border: "border-accent-blue", text: "text-accent-blue" },
+  orange: { border: "border-accent-orange", text: "text-accent-orange" },
+  teal: { border: "border-accent-teal", text: "text-accent-teal" },
   purple: { border: "border-badge-au", text: "text-badge-au" },
   grey: { border: "border-badge-lv2", text: "text-badge-lv2" },
 } as const;

@@ -233,7 +233,7 @@ export function VirtualKeyboard({
             step={0.01}
             value={velocity}
             onChange={(e) => setVelocity(Number(e.target.value))}
-            className="w-20 accent-modifier"
+            className="w-20 accent-accent-orange"
           />
           <span className="w-7 text-right tabular">
             {Math.round(velocity * 127)}
@@ -241,7 +241,7 @@ export function VirtualKeyboard({
         </label>
 
         {activeNotes.size > 0 && (
-          <span className="text-logic font-bold">
+          <span className="text-accent-teal font-bold">
             {activeNotes.size} note{activeNotes.size > 1 ? "s" : ""} held
           </span>
         )}

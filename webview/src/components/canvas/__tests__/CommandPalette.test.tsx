@@ -53,8 +53,8 @@ vi.mock("../../../bridge/nativePrefs", () => ({
 // Distinct names from the plugin entries below so getByText() never matches
 // both a canvas block AND a plugin result for the same query.
 const mockNodes = [
-  { id: "n1", name: "Canvas Synth", category: "generator", format: "VST3", bypassed: false },
-  { id: "n2", name: "Canvas EQ", category: "modifier", format: "AU", bypassed: false },
+  { id: "n1", name: "Canvas Synth", category: "instrument", format: "VST3", bypassed: false },
+  { id: "n2", name: "Canvas EQ", category: "audiofx", format: "AU", bypassed: false },
 ];
 
 vi.mock("../../../stores/useGraphStore", () => ({
@@ -91,13 +91,13 @@ vi.mock("../../../stores/usePluginBrowserStore", () => ({
         {
           identifier: "com.vendor.SurgeXT",
           name: "Surge XT",
-          blockCategory: "generator",
+          blockCategory: "instrument",
           format: "VST3",
         },
         {
           identifier: "com.vendor.EQPro",
           name: "EQ Pro",
-          blockCategory: "modifier",
+          blockCategory: "audiofx",
           format: "AU",
         },
       ],

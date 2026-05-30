@@ -144,7 +144,7 @@ export function EdgeContextMenu({
               }
             }}
             placeholder="Bus name (e.g. Reverb Send A)"
-            className="w-full bg-surface px-2 py-1 rounded text-[11px] text-text-primary border border-generator focus:outline-none"
+            className="w-full bg-surface px-2 py-1 rounded text-[11px] text-text-primary border border-accent-blue focus:outline-none"
             autoFocus
           />
           {buses.length > 0 ? (
@@ -175,7 +175,7 @@ export function EdgeContextMenu({
             <button
               type="button"
               onClick={submitName}
-              className="text-[10px] px-2 py-0.5 rounded bg-generator/20 text-generator hover:bg-generator/30"
+              className="text-[10px] px-2 py-0.5 rounded bg-accent-blue/20 text-accent-blue hover:bg-accent-blue/30"
             >
               Save
             </button>

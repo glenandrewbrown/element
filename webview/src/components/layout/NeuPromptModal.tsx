@@ -184,7 +184,7 @@ export function NeuPromptModal({
               submit();
             }
           }}
-          className="w-full text-[12px] bg-pressed text-text-primary rounded-md px-3 py-2 outline-none border border-white/5 focus:border-generator/40 placeholder-text-secondary/60 shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)]"
+          className="w-full text-[12px] bg-pressed text-text-primary rounded-md px-3 py-2 outline-none border border-white/5 focus:border-accent-blue/40 placeholder-text-secondary/60 shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)]"
         />
 
         <div className="flex justify-end gap-2 pt-1">
@@ -201,7 +201,7 @@ export function NeuPromptModal({
             type="button"
             onClick={submit}
             disabled={value.trim().length === 0}
-            className="px-3 py-1.5 rounded text-[11px] uppercase tracking-wide font-bold text-text-primary bg-generator/20 border border-generator/30 hover:bg-generator/30 transition-colors shadow-[-1px_-1px_4px_rgba(255,255,255,0.04),1px_1px_4px_rgba(0,0,0,0.3)] disabled:opacity-40 disabled:cursor-not-allowed"
+            className="px-3 py-1.5 rounded text-[11px] uppercase tracking-wide font-bold text-text-primary bg-accent-blue/20 border border-accent-blue/30 hover:bg-accent-blue/30 transition-colors shadow-[-1px_-1px_4px_rgba(255,255,255,0.04),1px_1px_4px_rgba(0,0,0,0.3)] disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {confirmLabel}
           </button>

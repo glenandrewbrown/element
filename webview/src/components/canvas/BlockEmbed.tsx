@@ -6,9 +6,10 @@ import { useParameterStore } from "../../stores/useParameterStore";
 // ── Design tokens ──
 
 const CATEGORY_COLOR: Record<BlockCategory, string> = {
-  generator: "#4A90D9",
-  modifier: "#E8A838",
-  logic: "#2BC4C4",
+  instrument: "#4A90D9",
+  audiofx: "#E8A838",
+  midifx: "#2BC4C4",
+  modulator: "#A87FE0",
 };
 
 const SHADOW_PRESSED =
@@ -338,24 +339,24 @@ export interface BlockEmbedProps {
 function BlockEmbedComponent({ nodeId, category, compact = false }: BlockEmbedProps) {
   if (compact) return null;
 
-  const isModifier = category === "modifier";
+  const isAudioFx = category === "audiofx";
 
   return (
     <div className="flex flex-col gap-1 px-1 pb-1">
       {/* Param strip — shown for all categories */}
-      <ParamStripEmbed nodeId={nodeId} category={category} count={isModifier ? 5 : 3} />
+      <ParamStripEmbed nodeId={nodeId} category={category} count={isAudioFx ? 5 : 3} />
 
-      {/* Meter — generators and modifiers */}
-      {(category === "generator" || category === "modifier") && (
+      {/* Meter — instruments and audiofx */}
+      {(category === "instrument" || category === "audiofx") && (
         <div className="flex items-center justify-between gap-1">
           <MeterEmbed />
-          {/* Spectrum only for modifiers (EQ / spectral processors) */}
-          {isModifier && <SpectrumEmbed />}
+          {/* Spectrum only for audiofx (EQ / spectral processors) */}
+          {isAudioFx && <SpectrumEmbed />}
         </div>
       )}
 
-      {/* Logic blocks: just param strip + compact meter */}
-      {category === "logic" && (
+      {/* midifx and modulator: just param strip + compact meter */}
+      {(category === "midifx" || category === "modulator") && (
         <div className="flex items-center justify-end">
           <MeterEmbed />
         </div>

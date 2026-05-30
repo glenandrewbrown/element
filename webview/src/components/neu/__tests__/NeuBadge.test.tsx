@@ -12,25 +12,25 @@ describe("<NeuBadge />", () => {
     expect(screen.getByText("VST3")).toBeInTheDocument();
   });
 
-  it("defaults to the blue (generator) palette", () => {
+  it("defaults to the blue (accent-blue) palette", () => {
     render(<NeuBadge text="AUDIO" />);
     const badge = screen.getByText("AUDIO");
-    expect(badge.className).toContain("border-generator");
-    expect(badge.className).toContain("text-generator");
+    expect(badge.className).toContain("border-accent-blue");
+    expect(badge.className).toContain("text-accent-blue");
   });
 
-  it("applies the orange (modifier) palette", () => {
+  it("applies the orange (accent-orange) palette", () => {
     render(<NeuBadge text="CV" color="orange" />);
     const badge = screen.getByText("CV");
-    expect(badge.className).toContain("border-modifier");
-    expect(badge.className).toContain("text-modifier");
+    expect(badge.className).toContain("border-accent-orange");
+    expect(badge.className).toContain("text-accent-orange");
   });
 
-  it("applies the teal (logic) palette", () => {
+  it("applies the teal (accent-teal) palette", () => {
     render(<NeuBadge text="MIDI" color="teal" />);
     const badge = screen.getByText("MIDI");
-    expect(badge.className).toContain("border-logic");
-    expect(badge.className).toContain("text-logic");
+    expect(badge.className).toContain("border-accent-teal");
+    expect(badge.className).toContain("text-accent-teal");
   });
 
   it("applies the purple (AU plugin) palette", () => {

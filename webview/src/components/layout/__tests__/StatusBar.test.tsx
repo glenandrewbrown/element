@@ -180,28 +180,28 @@ describe("CPU display", () => {
     expect(screen.getByText("0.0%")).toBeInTheDocument();
   });
 
-  it("uses text-logic class when cpu ≤ 50", () => {
+  it("uses text-accent-teal class when cpu ≤ 50", () => {
     usePerformStore.setState((s) => ({
       ...s,
       liveHealth: { ...s.liveHealth, cpu: 30 },
     }));
     const { container } = render(<StatusBar />);
-    // Multiple .text-logic spans exist (latency too); find the one with '%'
-    const cpuEl = Array.from(container.querySelectorAll(".text-logic")).find(
+    // Multiple .text-accent-teal spans exist (latency too); find the one with '%'
+    const cpuEl = Array.from(container.querySelectorAll(".text-accent-teal")).find(
       (el) => el.textContent?.includes("%"),
     );
     expect(cpuEl).toBeTruthy();
     expect(cpuEl?.textContent).toContain("30.0%");
   });
 
-  it("uses text-modifier class when cpu 51–80", () => {
+  it("uses text-accent-orange class when cpu 51–80", () => {
     usePerformStore.setState((s) => ({
       ...s,
       liveHealth: { ...s.liveHealth, cpu: 60 },
     }));
     const { container } = render(<StatusBar />);
-    // Find the CPU span specifically (not the latency span which is also text-logic)
-    const spans = Array.from(container.querySelectorAll(".text-modifier"));
+    // Find the CPU span specifically (not the latency span which is also text-accent-teal)
+    const spans = Array.from(container.querySelectorAll(".text-accent-orange"));
     const cpuSpan = spans.find((s) => s.textContent?.includes("%"));
     expect(cpuSpan).toBeTruthy();
   });

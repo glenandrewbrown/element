@@ -22,7 +22,7 @@ export function SnippetShelf() {
     <div className="h-full flex items-center gap-4 px-6 overflow-x-auto select-none">
       {/* Label */}
       <div className="shrink-0 flex items-center gap-2 mr-4">
-        <Icon name="Puzzle" size={14} className="text-modifier" aria-hidden />
+        <Icon name="Puzzle" size={14} className="text-accent-orange" aria-hidden />
         <span className="text-[10px] font-bold text-text-secondary uppercase tracking-widest">
           Snippets
         </span>
@@ -46,7 +46,7 @@ export function SnippetShelf() {
             title={mol.description || mol.name}
             className="w-32 h-10 bg-pressed rounded shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] border border-white/5 flex items-center justify-center gap-2 group cursor-pointer hover:bg-surface hover:border-white/10 transition-colors"
           >
-            <Icon name="Puzzle" size={10} className="text-modifier/60 group-hover:text-modifier" aria-hidden />
+            <Icon name="Puzzle" size={10} className="text-accent-orange/60 group-hover:text-accent-orange" aria-hidden />
             <span className="text-[10px] text-text-secondary group-hover:text-text-primary font-medium truncate max-w-[90px]">
               {mol.name}
             </span>

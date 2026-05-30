@@ -60,12 +60,12 @@ export function StatusBar() {
             className={[
               "w-2 h-2 rounded-full",
               engineRunning
-                ? "bg-logic shadow-[0_0_6px_rgba(43,196,196,0.5)]"
+                ? "bg-accent-teal shadow-[0_0_6px_rgba(43,196,196,0.5)]"
                 : "bg-text-secondary",
             ].join(" ")}
             aria-hidden
           />
-          <span className={engineRunning ? "text-logic font-bold" : "text-text-secondary"}>
+          <span className={engineRunning ? "text-accent-teal font-bold" : "text-text-secondary"}>
             {engineRunning ? "RUNNING" : "STOPPED"}
           </span>
         </div>
@@ -82,7 +82,7 @@ export function StatusBar() {
         </div>
         <div className="flex items-center gap-1.5 text-text-secondary">
           <span className="opacity-60">LATENCY</span>
-          <span className="text-logic font-bold">{latency}</span>
+          <span className="text-accent-teal font-bold">{latency}</span>
         </div>
       </div>
 
@@ -97,8 +97,8 @@ export function StatusBar() {
                 cpuPercent > 80
                   ? "text-error"
                   : cpuPercent > 50
-                    ? "text-modifier"
-                    : "text-logic",
+                    ? "text-accent-orange"
+                    : "text-accent-teal",
               ].join(" ")}
             >
               {cpuPercent.toFixed(1)}%

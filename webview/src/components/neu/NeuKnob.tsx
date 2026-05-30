@@ -8,14 +8,14 @@ const colorHex = {
 
 const colorClasses = {
   blue: {
-    text: "text-generator",
+    text: "text-accent-blue",
     glow: "shadow-[0_0_4px_rgba(74,144,217,0.6)]",
   },
   orange: {
-    text: "text-modifier",
+    text: "text-accent-orange",
     glow: "shadow-[0_0_4px_rgba(232,168,56,0.6)]",
   },
-  teal: { text: "text-logic", glow: "shadow-[0_0_4px_rgba(43,196,196,0.6)]" },
+  teal: { text: "text-accent-teal", glow: "shadow-[0_0_4px_rgba(43,196,196,0.6)]" },
 } as const;
 
 const sizeMap = {

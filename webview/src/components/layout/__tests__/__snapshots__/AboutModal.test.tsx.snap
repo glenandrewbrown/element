@@ -147,7 +147,7 @@ exports[`<AboutModal /> > matches the requested snapshot 1`] = `
     </p>
     <div
       aria-live="polite"
-      class="text-[10px] px-3 py-2 rounded border leading-relaxed text-logic border-logic/30 bg-logic/10"
+      class="text-[10px] px-3 py-2 rounded border leading-relaxed text-accent-teal border-accent-teal/30 bg-accent-teal/10"
       data-status="requested"
       data-testid="about-status-banner"
       role="status"

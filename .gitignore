@@ -113,3 +113,5 @@ repomix-output_*.md
 
 # Installer build output (regenerated each run by installer/build_pkg.sh)
 /installer/output/
+webview/.tmp/
+.tmp/

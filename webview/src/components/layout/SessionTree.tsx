@@ -78,7 +78,7 @@ function OutlineRow({ node, depth }: OutlineRowProps) {
         ) : (
           <span className="w-3 h-3" />
         )}
-        <span className={node.isContainer ? "text-logic" : "text-text-dim"}>
+        <span className={node.isContainer ? "text-accent-teal" : "text-text-dim"}>
           {node.isContainer ? <FolderIcon open={open} /> : <BoxIcon />}
         </span>
         <span className="text-[11px] truncate flex-1">
@@ -136,7 +136,7 @@ function GraphRow({ graph, outline, onActivate }: GraphRowProps) {
         <span
           className={[
             "inline-block w-1.5 h-1.5 rounded-full",
-            graph.active ? "bg-generator shadow-[0_0_4px_rgba(74,144,217,0.6)]" : "bg-text-dim/40",
+            graph.active ? "bg-accent-blue shadow-[0_0_4px_rgba(74,144,217,0.6)]" : "bg-text-dim/40",
           ].join(" ")}
         />
         <span
@@ -151,7 +151,7 @@ function GraphRow({ graph, outline, onActivate }: GraphRowProps) {
         {!graph.active ? (
           <button
             type="button"
-            className="text-[9px] uppercase tracking-wider text-text-dim hover:text-generator px-1"
+            className="text-[9px] uppercase tracking-wider text-text-dim hover:text-accent-blue px-1"
             onClick={(e) => {
               e.stopPropagation();
               onActivate(graph.index);
@@ -221,7 +221,7 @@ function SessionTreeComponent() {
         </span>
         <span className="text-[11px] flex-1 truncate text-text-primary tabular-nums">
           {fileName}
-          {dirty ? <span className="text-modifier ml-1">•</span> : null}
+          {dirty ? <span className="text-accent-orange ml-1">•</span> : null}
         </span>
         <span className="text-[9px] tabular-nums text-text-dim">
           {graphs.length} graph{graphs.length === 1 ? "" : "s"}

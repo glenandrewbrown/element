@@ -104,6 +104,69 @@ add_test(NAME "SessionServiceFileOpsTests" COMMAND test_element --run_test=Sessi
 # Phase C opt-in stress harness: 100 nodes, 60 s wall-clock — not in default
 # ctest because it is wall-clock-bound and adds no extra coverage. Enable
 # manually with:  cmake -B build-merged -DELEMENT_RT_STRESS_TEST=ON
+add_test(NAME "MatrixStateTests" COMMAND test_element --run_test=MatrixStateTests)
+add_test(NAME "RingBufferTests" COMMAND test_element --run_test=RingBufferTests)
+add_test(NAME "MidiChannelsTests" COMMAND test_element --run_test=MidiChannelsTests)
+add_test(NAME "RerouteNodeTests" COMMAND test_element --run_test=RerouteNodeTests)
+add_test(NAME "BinaryMathNodeTests" COMMAND test_element --run_test=BinaryMathNodeTests)
+add_test(NAME "LinearFadeFadeInTest" COMMAND test_element --run_test=LinearFadeFadeInTest)
+add_test(NAME "NodeEdgeCaseTests" COMMAND test_element --run_test=NodeEdgeCaseTests)
+
+# Phase I — DSP node, parameter, and engine coverage extension.
+add_test(NAME "EQFilterTests"          COMMAND test_element --run_test=EQFilterTests)
+add_test(NAME "CompressorTests"        COMMAND test_element --run_test=CompressorTests)
+add_test(NAME "MidiRouterNodeTests"    COMMAND test_element --run_test=MidiRouterNodeTests)
+add_test(NAME "MidiSetListTests"       COMMAND test_element --run_test=MidiSetListTests)
+add_test(NAME "ParameterTests"         COMMAND test_element --run_test=ParameterTests)
+add_test(NAME "MidiEngineTests"        COMMAND test_element --run_test=MidiEngineTests)
+add_test(NAME "AudioFilePlayerTests"   COMMAND test_element --run_test=AudioFilePlayerTests)
+
+# Phase J — GraphManager, untested nodes, integration gaps
+add_test(NAME "GraphManagerTests"          COMMAND test_element --run_test=GraphManagerTests)
+add_test(NAME "GraphManagerConnectionTests" COMMAND test_element --run_test=GraphManagerConnectionTests)
+add_test(NAME "GraphManagerChangeTests"    COMMAND test_element --run_test=GraphManagerChangeTests)
+add_test(NAME "AudioMixerProcessorTests"   COMMAND test_element --run_test=AudioMixerProcessorTests)
+add_test(NAME "MidiMonitorNodeTests"       COMMAND test_element --run_test=MidiMonitorNodeTests)
+add_test(NAME "ConstantNodeTests"          COMMAND test_element --run_test=ConstantNodeTests)
+add_test(NAME "HasChanged_not_flagged_after_reset" COMMAND test_element --run_test=SessionChangedTest/HasChanged_not_flagged_after_reset)
+add_test(NAME "VolumeProcessorTests"       COMMAND test_element --run_test=VolumeProcessorTests)
+add_test(NAME "SpinLockTests"              COMMAND test_element --run_test=SpinLockTests)
+add_test(NAME "PlaceholderProcessorTests"  COMMAND test_element --run_test=PlaceholderProcessorTests)
+
+# Phase K — infrastructure gaps: Arc/ArcTable, WebMeteringFifo, LinkedList,
+#           MidiPipe, PortCount, MidiIOMonitor, Transport::Monitor
+add_test(NAME "ArcTests"               COMMAND test_element --run_test=ArcTests)
+add_test(NAME "WebMeteringFifoTests"   COMMAND test_element --run_test=WebMeteringFifoTests)
+add_test(NAME "LinkedListTests"        COMMAND test_element --run_test=LinkedListTests)
+add_test(NAME "MidiPipeTests"          COMMAND test_element --run_test=MidiPipeTests)
+add_test(NAME "PortCountTests"         COMMAND test_element --run_test=PortCountTests)
+add_test(NAME "MidiIOMonitorTests"     COMMAND test_element --run_test=MidiIOMonitorTests)
+add_test(NAME "TransportMonitorTests"  COMMAND test_element --run_test=TransportMonitorTests)
+
+# Phase L — previously compiled but unregistered suites (ctest-invisible until now)
+add_test(NAME "AudioEngineTests"             COMMAND test_element --run_test=AudioEngineTests)
+add_test(NAME "GraphBuilderTests"            COMMAND test_element --run_test=GraphBuilderTests)
+add_test(NAME "GraphNodeMidiChannelTests"    COMMAND test_element --run_test=GraphNodeMidiChannelTests)
+add_test(NAME "MidiPanicTests"              COMMAND test_element --run_test=MidiPanicTests)
+add_test(NAME "MidiTransposeTests"          COMMAND test_element --run_test=MidiTransposeTests)
+add_test(NAME "MappingEngineTests"          COMMAND test_element --run_test=MappingEngineTests)
+add_test(NAME "MidiChannelFilterNodeTests"  COMMAND test_element --run_test=MidiChannelFilterNodeTests)
+add_test(NAME "MidiChannelSplitterTests"    COMMAND test_element --run_test=MidiChannelSplitterTests)
+add_test(NAME "SandboxedProcessorNodeTests" COMMAND test_element --run_test=SandboxedProcessorNodeTests)
+add_test(NAME "PortBufferTests"             COMMAND test_element --run_test=PortBufferTests)
+add_test(NAME "NodeFactoryExtendedTests"    COMMAND test_element --run_test=NodeFactoryExtendedTests)
+
+# Block category mapping (4-category V3 taxonomy)
+add_test(NAME "BlockCategoryMapTests" COMMAND test_element --run_test=BlockCategoryMapTests)
+
+# Phase M — new node coverage: TriggerNode, MidiVelocityAmpNode,
+#           PackMidiNode, UnpackMidiNode, WetDryProcessor
+add_test(NAME "TriggerNodeTests"        COMMAND test_element --run_test=TriggerNodeTests)
+add_test(NAME "MidiVelocityAmpTests"    COMMAND test_element --run_test=MidiVelocityAmpTests)
+add_test(NAME "PackMidiNodeTests"       COMMAND test_element --run_test=PackMidiNodeTests)
+add_test(NAME "UnpackMidiNodeTests"     COMMAND test_element --run_test=UnpackMidiNodeTests)
+add_test(NAME "WetDryProcessorTests"    COMMAND test_element --run_test=WetDryProcessorTests)
+
 option(ELEMENT_RT_STRESS_TEST "Build and register the audio-thread stress test" OFF)
 if (ELEMENT_RT_STRESS_TEST)
     target_compile_definitions(test_element PRIVATE ELEMENT_RT_STRESS_TEST=1)

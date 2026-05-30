@@ -188,7 +188,7 @@ export function NodeContextMenu({
                 onClose();
               }
             }}
-            className="w-full bg-surface px-2 py-1 rounded text-[11px] text-text-primary border border-generator focus:outline-none"
+            className="w-full bg-surface px-2 py-1 rounded text-[11px] text-text-primary border border-accent-blue focus:outline-none"
             autoFocus
           />
         ) : (
@@ -210,7 +210,7 @@ export function NodeContextMenu({
                 item.danger
                   ? "text-error hover:bg-error/10"
                   : item.active
-                    ? "text-modifier hover:bg-modifier/10"
+                    ? "text-accent-orange hover:bg-accent-orange/10"
                     : "text-text-primary hover:bg-white/5",
               ].join(" ")}
             >

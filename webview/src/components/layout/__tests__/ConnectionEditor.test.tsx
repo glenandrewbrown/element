@@ -44,7 +44,7 @@ import {
 
 // ── test data ─────────────────────────────────────────────────────────────────
 
-const makeNode = (id: string, name: string, category: BlockCategory = "generator") => ({
+const makeNode = (id: string, name: string, category: BlockCategory = "instrument") => ({
   id,
   name,
   category,
@@ -58,8 +58,8 @@ const makeNode = (id: string, name: string, category: BlockCategory = "generator
   error: false, isMacroTagged: false, isPortal: false,
 });
 
-const SYNTH = makeNode("synth-1", "Synth", "generator");
-const REVERB = makeNode("reverb-1", "Reverb", "modifier");
+const SYNTH = makeNode("synth-1", "Synth", "instrument");
+const REVERB = makeNode("reverb-1", "Reverb", "audiofx");
 
 const CABLE_AUDIO = {
   id: "c-audio",
@@ -158,7 +158,7 @@ describe("ConnectionEditor", () => {
   });
 
   it("hides cables that don't match search text", () => {
-    const DELAY = makeNode("delay-1", "Delay", "modifier");
+    const DELAY = makeNode("delay-1", "Delay", "audiofx");
     const CABLE_DELAY = {
       id: "c-delay",
       source: "delay-1", sourcePort: "out-0",

@@ -25,12 +25,12 @@ import type {
   SceneData,
 } from "./types";
 
-// ── Generators (blue #4A90D9) ──
+// ── Instruments (blue #4A90D9) ──
 
 const oscA: BlockData = {
   id: "osc-a",
   name: "OSC_A",
-  category: "generator",
+  category: "instrument",
   format: "VST3",
   position: { x: 100, y: 180 },
   ports: [
@@ -59,7 +59,7 @@ const oscA: BlockData = {
 const audioInput: BlockData = {
   id: "audio-in",
   name: "Audio Input",
-  category: "generator",
+  category: "instrument",
   format: "INT",
   position: { x: 80, y: 400 },
   ports: [
@@ -81,7 +81,7 @@ const audioInput: BlockData = {
 const kontakt: BlockData = {
   id: "kontakt",
   name: "Kontakt 8",
-  category: "generator",
+  category: "instrument",
   format: "VST3",
   position: { x: 100, y: 550 },
   ports: [
@@ -107,12 +107,12 @@ const kontakt: BlockData = {
   isMacroTagged: false,
 };
 
-// ── Modifiers (orange #E8A838) ──
+// ── Audio FX (orange #E8A838) ──
 
 const filterCore: BlockData = {
   id: "filter-core",
   name: "FILTER_CORE",
-  category: "modifier",
+  category: "audiofx",
   format: "INT",
   position: { x: 520, y: 220 },
   ports: [
@@ -148,7 +148,7 @@ const filterCore: BlockData = {
 const proQ3: BlockData = {
   id: "pro-q3",
   name: "FabFilter Pro-Q 3",
-  category: "modifier",
+  category: "audiofx",
   format: "VST3",
   position: { x: 400, y: 350 },
   ports: [
@@ -184,7 +184,7 @@ const proQ3: BlockData = {
 const compressor1176: BlockData = {
   id: "comp-1176",
   name: "1176 Compressor",
-  category: "modifier",
+  category: "audiofx",
   format: "AU",
   position: { x: 400, y: 500 },
   ports: [
@@ -220,7 +220,7 @@ const compressor1176: BlockData = {
 const valhallaRoom: BlockData = {
   id: "valhalla-room",
   name: "Valhalla Room",
-  category: "modifier",
+  category: "audiofx",
   format: "VST3",
   position: { x: 650, y: 400 },
   ports: [
@@ -249,7 +249,7 @@ const valhallaRoom: BlockData = {
 const hDelay: BlockData = {
   id: "h-delay",
   name: "H-Delay",
-  category: "modifier",
+  category: "audiofx",
   format: "AU",
   position: { x: 700, y: 550 },
   ports: [
@@ -278,7 +278,7 @@ const hDelay: BlockData = {
 const peakLimiter: BlockData = {
   id: "peak-limiter",
   name: "PEAK_LIMITER",
-  category: "modifier",
+  category: "audiofx",
   format: "INT",
   position: { x: 850, y: 350 },
   ports: [
@@ -304,12 +304,12 @@ const peakLimiter: BlockData = {
   isMacroTagged: false,
 };
 
-// ── Logic (teal #2BC4C4) ──
+// ── MIDI FX (teal #2BC4C4) + Modulators (purple #A87FE0) ──
 
 const midiRouter: BlockData = {
   id: "midi-router",
   name: "MIDI Router",
-  category: "logic",
+  category: "midifx",
   format: "INT",
   position: { x: 250, y: 100 },
   ports: [
@@ -345,7 +345,7 @@ const midiRouter: BlockData = {
 const lfoTool: BlockData = {
   id: "lfo-tool",
   name: "LFO Tool",
-  category: "logic",
+  category: "modulator",
   format: "CLAP",
   position: { x: 350, y: 600 },
   ports: [
@@ -367,7 +367,7 @@ const lfoTool: BlockData = {
 const valueConstant: BlockData = {
   id: "val-const",
   name: "Value Constant",
-  category: "logic",
+  category: "modulator",
   format: "INT",
   position: { x: 200, y: 700 },
   ports: [
@@ -391,7 +391,7 @@ const valueConstant: BlockData = {
 const voiceChain: BlockData = {
   id: "voice-chain",
   name: "VOICE_CHAIN_01",
-  category: "modifier",
+  category: "audiofx",
   format: "INT",
   position: { x: 500, y: 420 },
   ports: [
@@ -421,7 +421,7 @@ const voiceChain: BlockData = {
 const externalPortal: BlockData = {
   id: "portal-out",
   name: "External Portal: Output-01",
-  category: "modifier",
+  category: "audiofx",
   format: "INT",
   position: { x: 750, y: 140 },
   ports: [
@@ -451,7 +451,7 @@ const externalPortal: BlockData = {
 const audioOutput: BlockData = {
   id: "audio-out",
   name: "Audio Output",
-  category: "modifier",
+  category: "audiofx",
   format: "INT",
   position: { x: 900, y: 350 },
   ports: [

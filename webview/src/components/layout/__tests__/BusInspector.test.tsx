@@ -45,7 +45,7 @@ function resetStores() {
 const NODE_A = {
   id: "node-a",
   name: "Synth",
-  category: "generator" as const,
+  category: "instrument" as const,
   format: "VST3" as const,
   position: { x: 0, y: 0 },
   ports: [],
@@ -62,7 +62,7 @@ const NODE_A = {
 const NODE_B = {
   id: "node-b",
   name: "Reverb",
-  category: "modifier" as const,
+  category: "audiofx" as const,
   format: "AU" as const,
   position: { x: 200, y: 0 },
   ports: [],

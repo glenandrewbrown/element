@@ -128,7 +128,7 @@ function seedPerformEmpty() {
 function seedGraphPopulated() {
   useGraphStore.setState({
     nodes: [
-      { id: "n1", name: "Osc", category: "generator", ports: [] } as any,
+      { id: "n1", name: "Osc", category: "instrument", ports: [] } as any,
       { id: "n2", name: "Reverb", category: "effect", ports: [] } as any,
     ],
     edges: [{ id: "e1", source: "n1", target: "n2" } as any],

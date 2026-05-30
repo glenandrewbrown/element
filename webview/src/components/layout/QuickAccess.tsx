@@ -7,15 +7,16 @@ import {
 import { NeuBadge, Icon } from "../neu";
 
 const categoryDot: Record<string, string> = {
-  generator: "bg-generator",
-  modifier: "bg-modifier",
-  logic: "bg-logic",
+  instrument: "bg-instrument",
+  audiofx: "bg-audiofx",
+  midifx: "bg-midifx",
+  modulator: "bg-modulator",
 };
 
 /**
  * Perform-mode left rail giving a flat, read-only roster of every Block on the
  * active Board, ordered top-to-bottom / left-to-right by canvas position and
- * colour-dotted by category (generator/modifier/logic). Use it on stage to scan
+ * colour-dotted by category (instrument/audiofx/midifx/modulator). Use it on stage to scan
  * the signal chain at a glance and watch the live audio-device/CPU footer
  * without diving into the Board. It surfaces state — it does not edit the graph.
  */
@@ -40,7 +41,7 @@ export function QuickAccess() {
         </div>
 
         <div className="space-y-1">
-          <div className="flex items-center justify-between p-2 rounded bg-surface text-generator shadow-[-2px_-2px_8px_rgba(255,255,255,0.04),2px_2px_8px_rgba(0,0,0,0.35)]">
+          <div className="flex items-center justify-between p-2 rounded bg-surface text-accent-blue shadow-[-2px_-2px_8px_rgba(255,255,255,0.04),2px_2px_8px_rgba(0,0,0,0.35)]">
             <div className="flex items-center gap-2 min-w-0">
               <Icon name="Network" size={16} className="shrink-0" aria-hidden />
               <span className="text-[11px] font-medium truncate">
@@ -96,7 +97,7 @@ export function QuickAccess() {
       <div className="p-3 bg-pressed border-t border-white/5">
         <div className="flex items-center gap-2">
           <div
-            className={`w-2 h-2 rounded-full shrink-0 ${health.cpu > 85 ? "bg-error" : "bg-logic"}`}
+            className={`w-2 h-2 rounded-full shrink-0 ${health.cpu > 85 ? "bg-error" : "bg-accent-teal"}`}
           />
           <div className="flex flex-col min-w-0">
             <span className="text-[10px] font-bold text-text-primary tracking-tight truncate">

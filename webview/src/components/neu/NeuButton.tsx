@@ -2,7 +2,7 @@ import { type ReactNode } from "react";
 
 const variantStyles = {
   default: "bg-surface text-text-primary border-white/5 hover:bg-elevated",
-  active: "bg-surface text-logic border-white/5",
+  active: "bg-surface text-accent-teal border-white/5",
   panic: "bg-surface text-error border-error/20",
 } as const;
 
@@ -65,7 +65,7 @@ export function NeuButton({
         .join(" ")}
     >
       {variant === "active" && (
-        <span className="w-1.5 h-1.5 rounded-full bg-logic shadow-[0_0_4px_rgba(43,196,196,0.8)]" />
+        <span className="w-1.5 h-1.5 rounded-full bg-accent-teal shadow-[0_0_4px_rgba(43,196,196,0.8)]" />
       )}
       {variant === "panic" && (
         <span className="w-1.5 h-1.5 rounded-full bg-error shadow-[0_0_4px_rgba(239,68,68,0.8)]" />

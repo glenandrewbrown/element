@@ -29,7 +29,7 @@ import { useBusStore } from "../useBusStore";
 const makeBlock = (id: string, x = 0, y = 0): BlockData => ({
   id,
   name: `Block ${id}`,
-  category: "modifier",
+  category: "audiofx",
   format: "VST3",
   position: { x, y },
   ports: [],

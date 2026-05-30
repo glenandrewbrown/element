@@ -56,10 +56,10 @@ function makeBlock(
   };
 }
 
-const SYNTH   = makeBlock("synth-1",   "Synth Lead",   "generator");
-const REVERB  = makeBlock("reverb-1",  "Hall Reverb",  "modifier");
-const DELAY   = makeBlock("delay-1",   "Tape Delay",   "modifier");
-const ROUTER  = makeBlock("router-1",  "MIDI Router",  "logic");
+const SYNTH   = makeBlock("synth-1",   "Synth Lead",   "instrument");
+const REVERB  = makeBlock("reverb-1",  "Hall Reverb",  "audiofx");
+const DELAY   = makeBlock("delay-1",   "Tape Delay",   "audiofx");
+const ROUTER  = makeBlock("router-1",  "MIDI Router",  "midifx");
 
 const CABLES: CableData[] = [
   { id: "c1", source: "synth-1",  sourcePort: "out-L",    target: "reverb-1", targetPort: "in-L",    signalType: "audio", channelCount: 2, isSidechain: false },

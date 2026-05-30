@@ -55,7 +55,7 @@ function makeData(overrides: Partial<BlockData> = {}): BlockData {
   return {
     id: "block-1",
     name: "Surge XT",
-    category: "generator",
+    category: "instrument",
     format: "VST3",
     position: { x: 0, y: 0 },
     ports: [],
@@ -165,21 +165,27 @@ describe("<Block />", () => {
   // attributes verbatim but normalises inline hex → rgb()/rgba(), so we
   // query the className.
 
-  it("applies generator (blue) accent for category=generator", () => {
-    const { container } = renderBlock({ category: "generator" });
+  it("applies instrument (blue) accent for category=instrument", () => {
+    const { container } = renderBlock({ category: "instrument" });
     const el = container.querySelector('[class*="bg-[#4A90D9]"]');
     expect(el).not.toBeNull();
   });
 
-  it("applies modifier (orange) accent for category=modifier", () => {
-    const { container } = renderBlock({ category: "modifier" });
+  it("applies audiofx (orange) accent for category=audiofx", () => {
+    const { container } = renderBlock({ category: "audiofx" });
     const el = container.querySelector('[class*="bg-[#E8A838]"]');
     expect(el).not.toBeNull();
   });
 
-  it("applies logic (teal) accent for category=logic", () => {
-    const { container } = renderBlock({ category: "logic" });
+  it("applies midifx (teal) accent for category=midifx", () => {
+    const { container } = renderBlock({ category: "midifx" });
     const el = container.querySelector('[class*="bg-[#2BC4C4]"]');
+    expect(el).not.toBeNull();
+  });
+
+  it("applies modulator (purple) accent for category=modulator", () => {
+    const { container } = renderBlock({ category: "modulator" });
+    const el = container.querySelector('[class*="bg-[#A87FE0]"]');
     expect(el).not.toBeNull();
   });
 

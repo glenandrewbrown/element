@@ -32,11 +32,11 @@ const defaultHealth = {
   outputPeak: 0.2,
 };
 
-/** A complete BlockData for a typical modifier plugin. */
+/** A complete BlockData for a typical audiofx plugin. */
 const selectedModifier = {
   id: "sel-1",
   name: "Pro-Q 3",
-  category: "modifier" as const,
+  category: "audiofx" as const,
   format: "VST3" as const,
   position: { x: 200, y: 120 },
   ports: [
@@ -55,11 +55,11 @@ const selectedModifier = {
   note: "High-pass at 80 Hz, surgical peak around 3 kHz",
 };
 
-/** A complete BlockData for a generator. */
+/** A complete BlockData for an instrument. */
 const selectedGenerator = {
   id: "sel-2",
   name: "Mini V3",
-  category: "generator" as const,
+  category: "instrument" as const,
   format: "AU" as const,
   position: { x: 100, y: 80 },
   ports: [
@@ -165,8 +165,8 @@ export const NothingSelected: Story = {
   },
 };
 
-// ── Modifier plugin selected ──
-export const ModifierSelected: Story = {
+// ── AudioFx plugin selected ──
+export const AudioFxSelected: Story = {
   decorators: [
     (Story) => {
       seedNodeSelected(selectedModifier);
@@ -187,8 +187,8 @@ export const ModifierSelected: Story = {
   },
 };
 
-// ── Generator selected ──
-export const GeneratorSelected: Story = {
+// ── Instrument selected ──
+export const InstrumentSelected: Story = {
   decorators: [
     (Story) => {
       seedNodeSelected(selectedGenerator);

@@ -33,9 +33,9 @@ const COLOR_HEX: Record<NonNullable<DashboardWidget["color"]>, string> = {
 };
 
 const COLOR_TEXT: Record<NonNullable<DashboardWidget["color"]>, string> = {
-  blue: "text-generator",
-  orange: "text-modifier",
-  teal: "text-logic",
+  blue: "text-accent-blue",
+  orange: "text-accent-orange",
+  teal: "text-accent-teal",
   red: "text-error",
 };
 
@@ -282,7 +282,7 @@ function BindModal({ widgetId, onClose }: BindModalProps) {
           <select
             value={selectedNodeId}
             onChange={(e) => setSelectedNodeId(e.target.value)}
-            className="bg-pressed border border-white/10 rounded text-[11px] text-text-primary px-2 py-1.5 outline-none focus:border-generator/50 cursor-pointer"
+            className="bg-pressed border border-white/10 rounded text-[11px] text-text-primary px-2 py-1.5 outline-none focus:border-accent-blue/50 cursor-pointer"
           >
             <option value="">— select block —</option>
             {nodes.map((n) => (
@@ -323,7 +323,7 @@ function BindModal({ widgetId, onClose }: BindModalProps) {
                           markParameterMapped(selectedNodeId, p.index, e.target.checked);
                         }
                       }}
-                      className="accent-generator"
+                      className="accent-accent-blue"
                     />
                     <span className="text-[11px] text-text-primary">{p.name}</span>
                   </label>
@@ -336,7 +336,7 @@ function BindModal({ widgetId, onClose }: BindModalProps) {
               value={selectedParamIndex}
               onChange={(e) => setSelectedParamIndex(Number(e.target.value))}
               disabled={visibleParams.length === 0}
-              className="bg-pressed border border-white/10 rounded text-[11px] text-text-primary px-2 py-1.5 outline-none focus:border-generator/50 cursor-pointer disabled:opacity-40"
+              className="bg-pressed border border-white/10 rounded text-[11px] text-text-primary px-2 py-1.5 outline-none focus:border-accent-blue/50 cursor-pointer disabled:opacity-40"
             >
               {visibleParams.length === 0 && (
                 <option value={-1}>— no mapped parameters —</option>
@@ -354,7 +354,7 @@ function BindModal({ widgetId, onClose }: BindModalProps) {
           type="button"
           onClick={handleBind}
           disabled={!selectedNodeId || selectedParamIndex < 0}
-          className="mt-1 py-2 rounded bg-surface border border-white/10 text-[10px] font-black uppercase tracking-widest text-generator shadow-[-2px_-2px_8px_rgba(255,255,255,0.04),2px_2px_8px_rgba(0,0,0,0.35)] active:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4)] active:translate-y-px transition-all disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+          className="mt-1 py-2 rounded bg-surface border border-white/10 text-[10px] font-black uppercase tracking-widest text-accent-blue shadow-[-2px_-2px_8px_rgba(255,255,255,0.04),2px_2px_8px_rgba(0,0,0,0.35)] active:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4)] active:translate-y-px transition-all disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
         >
           Bind
         </button>
@@ -429,7 +429,7 @@ function WidgetShell({
         "absolute flex items-center justify-center",
         editing ? "cursor-grab active:cursor-grabbing" : "",
         selected
-          ? "outline outline-2 outline-offset-2 outline-generator rounded-sm shadow-[0_0_8px_rgba(74,144,217,0.4)]"
+          ? "outline outline-2 outline-offset-2 outline-accent-blue rounded-sm shadow-[0_0_8px_rgba(74,144,217,0.4)]"
           : "",
       ].join(" ")}
       style={{
@@ -478,7 +478,7 @@ function WidgetShell({
                 e.stopPropagation();
                 onBind();
               }}
-              className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-full mt-1 px-1.5 py-0.5 bg-surface border border-white/10 rounded text-[8px] font-black uppercase tracking-widest text-modifier hover:text-text-primary flex items-center gap-1 cursor-pointer whitespace-nowrap z-10 shadow-[-1px_-1px_4px_rgba(255,255,255,0.04),1px_1px_4px_rgba(0,0,0,0.35)]"
+              className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-full mt-1 px-1.5 py-0.5 bg-surface border border-white/10 rounded text-[8px] font-black uppercase tracking-widest text-accent-orange hover:text-text-primary flex items-center gap-1 cursor-pointer whitespace-nowrap z-10 shadow-[-1px_-1px_4px_rgba(255,255,255,0.04),1px_1px_4px_rgba(0,0,0,0.35)]"
             >
               <Icon name="Link" size={8} aria-hidden />
               Bind
@@ -502,10 +502,10 @@ function WidgetShell({
 // ── Add palette ──
 
 const WIDGET_KINDS: { kind: WidgetKind; label: string; color: string }[] = [
-  { kind: "knob", label: "Knob", color: "text-generator" },
-  { kind: "fader", label: "Fader", color: "text-modifier" },
-  { kind: "button", label: "Button", color: "text-logic" },
-  { kind: "meter", label: "Meter", color: "text-generator" },
+  { kind: "knob", label: "Knob", color: "text-accent-blue" },
+  { kind: "fader", label: "Fader", color: "text-accent-orange" },
+  { kind: "button", label: "Button", color: "text-accent-teal" },
+  { kind: "meter", label: "Meter", color: "text-accent-blue" },
 ];
 
 interface AddPaletteProps {
@@ -604,7 +604,7 @@ export function DashboardBuilder() {
           className={[
             "h-6 px-3 rounded border text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 transition-all cursor-pointer",
             editing
-              ? "bg-surface border-generator/40 text-generator shadow-[0_0_6px_rgba(74,144,217,0.25)]"
+              ? "bg-surface border-accent-blue/40 text-accent-blue shadow-[0_0_6px_rgba(74,144,217,0.25)]"
               : "bg-surface border-white/5 text-text-secondary hover:text-text-primary shadow-[-2px_-2px_8px_rgba(255,255,255,0.04),2px_2px_8px_rgba(0,0,0,0.35)]",
           ].join(" ")}
         >

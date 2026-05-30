@@ -165,17 +165,33 @@ type EngineSnapshot = {
 };
 
 function inferCategory(b: EngineBlock): BlockCategory {
-  if (b.isContainer) return "logic";
+  if (b.isContainer) return "midifx";
   const name = b.name.toLowerCase();
-  if (name.includes("midi") || name.includes("router")) return "logic";
+  if (name.includes("midi")) return "midifx";
+  // Split router: MIDI router → midifx; plain/audio router → audiofx (handled by default)
+  if (name.includes("router") && name.includes("midi")) return "midifx";
   if (
-    name.includes("input") ||
-    name.includes("osc") ||
-    name.includes("generator")
+    name.includes("lfo") ||
+    name.includes("envelope") ||
+    name.includes("modulat") ||
+    name.includes("cv") ||
+    name.includes("automation") ||
+    name.includes("macro")
   )
-    return "generator";
-  if (name.includes("output")) return "generator";
-  return "modifier";
+    return "modulator";
+  if (
+    name.includes("synth") ||
+    name.includes("sampler") ||
+    name.includes("instrument") ||
+    name.includes("osc") ||
+    name.includes("generat") ||
+    name.includes("input") ||
+    name.includes("drum") ||
+    name.includes("keys")
+  )
+    return "instrument";
+  // output is a sink → audiofx (fixes pre-existing bug where "output" returned generator)
+  return "audiofx";
 }
 
 function inferFormat(_b: EngineBlock): PluginFormat {

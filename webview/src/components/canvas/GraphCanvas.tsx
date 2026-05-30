@@ -54,9 +54,10 @@ const edgeTypes: EdgeTypes = { cable: Cable };
 // ── Category → minimap colour ──
 
 const categoryColor: Record<string, string> = {
-  generator: "#4A90D9",
-  modifier: "#E8A838",
-  logic: "#2BC4C4",
+  instrument: "#4A90D9",
+  audiofx: "#E8A838",
+  midifx: "#2BC4C4",
+  modulator: "#A87FE0",
 };
 
 // ── Convert our BlockData[] to React Flow Node[] ──
@@ -588,7 +589,7 @@ export function GraphCanvas() {
                 }
               }}
               onBlur={() => setRenameOverlay(null)}
-              className="w-full bg-surface border border-generator focus:outline-none rounded px-2 py-1 text-[11px] text-text-primary"
+              className="w-full bg-surface border border-accent-blue focus:outline-none rounded px-2 py-1 text-[11px] text-text-primary"
             />
           </div>
         </div>

@@ -12,7 +12,7 @@ const tabNodes = [
   {
     id: "tab-1",
     name: "Pro-Q 3",
-    category: "modifier" as const,
+    category: "audiofx" as const,
     format: "VST3" as const,
     position: { x: 0, y: 0 },
     ports: [],
@@ -25,7 +25,7 @@ const tabNodes = [
   {
     id: "tab-2",
     name: "Mini V3",
-    category: "generator" as const,
+    category: "instrument" as const,
     format: "AU" as const,
     position: { x: 0, y: 0 },
     ports: [],
@@ -38,7 +38,7 @@ const tabNodes = [
   {
     id: "tab-3",
     name: "EchoBoy",
-    category: "modifier" as const,
+    category: "audiofx" as const,
     format: "AU" as const,
     position: { x: 0, y: 0 },
     ports: [],

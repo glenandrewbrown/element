@@ -17,7 +17,7 @@ function makeNode(over: Partial<BlockData> = {}): BlockData {
   return {
     id: NODE_ID,
     name: "Serum",
-    category: "generator",
+    category: "instrument",
     format: "VST3",
     position: { x: 0, y: 0 },
     ports: [],
@@ -91,7 +91,7 @@ export const BypassedAndMuted: Story = {
   },
   decorators: [
     (Story) => {
-      seed(makeNode({ name: "Valhalla Reverb", category: "modifier", bypassed: true, muted: true }));
+      seed(makeNode({ name: "Valhalla Reverb", category: "audiofx", bypassed: true, muted: true }));
       return framed(Story);
     },
   ],

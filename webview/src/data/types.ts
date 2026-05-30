@@ -1,5 +1,5 @@
 export type SignalType = "audio" | "midi" | "value";
-export type BlockCategory = "generator" | "modifier" | "logic";
+export type BlockCategory = "instrument" | "audiofx" | "midifx" | "modulator";
 export type PluginFormat = "VST3" | "AU" | "CLAP" | "LV2" | "INT";
 export type AppMode = "edit" | "perform";
 

@@ -34,6 +34,7 @@
 #include "ui/luaconsoleview.hpp"
 #include "ui/moleculemanager.hpp"
 #include "ui/pluginusagetracker.hpp"
+#include "ui/blockcategory.hpp"
 #include "presetmanager.hpp"
 #include "appinfo.hpp"
 #include "nodes/scriptnode.hpp"
@@ -176,32 +177,17 @@ static String normalizeBlockFormat (const String& rawFormat)
     return "INT";
 }
 
-// Map a node to the React `BlockCategory` union: "generator" | "modifier" |
-// "logic". Mirrors the JS `inferCategory` intent (useJuceBridge.ts) but is
-// driven by the plugin's vendor category when available, falling back to a
-// name-based heuristic. Logic keywords are tested before generator keywords so
-// e.g. "MIDI Effect" / "MIDI Output" classify as logic, matching the JS order.
+// Map a node to the React `BlockCategory` union: "instrument" | "audiofx" |
+// "midifx" | "modulator". Delegates keyword matching to
+// element::mapBlockCategoryFromStrings (src/ui/blockcategory.hpp) so the
+// logic is testable without a Node. Containers (n.isGraph()) fall into the
+// "audiofx" default bucket per the V3 taxonomy.
 static String mapBlockCategory (const Node& n, const String& pluginCategory)
 {
     if (n.isGraph())
-        return "logic";
+        return "audiofx";
 
-    const String haystack = (pluginCategory + " " + n.getName()).toLowerCase();
-
-    if (haystack.contains ("midi") || haystack.contains ("router")
-        || haystack.contains ("mixer") || haystack.contains ("utility")
-        || haystack.contains ("control"))
-        return "logic";
-
-    if (haystack.contains ("instrument") || haystack.contains ("synth")
-        || haystack.contains ("generator") || haystack.contains ("source")
-        || haystack.contains ("input") || haystack.contains ("output")
-        || haystack.contains ("osc"))
-        return "generator";
-
-    // Effects / fx / dynamics / eq / reverb / delay / filter and everything
-    // else fall through to modifier.
-    return "modifier";
+    return element::mapBlockCategoryFromStrings (n.getName(), pluginCategory);
 }
 
 static String nodeUuidFromGraphNodeId (const Graph& g, uint32_t nid)

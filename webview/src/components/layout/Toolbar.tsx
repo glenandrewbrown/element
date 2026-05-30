@@ -211,7 +211,7 @@ export function Toolbar() {
                 </button>
               </div>
               <span
-                className="text-[11px] text-modifier max-w-[140px] truncate normal-case"
+                className="text-[11px] text-accent-orange max-w-[140px] truncate normal-case"
                 title={filePath || "No file on disk"}
               >
                 {sessionDisplayName(filePath, dirty)}
@@ -252,7 +252,7 @@ export function Toolbar() {
                       <span
                         className={
                           isLast
-                            ? "text-generator"
+                            ? "text-accent-blue"
                             : "hover:text-text-primary transition-colors cursor-pointer"
                         }
                       >
@@ -268,7 +268,7 @@ export function Toolbar() {
             <>
               <div className="h-4 w-px bg-white/10 mx-1" />
               <div className="flex items-center gap-4">
-                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-pressed text-modifier shadow-inner">
+                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-pressed text-accent-orange shadow-inner">
                   <Icon name="Play" size={14} aria-hidden />
                   <span className="font-bold">PERFORM</span>
                 </div>
@@ -323,7 +323,7 @@ export function Toolbar() {
               </button>
               <button
                 type="button"
-                className="text-logic hover:text-logic/80 transition-colors p-0.5"
+                className="text-accent-teal hover:text-accent-teal/80 transition-colors p-0.5"
                 onClick={() => void nativeTransportTogglePlay()}
                 aria-label={isPlaying ? "Pause" : "Play"}
                 title={isPlaying ? "Pause" : "Play"}
@@ -364,7 +364,7 @@ export function Toolbar() {
                       step="0.01"
                       autoFocus
                       value={bpmInput}
-                      className="bg-pressed text-text-primary text-[11px] tabular-nums w-14 text-center rounded border border-generator outline-none"
+                      className="bg-pressed text-text-primary text-[11px] tabular-nums w-14 text-center rounded border border-accent-blue outline-none"
                       onChange={(e) => setBpmInput(e.target.value)}
                       onBlur={() => {
                         const parsed = parseFloat(bpmInput);
@@ -389,7 +389,7 @@ export function Toolbar() {
                     />
                   ) : (
                     <span
-                      className="text-modifier font-black tabular-nums text-[11px] cursor-pointer hover:text-modifier/80 transition-colors"
+                      className="text-accent-orange font-black tabular-nums text-[11px] cursor-pointer hover:text-accent-orange/80 transition-colors"
                       title="Click to edit tempo"
                       onClick={() => {
                         setBpmInput(bpm.toFixed(2));
@@ -424,7 +424,7 @@ export function Toolbar() {
               </div>
               <div className="flex flex-col items-center">
                 <span className="text-[9px] opacity-40 font-bold uppercase tracking-tight">LATENCY</span>
-                <span className="text-logic font-black tabular-nums text-[11px]">
+                <span className="text-accent-teal font-black tabular-nums text-[11px]">
                   {live.latency > 0 ? `${live.latency.toFixed(1)}ms` : "—"}
                 </span>
               </div>
@@ -435,8 +435,8 @@ export function Toolbar() {
               onClick={toggleMode}
               className="flex items-center gap-1.5 bg-pressed px-3 py-1 rounded-full shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] border border-white/5 transition-all hover:border-white/10"
             >
-              <span className="text-[9px] text-generator font-black tracking-widest">EDIT</span>
-              <div className="w-6 h-3 bg-generator rounded-full relative">
+              <span className="text-[9px] text-accent-blue font-black tracking-widest">EDIT</span>
+              <div className="w-6 h-3 bg-accent-blue rounded-full relative">
                 <div className="absolute right-0.5 top-0.5 w-2 h-2 bg-text-primary rounded-full shadow-sm" />
               </div>
               <span className="text-[9px] text-text-secondary font-black tracking-widest">PERFORM</span>
@@ -452,7 +452,7 @@ export function Toolbar() {
               <div className="flex items-center bg-pressed rounded shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] border border-white/5 overflow-hidden">
                 <button
                   type="button"
-                  className={`px-2 py-0.5 text-[9px] font-black tracking-widest uppercase transition-colors ${cableRouting === "manhattan" ? "text-generator bg-surface shadow-[2px_2px_6px_rgba(0,0,0,0.4),-1px_-1px_4px_rgba(255,255,255,0.05)]" : "text-text-secondary hover:text-text-primary"}`}
+                  className={`px-2 py-0.5 text-[9px] font-black tracking-widest uppercase transition-colors ${cableRouting === "manhattan" ? "text-accent-blue bg-surface shadow-[2px_2px_6px_rgba(0,0,0,0.4),-1px_-1px_4px_rgba(255,255,255,0.05)]" : "text-text-secondary hover:text-text-primary"}`}
                   title="Manhattan (stepped) cable routing"
                   onClick={() => setCableRouting("manhattan")}
                 >
@@ -461,7 +461,7 @@ export function Toolbar() {
                 <div className="w-px h-3 bg-white/10" />
                 <button
                   type="button"
-                  className={`px-2 py-0.5 text-[9px] font-black tracking-widest uppercase transition-colors ${cableRouting === "bezier" ? "text-generator bg-surface shadow-[2px_2px_6px_rgba(0,0,0,0.4),-1px_-1px_4px_rgba(255,255,255,0.05)]" : "text-text-secondary hover:text-text-primary"}`}
+                  className={`px-2 py-0.5 text-[9px] font-black tracking-widest uppercase transition-colors ${cableRouting === "bezier" ? "text-accent-blue bg-surface shadow-[2px_2px_6px_rgba(0,0,0,0.4),-1px_-1px_4px_rgba(255,255,255,0.05)]" : "text-text-secondary hover:text-text-primary"}`}
                   title="Bezier (curved) cable routing"
                   onClick={() => setCableRouting("bezier")}
                 >
@@ -485,7 +485,7 @@ export function Toolbar() {
                   {sceneLabel}
                   {activeSceneData?.hasCapture ? (
                     <span
-                      className="w-1.5 h-1.5 rounded-full bg-modifier shadow-[0_0_6px_rgba(232,168,56,0.5)]"
+                      className="w-1.5 h-1.5 rounded-full bg-accent-orange shadow-[0_0_6px_rgba(232,168,56,0.5)]"
                       title="This scene has a stored parameter capture"
                       aria-hidden
                     />
@@ -501,7 +501,7 @@ export function Toolbar() {
                 <div className="flex items-center gap-1 border-l border-white/10 ml-1 pl-1">
                   <button
                     type="button"
-                    className="px-1.5 py-0.5 rounded bg-surface text-[10px] text-generator font-bold hover:bg-elevated"
+                    className="px-1.5 py-0.5 rounded bg-surface text-[10px] text-accent-blue font-bold hover:bg-elevated"
                     title="Add perform scene (session)"
                     onClick={() =>
                       void nativePerformAddScene(`Scene ${sceneCount + 1}`)
@@ -512,7 +512,7 @@ export function Toolbar() {
                   <button
                     type="button"
                     disabled={captureBusy}
-                    className="px-1.5 py-0.5 rounded bg-surface text-[9px] text-modifier font-bold hover:bg-elevated disabled:opacity-40"
+                    className="px-1.5 py-0.5 rounded bg-surface text-[9px] text-accent-orange font-bold hover:bg-elevated disabled:opacity-40"
                     title="Capture current graph parameters into the active scene"
                     onClick={() => {
                       setCaptureBusy(true);
@@ -557,8 +557,8 @@ export function Toolbar() {
           ) : (
             <>
               {/* Engine status */}
-              <div className="flex items-center gap-2 px-3 py-1 bg-pressed rounded-sm text-logic border border-white/5">
-                <span className="w-2 h-2 rounded-full bg-logic animate-pulse" />
+              <div className="flex items-center gap-2 px-3 py-1 bg-pressed rounded-sm text-accent-teal border border-white/5">
+                <span className="w-2 h-2 rounded-full bg-accent-teal animate-pulse" />
                 <span className="font-bold tracking-widest uppercase">
                   Engine: Live
                 </span>

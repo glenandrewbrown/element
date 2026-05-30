@@ -18,18 +18,26 @@ function inferBlockCategory(raw: string): BlockCategory {
   if (
     u.includes("midi") ||
     u.includes("sequen") ||
-    u.includes("utility") ||
-    u.includes("analysis")
+    u.includes("arp") ||
+    u.includes("chord")
   )
-    return "logic";
+    return "midifx";
+  if (
+    u.includes("lfo") ||
+    u.includes("modulat") ||
+    u.includes("envelope") ||
+    u.includes("utility") ||
+    u.includes("analy")
+  )
+    return "modulator";
   if (
     u.includes("generat") ||
     u.includes("instrument") ||
     u.includes("synth") ||
     u.includes("ampler")
   )
-    return "generator";
-  return "modifier";
+    return "instrument";
+  return "audiofx";
 }
 
 interface PluginBrowserState {

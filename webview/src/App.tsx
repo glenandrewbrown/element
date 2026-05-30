@@ -49,7 +49,7 @@ function PerformBottomPanel() {
             className={[
               "px-4 flex items-center text-[10px] font-black uppercase tracking-widest border-r border-white/5 transition-colors cursor-pointer",
               tab === t
-                ? "bg-panel text-modifier shadow-[inset_0_-2px_0_#E8A838]"
+                ? "bg-panel text-accent-orange shadow-[inset_0_-2px_0_#E8A838]"
                 : "text-text-secondary hover:text-text-primary",
             ].join(" ")}
           >

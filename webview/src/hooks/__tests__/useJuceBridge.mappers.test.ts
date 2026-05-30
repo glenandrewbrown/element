@@ -80,59 +80,77 @@ afterEach(() => {
 // ── inferCategory ─────────────────────────────────────────────────────────────
 
 describe("inferCategory via mapBlock", () => {
-  it("returns 'logic' for container blocks", () => {
+  it("returns 'midifx' for container blocks", () => {
     mountHook();
     pushSnapshot({
       blocks: [{ id: "1", name: "Container", isContainer: true }],
       cables: [],
     });
-    expect(useGraphStore.getState().nodes[0]?.category).toBe("logic");
+    expect(useGraphStore.getState().nodes[0]?.category).toBe("midifx");
   });
 
-  it("returns 'logic' for blocks with 'midi' in name", () => {
+  it("returns 'midifx' for blocks with 'midi' in name", () => {
     mountHook();
     pushSnapshot({
       blocks: [{ id: "1", name: "MIDI Router" }],
       cables: [],
     });
-    expect(useGraphStore.getState().nodes[0]?.category).toBe("logic");
+    expect(useGraphStore.getState().nodes[0]?.category).toBe("midifx");
   });
 
-  it("returns 'generator' for blocks with 'input' in name", () => {
+  it("returns 'instrument' for blocks with 'input' in name", () => {
     mountHook();
     pushSnapshot({
       blocks: [{ id: "1", name: "Audio Input" }],
       cables: [],
     });
-    expect(useGraphStore.getState().nodes[0]?.category).toBe("generator");
+    expect(useGraphStore.getState().nodes[0]?.category).toBe("instrument");
   });
 
-  it("returns 'generator' for blocks with 'output' in name", () => {
+  it("returns 'audiofx' for blocks with 'output' in name (output is a sink)", () => {
     mountHook();
     pushSnapshot({
       blocks: [{ id: "1", name: "Stereo Output" }],
       cables: [],
     });
-    expect(useGraphStore.getState().nodes[0]?.category).toBe("generator");
+    expect(useGraphStore.getState().nodes[0]?.category).toBe("audiofx");
   });
 
-  it("returns 'modifier' as default fallback", () => {
+  it("returns 'audiofx' as default fallback", () => {
     mountHook();
     pushSnapshot({
       blocks: [{ id: "1", name: "Compressor" }],
       cables: [],
     });
-    expect(useGraphStore.getState().nodes[0]?.category).toBe("modifier");
+    expect(useGraphStore.getState().nodes[0]?.category).toBe("audiofx");
+  });
+
+  it("returns 'modulator' for blocks with 'lfo' in name", () => {
+    mountHook();
+    pushSnapshot({
+      blocks: [{ id: "1", name: "LFO Tool" }],
+      cables: [],
+    });
+    expect(useGraphStore.getState().nodes[0]?.category).toBe("modulator");
+  });
+
+  it("returns 'instrument' for blocks with 'synth' in name", () => {
+    mountHook();
+    pushSnapshot({
+      blocks: [{ id: "1", name: "SynthMaster" }],
+      cables: [],
+    });
+    expect(useGraphStore.getState().nodes[0]?.category).toBe("instrument");
   });
 
   it("honours explicit category from engine JSON (BUG-012)", () => {
     mountHook();
     pushSnapshot({
       // Engine explicitly sets category — should NOT be overridden by inferCategory
-      blocks: [{ id: "1", name: "Diva", category: "modifier" }],
+      blocks: [{ id: "1", name: "Diva", category: "audiofx" }],
       cables: [],
     });
-    expect(useGraphStore.getState().nodes[0]?.category).toBe("modifier");
+    expect(useGraphStore.getState().nodes[0]?.category).toBe("audiofx");
   });
 });
 

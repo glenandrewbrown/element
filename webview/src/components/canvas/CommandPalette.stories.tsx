@@ -22,7 +22,7 @@ const demoPlugins: BrowserPlugin[] = [
     manufacturer: "Surge Synth Team",
     format: "VST3",
     category: "Synth",
-    blockCategory: "generator",
+    blockCategory: "instrument",
   },
   {
     identifier: "com.vendor.ProQ4",
@@ -30,7 +30,7 @@ const demoPlugins: BrowserPlugin[] = [
     manufacturer: "FabFilter",
     format: "AU",
     category: "EQ",
-    blockCategory: "modifier",
+    blockCategory: "audiofx",
   },
   {
     identifier: "com.vendor.Arp",
@@ -38,7 +38,7 @@ const demoPlugins: BrowserPlugin[] = [
     manufacturer: "Audiomodern",
     format: "CLAP",
     category: "MIDI",
-    blockCategory: "logic",
+    blockCategory: "midifx",
   },
 ];
 
@@ -46,7 +46,7 @@ const demoBlocks: BlockData[] = [
   {
     id: "n1",
     name: "Serum",
-    category: "generator",
+    category: "instrument",
     format: "VST3",
     position: { x: 0, y: 0 },
     ports: [],
@@ -59,7 +59,7 @@ const demoBlocks: BlockData[] = [
   {
     id: "n2",
     name: "Valhalla Reverb",
-    category: "modifier",
+    category: "audiofx",
     format: "AU",
     position: { x: 0, y: 0 },
     ports: [],

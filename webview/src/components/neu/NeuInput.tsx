@@ -30,7 +30,7 @@ export const NeuInput = forwardRef<HTMLInputElement, NeuInputProps>(
         className={[
           "w-full bg-pressed border-none rounded px-3 py-1.5 text-[11px] text-text-primary placeholder-text-dim",
           "shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)]",
-          "outline-none focus:ring-1 focus:ring-generator/30",
+          "outline-none focus:ring-1 focus:ring-accent-blue/30",
           "transition-shadow duration-100",
           className,
         ].join(" ")}

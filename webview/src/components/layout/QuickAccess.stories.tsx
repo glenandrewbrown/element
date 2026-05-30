@@ -25,7 +25,7 @@ const demoNodes = [
   {
     id: "n1",
     name: "Mini V3",
-    category: "generator" as const,
+    category: "instrument" as const,
     format: "AU" as const,
     position: { x: 100, y: 80 },
     ports: [],
@@ -40,7 +40,7 @@ const demoNodes = [
   {
     id: "n2",
     name: "Pro-Q 3",
-    category: "modifier" as const,
+    category: "audiofx" as const,
     format: "VST3" as const,
     position: { x: 320, y: 80 },
     ports: [],
@@ -55,7 +55,7 @@ const demoNodes = [
   {
     id: "n3",
     name: "EchoBoy",
-    category: "modifier" as const,
+    category: "audiofx" as const,
     format: "AU" as const,
     position: { x: 540, y: 80 },
     ports: [],
@@ -70,7 +70,7 @@ const demoNodes = [
   {
     id: "n4",
     name: "MIDI Monitor",
-    category: "logic" as const,
+    category: "midifx" as const,
     format: "INT" as const,
     position: { x: 100, y: 220 },
     ports: [],

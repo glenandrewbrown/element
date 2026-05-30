@@ -23,9 +23,9 @@ const SIGNAL_LABEL: Record<SignalType, string> = {
 };
 
 const SIGNAL_COLOR: Record<SignalType, string> = {
-  audio: "text-generator border-generator/30 bg-generator/10",
-  midi: "text-logic border-logic/30 bg-logic/10",
-  value: "text-modifier border-modifier/30 bg-modifier/10",
+  audio: "text-audio border-audio/30 bg-audio/10",
+  midi: "text-midi border-midi/30 bg-midi/10",
+  value: "text-value border-value/30 bg-value/10",
 };
 
 function SignalPill({ type }: { type: SignalType }) {
@@ -44,9 +44,10 @@ function SignalPill({ type }: { type: SignalType }) {
 // ── Category dot colors ──
 
 const CATEGORY_DOT: Record<string, string> = {
-  generator: "bg-generator",
-  modifier: "bg-modifier",
-  logic: "bg-logic",
+  instrument: "bg-instrument",
+  audiofx: "bg-audiofx",
+  midifx: "bg-midifx",
+  modulator: "bg-modulator",
 };
 
 function CategoryDot({ category }: { category: string }) {
@@ -82,13 +83,13 @@ function ConnectionRow({
   onDisconnect,
 }: ConnectionRowProps) {
   const sourceName = sourceBlock?.name ?? cable.source;
-  const sourceCategory = sourceBlock?.category ?? "generator";
+  const sourceCategory = sourceBlock?.category ?? "audiofx";
   const sourcePort =
     sourceBlock?.ports.find((p) => p.id === cable.sourcePort)?.label ??
     cable.sourcePort;
 
   const targetName = targetBlock?.name ?? cable.target;
-  const targetCategory = targetBlock?.category ?? "generator";
+  const targetCategory = targetBlock?.category ?? "audiofx";
   const targetPort =
     targetBlock?.ports.find((p) => p.id === cable.targetPort)?.label ??
     cable.targetPort;
@@ -190,7 +191,7 @@ function AddCableForm({ nodes, onConfirm, onCancel }: AddCableFormProps) {
   const selectClass =
     "w-full bg-pressed border border-white/5 rounded px-2 py-1.5 text-[10px] text-text-primary " +
     "shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] " +
-    "outline-none focus:ring-1 focus:ring-generator/30 transition-shadow duration-100 appearance-none cursor-pointer";
+    "outline-none focus:ring-1 focus:ring-accent-blue/30 transition-shadow duration-100 appearance-none cursor-pointer";
 
   return (
     <div className="rounded border border-white/5 bg-surface p-3 space-y-3 shadow-[-2px_-2px_8px_rgba(255,255,255,0.04),2px_2px_8px_rgba(0,0,0,0.35)]">
@@ -466,11 +467,11 @@ export function ConnectionEditor() {
               "px-2 py-0.5 rounded border text-[9px] font-bold uppercase tracking-wider transition-colors",
               signalFilter === type
                 ? type === "audio"
-                  ? "bg-generator/20 border-generator/30 text-generator"
+                  ? "bg-audio/20 border-audio/30 text-audio"
                   : type === "midi"
-                    ? "bg-logic/20 border-logic/30 text-logic"
+                    ? "bg-midi/20 border-midi/30 text-midi"
                     : type === "value"
-                      ? "bg-modifier/20 border-modifier/30 text-modifier"
+                      ? "bg-value/20 border-value/30 text-value"
                       : "bg-surface border-white/10 text-text-primary"
                 : "bg-pressed border-white/5 text-text-dim hover:text-text-secondary hover:bg-surface",
             ].join(" ")}

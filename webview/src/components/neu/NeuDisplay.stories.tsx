@@ -54,7 +54,7 @@ export const NumericReadout: Story = {
   args: {
     className: "w-32 h-8",
     children: (
-      <span className="flex items-center justify-center h-full text-[11px] text-generator font-bold tabular-nums">
+      <span className="flex items-center justify-center h-full text-[11px] text-accent-blue font-bold tabular-nums">
         -6.0 dB
       </span>
     ),
@@ -77,21 +77,21 @@ export const VariantMatrix: Story = {
       <div className="flex flex-wrap items-center gap-4">
         {/* Frequency readout */}
         <NeuDisplay className="w-28 h-8">
-          <span className="flex items-center justify-center h-full text-[11px] text-generator font-bold tabular-nums">
+          <span className="flex items-center justify-center h-full text-[11px] text-accent-blue font-bold tabular-nums">
             440.0 Hz
           </span>
         </NeuDisplay>
 
         {/* dB readout */}
         <NeuDisplay className="w-24 h-8">
-          <span className="flex items-center justify-center h-full text-[11px] text-modifier font-bold tabular-nums">
+          <span className="flex items-center justify-center h-full text-[11px] text-accent-orange font-bold tabular-nums">
             -6.0 dB
           </span>
         </NeuDisplay>
 
         {/* BPM readout */}
         <NeuDisplay className="w-20 h-8">
-          <span className="flex items-center justify-center h-full text-[11px] text-logic font-bold tabular-nums">
+          <span className="flex items-center justify-center h-full text-[11px] text-accent-teal font-bold tabular-nums">
             120 BPM
           </span>
         </NeuDisplay>

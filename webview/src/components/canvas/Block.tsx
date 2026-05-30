@@ -1,6 +1,6 @@
 import { memo, useMemo, useState } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import type { BlockData, CableData } from "../../data/types";
+import type { BlockCategory, BlockData, CableData } from "../../data/types";
 import {
   useGraphStore,
   selectZoomTier,
@@ -12,26 +12,32 @@ import { BlockEmbed } from "./BlockEmbed";
 // ── Category config ──
 
 const catConfig: Record<
-  string,
+  BlockCategory,
   { hex: string; bg: string; shape: string; glowClass: string }
 > = {
-  generator: {
+  instrument: {
     hex: "#4A90D9",
     bg: "bg-[#4A90D9]",
     shape: "w-1.5 h-1.5 rounded-full bg-[#4A90D9]",
     glowClass: "glow-blue",
   },
-  modifier: {
+  audiofx: {
     hex: "#E8A838",
     bg: "bg-[#E8A838]",
     shape: "w-1.5 h-1.5 rotate-45 bg-[#E8A838]",
     glowClass: "glow-orange",
   },
-  logic: {
+  midifx: {
     hex: "#2BC4C4",
     bg: "bg-[#2BC4C4]",
     shape: "w-1.5 h-1.5 bg-[#2BC4C4]",
     glowClass: "glow-teal",
+  },
+  modulator: {
+    hex: "#A87FE0",
+    bg: "bg-[#A87FE0]",
+    shape: "w-1.5 h-1.5 bg-[#A87FE0]",
+    glowClass: "glow-purple",
   },
 };
 
@@ -294,7 +300,7 @@ function hostColourOutline(raw: string | undefined): string | undefined {
  */
 function BlockComponent({ data, selected }: NodeProps) {
   const d = data as unknown as BlockData;
-  const cat = catConfig[d.category] ?? catConfig.generator;
+  const cat = catConfig[d.category] ?? catConfig.instrument;
   const isContainer = d.containerNodeCount != null;
   const isPortal = d.isPortal ?? false;
   const zoomTier = useGraphStore(selectZoomTier);
@@ -476,7 +482,7 @@ function BlockComponent({ data, selected }: NodeProps) {
         </div>
         <div className="flex items-center gap-1 shrink-0">
           {d.muteInput ? (
-            <span className="text-[8px] font-black text-modifier uppercase px-1 rounded bg-modifier/15">
+            <span className="text-[8px] font-black text-accent-orange uppercase px-1 rounded bg-accent-orange/15">
               M in
             </span>
           ) : null}
@@ -502,17 +508,23 @@ function BlockComponent({ data, selected }: NodeProps) {
           style={{ opacity: d.bypassed ? 0.6 : 1 }}
         >
           {/* Category-specific viz */}
-          {d.category === "generator" && <MiniWaveform color={cat.hex} />}
+          {d.category === "instrument" && <MiniWaveform color={cat.hex} />}
 
-          {d.category === "modifier" && (
+          {d.category === "audiofx" && (
             <div className="text-[9px] text-white/30 tracking-widest text-center uppercase font-medium">
               Signal Processing
             </div>
           )}
 
-          {d.category === "logic" && (
+          {d.category === "midifx" && (
             <div className="text-[9px] text-white/30 tracking-widest text-center uppercase font-medium">
               Routing
+            </div>
+          )}
+
+          {d.category === "modulator" && (
+            <div className="text-[9px] text-white/30 tracking-widest text-center uppercase font-medium">
+              Modulation
             </div>
           )}
 

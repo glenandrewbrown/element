@@ -19,15 +19,17 @@ type DashTab = "macros" | "scenes" | "fx";
 // ── Category colour helpers ──
 
 const CATEGORY_BORDER: Record<BlockCategory, string> = {
-  generator: "border-l-generator",
-  modifier: "border-l-modifier",
-  logic: "border-l-logic",
+  instrument: "border-l-instrument",
+  audiofx: "border-l-audiofx",
+  midifx: "border-l-midifx",
+  modulator: "border-l-modulator",
 };
 
 const CATEGORY_DOT: Record<BlockCategory, string> = {
-  generator: "bg-generator",
-  modifier: "bg-modifier",
-  logic: "bg-logic",
+  instrument: "bg-instrument",
+  audiofx: "bg-audiofx",
+  midifx: "bg-midifx",
+  modulator: "bg-modulator",
 };
 
 
@@ -37,7 +39,7 @@ function VuMeter({ level }: { level: number }) {
   return (
     <div className="w-3 h-28 bg-pressed shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] rounded-[2px] flex flex-col-reverse p-[1px]">
       <div
-        className="w-full bg-gradient-to-t from-logic via-logic to-error rounded-[1px]"
+        className="w-full bg-gradient-to-t from-accent-teal via-accent-teal to-error rounded-[1px]"
         style={{ height: `${level}%` }}
       />
     </div>
@@ -62,7 +64,7 @@ export function MacroDashboard() {
   const toggleMapMode = usePerformStore((s) => s.toggleMapMode);
   const allNodes = useGraphStore((s) => s.nodes);
   const toggleBypass = useGraphStore((s) => s.toggleBypass);
-  const effectBlocks = allNodes.filter((n) => n.category !== "generator");
+  const effectBlocks = allNodes.filter((n) => n.category !== "instrument");
 
   const tabs: { id: DashTab; label: string; iconName: string }[] = [
     { id: "macros", label: "Macro Controls", iconName: "SlidersHorizontal" },
@@ -86,7 +88,7 @@ export function MacroDashboard() {
               className={[
                 "h-full px-4 flex items-center gap-2 border-r border-white/5 text-[10px] font-bold uppercase tracking-widest transition-colors",
                 activeTab === tab.id
-                  ? "bg-panel text-modifier shadow-[inset_0_-2px_0_#E8A838]"
+                  ? "bg-panel text-accent-orange shadow-[inset_0_-2px_0_#E8A838]"
                   : "text-text-secondary hover:text-text-primary cursor-pointer",
               ].join(" ")}
             >
@@ -101,7 +103,7 @@ export function MacroDashboard() {
           {/* Not a <button>: NeuToggle renders its own <button role="switch">,
               and a nested button is invalid HTML (DOM-nesting error). The
               label toggles via its own onClick; the toggle handles its own. */}
-          <div className="flex items-center gap-2 px-3 py-1 bg-surface rounded border border-white/5 hover:border-generator/50 transition-colors">
+          <div className="flex items-center gap-2 px-3 py-1 bg-surface rounded border border-white/5 hover:border-accent-blue/50 transition-colors">
             <button
               type="button"
               onClick={toggleMapMode}
@@ -187,10 +189,10 @@ export function MacroDashboard() {
                   <span className="text-[10px] text-text-secondary font-bold uppercase tracking-widest">
                     Global Master
                   </span>
-                  <div className="text-[20px] font-black tabular text-logic tracking-tighter leading-none mt-1">
+                  <div className="text-[20px] font-black tabular text-accent-teal tracking-tighter leading-none mt-1">
                     {health.bpm.toFixed(2)}
                   </div>
-                  <span className="text-[10px] text-logic uppercase tracking-tighter font-bold">
+                  <span className="text-[10px] text-accent-teal uppercase tracking-tighter font-bold">
                     BPM / Locked
                   </span>
                 </div>
@@ -254,9 +256,9 @@ export function MacroDashboard() {
                         active={!block.bypassed}
                         onChange={() => toggleBypass(block.id)}
                         color={
-                          block.category === "modifier"
+                          block.category === "audiofx"
                             ? "orange"
-                            : block.category === "logic"
+                            : block.category === "midifx" || block.category === "modulator"
                               ? "teal"
                               : "blue"
                         }

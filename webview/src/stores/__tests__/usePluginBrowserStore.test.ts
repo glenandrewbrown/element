@@ -162,19 +162,19 @@ describe("usePluginBrowserStore.refresh", () => {
 
   // ── inferBlockCategory via blockCategory field ──────────────────────────────
 
-  const categoryTests: Array<[string, string, "generator" | "modifier" | "logic"]> = [
-    ["Instrument", "Synth Bass", "generator"],
-    ["synth lead", "SynthMaster", "generator"],
-    ["sampler", "Kontakt", "generator"],
-    ["Generator", "Kick Gen", "generator"],
-    ["MIDI", "Arp+", "logic"],
-    ["Sequencer", "Step Seq", "logic"],
-    ["Utility", "Gain Trim", "logic"],
-    ["Analysis", "Spectrum", "logic"],
-    ["Reverb", "Hall Verb", "modifier"],
-    ["Delay", "Tape Echo", "modifier"],
-    ["Uncategorised", "Unknown", "modifier"],
-    ["", "No Category", "modifier"],
+  const categoryTests: Array<[string, string, "instrument" | "audiofx" | "midifx" | "modulator"]> = [
+    ["Instrument", "Synth Bass", "instrument"],
+    ["synth lead", "SynthMaster", "instrument"],
+    ["sampler", "Kontakt", "instrument"],
+    ["Generator", "Kick Gen", "instrument"],
+    ["MIDI", "Arp+", "midifx"],
+    ["Sequencer", "Step Seq", "midifx"],
+    ["Utility", "Gain Trim", "modulator"],
+    ["Analysis", "Spectrum", "modulator"],
+    ["Reverb", "Hall Verb", "audiofx"],
+    ["Delay", "Tape Echo", "audiofx"],
+    ["Uncategorised", "Unknown", "audiofx"],
+    ["", "No Category", "audiofx"],
   ];
 
   it.each(categoryTests)(

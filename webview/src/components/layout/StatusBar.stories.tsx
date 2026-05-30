@@ -128,7 +128,7 @@ export const HighCpu: Story = {
   ],
 };
 
-// Medium CPU: 51–80% triggers text-modifier colouring.
+// Medium CPU: 51–80% triggers text-accent-orange colouring.
 export const MediumCpu: Story = {
   parameters: {
     docs: {

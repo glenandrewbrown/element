@@ -258,7 +258,7 @@ export function PreferencesModal({ onClose }: PreferencesModalProps) {
               type="button"
               className={`w-full py-2 rounded text-[11px] font-bold uppercase tracking-wide ${
                 learning
-                  ? "bg-modifier text-canvas"
+                  ? "bg-accent-orange text-canvas"
                   : "bg-elevated shadow-neu-raised text-text-primary"
               }`}
               onClick={() => {
@@ -285,7 +285,7 @@ export function PreferencesModal({ onClose }: PreferencesModalProps) {
                         className={
                           row.valid
                             ? "border-t border-white/5"
-                            : "border-t border-modifier/30 opacity-70"
+                            : "border-t border-accent-orange/30 opacity-70"
                         }
                       >
                         <td className="p-1.5 align-top truncate max-w-[100px]">

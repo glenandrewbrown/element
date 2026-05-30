@@ -34,22 +34,22 @@ describe("<NeuToggle />", () => {
     expect(onChange).toHaveBeenCalledWith(false);
   });
 
-  it("applies the blue (generator) track + glow when active", () => {
+  it("applies the blue (accent-blue) track + glow when active", () => {
     render(<NeuToggle active={true} onChange={() => {}} color="blue" />);
     const sw = screen.getByRole("switch");
-    expect(sw.className).toContain("bg-generator");
+    expect(sw.className).toContain("bg-accent-blue");
     expect(sw.className).toContain("shadow-[0_0_8px_rgba(74,144,217,0.5)]");
   });
 
-  it("applies the orange (modifier) palette when active", () => {
+  it("applies the orange (accent-orange) palette when active", () => {
     render(<NeuToggle active={true} onChange={() => {}} color="orange" />);
     const sw = screen.getByRole("switch");
-    expect(sw.className).toContain("bg-modifier");
+    expect(sw.className).toContain("bg-accent-orange");
   });
 
-  it("applies the teal (logic) palette when active", () => {
+  it("applies the teal (accent-teal) palette when active", () => {
     render(<NeuToggle active={true} onChange={() => {}} color="teal" />);
-    expect(screen.getByRole("switch").className).toContain("bg-logic");
+    expect(screen.getByRole("switch").className).toContain("bg-accent-teal");
   });
 
   it("uses inset (pressed) styles when inactive — no glow", () => {
@@ -57,7 +57,7 @@ describe("<NeuToggle />", () => {
     const sw = screen.getByRole("switch");
     expect(sw.className).toContain("bg-pressed");
     expect(sw.className).toContain("neu-inset");
-    expect(sw.className).not.toContain("bg-generator");
+    expect(sw.className).not.toContain("bg-accent-blue");
   });
 
   it("merges caller-provided className", () => {

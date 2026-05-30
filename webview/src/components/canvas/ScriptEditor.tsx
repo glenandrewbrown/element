@@ -127,7 +127,7 @@ export function ScriptEditor({ nodeId, onClose }: ScriptEditorProps) {
             "px-3 py-1 rounded text-[10px] font-bold uppercase tracking-wide transition-colors",
             saving || loading
               ? "bg-surface text-text-dim cursor-not-allowed"
-              : "bg-generator/20 border border-generator/40 text-generator hover:bg-generator/30 cursor-pointer",
+              : "bg-accent-blue/20 border border-accent-blue/40 text-accent-blue hover:bg-accent-blue/30 cursor-pointer",
           ].join(" ")}
         >
           {saving ? "Compiling…" : "Save & Compile"}
