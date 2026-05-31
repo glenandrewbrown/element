@@ -188,6 +188,28 @@ M0 stabilise (CF1 + perf + bugs)  ───────── PARALLEL (disjoint
 
 ---
 
+## H2. Session handoff -- 2026-05-31 PM (fan-out entry point; supersedes H1 below)
+
+**HEAD = `4e55bb88`** on `chromatic-ui-review` (4 honest commits on `5d0ed665`). Safety tag `pre-recovery-204f5545` = current state. Tree clean of unintended src changes (pre-existing WIP: `Toolbar.gaps.test.tsx`, `ScriptEditor.test.tsx` — leave).
+
+**Committed this session:**
+- `14383d6a` perf — session-drift Phase 1+2 (leak guards + stream decoupling). ⚠️ runtime win UNVERIFIED — needs Glen's 20-min repro.
+- `4f938970` docs — R0 ground truth (see §A.1): ctest **102/131**, the 29 fails are test-side (corrupted `204f5545` batch + fixture/env), NOT engine regressions; `npm run build` exit 2 = stale test fixtures only (`vite build` clean).
+- `4e55bb88` style — **Block pilot polished; GATE-0 SIGNED OFF** (Glen: "good enough for now"). Polish-forward (NOT revert — "broken" was doc-drift). Method: designer agent (ui-ux-pro-max + neumorphism) → lead screenshot-verifies every state vs mockup → Glen wizard gate. See [[project_block_gate0_signed]].
+
+**Decision (Glen): START THE MVP FAN-OUT IN A FRESH SESSION.** GATE-0 is green so the slice is unblocked.
+
+**Next session DO (recovery M1, same per-component gate = visual-match + no-wiring-regression):**
+1. Fan out the MVP Edit-mode slice restyle, in order: **Cable → Board (GraphCanvas) → Breadcrumb → plugin Browser (ToolPalette) → Inspector (InspectorHub)**. Reuse the winning workflow: designer agent under the design-tools mandate → **lead re-screenshots vs mockup BEFORE Glen** (never trust agent self-report) → Glen verdict via the `🔍 Review/<component>` wizard. Cable feedback already in `ui-comments.jsonl` (signal-direction indication, channel count, more-visible audio ports, overlapping auto-routing).
+2. Each component: `node .storybook/shot.mjs <storyId> <out>` (Storybook live :6006), tsc 0 (non-test), `vite build` 0, verify-stories clean, 0 new vitest fails. Commit per component.
+
+**Still Glen / M0 (parallel, not blocking the fan-out):**
+- **CF1 host-crash** — needs Glen's machine (Logic + Element-AU + VoiceOver). Confirm the 12-line `plugineditor.cpp` fix; hard SHIP gate.
+- **Corrupted-test quarantine** — triage/revert the 41-file `204f5545` test batch; do NOT gate MVP on 131/131. Glen to ratify approach.
+- **Stereo port model** — Block has mono In/Out in stories; decide separate L/R ports vs one stereo port (blocks Block's last 2 gaps + Cable channel work).
+
+---
+
 ## H. Session handoff -- 2026-05-31 (authoritative; corrects corruption-era claims)
 
 > NOTE: the harness `.output` tmpfs corrupted Bash + Read output for part of this session (`project_task_tmpfs_full`), feeding back fabricated tool results. Anything below is reconciled against clean `git`. Distrust any earlier chat claim of a `46f88e35` commit, "ctest 47/47", or "perf fix implemented" -- all were corruption artifacts.
