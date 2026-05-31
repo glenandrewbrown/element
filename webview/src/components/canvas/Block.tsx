@@ -299,37 +299,32 @@ const shadowPressed =
 function MutedOverlay() {
   return (
     <div
-      className="nodeblock-mute absolute left-0 right-0 bottom-0 pointer-events-none flex items-center justify-center z-30"
+      className="nodeblock-mute absolute inset-0 pointer-events-none flex items-center justify-center z-30"
       style={{
-        top: 26, // clear the gradient header — its M stays clickable
-        borderBottomLeftRadius: "inherit",
-        borderBottomRightRadius: "inherit",
-        // OPAQUE dark-red base (Glen, feedback 7): a hard block must read as a
-        // solid red wash with NOTHING showing through — at 0.32 alpha the body
-        // (knobs, meter, In/Out pips + labels) bled through and read as a cheap
-        // box-on-top. A deep opaque red + a status-clip tint on top keeps the X
-        // and chip legible while fully hiding the ports beneath.
-        background: "linear-gradient(hsl(358 55% 14%), hsl(358 58% 11%))",
-        boxShadow:
-          "inset 0 0 0 2px hsl(var(--status-clip) / 0.85), inset 0 0 24px hsl(358 70% 6% / 0.9)",
+        // Covers the WHOLE block INCLUDING the header (Glen P0 — "red wash over
+        // whole block incl header"). pointer-events:none keeps the B/M buttons
+        // underneath fully clickable to undo the state, so we can wash the
+        // header too without trapping clicks.
+        borderRadius: "inherit",
+        // Red wash over the WHOLE block (Glen P0). Translucent across the top
+        // ~12% (the header band) so the category gradient bleeds through as a
+        // RED-TINTED header rather than vanishing — then ramps to a dense opaque
+        // red over the body so knobs/meter/pips are fully hidden (a hard block,
+        // not a cheap box-on-top). The B/M cluster is raised above this (z-40)
+        // so Mute stays lit + clickable, exactly like the mockup.
+        // Glen, literal: "just a colour gradient overlay of red over the whole
+        // block — no cheap red border/stripes". So: a pure red wash, NO ring
+        // border, NO kill-X slashes. Translucent over the header band (category
+        // gradient bleeds through as red-tinted) → dense opaque over the body.
+        background:
+          "linear-gradient(180deg, hsl(358 70% 26% / 0.55) 0%, hsl(358 62% 17% / 0.82) 14%, hsl(358 56% 14% / 0.96) 30%, hsl(358 58% 11% / 0.98) 100%)",
       }}
     >
-      {/* Kill-X — unmistakable "blocked" mark (mockup) */}
-      <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none" viewBox="0 0 100 100">
-        <line x1="4" y1="4" x2="96" y2="96" stroke="hsl(var(--status-clip))" strokeWidth="3.5" strokeLinecap="round" opacity="0.85" vectorEffect="non-scaling-stroke" />
-        <line x1="96" y1="4" x2="4" y2="96" stroke="hsl(var(--status-clip))" strokeWidth="3.5" strokeLinecap="round" opacity="0.85" vectorEffect="non-scaling-stroke" />
-      </svg>
+      {/* Understated wordmark — integrated into the wash, not a floating pill
+          (Glen: the chip "looks out of place"). No background, no border. */}
       <span
-        className="relative text-[10px] font-mono font-bold tracking-[0.18em] px-2.5 py-1 rounded-[3px]"
-        style={{
-          // Slightly deeper red than the wash so the white glyphs pop and the
-          // kill-X (which passes BEHIND this opaque chip) never bleeds into the
-          // text. Integrated into the X, not floating (Glen, feedback 7).
-          background: "hsl(358 72% 42%)",
-          color: "#FFFFFF",
-          boxShadow:
-            "0 3px 10px rgba(0,0,0,0.65), inset 0 1px 0 rgba(255,255,255,0.22), inset 0 0 0 1px hsl(var(--status-clip))",
-        }}
+        className="relative text-[10px] font-mono font-semibold tracking-[0.32em]"
+        style={{ color: "hsl(358 90% 82% / 0.85)", textShadow: "0 1px 3px rgba(0,0,0,0.6)" }}
       >
         MUTED
       </span>
@@ -345,8 +340,13 @@ function BypassedDim() {
     <div
       className="absolute left-0 right-0 pointer-events-none flex items-center justify-center z-10"
       style={{
-        top: 26, // header stays full-colour so its B stays legible + clickable
+        // Covers the WHOLE block INCLUDING the coloured header title (Glen P0 —
+        // "whole block incl coloured title desaturated"). The B/M cluster (z-50)
+        // and the load bar (z-40, signal still passing through) stay above this,
+        // so bypass reads as "off but flowing" — distinct from mute's hard block.
+        top: 0,
         bottom: 2, // leave the 2px load bar lit — signal passes through
+        borderRadius: "inherit",
         background: "rgba(20,20,24,0.42)",
         backdropFilter: "grayscale(0.92) saturate(0.18) brightness(0.8)",
         WebkitBackdropFilter: "grayscale(0.92) saturate(0.18) brightness(0.8)",
@@ -492,37 +492,44 @@ function RmsMeter({
   const lit = clip ? SEG : Math.round(level * SEG);
   return (
     <div
-      className="flex gap-px h-[6px] items-stretch"
+      className="flex gap-[1.5px] h-[7px] items-stretch"
       style={{
-        padding: "1px",
-        borderRadius: 2,
-        background: "hsl(240 10% 8%)",
+        padding: "1.5px",
+        borderRadius: 2.5,
+        // Deeper recessed track so the LED cells sit IN a well (mockup). Inset
+        // shadows from neumorphism-generator on the near-black meter base.
+        background: "hsl(240 12% 6%)",
         boxShadow:
-          "inset 1px 1px 1.5px rgba(0,0,0,0.7), inset -0.5px -0.5px 0.5px rgba(255,255,255,0.03)",
+          "inset 1.5px 1.5px 2.5px rgba(0,0,0,0.85), inset -0.5px -0.5px 1px rgba(255,255,255,0.04)",
       }}
     >
       {Array.from({ length: SEG }).map((_, i) => {
+        // Digital-VU ramp by POSITION (mockup): green floor → amber shoulder →
+        // red ceiling. The category accent only tints nothing here — the ramp
+        // is the universal VU language so every block's meter reads the same.
         const isClipSeg = i >= SEG - 2;
-        const isWarnSeg = i >= SEG - 4;
+        const isWarnSeg = i >= SEG - 5;
         const litThis = i < lit;
+        const segColor = isClipSeg
+          ? "hsl(var(--status-clip))"
+          : isWarnSeg
+            ? "hsl(var(--status-warn))"
+            : "hsl(var(--status-ok))";
+        void accent;
         return (
           <div
             key={i}
-            className="flex-1 rounded-[0.5px]"
+            className="flex-1 rounded-[1px]"
             style={{
-              background: litThis
-                ? isClipSeg
-                  ? "hsl(var(--status-clip))"
-                  : isWarnSeg
-                    ? "hsl(var(--status-warn))"
-                    : accent
-                // Idle/unlit cells: a single UNIFORM grey, just bright enough
-                // that the 14 segments read as an IDLE METER at rest rather than
-                // a dead void (Glen, feedback 6). Uniform — color appears ONLY
-                // when a segment is lit (mockup idiom), so an idle meter can
-                // never misread as "near clip". Honest: no fabricated level.
-                : "hsl(240 7% 22%)",
-              opacity: litThis ? (active ? 1 : 0.4) : 1,
+              // Lit cell = its ramp colour with a soft LED bloom; unlit cell =
+              // that SAME colour crushed to a dim recessed bar so the meter
+              // reads as a real LED ladder at rest (every cell visible, none
+              // misreading as "hot"). Honest: lit count = real level only.
+              background: segColor,
+              opacity: litThis ? (active ? 1 : 0.45) : 0.16,
+              boxShadow: litThis
+                ? `0 0 2px ${segColor}, inset 0 0.5px 0 rgba(255,255,255,0.3)`
+                : "inset 0 0.5px 1px rgba(0,0,0,0.6)",
             }}
           />
         );
@@ -591,20 +598,32 @@ function PortRow({
           top: "auto",
           left: "auto",
           right: "auto",
-          // .port-well supplies size/recess; just augment the connected glow.
+          // .port-well supplies the recessed socket; when a cable is plugged,
+          // add an outer signal-tint halo so a live port glows (mockup). Idle
+          // ports keep the bare recess from the CSS.
           boxShadow: port.connected
-            ? `inset 1.5px 1.5px 2.5px rgba(0,0,0,0.9), inset -1px -1px 1.5px rgba(255,255,255,0.05), 0 0 5px ${color}66`
+            ? `inset 1.5px 1.5px 3px rgba(0,0,0,0.95), inset -1px -1px 1.5px rgba(255,255,255,0.06), 0 0 6px ${color}55`
             : undefined,
           cursor: "crosshair",
         }}
       >
         <span
           style={{
-            width: 5,
-            height: 5,
+            // Signal-coloured pip nested in the socket. Smaller (4.5px) + a
+            // subtle top highlight so it reads as a domed contact, brighter
+            // when a cable is plugged (mockup). SC pips are dimmed (the dashed
+            // ring carries the read).
+            width: 4.5,
+            height: 4.5,
             borderRadius: "50%",
-            background: port.connected ? color : `${color}88`,
-            boxShadow: port.connected ? `0 0 3px ${color}` : "none",
+            background: isSidechain
+              ? `${color}66`
+              : port.connected
+                ? color
+                : `${color}99`,
+            boxShadow: port.connected
+              ? `0 0 4px ${color}, inset 0 0.5px 0 rgba(255,255,255,0.45)`
+              : "inset 0 0.5px 0 rgba(255,255,255,0.25)",
             pointerEvents: "none",
           }}
         />
@@ -612,9 +631,13 @@ function PortRow({
       <span
         className="font-mono whitespace-nowrap overflow-hidden text-ellipsis leading-none"
         style={{
-          fontSize: "8.5px",
-          color: "rgba(139,139,146,0.85)", // grey label (mockup); pip = signal
+          fontSize: "9px",
+          // Grey mono label (mockup parity); pip carries the signal colour. A
+          // touch of letter-spacing + the monospace make In L / Out R columns
+          // line up cleanly (Glen P0 — alignment).
+          color: "rgba(146,146,153,0.9)",
           fontWeight: 400,
+          letterSpacing: "0.03em",
           maxWidth: 80,
         }}
       >
@@ -816,6 +839,9 @@ function BlockComponent({ data, selected }: NodeProps) {
         // overflow-hidden (below) so wells half-tuck and overlays clip cleanly.
         contain: "layout style",
         borderRadius: chassisRadius[d.category],
+        // Drives the subtle category-colour hover glow (.neu-sculpt-hover);
+        // raw HSL triplet so the CSS can wrap it in hsl()/alpha (P1, feedback 6).
+        ["--hover-glow" as string]: `var(--cat-${d.category})`,
         ...(hostOutline ? { borderColor: hostOutline } : {}),
       }}
       className={[
@@ -908,7 +934,9 @@ function BlockComponent({ data, selected }: NodeProps) {
         >
           {d.format}
         </span>
-        <div className="flex items-center gap-px shrink-0">
+        {/* z-50 keeps B/M ABOVE the muted/bypassed overlays (z-30/z-10) so the
+            state buttons stay lit + clickable to undo the state (mockup). */}
+        <div className="flex items-center gap-px shrink-0 relative z-50">
           <StateBtn
             letter="B"
             active={d.bypassed}
@@ -1046,13 +1074,19 @@ function BlockComponent({ data, selected }: NodeProps) {
           height: 2,
           borderBottomLeftRadius: "inherit",
           borderBottomRightRadius: "inherit",
+          // Subtle status rail (mockup): a thin low-opacity green line, not a
+          // loud bar (Glen P2 — "looks out of place"). Bypassed dims it but
+          // keeps it lit (signal passes through); muted greys it (hard block).
           background: d.error
-            ? "hsl(var(--status-clip))"
+            ? "hsl(var(--status-clip) / 0.85)"
             : d.muted
-              ? "rgba(120,120,130,0.4)"
+              ? "rgba(120,120,130,0.35)"
               : d.bypassed
-                ? "hsl(var(--status-ok) / 0.4)" // dimmed-green: passes through
-                : "hsl(var(--status-ok) / 0.55)",
+                ? "hsl(var(--status-ok) / 0.3)" // dimmed-green: passes through
+                : "hsl(var(--status-ok) / 0.42)",
+          boxShadow: active
+            ? "0 0 5px hsl(var(--status-ok) / 0.35)"
+            : "none",
         }}
       />
 
