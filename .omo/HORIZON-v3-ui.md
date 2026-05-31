@@ -1,5 +1,10 @@
 # HORIZON — Element V3 UI (long-horizon objective tracker)
 
+> ⚠️ **2026-05-31: the "Block 97% / awaiting round 2" session-log entry below is STALE** — it predates the
+> breakage. Verified current truth + the active plan live in **`.omo/plans/RECOVERY-PLAN-2026-05-31.md`**
+> (consensus-approved). Block is BROKEN (checkpoint `204f5545`) and is the R1 revert/repair decision. The
+> app itself builds + the core loop (save/load, add-block→audio, transport) is wired (R0, 2026-05-31).
+
 > Spans many sessions. Companion to `.omo/PROJECT-STATE.md` (state) +
 > `.omo/bakeoff/VERDICTS.md` (build spec) + `.omo/plans/mvp-bakeoff-plan.md` (method).
 > On UI-method conflict, VERDICTS + mvp-bakeoff-plan WIN over PROJECT-STATE §2/§3 (pre-bakeoff, stale).

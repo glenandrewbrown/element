@@ -240,7 +240,7 @@ export function Toolbar() {
                 {breadcrumbs.map((crumb, i) => {
                   const isLast = i === breadcrumbs.length - 1;
                   return (
-                    <span key={crumb} className="flex items-center gap-2">
+                    <span key={`${i}-${crumb}`} className="flex items-center gap-2">
                       {i > 0 && (
                         <Icon
                           name="ChevronRight"

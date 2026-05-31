@@ -1,5 +1,12 @@
 # Element — PROJECT STATE (canonical) — 2026-05-30
 
+> ⚠️ **2026-05-31 UPDATE — superseded by the RECOVERY PLAN.** Read **`.omo/plans/RECOVERY-PLAN-2026-05-31.md`** first (ralplan consensus: Planner→Architect SOUND→Critic APPROVE). It carries verified empirical ground truth + the sequenced path to a released MVP. Key drift corrections from R0 (2026-05-31):
+> - **App BUILDS** — C++ `build-merged` exit 0, webview `npm run build` exit 0, source `tsc` 0 non-test errors (fixed a `Toolbar.tsx` breadcrumb error; 51 stale `__tests__` fixtures remain). C++ suite = 131 tests (clean pass-count pending; an earlier "47/47" was corrupted output — retracted).
+> - **Core instrument loop is WIRED** — session save/load, add-block→audio, transport play/stop all verified end-to-end. The engine is **not** broken.
+> - **The real broken state = the Block UI (visual) + stale docs**, NOT the engine. Block remains broken/needs revert (checkpoint `204f5545`); the HORIZON "Block 97%" entry is STALE — it predates the breakage.
+> - Branch `chromatic-ui-review` @ `204f5545`, **14 commits ahead of origin, unpushed**.
+> - Ship bar re-scoped: **MVP Edit-mode vertical slice** (release-cadence, not fleeing full-V3); full 37 = post-MVP horizon.
+
 > **READ THIS FIRST. It supersedes every other plan/audit doc.** The doc index (§7) says what else to read and what to ignore. Branch: `chromatic-ui-review` (NOT pushed). Tip: `8d9575f9`.
 
 ---
