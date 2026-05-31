@@ -83,7 +83,7 @@ Run Option A's discipline (ground truth → verification → pilot) **and** adop
 ### Phase R0 — Re-establish ground truth (1 short session, BLOCKS everything)
 *Read-only + housekeeping only; no feature work.*
 1. **Fresh full build:** C++ (`cmake --build build-merged`) + webview (`npm run build`). Record pass/fail.
-2. **Run all tests:** `ctest --output-on-failure` (target 47/47 per recent logs) + `npm run test` + **static** `verify-stories`. Record real counts.
+2. **Run all tests:** `ctest --output-on-failure` (full C++ suite = **131 tests**; target all green) + `npm run test` (vitest) + **static** `verify-stories`. Record real counts.
 3. **Fix ONLY the source tsc error** (`Toolbar.tsx:243/259` breadcrumb type) to unblock builds. **DEFER the ~28 stale `__tests__` fixture repairs until after R1** — ⚠️ *Architect hazard:* R1 may revert Block to `7c1aa509`, which predates the taxonomy/breadcrumb refactor that introduced the `{boardId,label}` type + new `BlockData`/`CableData` required fields; fixing those tests forward now risks redoing/discarding them. The R0 source-fix cost is small; the test-fixture cost depends on the R1 decision, so couple them.
    - **Mechanically-checkable criterion (Critic F6):** `tsc -b` is all-or-nothing, so "source green / tests red" can't come from one invocation. Run a filtered check: `npx tsc --noEmit 2>&1 | grep -v '__tests__' | grep -c 'error TS'` must equal **0** (zero non-test diagnostics). That is the R0 build-green gate.
 4. **Verify the load-bearing functional paths exist + work** (Architect — a pretty canvas that can't save/play/pass-audio is a demo, not an app): (a) **session/project save+load** (session service + bridge intact); (b) **add-block → audio flows through** (instantiate + audio passes); (c) **transport play/stop control** surface. Record each as works / broken.
@@ -173,3 +173,24 @@ M0 stabilise (CF1 + perf + bugs)  ───────── PARALLEL (disjoint
 4. **Request changes / Reject.**
 
 *End of consensus log.*
+
+---
+
+## H. Session handoff -- 2026-05-31 (authoritative; corrects corruption-era claims)
+
+> NOTE: the harness `.output` tmpfs corrupted Bash + Read output for part of this session (`project_task_tmpfs_full`), feeding back fabricated tool results. Anything below is reconciled against clean `git`. Distrust any earlier chat claim of a `46f88e35` commit, "ctest 47/47", or "perf fix implemented" -- all were corruption artifacts.
+
+**Committed this session (`da74c9b4`, HEAD; parent `204f5545`):**
+- `webview/src/components/layout/Toolbar.tsx` -- 2-line breadcrumb tsc fix (`breadcrumbStack` is `string[]`; consumer wrongly read `.boardId`/`.label`). Source typecheck now 0 non-test errors.
+- `.omo/PROJECT-STATE.md`, `.omo/HORIZON-v3-ui.md` -- doc-drift banners.
+- `.omo/plans/RECOVERY-PLAN-2026-05-31.md`, `.omo/plans/session-drift-perf-fix-plan.md`.
+
+**Verified ground truth (R0):** C++ `build-merged` build exit 0; webview `npm run build` exit 0; source `tsc` 0 non-test errors (51 stale `__tests__` fixtures remain, deferred behind R1); vitest 1161 pass / 22 fail (2 files: `CommentFrame` x3 colour-format, `Toolbar.gaps` x19 perform-store/BPM drift -- both pre-existing, M0 triage); core loop wired (save/load, add-block->audio, transport). C++ suite = **131 tests** (clean pass-count was still running at handoff -- see `.omo/tmp/ctest-real.txt`).
+
+**NOT done:**
+- **Session-drift perf fix NOT applied** -- the 5 target src files are UNCHANGED in the tree (an executor reported doing it under corruption; git proves otherwise). Redo from `.omo/plans/session-drift-perf-fix-plan.md`, Phase 1+2 only (Phase 3/4 touch Block, deferred).
+- **Block revert+redo (R1)** -- DECIDED (revert+redo clean) but not executed; its own focused pass (file-scoped `git checkout 7c1aa509 -- Block.tsx`, tag `pre-recovery-204f5545` first, NEVER reset the 14 commits).
+
+**Pre-existing WIP (not this session; leave/triage):** `__tests__/Toolbar.gaps.test.tsx` + `ScriptEditor.test.tsx` carry uncommitted edits.
+
+**Next-session entry:** §C of this plan + this handoff. (1) clean `ctest`/`vitest` for true numbers; (2) implement perf fix properly; (3) Block pilot pass (R1); (4) M0 CF1 (needs Glen: Logic + VoiceOver).
