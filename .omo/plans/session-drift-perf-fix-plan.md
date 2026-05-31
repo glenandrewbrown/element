@@ -51,6 +51,12 @@ Both are present in the code. **B is the one that matches the user's words most 
 
 ## 1. Evidence — ranked culprits (all file:line verified)
 
+> ⚠️ **CORRECTION (2026-05-31):** the real `useCableMeterStore.setCableLevels` signature is
+> **`(items: Array<{id: string; level: number}>)`** which builds the record internally — NOT the
+> `(levels: Record)` / `set({ levels })` shape stated below (that was a corrupted read). Before
+> implementing, **re-read the actual file** — earlier session reads were fabricated by harness tmpfs
+> corruption. The diff-before-set fix still applies; just diff the built record against `get().levels`.
+
 ### 🔴 Rank 1 — Cable meter store: unconditional `set()` at ~60Hz (mechanism A, worst steady-state)
 - `webview/src/hooks/useJuceBridge.ts:447-450` → `onCableLevels` forwards every frame.
 - `webview/src/stores/useCableMeterStore.ts:11-16` → `setCableLevels` rebuilds a new `Record<string,number>` and calls `set({levels})` **unconditionally**, no diff.
