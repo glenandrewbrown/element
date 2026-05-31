@@ -1,0 +1,246 @@
+{
+  "timestamp": "2026-05-29T18:55:45.669831+00:00",
+  "launch": {
+    "check": "launch",
+    "target": "Element.app",
+    "passed": true,
+    "detail": "already running",
+    "latency_ms": 0
+  },
+  "suites": {
+    "plugin-browser": {
+      "checks": [
+        {
+          "check": "element_exists",
+          "target": "Plugins",
+          "expected": true,
+          "observed": false,
+          "passed": false,
+          "method": "BFS AXChildren search",
+          "latency_ms": 3137.9
+        },
+        {
+          "check": "element_exists",
+          "target": "Projects",
+          "expected": true,
+          "observed": false,
+          "passed": false,
+          "method": "BFS AXChildren search",
+          "latency_ms": 3025.7
+        },
+        {
+          "check": "element_exists",
+          "target": "Search box (text entry area)",
+          "expected": true,
+          "observed": false,
+          "passed": false,
+          "method": "BFS role search (AXTextArea)",
+          "latency_ms": 3113.3
+        }
+      ],
+      "passed": 0,
+      "total": 3,
+      "result": "FAIL"
+    },
+    "session-browser": {
+      "checks": [
+        {
+          "check": "element_exists",
+          "target": "Projects",
+          "expected": true,
+          "observed": false,
+          "passed": false,
+          "method": "BFS AXChildren search",
+          "latency_ms": 3157.2
+        },
+        {
+          "check": "element_exists",
+          "target": "Search box (text entry area)",
+          "expected": true,
+          "observed": false,
+          "passed": false,
+          "method": "BFS role search (AXTextArea)",
+          "latency_ms": 3005.6
+        }
+      ],
+      "passed": 0,
+      "total": 2,
+      "result": "FAIL"
+    },
+    "navigation": {
+      "checks": [
+        {
+          "check": "element_exists",
+          "target": "Plugins",
+          "expected": true,
+          "observed": false,
+          "passed": false,
+          "method": "BFS AXChildren search",
+          "latency_ms": 3025.8
+        },
+        {
+          "check": "element_exists",
+          "target": "Sessions",
+          "expected": true,
+          "observed": false,
+          "passed": false,
+          "method": "BFS AXChildren search",
+          "latency_ms": 3030.2
+        },
+        {
+          "check": "element_exists",
+          "target": "view",
+          "expected": true,
+          "observed": true,
+          "passed": true,
+          "method": "BFS AXChildren search",
+          "latency_ms": 5.7
+        },
+        {
+          "check": "element_exists",
+          "target": "Graph",
+          "expected": true,
+          "observed": true,
+          "passed": true,
+          "method": "BFS AXChildren search",
+          "latency_ms": 1.4
+        }
+      ],
+      "passed": 2,
+      "total": 4,
+      "result": "FAIL"
+    },
+    "toolbar": {
+      "checks": [
+        {
+          "check": "element_exists",
+          "target": "Status bar device label",
+          "expected": true,
+          "observed": true,
+          "passed": true,
+          "method": "BFS AXValue search ('Device:')",
+          "latency_ms": 4.2
+        }
+      ],
+      "passed": 1,
+      "total": 1,
+      "result": "PASS"
+    },
+    "dashboard-builder": {
+      "checks": [
+        {
+          "check": "element_exists",
+          "target": "Perform",
+          "expected": true,
+          "observed": false,
+          "passed": false,
+          "method": "BFS AXChildren search",
+          "latency_ms": 3080.1
+        },
+        {
+          "check": "element_exists",
+          "target": "Dashboard",
+          "expected": true,
+          "observed": false,
+          "passed": false,
+          "method": "BFS AXChildren search",
+          "latency_ms": 3040.2
+        },
+        {
+          "check": "element_exists",
+          "target": "Edit",
+          "expected": true,
+          "observed": false,
+          "passed": false,
+          "method": "BFS AXChildren search",
+          "latency_ms": 3119.2
+        }
+      ],
+      "passed": 0,
+      "total": 3,
+      "result": "FAIL"
+    },
+    "command-palette": {
+      "checks": [
+        {
+          "check": "element_exists",
+          "target": "Command Palette search field (AXTextField)",
+          "expected": true,
+          "observed": false,
+          "passed": false,
+          "method": "BFS role search (AXTextField)",
+          "latency_ms": 4020.6
+        },
+        {
+          "check": "element_exists",
+          "target": "Command Palette results list (AXScrollArea)",
+          "expected": true,
+          "observed": true,
+          "passed": true,
+          "method": "BFS role search (AXScrollArea)",
+          "latency_ms": 7.8
+        }
+      ],
+      "passed": 1,
+      "total": 2,
+      "result": "FAIL"
+    },
+    "bus-inspector": {
+      "checks": [
+        {
+          "check": "element_exists",
+          "target": "Inspector",
+          "expected": true,
+          "observed": false,
+          "passed": false,
+          "method": "BFS AXChildren search",
+          "latency_ms": 3919.8
+        },
+        {
+          "check": "element_exists",
+          "target": "Bus Inspector panel container (AXGroup) \u2014 punt if no cable selected",
+          "expected": true,
+          "observed": true,
+          "passed": true,
+          "method": "BFS role search (AXGroup)",
+          "latency_ms": 5.0
+        }
+      ],
+      "passed": 1,
+      "total": 2,
+      "result": "FAIL"
+    },
+    "virtual-keyboard": {
+      "checks": [
+        {
+          "check": "element_exists",
+          "target": "Keyboard",
+          "expected": true,
+          "observed": false,
+          "passed": false,
+          "method": "BFS AXChildren search",
+          "latency_ms": 3042.8
+        },
+        {
+          "check": "element_exists",
+          "target": "Virtual Keyboard key button (AXButton)",
+          "expected": true,
+          "observed": true,
+          "passed": true,
+          "method": "BFS role search (AXButton)",
+          "latency_ms": 4.9
+        }
+      ],
+      "passed": 1,
+      "total": 2,
+      "result": "FAIL"
+    }
+  },
+  "summary": {
+    "total": 19,
+    "passed": 6,
+    "failed": 13,
+    "result": "FAIL"
+  },
+  "elapsed_s": 42.01
+}

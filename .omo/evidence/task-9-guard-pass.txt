@@ -1,0 +1,7 @@
+# Task 9 — selector guard PASS proof (clean real tree)
+
+Source files scanned (excl. tests/stories/.d.ts): 72
+Offenders found: 0
+  (none)
+
+RESULT: PASS — 0 unmemoized fresh-allocation selectors (0 false positives across the 12 audited-safe selectors + whole tree)

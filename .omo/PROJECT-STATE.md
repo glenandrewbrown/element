@@ -13,10 +13,20 @@
 
 ## 2. Ship definition (Glen, 2026-05-30)
 
+> ⚠️ **SUPERSEDED (later same day) by the bake-off.** Lanes now run in **PARALLEL**, not sequential:
+> CF1 is a **HARD SHIP GATE, not a start gate** — the UI lane starts NOW alongside stabilise.
+> Canonical UI method + sequencing: `.omo/HORIZON-v3-ui.md` + `.omo/bakeoff/VERDICTS.md` +
+> `.omo/plans/mvp-bakeoff-plan.md`. Keep the M0/M1 milestone shape below; ignore "sequenced / do first".
+
 - **Ship bar = the FULL V3 UI redesign implemented** (approved Stitch directions → React, working across all components — the Instrument Paradigm UI).
 - **Priority = STABILISE EVERYTHING FIRST**, then resume UI. So two milestones, sequenced:
   - **M0 — Stabilise (do first):** fix CF1; clear C++/engine/stability backlog; 28-bug reconciliation + numeric perf re-verify. Crash-free standalone + plugin.
   - **M1 — Full V3 UI redesign (the ship gate):** convert the approved Stitch component directions to React, component-by-component, wired to real stores/bridge, per-component Glen+Chromatic gate.
+
+> ⚠️ **§3 design DIRECTIONS below are SUPERSEDED by the bake-off (37 verdicts).** Inspector =
+> **docked tabbed** (not contextual-floating); Nav = **breadcrumb-only** + adopt mockup's ENTIRE
+> nested-board model (not rail-tree); Browser = mockup search-list + your structure + scan controls.
+> Build to `VERDICTS.md`, not the directions below. The CF1 / specs / lessons in §3 remain valid.
 
 ## 3. What this session actually produced (honest audit)
 
@@ -62,18 +72,23 @@
 ## 7. Doc index — READ vs IGNORE
 **CANONICAL (read):**
 - `.omo/PROJECT-STATE.md` (this) — the single source of truth for state + plan.
-- `.omo/plans/pass2-stitch-redesign.md` — the active UI method + per-component picks.
+- `.omo/HORIZON-v3-ui.md` — the long-horizon V3 UI objective tracker (M0 ‖ M1, parallel lanes).
+- `.omo/bakeoff/VERDICTS.md` — the **37 locked per-component build verdicts** (the UI build spec).
+- `.omo/bakeoff/COMPONENT-BAKEOFF.md` — the bake-off matrix + native-parity + build-new set.
+- `.omo/plans/mvp-bakeoff-plan.md` — the active UI build **method** (cherry-pick + re-house).
+- `docs/adr/ADR-011-ui-cherrypick-bakeoff-method.md` — the method decision (ADR).
+- `.omo/plans/README.md` — index of this plans folder (active + archive).
 - `CLAUDE.md`, `docs/ELEMENT_UNIFIED_BLUEPRINT.md` — product/design spec.
 - `.stitch/DESIGN.md` — the V3 design system.
 
 **ACTIVE REFERENCE (read when on that lane):** `audit/g29-busnode-spec.md`, `records-schema.md`, `g30-native-menu-bridge.md`, `blockembed-tier2-spike.md`, `perf-baselines.md`, `storybook-chromatic-ready.md`, `crash-element-logic-2026-05-30.md`, `neomorph-vs-blueprint-comparison.md`, `28-bug-reconciliation.md`, `findings.md`, `plan-baseline-allowlist.md`.
 
 **SUPERSEDED / DEAD (do NOT execute — historical only):**
-- `.omo/plans/ui-redesign-OMC-execution.md` — the 28-lane OMC wave plan. **DEAD** (Pass-1 built from it was denied+reverted; method replaced by Stitch-first). 
+- `.omo/plans/archive/ui-redesign-OMC-execution.md` — the 28-lane OMC wave plan. **DEAD** (Pass-1 built from it was denied+reverted; method replaced by the cherry-pick bake-off). 
 - `.omo/audit/OMC-PROGRESS.md` — Pass-1 wave ledger. **DEAD** (records the reverted work).
-- `.omo/plans/ui-redesign-execution.md`, `ui-redesign-KICKOFF.md` — pre-Stitch UI plans. Historical.
+- `.omo/plans/archive/ui-redesign-execution.md`, `.omo/plans/archive/ui-redesign-KICKOFF.md` — pre-Stitch UI plans. Historical.
 - `.omo/audit/SHELVED-DENIED-ui-redesign-pass1.md` — the mark-of-shame record of the denied pass.
-- `.omo/plans/{deep-app-audit,master-fix-plan,bug-catcher-wave2,phase-d-*,phase-h-*,snapshot-extension-design,autonomy-execution-spec,visual-asset-pipeline}.md` — older lineages, historical context only.
+- `.omo/plans/archive/{deep-app-audit,master-fix-plan,bug-catcher-wave2,phase-d-*,phase-h-*,snapshot-extension-design,autonomy-execution-spec,visual-asset-pipeline}.md` — older lineages, historical context only. Plus `archive/pass2-stitch-redesign.md` (Stitch-first, superseded by the bake-off) and `archive/wave2-taxonomy-execution.md` (4-cat taxonomy, **shipped** `dadc2c67`). Full map: `.omo/plans/README.md`.
 - `.omo/audit/{gate-a-bundle,coverage-manifest,ax-webshell-coverage,bridge-contract,build-block-triage,selector-verdicts,layout-finding,ultrawork-notepad,confirmation-log,SESSION-RESET-HANDOFF,creative-toolchain-validation}.md` — prior-session artifacts, historical.
 
 ## 8. Durable assets

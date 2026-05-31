@@ -1,0 +1,60 @@
+# Task 3 — Selector exhaustiveness sweep (verification re-run by audit item 3)
+# Generated: Fri 29 May 2026 19:33:29 BST
+
+## A. Count of exported select* per store (ALL stores enumerated):
+  src/stores/useAppStore.ts : 10
+  src/stores/useBusStore.ts : 3
+  src/stores/useCableMeterStore.ts : 0
+  src/stores/useDashboardStore.ts : 4
+  src/stores/useEngineSnapshotStore.ts : 14
+  src/stores/useGraphStore.ts : 10
+  src/stores/useHostExtrasStore.ts : 0
+  src/stores/useParameterStore.ts : 1
+  src/stores/usePerformStore.ts : 15
+  src/stores/usePluginBrowserStore.ts : 0
+  src/stores/useSessionStore.ts : 1
+
+## B. EXHAUSTIVE: exported selectors that ALLOCATE in body (any store):
+  (NONE — no exported selector allocates in any store)
+
+## C. EXHAUSTIVE: inline brace-body store selectors (useXxxStore((s)=>{...})) — only candidate for hidden allocation:
+src/components/canvas/Cable.tsx:86:  const fanOffset = useGraphStore((s) => {
+  -> Cable.tsx:86 fanOffset returns a NUMBER (primitive); transient .filter/.find are NOT returned. SAFE.
+
+## D. EXHAUSTIVE: inline selectors returning a literal directly (useXxxStore((s)=> [ or {)):
+  (NONE — no inline selector returns an array/object literal directly)
+
+## E. useShallow occurrences (applied fixes):
+src/components/canvas/BlockEmbed.tsx:2:import { useShallow } from "zustand/react/shallow";
+src/components/canvas/BlockEmbed.tsx:115:  // in `useShallow`: Zustand v5 forwards the raw selector result to React's
+src/components/canvas/BlockEmbed.tsx:120:  // `useShallow` element-compares and returns the cached array when unchanged.
+src/components/canvas/BlockEmbed.tsx:122:    useShallow((st) => {
+
+## F. CLOSURE: named-function selector args useXxxStore(identifier) — must all resolve to exported select*:
+useAppStore(selectCableRouting
+useBusStore(selectCableBusMap
+useEngineSnapshotStore(selectBufferSize
+useEngineSnapshotStore(selectCpuPercent
+useEngineSnapshotStore(selectDeviceLatencyMs
+useEngineSnapshotStore(selectDeviceName
+useEngineSnapshotStore(selectEngineRunning
+useEngineSnapshotStore(selectHasHostData
+useEngineSnapshotStore(selectSampleRate
+useEngineSnapshotStore(selectTimeSig
+useEngineSnapshotStore(selectTransportPlaying
+useEngineSnapshotStore(selectTransportRecording
+useGraphStore(selectBreadcrumbs
+useGraphStore(selectEdges
+useGraphStore(selectNodes
+useGraphStore(selectSelectedNode
+useGraphStore(selectZoomTier
+usePerformStore(selectActiveScene
+usePerformStore(selectAlerts
+usePerformStore(selectBpm
+usePerformStore(selectLiveHealth
+usePerformStore(selectMacros
+usePerformStore(selectMapMode
+usePerformStore(selectMappedParameters
+usePerformStore(selectScenes
+usePerformStore(selectSessionName
+  -> every arg above is an exported select* (proven non-allocating in §B). Pattern space closed.

@@ -1,0 +1,8 @@
+# Task 3 — selectActiveScene — EMPTY store story
+story: http://localhost:6006/iframe.html?id=layout-scenelauncher--empty&viewMode=story
+nav: ok
+loop_signature_present: false
+--- console ---
+[console.debug] [vite] connecting...
+[console.debug] [vite] connected.
+[console.info] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold

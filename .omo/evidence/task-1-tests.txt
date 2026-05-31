@@ -1,0 +1,3269 @@
+
+> webview@0.0.0 test:all
+> vitest run
+
+│
+▲  No story files found for the specified pattern: src/**/*.mdx
+│ ┌────────────────────────────────────────────────────────────────────────────┐
+│ │  Info: Found a setup file with "setProjectAnnotations".                    │
+│ │  Skipping automatic provisioning of preview annotations to avoid           │
+│ │  conflicts. Since Storybook 10.3, "@storybook/addon-vitest" applies these  │
+│ │   automatically.                                                           │
+│ │  You can safely remove the "setProjectAnnotations" call from your setup    │
+│ │  file, or remove the file entirely if you don't have custom code there.    │
+│ └────────────────────────────────────────────────────────────────────────────┘
+
+ RUN  v4.1.7 /Volumes/Projects/Development_Projects/Github_Repos/element/webview
+
+ ❯ |unit| src/components/canvas/__tests__/QuickAddPopup.test.tsx (0 test)
+ ❯ |unit| src/components/canvas/__tests__/GraphCanvas.test.tsx (0 test)
+ ❯ |unit| src/components/canvas/__tests__/Block.test.tsx (21 tests | 7 failed) 236ms
+     × shows mute overlay when muted=true 13ms
+     × renders error indicator when error=true 5ms
+     × applies generator (blue) accent for category=generator 5ms
+     × applies modifier (orange) accent for category=modifier 5ms
+     × applies logic (teal) accent for category=logic 3ms
+     × strips ARGB prefix from JUCE Colour::toString() (#AARRGGBB → #RRGGBB) 5ms
+     × uses 7-char hex colour directly 4ms
+ ❯ |unit| src/bridge/__tests__/nativePrefs.test.ts (15 tests | 9 failed) 49ms
+     × happy path: returns true and passes setup object to host 15ms
+     × happy path: returns true and forwards enabled + port 2ms
+     × happy path: returns true 2ms
+     × happy path: returns true and forwards index 2ms
+     × happy path: returns true 2ms
+     × happy path: returns true 1ms
+     × nativeWebDismissOverlay calls host and resolves void 5ms
+     × nativeOpenLuaConsole calls host and resolves void 2ms
+     × nativeOpenGraphMixer calls host and resolves void 1ms
+ ❯ |unit| src/bridge/__tests__/nativeSession.test.ts (15 tests | 10 failed) 47ms
+     × nativeSessionOpen happy: returns true 14ms
+     × nativeSessionOpenPath happy: returns true and forwards path 2ms
+     × nativeSessionSetActiveGraph happy: returns true 2ms
+     × nativeSessionImportGraph happy: returns true 3ms
+     × nativeSessionExportGraph happy: returns true 1ms
+     × nativeSessionNew resolves void 9ms
+     × nativeSessionSave resolves void 3ms
+     × nativeSessionSaveAs resolves void 1ms
+     × happy path: returns parsed entries array from JSON string 3ms
+     × returns empty array and calls logBridgeError on invalid JSON 2ms
+stdout | src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > populates plugins from bridge response
+[usePluginBrowserStore.refresh] raw payload: undefined
+
+stderr | src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > populates plugins from bridge response
+[bridge:usePluginBrowserStore.refresh] bridge returned null
+
+stdout | src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > prefers descriptiveName over name
+[usePluginBrowserStore.refresh] raw payload: undefined
+
+stderr | src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > prefers descriptiveName over name
+[bridge:usePluginBrowserStore.refresh] bridge returned null
+
+stdout | src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > falls back to identifier when name and descriptiveName are absent
+[usePluginBrowserStore.refresh] raw payload: undefined
+
+stderr | src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > falls back to identifier when name and descriptiveName are absent
+[bridge:usePluginBrowserStore.refresh] bridge returned null
+
+stdout | src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > populates favoriteIdentifiers Set
+[usePluginBrowserStore.refresh] raw payload: undefined
+
+stderr | src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > populates favoriteIdentifiers Set
+[bridge:usePluginBrowserStore.refresh] bridge returned null
+
+stdout | src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > populates recentIdentifiers list
+[usePluginBrowserStore.refresh] raw payload: undefined
+
+stderr | src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > populates recentIdentifiers list
+[bridge:usePluginBrowserStore.refresh] bridge returned null
+
+stdout | src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > filters plugins missing identifier
+[usePluginBrowserStore.refresh] raw payload: undefined
+
+stderr | src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > filters plugins missing identifier
+[bridge:usePluginBrowserStore.refresh] bridge returned null
+
+stdout | src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > accepts JSON string response and parses it
+[usePluginBrowserStore.refresh] raw payload: undefined
+
+stderr | src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > accepts JSON string response and parses it
+[bridge:usePluginBrowserStore.refresh] bridge returned null
+
+stdout | src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > skips non-string entries in favoriteIdentifiers
+[usePluginBrowserStore.refresh] raw payload: undefined
+
+stderr | src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > skips non-string entries in favoriteIdentifiers
+[bridge:usePluginBrowserStore.refresh] bridge returned null
+
+stdout | src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > category 'Instrument' -> blockCategory 'Synth Bass'
+[usePluginBrowserStore.refresh] raw payload: undefined
+
+stderr | src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > category 'Instrument' -> blockCategory 'Synth Bass'
+[bridge:usePluginBrowserStore.refresh] bridge returned null
+
+stdout | src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > category 'synth lead' -> blockCategory 'SynthMaster'
+[usePluginBrowserStore.refresh] raw payload: undefined
+
+stderr | src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > category 'synth lead' -> blockCategory 'SynthMaster'
+[bridge:usePluginBrowserStore.refresh] bridge returned null
+
+stdout | src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > category 'sampler' -> blockCategory 'Kontakt'
+[usePluginBrowserStore.refresh] raw payload: undefined
+
+stderr | src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > category 'sampler' -> blockCategory 'Kontakt'
+[bridge:usePluginBrowserStore.refresh] bridge returned null
+
+stdout | src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > category 'Generator' -> blockCategory 'Kick Gen'
+[usePluginBrowserStore.refresh] raw payload: undefined
+
+stderr | src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > category 'Generator' -> blockCategory 'Kick Gen'
+[bridge:usePluginBrowserStore.refresh] bridge returned null
+
+stdout | src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > category 'MIDI' -> blockCategory 'Arp+'
+[usePluginBrowserStore.refresh] raw payload: undefined
+
+stderr | src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > category 'MIDI' -> blockCategory 'Arp+'
+[bridge:usePluginBrowserStore.refresh] bridge returned null
+
+stdout | src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > category 'Sequencer' -> blockCategory 'Step Seq'
+[usePluginBrowserStore.refresh] raw payload: undefined
+
+stderr | src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > category 'Sequencer' -> blockCategory 'Step Seq'
+[bridge:usePluginBrowserStore.refresh] bridge returned null
+
+stdout | src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > category 'Utility' -> blockCategory 'Gain Trim'
+[usePluginBrowserStore.refresh] raw payload: undefined
+
+stderr | src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > category 'Utility' -> blockCategory 'Gain Trim'
+[bridge:usePluginBrowserStore.refresh] bridge returned null
+
+stdout | src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > category 'Analysis' -> blockCategory 'Spectrum'
+[usePluginBrowserStore.refresh] raw payload: undefined
+
+stderr | src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > category 'Analysis' -> blockCategory 'Spectrum'
+[bridge:usePluginBrowserStore.refresh] bridge returned null
+
+stdout | src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > category 'Reverb' -> blockCategory 'Hall Verb'
+[usePluginBrowserStore.refresh] raw payload: undefined
+
+stderr | src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > category 'Reverb' -> blockCategory 'Hall Verb'
+[bridge:usePluginBrowserStore.refresh] bridge returned null
+
+stdout | src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > category 'Delay' -> blockCategory 'Tape Echo'
+[usePluginBrowserStore.refresh] raw payload: undefined
+
+stderr | src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > category 'Delay' -> blockCategory 'Tape Echo'
+[bridge:usePluginBrowserStore.refresh] bridge returned null
+
+stdout | src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > category 'Uncategorised' -> blockCategory 'Unknown'
+[usePluginBrowserStore.refresh] raw payload: undefined
+
+stderr | src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > category 'Uncategorised' -> blockCategory 'Unknown'
+[bridge:usePluginBrowserStore.refresh] bridge returned null
+
+stdout | src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > category '' -> blockCategory 'No Category'
+[usePluginBrowserStore.refresh] raw payload: undefined
+
+stderr | src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > category '' -> blockCategory 'No Category'
+[bridge:usePluginBrowserStore.refresh] bridge returned null
+
+ ❯ |unit| src/stores/__tests__/usePluginBrowserStore.test.ts (23 tests | 20 failed) 45ms
+     × populates plugins from bridge response 18ms
+     × prefers descriptiveName over name 2ms
+     × falls back to identifier when name and descriptiveName are absent 1ms
+     × populates favoriteIdentifiers Set 3ms
+     × populates recentIdentifiers list 4ms
+     × filters plugins missing identifier 2ms
+     × accepts JSON string response and parses it 1ms
+     × skips non-string entries in favoriteIdentifiers 1ms
+     × category 'Instrument' -> blockCategory 'Synth Bass' 1ms
+     × category 'synth lead' -> blockCategory 'SynthMaster' 1ms
+     × category 'sampler' -> blockCategory 'Kontakt' 1ms
+     × category 'Generator' -> blockCategory 'Kick Gen' 1ms
+     × category 'MIDI' -> blockCategory 'Arp+' 1ms
+     × category 'Sequencer' -> blockCategory 'Step Seq' 1ms
+     × category 'Utility' -> blockCategory 'Gain Trim' 1ms
+     × category 'Analysis' -> blockCategory 'Spectrum' 1ms
+     × category 'Reverb' -> blockCategory 'Hall Verb' 1ms
+     × category 'Delay' -> blockCategory 'Tape Echo' 1ms
+     × category 'Uncategorised' -> blockCategory 'Unknown' 1ms
+     × category '' -> blockCategory 'No Category' 1ms
+ ❯ |unit| src/bridge/__tests__/nativeGraph.test.ts (145 tests | 58 failed) 122ms
+     × happy path: returns true when host returns true 31ms
+     × happy path: parses JSON string with parameters array 5ms
+     × returns empty parameters and calls logBridgeError on invalid JSON 2ms
+     × happy path: parses JSON string { ok: true } 2ms
+     × returns { ok: false } and calls logBridgeError on invalid JSON 1ms
+     × happy path: parses JSON array of graph nodes 2ms
+     × returns empty array and calls logBridgeError on invalid JSON 2ms
+       × returns true on host true + invokes the correct native fn with args 2ms
+       × returns true on host true + invokes the correct native fn with args 1ms
+       × returns true on host true + invokes the correct native fn with args 1ms
+       × returns true on host true + invokes the correct native fn with args 1ms
+       × returns true on host true + invokes the correct native fn with args 1ms
+       × returns true on host true + invokes the correct native fn with args 1ms
+       × returns true on host true + invokes the correct native fn with args 1ms
+       × returns true on host true + invokes the correct native fn with args 1ms
+       × returns true on host true + invokes the correct native fn with args 1ms
+       × returns true on host true + invokes the correct native fn with args 1ms
+       × returns true on host true + invokes the correct native fn with args 1ms
+       × returns true on host true + invokes the correct native fn with args 1ms
+       × returns true on host true + invokes the correct native fn with args 1ms
+       × returns true on host true + invokes the correct native fn with args 1ms
+       × returns true on host true + invokes the correct native fn with args 1ms
+       × returns true on host true + invokes the correct native fn with args 1ms
+       × returns true on host true + invokes the correct native fn with args 1ms
+       × returns true on host true + invokes the correct native fn with args 1ms
+       × returns true on host true + invokes the correct native fn with args 1ms
+       × returns true on host true + invokes the correct native fn with args 1ms
+     × serialises the payload as a JSON string before calling the native fn 1ms
+       × forwards the host number response unchanged and invokes the correct fn 0ms
+       × forwards the host number response unchanged and invokes the correct fn 1ms
+       × forwards the host number response unchanged and invokes the correct fn 1ms
+       × forwards the host number response unchanged and invokes the correct fn 0ms
+       × forwards the host number response unchanged and invokes the correct fn 1ms
+       × forwards the host number response unchanged and invokes the correct fn 1ms
+     × nativeUndo fires the correct native call with [] args 1ms
+     × nativeRedo fires the correct native call with [] args 1ms
+     × nativeTransportPanic fires the correct native call with [] args 1ms
+     × nativeTransportTogglePlay fires the correct native call with [] args 1ms
+     × returns the host string verbatim 1ms
+     × nativeScriptSetSource happy path parses ok=true + error='' 4ms
+     × nativeScriptSetSource defaults missing fields 1ms
+     × nativeScriptSetSource returns 'invalid response' + logs on bad JSON 1ms
+     × nativeScriptCompile happy path 1ms
+     × nativeScriptCompile returns 'invalid response' + logs on bad JSON 1ms
+     × parses a JSON string 1ms
+     × returns object responses as-is (no parse) 1ms
+     × returns parse error and logs when JSON is malformed 1ms
+     × parses a JSON array of connection entries 1ms
+     × returns [] and logs on parse error 1ms
+     × nativePresetSwap happy path returns ok + swapped count 1ms
+     × nativePresetSwap parse error returns swapped=0 + logs 1ms
+     × nativePresetSave happy path 1ms
+     × nativePresetSave parse error + logs 1ms
+     × nativePresetLoad happy path 1ms
+     × nativePresetLoad parse error 1ms
+     × nativePresetList happy path with filter 1ms
+     × nativePresetList default pluginId is empty string 1ms
+     × nativePresetList parse error returns empty array 1ms
+ ❯ |unit| src/bridge/__tests__/nativePerform.test.ts (12 tests | 5 failed) 24ms
+     × happy path: returns true and passes index to host 13ms
+     × happy path: returns true and passes name to host 1ms
+     × happy path: returns true, called with no args 1ms
+     × happy path: returns true and passes index to host 1ms
+     × happy path: returns true and passes index + name to host 2ms
+ ❯ |unit| src/hooks/__tests__/useKeyboard.test.tsx (29 tests | 2 failed) 104ms
+     × saves bookmark with Ctrl+5 10ms
+     × restores bookmark with Shift+5 3ms
+stdout | src/hooks/__tests__/useJuceBridge.test.tsx > useJuceBridge > session-load retry-poll — retries while sessionLoaded is false, stops after cap
+[usePluginBrowserStore.refresh] raw payload: undefined
+
+stdout | src/hooks/__tests__/useJuceBridge.test.tsx > useJuceBridge > session-load retry-poll — retries while sessionLoaded is false, stops after cap
+[usePluginBrowserStore.refresh] raw payload: undefined
+
+stdout | src/hooks/__tests__/useJuceBridge.test.tsx > useJuceBridge > session-load retry-poll — retries while sessionLoaded is false, stops after cap
+[usePluginBrowserStore.refresh] raw payload: undefined
+
+stdout | src/hooks/__tests__/useJuceBridge.test.tsx > useJuceBridge > session-load retry-poll — retries while sessionLoaded is false, stops after cap
+[usePluginBrowserStore.refresh] raw payload: undefined
+
+stdout | src/hooks/__tests__/useJuceBridge.test.tsx > useJuceBridge > session-load retry-poll — retries while sessionLoaded is false, stops after cap
+[usePluginBrowserStore.refresh] raw payload: undefined
+
+stdout | src/hooks/__tests__/useJuceBridge.test.tsx > useJuceBridge > boot IIFE happy path — hydrates stores and marks hostReady + sessionLoaded
+[usePluginBrowserStore.refresh] raw payload: undefined
+
+stdout | src/hooks/__tests__/useJuceBridge.test.tsx > useJuceBridge > refreshNonce increment triggers re-fetch of elementGetGraphState
+[usePluginBrowserStore.refresh] raw payload: undefined
+
+stdout | src/hooks/__tests__/useJuceBridge.test.tsx > useJuceBridge > boot IIFE error path — bridge throws → hostReady true but sessionLoaded false
+[usePluginBrowserStore.refresh] raw payload: undefined
+
+stdout | src/hooks/__tests__/useJuceBridge.test.tsx > useJuceBridge > plugin-scan retry-poll — bounded to exactly 5 retry timers
+[usePluginBrowserStore.refresh] raw payload: undefined
+
+stdout | src/hooks/__tests__/useJuceBridge.test.tsx > useJuceBridge > plugin-scan retry-poll — bounded to exactly 5 retry timers
+[usePluginBrowserStore.refresh] raw payload: undefined
+
+stdout | src/hooks/__tests__/useJuceBridge.test.tsx > useJuceBridge > plugin-scan retry-poll — bounded to exactly 5 retry timers
+[usePluginBrowserStore.refresh] raw payload: undefined
+
+stdout | src/hooks/__tests__/useJuceBridge.test.tsx > useJuceBridge > plugin-scan retry-poll — bounded to exactly 5 retry timers
+[usePluginBrowserStore.refresh] raw payload: undefined
+
+stdout | src/hooks/__tests__/useJuceBridge.test.tsx > useJuceBridge > plugin-scan retry-poll — bounded to exactly 5 retry timers
+[usePluginBrowserStore.refresh] raw payload: undefined
+
+stdout | src/hooks/__tests__/useJuceBridge.test.tsx > useJuceBridge > plugin-scan retry-poll — bounded to exactly 5 retry timers
+[usePluginBrowserStore.refresh] raw payload: undefined
+
+stdout | src/hooks/__tests__/useJuceBridge.gaps.test.tsx > useJuceBridge — gap coverage > unmounting restores previous __elementNative handlers
+[usePluginBrowserStore.refresh] raw payload: undefined
+
+stderr | src/hooks/__tests__/useJuceBridge.gaps.test.tsx > useJuceBridge — gap coverage > unmounting restores previous __elementNative handlers
+[bridge:usePluginBrowserStore.refresh] bridge returned null
+
+stdout | src/hooks/__tests__/useJuceBridge.gaps.test.tsx > useJuceBridge — gap coverage > onParameterUpdate applies deltas to useParameterStore
+[usePluginBrowserStore.refresh] raw payload: undefined
+
+stderr | src/hooks/__tests__/useJuceBridge.gaps.test.tsx > useJuceBridge — gap coverage > onParameterUpdate applies deltas to useParameterStore
+[bridge:usePluginBrowserStore.refresh] bridge returned null
+
+stdout | src/hooks/__tests__/useJuceBridge.gaps.test.tsx > useJuceBridge — gap coverage > applySnapshot writes non-empty breadcrumbs to graph store
+[usePluginBrowserStore.refresh] raw payload: undefined
+
+stderr | src/hooks/__tests__/useJuceBridge.gaps.test.tsx > useJuceBridge — gap coverage > applySnapshot writes non-empty breadcrumbs to graph store
+[bridge:usePluginBrowserStore.refresh] bridge returned null
+
+stdout | src/hooks/__tests__/useJuceBridge.gaps.test.tsx > useJuceBridge — gap coverage > applySnapshot with empty breadcrumbs does not overwrite existing
+[usePluginBrowserStore.refresh] raw payload: undefined
+
+stderr | src/hooks/__tests__/useJuceBridge.gaps.test.tsx > useJuceBridge — gap coverage > applySnapshot with empty breadcrumbs does not overwrite existing
+[bridge:usePluginBrowserStore.refresh] bridge returned null
+
+ ❯ |unit| src/hooks/__tests__/useJuceBridge.test.tsx (5 tests | 5 failed) 113ms
+     × boot IIFE happy path — hydrates stores and marks hostReady + sessionLoaded 48ms
+     × boot IIFE error path — bridge throws → hostReady true but sessionLoaded false 10ms
+     × plugin-scan retry-poll — bounded to exactly 5 retry timers 20ms
+     × session-load retry-poll — retries while sessionLoaded is false, stops after cap 26ms
+     × refreshNonce increment triggers re-fetch of elementGetGraphState 6ms
+ ❯ |unit| src/hooks/__tests__/useJuceBridge.gaps.test.tsx (15 tests | 4 failed) 111ms
+     × onParameterUpdate applies deltas to useParameterStore 14ms
+     × applySnapshot writes non-empty breadcrumbs to graph store 5ms
+     × applySnapshot with empty breadcrumbs does not overwrite existing 4ms
+     × unmounting restores previous __elementNative handlers 6ms
+Warning: A vi.mock("../../../stores/useBusStore") call in "/Volumes/Projects/Development_Projects/Github_Repos/element/webview/src/components/canvas/__tests__/Cable.test.tsx" is not at the top level of the module. Although it appears nested, it will be hoisted and executed before any tests run. Move it to the top level to reflect its actual execution order. This will become an error in a future version.
+See: https://vitest.dev/guide/mocking/modules#how-it-works
+Warning: A vi.mock("../../../stores/useAppStore") call in "/Volumes/Projects/Development_Projects/Github_Repos/element/webview/src/components/canvas/__tests__/Cable.test.tsx" is not at the top level of the module. Although it appears nested, it will be hoisted and executed before any tests run. Move it to the top level to reflect its actual execution order. This will become an error in a future version.
+See: https://vitest.dev/guide/mocking/modules#how-it-works
+ ❯ |unit| src/bridge/__tests__/nativeEngineSnapshot.test.ts (5 tests | 4 failed) 20ms
+     × happy path (object): returns parsed EngineSnapshot 12ms
+     × happy path (JSON string): parses and returns EngineSnapshot 1ms
+     × returns null and calls logBridgeError on invalid JSON string 2ms
+     × returns null and calls logBridgeError when invokeElementNative throws 1ms
+ ❯ |unit| src/bridge/__tests__/nativePluginEditor.test.ts (6 tests | 5 failed) 33ms
+     × happy path: returns true immediately when first call succeeds 19ms
+     × retries and succeeds on the second attempt 2ms
+     × fire-and-forget: resolves void, calls the host 2ms
+     × passes bounds to host and resolves void 1ms
+     × fire-and-forget: resolves void, calls the host 1ms
+ ❯ |unit| src/bridge/__tests__/juceBackend.test.ts (6 tests | 4 failed) 30ms
+       × routes calls through backend.invokeNativeFunction 14ms
+       × forwards the name and args array unchanged 3ms
+       × defaults args to [] when not supplied 2ms
+       × propagates the resolved value from the host 4ms
+ ❯ |unit| src/bridge/__tests__/nativeApp.test.ts (6 tests | 3 failed) 20ms
+     × happy path: returns parsed AboutInfo from host 13ms
+     × fills missing fields with fallback strings 1ms
+     × fire-and-forget: resolves without returning a value 2ms
+ ❯ |unit| src/bridge/__tests__/nativeKeyboard.test.ts (6 tests | 2 failed) 19ms
+     × happy path: returns true when host returns true 13ms
+     × happy path: returns true when host returns true 1ms
+ ❯ |unit| src/components/layout/__tests__/ConnectionEditor.test.tsx (20 tests | 1 failed) 726ms
+     × falls back to port ID when label is absent 13ms
+ ❯ |unit| src/components/canvas/__tests__/CommandPalette.test.tsx (17 tests | 5 failed) 502ms
+     × shows plugin entries 18ms
+     × filters results by search query 21ms
+     × is case-insensitive 15ms
+     × shows empty state when no results match 13ms
+     × renders category headers 11ms
+ ❯ |unit| src/components/layout/__tests__/PresetStrip.stale.test.tsx (3 tests | 3 failed) 215ms
+     × (H-cov-4a) loads preset list for the selected node on mount 61ms
+     × (H-cov-4b) immediate [] reset on nodeId change — stale data does not flash 87ms
+     × (H-cov-4c) cancelled alpha fetch does NOT clobber beta's empty presets list 65ms
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| src/components/canvas/__tests__/GraphCanvas.test.tsx [ src/components/canvas/__tests__/GraphCanvas.test.tsx ]
+Error: [vitest] There was an error when mocking a module. If you are using "vi.mock" factory, make sure there are no top level variables inside, since this call is hoisted to top of the file. Read more: https://vitest.dev/api/vi.html#vi-mock
+ ❯ src/components/canvas/GraphCanvas.tsx:27:1
+     25| import "@xyflow/react/dist/style.css";
+     26|
+     27| import { useGraphStore, zoomToTier } from "../../stores/useGraphStore";
+       | ^
+     28| import { useAppStore } from "../../stores/useAppStore";
+     29| import { useHostExtrasStore } from "../../stores/useHostExtrasStore";
+
+Caused by: ReferenceError: Cannot access 'useGraphStoreMock' before initialization
+ ❯ src/components/canvas/__tests__/GraphCanvas.test.tsx:79:18
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/149]⎯
+
+ FAIL  |unit| src/components/canvas/__tests__/QuickAddPopup.test.tsx [ src/components/canvas/__tests__/QuickAddPopup.test.tsx ]
+Error: Transform failed with 1 error:
+
+[31m[PARSE_ERROR] Error:[0m `await` is only allowed within async functions and at the top levels of modules
+     [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m src/components/canvas/__tests__/QuickAddPopup.test.tsx:248:7 [38;5;246m][0m
+     [38;5;246m│[0m
+ [38;5;246m248 │[0m [38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0mawait[38;5;249m [0m[38;5;249mi[0m[38;5;249mm[0m[38;5;249mp[0m[38;5;249mo[0m[38;5;249mr[0m[38;5;249mt[0m[38;5;249m([0m[38;5;249m"[0m[38;5;249m.[0m[38;5;249m.[0m[38;5;249m/[0m[38;5;249m.[0m[38;5;249m.[0m[38;5;249m/[0m[38;5;249m.[0m[38;5;249m.[0m[38;5;249m/[0m[38;5;249ms[0m[38;5;249mt[0m[38;5;249mo[0m[38;5;249mr[0m[38;5;249me[0m[38;5;249ms[0m[38;5;249m/[0m[38;5;249mu[0m[38;5;249ms[0m[38;5;249me[0m[38;5;249mP[0m[38;5;249ml[0m[38;5;249mu[0m[38;5;249mg[0m[38;5;249mi[0m[38;5;249mn[0m[38;5;249mB[0m[38;5;249mr[0m[38;5;249mo[0m[38;5;249mw[0m[38;5;249ms[0m[38;5;249me[0m[38;5;249mr[0m[38;5;249mS[0m[38;5;249mt[0m[38;5;249mo[0m[38;5;249mr[0m[38;5;249me[0m[38;5;249m"[0m[38;5;249m)[0m
+ [38;5;240m    │[0m       ──┬──  
+ [38;5;240m    │[0m         ╰──── 
+ [38;5;240m    │[0m 
+ [38;5;240m    │[0m [38;5;115mHelp[0m: Either remove this `await` or add the `async` keyword to the enclosing function
+[38;5;246m─────╯[0m
+
+  Plugin: vite:oxc
+  File: /Volumes/Projects/Development_Projects/Github_Repos/element/webview/src/components/canvas/__tests__/QuickAddPopup.test.tsx
+ ❯ transformWithOxc node_modules/vite/dist/node/chunks/node.js:3720:19
+ ❯ TransformPluginContext.transform node_modules/vite/dist/node/chunks/node.js:3788:26
+ ❯ EnvironmentPluginContainer.transform node_modules/vite/dist/node/chunks/node.js:30048:51
+ ❯ loadAndTransform node_modules/vite/dist/node/chunks/node.js:24177:26
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/149]⎯
+
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 147 ⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| src/hooks/__tests__/useJuceBridge.gaps.test.tsx > useJuceBridge — gap coverage > onParameterUpdate applies deltas to useParameterStore
+AssertionError: expected undefined to be 0.5 // Object.is equality
+
+- Expected:
+0.5
+
++ Received:
+undefined
+
+ ❯ src/hooks/__tests__/useJuceBridge.gaps.test.tsx:170:32
+    168|
+    169|     const params = useParameterStore.getState().params;
+    170|     expect(params["node-1:0"]).toBe(0.5);
+       |                                ^
+    171|   });
+    172|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/149]⎯
+
+ FAIL  |unit| src/hooks/__tests__/useJuceBridge.gaps.test.tsx > useJuceBridge — gap coverage > applySnapshot writes non-empty breadcrumbs to graph store
+AssertionError: expected undefined to deeply equal [ 'Root', 'Sub-Board' ]
+
+- Expected:
+[
+  "Root",
+  "Sub-Board",
+]
+
++ Received:
+undefined
+
+ ❯ src/hooks/__tests__/useJuceBridge.gaps.test.tsx:253:50
+    251|     });
+    252|
+    253|     expect(useGraphStore.getState().breadcrumbs).toEqual(["Root", "Sub…
+       |                                                  ^
+    254|   });
+    255|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/149]⎯
+
+ FAIL  |unit| src/hooks/__tests__/useJuceBridge.gaps.test.tsx > useJuceBridge — gap coverage > applySnapshot with empty breadcrumbs does not overwrite existing
+AssertionError: expected [ 'Root' ] to be undefined
+
+- Expected:
+undefined
+
++ Received:
+[
+  "Root",
+]
+
+ ❯ src/hooks/__tests__/useJuceBridge.gaps.test.tsx:268:50
+    266|
+    267|     // Empty breadcrumbs array → no overwrite (source: `breadcrumbs.le…
+    268|     expect(useGraphStore.getState().breadcrumbs).toBeUndefined();
+       |                                                  ^
+    269|   });
+    270|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/149]⎯
+
+ FAIL  |unit| src/hooks/__tests__/useJuceBridge.gaps.test.tsx > useJuceBridge — gap coverage > unmounting restores previous __elementNative handlers
+AssertionError: expected { onMetering: [Function Mock] } to be { onMetering: [Function Mock] } // Object.is equality
+
+If it should pass with deep equality, replace "toBe" with "toStrictEqual"
+
+Expected: { onMetering: [Function Mock] }
+Received: serializes to the same string
+
+
+Compared values have no visual difference.
+
+ ❯ src/hooks/__tests__/useJuceBridge.gaps.test.tsx:282:36
+    280|     unmount();
+    281|
+    282|     expect(window.__elementNative).toBe(prevHandler);
+       |                                    ^
+    283|   });
+    284|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/149]⎯
+
+ FAIL  |unit| src/hooks/__tests__/useJuceBridge.test.tsx > useJuceBridge > boot IIFE happy path — hydrates stores and marks hostReady + sessionLoaded
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/hooks/__tests__/useJuceBridge.test.tsx:118:54
+    116|
+    117|     expect(useAppStore.getState().hostReady).toBe(true);
+    118|     expect(useSessionStore.getState().sessionLoaded).toBe(true);
+       |                                                      ^
+    119|     expect(bridge.callsOf("elementGetGraphState").length).toBeGreaterT…
+    120|     expect(bridge.callsOf("elementGetPluginList").length).toBeGreaterT…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/149]⎯
+
+ FAIL  |unit| src/hooks/__tests__/useJuceBridge.test.tsx > useJuceBridge > boot IIFE error path — bridge throws → hostReady true but sessionLoaded false
+AssertionError: expected "warn" to be called with arguments: [ StringContaining{…}, Anything ]
+
+Received:
+
+  1st warn call:
+
+  [
+-   StringContaining "[bridge:useJuceBridge.bootEffect]",
+-   Anything,
++   "[bridge:usePluginBrowserStore.refresh]",
++   "bridge returned null",
+  ]
+
+
+Number of calls: 1
+
+ ❯ src/hooks/__tests__/useJuceBridge.test.tsx:135:24
+    133|     expect(useAppStore.getState().hostReady).toBe(true);
+    134|     expect(useSessionStore.getState().sessionLoaded).toBe(false);
+    135|     expect(consoleSpy).toHaveBeenCalledWith(
+       |                        ^
+    136|       expect.stringContaining("[bridge:useJuceBridge.bootEffect]"),
+    137|       expect.anything(),
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/149]⎯
+
+ FAIL  |unit| src/hooks/__tests__/useJuceBridge.test.tsx > useJuceBridge > plugin-scan retry-poll — bounded to exactly 5 retry timers
+AssertionError: expected +0 to be 5 // Object.is equality
+
+- Expected
++ Received
+
+- 5
++ 0
+
+ ❯ src/hooks/__tests__/useJuceBridge.test.tsx:159:73
+    157|     });
+    158|
+    159|     expect(bridge.callsOf("elementGetPluginList").length - callsBefore…
+       |                                                                         ^
+    160|
+    161|     // No further timers registered beyond the 5-element cap
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/149]⎯
+
+ FAIL  |unit| src/hooks/__tests__/useJuceBridge.test.tsx > useJuceBridge > session-load retry-poll — retries while sessionLoaded is false, stops after cap
+AssertionError: expected +0 to be 5 // Object.is equality
+
+- Expected
++ Received
+
+- 5
++ 0
+
+ ❯ src/hooks/__tests__/useJuceBridge.test.tsx:186:71
+    184|     });
+    185|
+    186|     expect(bridge.callsOf("elementGetGraphState").length - callsBoot).…
+       |                                                                       ^
+    187|
+    188|     // No further timers registered beyond the 5-element cap
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/149]⎯
+
+ FAIL  |unit| src/hooks/__tests__/useJuceBridge.test.tsx > useJuceBridge > refreshNonce increment triggers re-fetch of elementGetGraphState
+AssertionError: expected +0 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/hooks/__tests__/useJuceBridge.test.tsx:217:59
+    215|     });
+    216|
+    217|     expect(bridge.callsOf("elementGetGraphState").length).toBe(callsAf…
+       |                                                           ^
+    218|     expect(useSessionStore.getState().filePath).toBe("/refreshed.elg");
+    219|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/149]⎯
+
+ FAIL  |unit| src/hooks/__tests__/useKeyboard.test.tsx > Ctrl+0-9 spatial bookmarks > saves bookmark with Ctrl+5
+AssertionError: expected undefined to deeply equal { x: 100, y: 200, zoom: 1.5 }
+
+- Expected:
+{
+  "x": 100,
+  "y": 200,
+  "zoom": 1.5,
+}
+
++ Received:
+undefined
+
+ ❯ src/hooks/__tests__/useKeyboard.test.tsx:330:16
+    328|     fire("5", { ctrlKey: true });
+    329|     const bm = useAppStore.getState().getSpatialBookmark("5");
+    330|     expect(bm).toEqual({ x: 100, y: 200, zoom: 1.5 });
+       |                ^
+    331|   });
+    332|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/149]⎯
+
+ FAIL  |unit| src/hooks/__tests__/useKeyboard.test.tsx > Ctrl+0-9 spatial bookmarks > restores bookmark with Shift+5
+AssertionError: expected "vi.fn()" to be called with arguments: [ { x: 50, y: 75, zoom: 2 }, …(1) ]
+
+Number of calls: 0
+
+ ❯ src/hooks/__tests__/useKeyboard.test.tsx:337:29
+    335|     renderHook(() => useKeyboard({ onToggleCommandPalette: vi.fn() }));
+    336|     fire("5", { shiftKey: true });
+    337|     expect(mockSetViewport).toHaveBeenCalledWith(
+       |                             ^
+    338|       { x: 50, y: 75, zoom: 2 },
+    339|       { duration: 150 },
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[13/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/juceBackend.test.ts > invokeElementNative > bridge-present path > routes calls through backend.invokeNativeFunction
+AssertionError: expected undefined to be true // Object.is equality
+
+- Expected:
+true
+
++ Received:
+undefined
+
+ ❯ src/bridge/__tests__/juceBackend.test.ts:65:22
+     63|         2,
+     64|       ]);
+     65|       expect(result).toBe(true);
+       |                      ^
+     66|       expect(bridge.mock).toHaveBeenCalledWith(
+     67|         "elementPerformSetActiveScene",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[14/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/juceBackend.test.ts > invokeElementNative > bridge-present path > forwards the name and args array unchanged
+AssertionError: expected "vi.fn()" to be called with arguments: [ 'elementPresetSnapshot', …(1) ]
+
+Number of calls: 0
+
+ ❯ src/bridge/__tests__/juceBackend.test.ts:75:27
+     73|       bridge.mock.mockResolvedValueOnce({ ok: true });
+     74|       await invokeElementNative("elementPresetSnapshot", ["node-1", "A…
+     75|       expect(bridge.mock).toHaveBeenCalledWith("elementPresetSnapshot"…
+       |                           ^
+     76|         "node-1",
+     77|         "A",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[15/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/juceBackend.test.ts > invokeElementNative > bridge-present path > defaults args to [] when not supplied
+AssertionError: expected "vi.fn()" to be called with arguments: [ 'elementAppCheckForUpdates', [] ]
+
+Number of calls: 0
+
+ ❯ src/bridge/__tests__/juceBackend.test.ts:84:27
+     82|       bridge.mock.mockResolvedValueOnce(undefined);
+     83|       await invokeElementNative("elementAppCheckForUpdates");
+     84|       expect(bridge.mock).toHaveBeenCalledWith(
+       |                           ^
+     85|         "elementAppCheckForUpdates",
+     86|         [],
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[16/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/juceBackend.test.ts > invokeElementNative > bridge-present path > propagates the resolved value from the host
+AssertionError: expected undefined to deeply equal { name: 'Element', …(2) }
+
+- Expected:
+{
+  "copyright": "© Test",
+  "name": "Element",
+  "version": "1.0",
+}
+
++ Received:
+undefined
+
+ ❯ src/bridge/__tests__/juceBackend.test.ts:94:22
+     92|       bridge.mock.mockResolvedValueOnce(payload);
+     93|       const result = await invokeElementNative("elementAppGetAbout", […
+     94|       expect(result).toEqual(payload);
+       |                      ^
+     95|     });
+     96|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[17/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeApp.test.ts > nativeAppGetAbout > happy path: returns parsed AboutInfo from host
+AssertionError: expected null to deeply equal { name: 'Element', …(2) }
+
+- Expected:
+{
+  "copyright": "© Test",
+  "name": "Element",
+  "version": "0.0.0",
+}
+
++ Received:
+null
+
+ ❯ src/bridge/__tests__/nativeApp.test.ts:30:18
+     28|     bridge.mock.mockResolvedValueOnce(BridgePresets.aboutInfo);
+     29|     const info = await nativeAppGetAbout();
+     30|     expect(info).toEqual({
+       |                  ^
+     31|       name: "Element",
+     32|       version: "0.0.0",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[18/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeApp.test.ts > nativeAppGetAbout > fills missing fields with fallback strings
+AssertionError: expected null to deeply equal { name: 'Element', version: '', …(1) }
+
+- Expected:
+{
+  "copyright": "",
+  "name": "Element",
+  "version": "",
+}
+
++ Received:
+null
+
+ ❯ src/bridge/__tests__/nativeApp.test.ts:56:18
+     54|     bridge.mock.mockResolvedValueOnce({});
+     55|     const info = await nativeAppGetAbout();
+     56|     expect(info).toEqual({ name: "Element", version: "", copyright: ""…
+       |                  ^
+     57|   });
+     58| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[19/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeApp.test.ts > nativeAppCheckForUpdates > fire-and-forget: resolves without returning a value
+AssertionError: expected "vi.fn()" to be called with arguments: [ 'elementAppCheckForUpdates', [] ]
+
+Number of calls: 0
+
+ ❯ src/bridge/__tests__/nativeApp.test.ts:75:25
+     73|     const result = await nativeAppCheckForUpdates();
+     74|     expect(result).toBeUndefined();
+     75|     expect(bridge.mock).toHaveBeenCalledWith(
+       |                         ^
+     76|       "elementAppCheckForUpdates",
+     77|       [],
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[20/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeEngineSnapshot.test.ts > nativeGetEngineSnapshot > happy path (object): returns parsed EngineSnapshot
+AssertionError: expected null not to be null
+ ❯ src/bridge/__tests__/nativeEngineSnapshot.test.ts:48:22
+     46|     });
+     47|     const snap = await nativeGetEngineSnapshot();
+     48|     expect(snap).not.toBeNull();
+       |                      ^
+     49|     expect(snap?.cpu).toBe(0.25);
+     50|     expect(snap?.engineRunning).toBe(true);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[21/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeEngineSnapshot.test.ts > nativeGetEngineSnapshot > happy path (JSON string): parses and returns EngineSnapshot
+AssertionError: expected null not to be null
+ ❯ src/bridge/__tests__/nativeEngineSnapshot.test.ts:74:22
+     72|     bridge.mock.mockResolvedValueOnce(JSON.stringify(payload));
+     73|     const snap = await nativeGetEngineSnapshot();
+     74|     expect(snap).not.toBeNull();
+       |                      ^
+     75|     expect(snap?.sampleRate).toBe(44100);
+     76|     expect(snap?.timeSig).toEqual([3, 4]);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[22/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeEngineSnapshot.test.ts > nativeGetEngineSnapshot > returns null and calls logBridgeError on invalid JSON string
+AssertionError: expected "vi.fn()" to be called once, but got 0 times
+ ❯ src/bridge/__tests__/nativeEngineSnapshot.test.ts:90:32
+     88|     const snap = await nativeGetEngineSnapshot();
+     89|     expect(snap).toBeNull();
+     90|     expect(mockLogBridgeError).toHaveBeenCalledOnce();
+       |                                ^
+     91|     expect(mockLogBridgeError.mock.calls[0][0]).toBe(
+     92|       "nativeGetEngineSnapshot.parse",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[23/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeEngineSnapshot.test.ts > nativeGetEngineSnapshot > returns null and calls logBridgeError when invokeElementNative throws
+AssertionError: expected "vi.fn()" to be called once, but got 0 times
+ ❯ src/bridge/__tests__/nativeEngineSnapshot.test.ts:100:32
+     98|     const snap = await nativeGetEngineSnapshot();
+     99|     expect(snap).toBeNull();
+    100|     expect(mockLogBridgeError).toHaveBeenCalledOnce();
+       |                                ^
+    101|     expect(mockLogBridgeError.mock.calls[0][0]).toBe(
+    102|       "nativeGetEngineSnapshot.invoke",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[24/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > nativeGraphSetBypass > happy path: returns true when host returns true
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/bridge/__tests__/nativeGraph.test.ts:83:20
+     81|     bridge.mock.mockResolvedValueOnce(true);
+     82|     const result = await nativeGraphSetBypass("node-1", true);
+     83|     expect(result).toBe(true);
+       |                    ^
+     84|     expect(bridge.mock).toHaveBeenCalledWith("elementGraphSetBypass", [
+     85|       "node-1",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[25/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > nativeGetNodeParameters > happy path: parses JSON string with parameters array
+AssertionError: expected [] to have a length of 2 but got +0
+
+- Expected
++ Received
+
+- 2
++ 0
+
+ ❯ src/bridge/__tests__/nativeGraph.test.ts:120:31
+    118|     bridge.mock.mockResolvedValueOnce(JSON.stringify({ parameters: par…
+    119|     const result = await nativeGetNodeParameters("node-abc");
+    120|     expect(result.parameters).toHaveLength(2);
+       |                               ^
+    121|     expect(result.parameters[0].name).toBe("Gain");
+    122|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[26/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > nativeGetNodeParameters > returns empty parameters and calls logBridgeError on invalid JSON
+AssertionError: expected "vi.fn()" to be called once, but got 0 times
+ ❯ src/bridge/__tests__/nativeGraph.test.ts:134:32
+    132|     const result = await nativeGetNodeParameters("node-abc");
+    133|     expect(result.parameters).toEqual([]);
+    134|     expect(mockLogBridgeError).toHaveBeenCalledOnce();
+       |                                ^
+    135|     expect(mockLogBridgeError.mock.calls[0][0]).toBe(
+    136|       "nativeGetNodeParameters.parse",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[27/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > nativePresetSnapshot > happy path: parses JSON string { ok: true }
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/bridge/__tests__/nativeGraph.test.ts:156:23
+    154|     bridge.mock.mockResolvedValueOnce(JSON.stringify({ ok: true }));
+    155|     const result = await nativePresetSnapshot("node-1", "A");
+    156|     expect(result.ok).toBe(true);
+       |                       ^
+    157|     expect(bridge.mock).toHaveBeenCalledWith("elementPresetSnapshot", [
+    158|       "node-1",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[28/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > nativePresetSnapshot > returns { ok: false } and calls logBridgeError on invalid JSON
+AssertionError: expected "vi.fn()" to be called once, but got 0 times
+ ❯ src/bridge/__tests__/nativeGraph.test.ts:174:32
+    172|     const result = await nativePresetSnapshot("node-1", "A");
+    173|     expect(result.ok).toBe(false);
+    174|     expect(mockLogBridgeError).toHaveBeenCalledOnce();
+       |                                ^
+    175|     expect(mockLogBridgeError.mock.calls[0][0]).toBe(
+    176|       "nativePresetSnapshot.parse",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[29/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > nativeSessionGetGraphTree > happy path: parses JSON array of graph nodes
+AssertionError: expected [] to have a length of 1 but got +0
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/bridge/__tests__/nativeGraph.test.ts:199:20
+    197|     bridge.mock.mockResolvedValueOnce(JSON.stringify(tree));
+    198|     const result = await nativeSessionGetGraphTree();
+    199|     expect(result).toHaveLength(1);
+       |                    ^
+    200|     expect(result[0].name).toBe("Graph 1");
+    201|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[30/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > nativeSessionGetGraphTree > returns empty array and calls logBridgeError on invalid JSON
+AssertionError: expected "vi.fn()" to be called once, but got 0 times
+ ❯ src/bridge/__tests__/nativeGraph.test.ts:213:32
+    211|     const result = await nativeSessionGetGraphTree();
+    212|     expect(result).toEqual([]);
+    213|     expect(mockLogBridgeError).toHaveBeenCalledOnce();
+       |                                ^
+    214|     expect(mockLogBridgeError.mock.calls[0][0]).toBe(
+    215|       "nativeSessionGetGraphTree.parse",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[31/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > boolean wrappers — table-driven > nativeGraphAddPlugin > returns true on host true + invokes the correct native fn with args
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > boolean wrappers — table-driven > nativeGraphRemoveNode > returns true on host true + invokes the correct native fn with args
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > boolean wrappers — table-driven > nativeGraphConnect > returns true on host true + invokes the correct native fn with args
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > boolean wrappers — table-driven > nativeGraphDisconnect > returns true on host true + invokes the correct native fn with args
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > boolean wrappers — table-driven > nativeGraphSetMute > returns true on host true + invokes the correct native fn with args
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > boolean wrappers — table-driven > nativeGraphSetMuteInput > returns true on host true + invokes the correct native fn with args
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > boolean wrappers — table-driven > nativeGraphSetCanvasOptions > returns true on host true + invokes the correct native fn with args
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > boolean wrappers — table-driven > nativeGraphSetCableBus > returns true on host true + invokes the correct native fn with args
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > boolean wrappers — table-driven > nativeGraphSetViewport > returns true on host true + invokes the correct native fn with args
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > boolean wrappers — table-driven > nativeGraphDuplicateNode > returns true on host true + invokes the correct native fn with args
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > boolean wrappers — table-driven > nativeGraphRenameNode > returns true on host true + invokes the correct native fn with args
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > boolean wrappers — table-driven > nativeGraphSetNodeNote > returns true on host true + invokes the correct native fn with args
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > boolean wrappers — table-driven > nativeGraphCommentAdd (defaults) > returns true on host true + invokes the correct native fn with args
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > boolean wrappers — table-driven > nativeGraphCommentAdd (explicit size) > returns true on host true + invokes the correct native fn with args
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > boolean wrappers — table-driven > nativeGraphCommentDelete > returns true on host true + invokes the correct native fn with args
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > boolean wrappers — table-driven > nativeTransportStop > returns true on host true + invokes the correct native fn with args
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > boolean wrappers — table-driven > nativeTransportRewind > returns true on host true + invokes the correct native fn with args
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > boolean wrappers — table-driven > nativeTransportSetRecording > returns true on host true + invokes the correct native fn with args
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > boolean wrappers — table-driven > nativeTransportSetTempo > returns true on host true + invokes the correct native fn with args
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > boolean wrappers — table-driven > nativeSetNodeParameter > returns true on host true + invokes the correct native fn with args
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/bridge/__tests__/nativeGraph.test.ts:369:32
+    367|       it("returns true on host true + invokes the correct native fn wi…
+    368|         bridge.mock.mockResolvedValueOnce(true);
+    369|         expect(await c.call()).toBe(true);
+       |                                ^
+    370|         expect(bridge.mock).toHaveBeenCalledWith(c.nativeName, c.args);
+    371|       });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[32/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > nativeGraphCommentUpsert (boolean + JSON.stringify of payload) > serialises the payload as a JSON string before calling the native fn
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/bridge/__tests__/nativeGraph.test.ts:395:53
+    393|     bridge.mock.mockResolvedValueOnce(true);
+    394|     const payload = { id: "cb1", x: 1, y: 2, width: 3, height: 4 };
+    395|     expect(await nativeGraphCommentUpsert(payload)).toBe(true);
+       |                                                     ^
+    396|     expect(bridge.mock).toHaveBeenCalledWith("elementGraphCommentUpser…
+    397|       JSON.stringify(payload),
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[33/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > number wrappers — table-driven > nativeGraphMoveNodes > forwards the host number response unchanged and invokes the correct fn
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > number wrappers — table-driven > nativeMoleculeInsert (defaults) > forwards the host number response unchanged and invokes the correct fn
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > number wrappers — table-driven > nativeMoleculeInsert (explicit position) > forwards the host number response unchanged and invokes the correct fn
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > number wrappers — table-driven > nativeGraphDuplicateNodes > forwards the host number response unchanged and invokes the correct fn
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > number wrappers — table-driven > nativeGraphCopyNodes > forwards the host number response unchanged and invokes the correct fn
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > number wrappers — table-driven > nativeGraphPasteNodes > forwards the host number response unchanged and invokes the correct fn
+AssertionError: expected +0 to be 7 // Object.is equality
+
+- Expected
++ Received
+
+- 7
++ 0
+
+ ❯ src/bridge/__tests__/nativeGraph.test.ts:476:32
+    474|       it("forwards the host number response unchanged and invokes the …
+    475|         bridge.mock.mockResolvedValueOnce(7);
+    476|         expect(await c.call()).toBe(7);
+       |                                ^
+    477|         expect(bridge.mock).toHaveBeenCalledWith(c.nativeName, c.args);
+    478|       });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[34/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > void wrappers — table-driven > nativeUndo fires the correct native call with [] args
+AssertionError: expected "vi.fn()" to be called with arguments: [ 'elementUndo', [] ]
+
+Number of calls: 0
+
+ ❯ src/bridge/__tests__/nativeGraph.test.ts:520:27
+    518|       bridge.mock.mockResolvedValueOnce(undefined);
+    519|       await c.call();
+    520|       expect(bridge.mock).toHaveBeenCalledWith(c.nativeName, []);
+       |                           ^
+    521|     });
+    522|   }
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[35/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > void wrappers — table-driven > nativeRedo fires the correct native call with [] args
+AssertionError: expected "vi.fn()" to be called with arguments: [ 'elementRedo', [] ]
+
+Number of calls: 0
+
+ ❯ src/bridge/__tests__/nativeGraph.test.ts:520:27
+    518|       bridge.mock.mockResolvedValueOnce(undefined);
+    519|       await c.call();
+    520|       expect(bridge.mock).toHaveBeenCalledWith(c.nativeName, []);
+       |                           ^
+    521|     });
+    522|   }
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[36/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > void wrappers — table-driven > nativeTransportPanic fires the correct native call with [] args
+AssertionError: expected "vi.fn()" to be called with arguments: [ 'elementTransportPanic', [] ]
+
+Number of calls: 0
+
+ ❯ src/bridge/__tests__/nativeGraph.test.ts:520:27
+    518|       bridge.mock.mockResolvedValueOnce(undefined);
+    519|       await c.call();
+    520|       expect(bridge.mock).toHaveBeenCalledWith(c.nativeName, []);
+       |                           ^
+    521|     });
+    522|   }
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[37/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > void wrappers — table-driven > nativeTransportTogglePlay fires the correct native call with [] args
+AssertionError: expected "vi.fn()" to be called with arguments: [ 'elementTransportTogglePlay', [] ]
+
+Number of calls: 0
+
+ ❯ src/bridge/__tests__/nativeGraph.test.ts:520:27
+    518|       bridge.mock.mockResolvedValueOnce(undefined);
+    519|       await c.call();
+    520|       expect(bridge.mock).toHaveBeenCalledWith(c.nativeName, []);
+       |                           ^
+    521|     });
+    522|   }
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[38/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > nativeScriptGetSource (string wrapper) > returns the host string verbatim
+AssertionError: expected '' to be 'print(\'hi\')' // Object.is equality
+
+- Expected
++ Received
+
+- print('hi')
+
+ ❯ src/bridge/__tests__/nativeGraph.test.ts:528:46
+    526|   it("returns the host string verbatim", async () => {
+    527|     bridge.mock.mockResolvedValueOnce("print('hi')");
+    528|     expect(await nativeScriptGetSource("n")).toBe("print('hi')");
+       |                                              ^
+    529|     expect(bridge.mock).toHaveBeenCalledWith("elementScriptGetSource",…
+    530|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[39/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > nativeScriptSetSource / nativeScriptCompile (ScriptCompileResult) > nativeScriptSetSource happy path parses ok=true + error=''
+AssertionError: expected { ok: false, error: 'no response' } to deeply equal { ok: true, error: '' }
+
+- Expected
++ Received
+
+  {
+-   "error": "",
+-   "ok": true,
++   "error": "no response",
++   "ok": false,
+  }
+
+ ❯ src/bridge/__tests__/nativeGraph.test.ts:547:15
+    545|     bridge.mock.mockResolvedValueOnce(JSON.stringify({ ok: true, error…
+    546|     const r = await nativeScriptSetSource("n", "x=1");
+    547|     expect(r).toEqual({ ok: true, error: "" });
+       |               ^
+    548|     expect(bridge.mock).toHaveBeenCalledWith("elementScriptSetSource",…
+    549|       "n",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[40/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > nativeScriptSetSource / nativeScriptCompile (ScriptCompileResult) > nativeScriptSetSource defaults missing fields
+AssertionError: expected { ok: false, error: 'no response' } to deeply equal { ok: false, error: '' }
+
+- Expected
++ Received
+
+  {
+-   "error": "",
++   "error": "no response",
+    "ok": false,
+  }
+
+ ❯ src/bridge/__tests__/nativeGraph.test.ts:557:15
+    555|     bridge.mock.mockResolvedValueOnce(JSON.stringify({ ok: false }));
+    556|     const r = await nativeScriptSetSource("n", "x");
+    557|     expect(r).toEqual({ ok: false, error: "" });
+       |               ^
+    558|   });
+    559|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[41/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > nativeScriptSetSource / nativeScriptCompile (ScriptCompileResult) > nativeScriptSetSource returns 'invalid response' + logs on bad JSON
+AssertionError: expected { ok: false, error: 'no response' } to deeply equal { Object (ok, error) }
+
+- Expected
++ Received
+
+  {
+-   "error": "invalid response",
++   "error": "no response",
+    "ok": false,
+  }
+
+ ❯ src/bridge/__tests__/nativeGraph.test.ts:570:51
+    568|   it("nativeScriptSetSource returns 'invalid response' + logs on bad J…
+    569|     bridge.mock.mockResolvedValueOnce("{nope");
+    570|     expect(await nativeScriptSetSource("n", "x")).toEqual({
+       |                                                   ^
+    571|       ok: false,
+    572|       error: "invalid response",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[42/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > nativeScriptSetSource / nativeScriptCompile (ScriptCompileResult) > nativeScriptCompile happy path
+AssertionError: expected { ok: false, error: 'no response' } to deeply equal { ok: true, error: '' }
+
+- Expected
++ Received
+
+  {
+-   "error": "",
+-   "ok": true,
++   "error": "no response",
++   "ok": false,
+  }
+
+ ❯ src/bridge/__tests__/nativeGraph.test.ts:582:44
+    580|   it("nativeScriptCompile happy path", async () => {
+    581|     bridge.mock.mockResolvedValueOnce(JSON.stringify({ ok: true, error…
+    582|     expect(await nativeScriptCompile("n")).toEqual({ ok: true, error: …
+       |                                            ^
+    583|     expect(bridge.mock).toHaveBeenCalledWith("elementScriptCompile", […
+    584|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[43/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > nativeScriptSetSource / nativeScriptCompile (ScriptCompileResult) > nativeScriptCompile returns 'invalid response' + logs on bad JSON
+AssertionError: expected { ok: false, error: 'no response' } to deeply equal { Object (ok, error) }
+
+- Expected
++ Received
+
+  {
+-   "error": "invalid response",
++   "error": "no response",
+    "ok": false,
+  }
+
+ ❯ src/bridge/__tests__/nativeGraph.test.ts:596:44
+    594|   it("nativeScriptCompile returns 'invalid response' + logs on bad JSO…
+    595|     bridge.mock.mockResolvedValueOnce("{nope");
+    596|     expect(await nativeScriptCompile("n")).toEqual({
+       |                                            ^
+    597|       ok: false,
+    598|       error: "invalid response",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[44/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > nativeScriptGetRuntimeState (string|object union) > parses a JSON string
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/bridge/__tests__/nativeGraph.test.ts:609:18
+    607|     bridge.mock.mockResolvedValueOnce(JSON.stringify(state));
+    608|     const r = await nativeScriptGetRuntimeState("n");
+    609|     expect(r.ok).toBe(true);
+       |                  ^
+    610|     expect(r.vars?.[0].name).toBe("x");
+    611|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[45/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > nativeScriptGetRuntimeState (string|object union) > returns object responses as-is (no parse)
+AssertionError: expected { ok: false, error: 'no response' } to be { ok: true, vars: [] } // Object.is equality
+
+- Expected
++ Received
+
+  {
+-   "ok": true,
+-   "vars": [],
++   "error": "no response",
++   "ok": false,
+  }
+
+ ❯ src/bridge/__tests__/nativeGraph.test.ts:616:52
+    614|     const state = { ok: true, vars: [] };
+    615|     bridge.mock.mockResolvedValueOnce(state);
+    616|     expect(await nativeScriptGetRuntimeState("n")).toBe(state);
+       |                                                    ^
+    617|   });
+    618|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[46/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > nativeScriptGetRuntimeState (string|object union) > returns parse error and logs when JSON is malformed
+AssertionError: expected { ok: false, error: 'no response' } to deeply equal { ok: false, error: 'parse error' }
+
+- Expected
++ Received
+
+  {
+-   "error": "parse error",
++   "error": "no response",
+    "ok": false,
+  }
+
+ ❯ src/bridge/__tests__/nativeGraph.test.ts:621:52
+    619|   it("returns parse error and logs when JSON is malformed", async () =…
+    620|     bridge.mock.mockResolvedValueOnce("{bad");
+    621|     expect(await nativeScriptGetRuntimeState("n")).toEqual({
+       |                                                    ^
+    622|       ok: false,
+    623|       error: "parse error",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[47/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > nativeGraphGetConnectionList (JSON array) > parses a JSON array of connection entries
+AssertionError: expected [] to have a length of 1 but got +0
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/bridge/__tests__/nativeGraph.test.ts:654:15
+    652|     bridge.mock.mockResolvedValueOnce(JSON.stringify(list));
+    653|     const r = await nativeGraphGetConnectionList();
+    654|     expect(r).toHaveLength(1);
+       |               ^
+    655|     expect(r[0].channelCount).toBe(2);
+    656|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[48/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > nativeGraphGetConnectionList (JSON array) > returns [] and logs on parse error
+TypeError: Cannot read properties of undefined (reading '0')
+ ❯ src/bridge/__tests__/nativeGraph.test.ts:666:42
+    664|     bridge.mock.mockResolvedValueOnce("{bad");
+    665|     expect(await nativeGraphGetConnectionList()).toEqual([]);
+    666|     expect(mockLogBridgeError.mock.calls[0][0]).toBe(
+       |                                          ^
+    667|       "nativeGraphGetConnectionList.parse",
+    668|     );
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[49/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > preset wrappers (JSON-parse + safe defaults) > nativePresetSwap happy path returns ok + swapped count
+AssertionError: expected { ok: false, swapped: +0, …(1) } to deeply equal { ok: true, swapped: 5 }
+
+- Expected
++ Received
+
+  {
+-   "ok": true,
+-   "swapped": 5,
++   "error": "no response",
++   "ok": false,
++   "swapped": 0,
+  }
+
+ ❯ src/bridge/__tests__/nativeGraph.test.ts:678:15
+    676|     );
+    677|     const r = await nativePresetSwap("n", "B");
+    678|     expect(r).toEqual({ ok: true, swapped: 5 });
+       |               ^
+    679|     expect(bridge.mock).toHaveBeenCalledWith("elementPresetSwap", ["n"…
+    680|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[50/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > preset wrappers (JSON-parse + safe defaults) > nativePresetSwap parse error returns swapped=0 + logs
+AssertionError: expected { ok: false, swapped: +0, …(1) } to deeply equal { ok: false, swapped: +0, …(1) }
+
+- Expected
++ Received
+
+  {
+-   "error": "parse error",
++   "error": "no response",
+    "ok": false,
+    "swapped": 0,
+  }
+
+ ❯ src/bridge/__tests__/nativeGraph.test.ts:684:46
+    682|   it("nativePresetSwap parse error returns swapped=0 + logs", async ()…
+    683|     bridge.mock.mockResolvedValueOnce("{bad");
+    684|     expect(await nativePresetSwap("n", "A")).toEqual({
+       |                                              ^
+    685|       ok: false,
+    686|       swapped: 0,
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[51/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > preset wrappers (JSON-parse + safe defaults) > nativePresetSave happy path
+AssertionError: expected { ok: false, error: 'no response' } to deeply equal { ok: true }
+
+- Expected
++ Received
+
+  {
+-   "ok": true,
++   "error": "no response",
++   "ok": false,
+  }
+
+ ❯ src/bridge/__tests__/nativeGraph.test.ts:703:55
+    701|   it("nativePresetSave happy path", async () => {
+    702|     bridge.mock.mockResolvedValueOnce(JSON.stringify({ ok: true }));
+    703|     expect(await nativePresetSave("n", "preset.fxp")).toEqual({ ok: tr…
+       |                                                       ^
+    704|     expect(bridge.mock).toHaveBeenCalledWith("elementPresetSave", [
+    705|       "n",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[52/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > preset wrappers (JSON-parse + safe defaults) > nativePresetSave parse error + logs
+AssertionError: expected { ok: false, error: 'no response' } to deeply equal { ok: false, error: 'parse error' }
+
+- Expected
++ Received
+
+  {
+-   "error": "parse error",
++   "error": "no response",
+    "ok": false,
+  }
+
+ ❯ src/bridge/__tests__/nativeGraph.test.ts:712:46
+    710|   it("nativePresetSave parse error + logs", async () => {
+    711|     bridge.mock.mockResolvedValueOnce("{bad");
+    712|     expect(await nativePresetSave("n", "p")).toEqual({
+       |                                              ^
+    713|       ok: false,
+    714|       error: "parse error",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[53/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > preset wrappers (JSON-parse + safe defaults) > nativePresetLoad happy path
+AssertionError: expected { ok: false, error: 'no response' } to deeply equal { ok: true }
+
+- Expected
++ Received
+
+  {
+-   "ok": true,
++   "error": "no response",
++   "ok": false,
+  }
+
+ ❯ src/bridge/__tests__/nativeGraph.test.ts:729:46
+    727|   it("nativePresetLoad happy path", async () => {
+    728|     bridge.mock.mockResolvedValueOnce(JSON.stringify({ ok: true }));
+    729|     expect(await nativePresetLoad("n", "p")).toEqual({ ok: true });
+       |                                              ^
+    730|     expect(bridge.mock).toHaveBeenCalledWith("elementPresetLoad", ["n"…
+    731|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[54/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > preset wrappers (JSON-parse + safe defaults) > nativePresetLoad parse error
+AssertionError: expected { ok: false, error: 'no response' } to deeply equal { ok: false, error: 'parse error' }
+
+- Expected
++ Received
+
+  {
+-   "error": "parse error",
++   "error": "no response",
+    "ok": false,
+  }
+
+ ❯ src/bridge/__tests__/nativeGraph.test.ts:735:46
+    733|   it("nativePresetLoad parse error", async () => {
+    734|     bridge.mock.mockResolvedValueOnce("{bad");
+    735|     expect(await nativePresetLoad("n", "p")).toEqual({
+       |                                              ^
+    736|       ok: false,
+    737|       error: "parse error",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[55/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > preset wrappers (JSON-parse + safe defaults) > nativePresetList happy path with filter
+AssertionError: expected { ok: false, presets: [], …(1) } to deeply equal { ok: true, presets: [ 'a', 'b' ] }
+
+- Expected
++ Received
+
+  {
+-   "ok": true,
+-   "presets": [
+-     "a",
+-     "b",
+-   ],
++   "error": "no response",
++   "ok": false,
++   "presets": [],
+  }
+
+ ❯ src/bridge/__tests__/nativeGraph.test.ts:746:48
+    744|       JSON.stringify({ ok: true, presets: ["a", "b"] }),
+    745|     );
+    746|     expect(await nativePresetList("vst3:foo")).toEqual({
+       |                                                ^
+    747|       ok: true,
+    748|       presets: ["a", "b"],
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[56/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > preset wrappers (JSON-parse + safe defaults) > nativePresetList default pluginId is empty string
+AssertionError: expected "vi.fn()" to be called with arguments: [ 'elementPresetList', [ '' ] ]
+
+Number of calls: 0
+
+ ❯ src/bridge/__tests__/nativeGraph.test.ts:758:25
+    756|     );
+    757|     await nativePresetList();
+    758|     expect(bridge.mock).toHaveBeenCalledWith("elementPresetList", [""]…
+       |                         ^
+    759|   });
+    760|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[57/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeGraph.test.ts > preset wrappers (JSON-parse + safe defaults) > nativePresetList parse error returns empty array
+AssertionError: expected { ok: false, presets: [], …(1) } to deeply equal { ok: false, presets: [], …(1) }
+
+- Expected
++ Received
+
+  {
+-   "error": "parse error",
++   "error": "no response",
+    "ok": false,
+    "presets": [],
+  }
+
+ ❯ src/bridge/__tests__/nativeGraph.test.ts:763:38
+    761|   it("nativePresetList parse error returns empty array", async () => {
+    762|     bridge.mock.mockResolvedValueOnce("{bad");
+    763|     expect(await nativePresetList()).toEqual({
+       |                                      ^
+    764|       ok: false,
+    765|       presets: [],
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[58/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeKeyboard.test.ts > nativeVirtualKeyboardNoteOn > happy path: returns true when host returns true
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/bridge/__tests__/nativeKeyboard.test.ts:32:20
+     30|     bridge.mock.mockResolvedValueOnce(true);
+     31|     const result = await nativeVirtualKeyboardNoteOn(60, 0.8, 1);
+     32|     expect(result).toBe(true);
+       |                    ^
+     33|     expect(bridge.mock).toHaveBeenCalledWith(
+     34|       "elementVirtualKeyboardNoteOn",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[59/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeKeyboard.test.ts > nativeVirtualKeyboardNoteOff > happy path: returns true when host returns true
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/bridge/__tests__/nativeKeyboard.test.ts:64:20
+     62|     bridge.mock.mockResolvedValueOnce(true);
+     63|     const result = await nativeVirtualKeyboardNoteOff(60, 1);
+     64|     expect(result).toBe(true);
+       |                    ^
+     65|     expect(bridge.mock).toHaveBeenCalledWith(
+     66|       "elementVirtualKeyboardNoteOff",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[60/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativePerform.test.ts > nativePerformSetActiveScene > happy path: returns true and passes index to host
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/bridge/__tests__/nativePerform.test.ts:35:50
+     33|   it("happy path: returns true and passes index to host", async () => {
+     34|     bridge.mock.mockResolvedValueOnce(BridgePresets.boolOk);
+     35|     expect(await nativePerformSetActiveScene(2)).toBe(true);
+       |                                                  ^
+     36|     expect(bridge.mock).toHaveBeenCalledWith(
+     37|       "elementPerformSetActiveScene",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[61/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativePerform.test.ts > nativePerformAddScene > happy path: returns true and passes name to host
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/bridge/__tests__/nativePerform.test.ts:66:53
+     64|   it("happy path: returns true and passes name to host", async () => {
+     65|     bridge.mock.mockResolvedValueOnce(true);
+     66|     expect(await nativePerformAddScene("My Scene")).toBe(true);
+       |                                                     ^
+     67|     expect(bridge.mock).toHaveBeenCalledWith("elementPerformAddScene",…
+     68|       "My Scene",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[62/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativePerform.test.ts > nativePerformCaptureScene > happy path: returns true, called with no args
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/bridge/__tests__/nativePerform.test.ts:91:47
+     89|   it("happy path: returns true, called with no args", async () => {
+     90|     bridge.mock.mockResolvedValueOnce(true);
+     91|     expect(await nativePerformCaptureScene()).toBe(true);
+       |                                               ^
+     92|     expect(bridge.mock).toHaveBeenCalledWith("elementPerformCaptureSce…
+     93|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[63/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativePerform.test.ts > nativePerformDeleteScene > happy path: returns true and passes index to host
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/bridge/__tests__/nativePerform.test.ts:114:47
+    112|   it("happy path: returns true and passes index to host", async () => {
+    113|     bridge.mock.mockResolvedValueOnce(true);
+    114|     expect(await nativePerformDeleteScene(1)).toBe(true);
+       |                                               ^
+    115|     expect(bridge.mock).toHaveBeenCalledWith("elementPerformDeleteScen…
+    116|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[64/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativePerform.test.ts > nativePerformRenameScene > happy path: returns true and passes index + name to host
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/bridge/__tests__/nativePerform.test.ts:137:55
+    135|   it("happy path: returns true and passes index + name to host", async…
+    136|     bridge.mock.mockResolvedValueOnce(true);
+    137|     expect(await nativePerformRenameScene(0, "Main")).toBe(true);
+       |                                                       ^
+    138|     expect(bridge.mock).toHaveBeenCalledWith("elementPerformRenameScen…
+    139|       0,
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[65/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativePluginEditor.test.ts > nativePluginEditorOpen > happy path: returns true immediately when first call succeeds
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/bridge/__tests__/nativePluginEditor.test.ts:39:20
+     37|     await vi.runAllTimersAsync();
+     38|     const result = await promise;
+     39|     expect(result).toBe(true);
+       |                    ^
+     40|     expect(bridge.mock).toHaveBeenCalledWith("elementPluginEditorOpen"…
+     41|       "node-1",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[66/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativePluginEditor.test.ts > nativePluginEditorOpen > retries and succeeds on the second attempt
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/bridge/__tests__/nativePluginEditor.test.ts:64:20
+     62|     await vi.runAllTimersAsync();
+     63|     const result = await promise;
+     64|     expect(result).toBe(true);
+       |                    ^
+     65|     expect(bridge.mock).toHaveBeenCalledTimes(2);
+     66|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[67/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativePluginEditor.test.ts > nativePluginEditorClose > fire-and-forget: resolves void, calls the host
+AssertionError: expected "vi.fn()" to be called with arguments: [ 'elementPluginEditorClose', [] ]
+
+Number of calls: 0
+
+ ❯ src/bridge/__tests__/nativePluginEditor.test.ts:84:25
+     82|     const result = await nativePluginEditorClose();
+     83|     expect(result).toBeUndefined();
+     84|     expect(bridge.mock).toHaveBeenCalledWith("elementPluginEditorClose…
+       |                         ^
+     85|   });
+     86| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[68/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativePluginEditor.test.ts > nativePluginEditorSetBounds > passes bounds to host and resolves void
+AssertionError: expected "vi.fn()" to be called with arguments: [ Array(2) ]
+
+Number of calls: 0
+
+ ❯ src/bridge/__tests__/nativePluginEditor.test.ts:103:25
+    101|     const result = await nativePluginEditorSetBounds(10, 20, 800, 600);
+    102|     expect(result).toBeUndefined();
+    103|     expect(bridge.mock).toHaveBeenCalledWith("elementPluginEditorSetBo…
+       |                         ^
+    104|       10,
+    105|       20,
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[69/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativePluginEditor.test.ts > nativePluginEditorFloat > fire-and-forget: resolves void, calls the host
+AssertionError: expected "vi.fn()" to be called with arguments: [ 'elementPluginEditorFloat', [] ]
+
+Number of calls: 0
+
+ ❯ src/bridge/__tests__/nativePluginEditor.test.ts:127:25
+    125|     const result = await nativePluginEditorFloat();
+    126|     expect(result).toBeUndefined();
+    127|     expect(bridge.mock).toHaveBeenCalledWith("elementPluginEditorFloat…
+       |                         ^
+    128|   });
+    129| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[70/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativePrefs.test.ts > nativeAudioApplySetup > happy path: returns true and passes setup object to host
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/bridge/__tests__/nativePrefs.test.ts:44:48
+     42|     };
+     43|     bridge.mock.mockResolvedValueOnce(true);
+     44|     expect(await nativeAudioApplySetup(setup)).toBe(true);
+       |                                                ^
+     45|     expect(bridge.mock).toHaveBeenCalledWith("elementAudioApplySetup",…
+     46|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[71/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativePrefs.test.ts > nativeOscApplyHost > happy path: returns true and forwards enabled + port
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/bridge/__tests__/nativePrefs.test.ts:68:43
+     66|     const osc: OscHostSnapshot = { enabled: true, port: 9000 };
+     67|     bridge.mock.mockResolvedValueOnce(true);
+     68|     expect(await nativeOscApplyHost(osc)).toBe(true);
+       |                                           ^
+     69|     expect(bridge.mock).toHaveBeenCalledWith("elementOscApplyHost", [
+     70|       true,
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[72/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativePrefs.test.ts > nativeMappingSetLearning > happy path: returns true
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/bridge/__tests__/nativePrefs.test.ts:96:50
+     94|   it("happy path: returns true", async () => {
+     95|     bridge.mock.mockResolvedValueOnce(true);
+     96|     expect(await nativeMappingSetLearning(true)).toBe(true);
+       |                                                  ^
+     97|     expect(bridge.mock).toHaveBeenCalledWith("elementMappingSetLearnin…
+     98|       true,
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[73/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativePrefs.test.ts > nativeMappingRemoveMap > happy path: returns true and forwards index
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/bridge/__tests__/nativePrefs.test.ts:121:45
+    119|   it("happy path: returns true and forwards index", async () => {
+    120|     bridge.mock.mockResolvedValueOnce(true);
+    121|     expect(await nativeMappingRemoveMap(3)).toBe(true);
+       |                                             ^
+    122|     expect(bridge.mock).toHaveBeenCalledWith("elementMappingRemoveMap"…
+    123|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[74/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativePrefs.test.ts > nativeHideAllPluginWindows > happy path: returns true
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/bridge/__tests__/nativePrefs.test.ts:144:48
+    142|   it("happy path: returns true", async () => {
+    143|     bridge.mock.mockResolvedValueOnce(true);
+    144|     expect(await nativeHideAllPluginWindows()).toBe(true);
+       |                                                ^
+    145|     expect(bridge.mock).toHaveBeenCalledWith(
+    146|       "elementHideAllPluginWindows",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[75/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativePrefs.test.ts > nativeHostShowAllPluginWindows > happy path: returns true
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/bridge/__tests__/nativePrefs.test.ts:170:52
+    168|   it("happy path: returns true", async () => {
+    169|     bridge.mock.mockResolvedValueOnce(true);
+    170|     expect(await nativeHostShowAllPluginWindows()).toBe(true);
+       |                                                    ^
+    171|   });
+    172|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[76/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativePrefs.test.ts > void wrappers > nativeWebDismissOverlay calls host and resolves void
+AssertionError: expected "vi.fn()" to be called with arguments: [ 'elementWebDismissOverlay', [] ]
+
+Number of calls: 0
+
+ ❯ src/bridge/__tests__/nativePrefs.test.ts:193:25
+    191|     bridge.mock.mockResolvedValueOnce(undefined);
+    192|     expect(await nativeWebDismissOverlay()).toBeUndefined();
+    193|     expect(bridge.mock).toHaveBeenCalledWith("elementWebDismissOverlay…
+       |                         ^
+    194|   });
+    195|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[77/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativePrefs.test.ts > void wrappers > nativeOpenLuaConsole calls host and resolves void
+AssertionError: expected "vi.fn()" to be called with arguments: [ 'elementOpenLuaConsole', [] ]
+
+Number of calls: 0
+
+ ❯ src/bridge/__tests__/nativePrefs.test.ts:199:25
+    197|     bridge.mock.mockResolvedValueOnce(undefined);
+    198|     expect(await nativeOpenLuaConsole()).toBeUndefined();
+    199|     expect(bridge.mock).toHaveBeenCalledWith("elementOpenLuaConsole", …
+       |                         ^
+    200|   });
+    201|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[78/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativePrefs.test.ts > void wrappers > nativeOpenGraphMixer calls host and resolves void
+AssertionError: expected "vi.fn()" to be called with arguments: [ 'elementOpenGraphMixer', [] ]
+
+Number of calls: 0
+
+ ❯ src/bridge/__tests__/nativePrefs.test.ts:205:25
+    203|     bridge.mock.mockResolvedValueOnce(undefined);
+    204|     expect(await nativeOpenGraphMixer()).toBeUndefined();
+    205|     expect(bridge.mock).toHaveBeenCalledWith("elementOpenGraphMixer", …
+       |                         ^
+    206|   });
+    207| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[79/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeSession.test.ts > boolean session wrappers > nativeSessionOpen happy: returns true
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/bridge/__tests__/nativeSession.test.ts:44:39
+     42|   it("nativeSessionOpen happy: returns true", async () => {
+     43|     bridge.mock.mockResolvedValueOnce(true);
+     44|     expect(await nativeSessionOpen()).toBe(true);
+       |                                       ^
+     45|     expect(bridge.mock).toHaveBeenCalledWith("elementSessionOpen", []);
+     46|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[80/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeSession.test.ts > boolean session wrappers > nativeSessionOpenPath happy: returns true and forwards path
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/bridge/__tests__/nativeSession.test.ts:55:67
+     53|   it("nativeSessionOpenPath happy: returns true and forwards path", as…
+     54|     bridge.mock.mockResolvedValueOnce(true);
+     55|     expect(await nativeSessionOpenPath("/home/user/session.els")).toBe…
+       |                                                                   ^
+     56|     expect(bridge.mock).toHaveBeenCalledWith("elementSessionOpenPath",…
+     57|       "/home/user/session.els",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[81/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeSession.test.ts > boolean session wrappers > nativeSessionSetActiveGraph happy: returns true
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/bridge/__tests__/nativeSession.test.ts:68:50
+     66|   it("nativeSessionSetActiveGraph happy: returns true", async () => {
+     67|     bridge.mock.mockResolvedValueOnce(true);
+     68|     expect(await nativeSessionSetActiveGraph(0)).toBe(true);
+       |                                                  ^
+     69|     expect(bridge.mock).toHaveBeenCalledWith(
+     70|       "elementSessionSetActiveGraph",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[82/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeSession.test.ts > boolean session wrappers > nativeSessionImportGraph happy: returns true
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/bridge/__tests__/nativeSession.test.ts:82:46
+     80|   it("nativeSessionImportGraph happy: returns true", async () => {
+     81|     bridge.mock.mockResolvedValueOnce(true);
+     82|     expect(await nativeSessionImportGraph()).toBe(true);
+       |                                              ^
+     83|     expect(bridge.mock).toHaveBeenCalledWith("elementSessionImportGrap…
+     84|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[83/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeSession.test.ts > boolean session wrappers > nativeSessionExportGraph happy: returns true
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/bridge/__tests__/nativeSession.test.ts:88:46
+     86|   it("nativeSessionExportGraph happy: returns true", async () => {
+     87|     bridge.mock.mockResolvedValueOnce(true);
+     88|     expect(await nativeSessionExportGraph()).toBe(true);
+       |                                              ^
+     89|     expect(bridge.mock).toHaveBeenCalledWith("elementSessionExportGrap…
+     90|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[84/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeSession.test.ts > void session wrappers > nativeSessionNew resolves void
+AssertionError: expected "vi.fn()" to be called with arguments: [ 'elementSessionNew', [] ]
+
+Number of calls: 0
+
+ ❯ src/bridge/__tests__/nativeSession.test.ts:107:25
+    105|     bridge.mock.mockResolvedValueOnce(undefined);
+    106|     expect(await nativeSessionNew()).toBeUndefined();
+    107|     expect(bridge.mock).toHaveBeenCalledWith("elementSessionNew", []);
+       |                         ^
+    108|   });
+    109|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[85/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeSession.test.ts > void session wrappers > nativeSessionSave resolves void
+AssertionError: expected "vi.fn()" to be called with arguments: [ 'elementSessionSave', [] ]
+
+Number of calls: 0
+
+ ❯ src/bridge/__tests__/nativeSession.test.ts:113:25
+    111|     bridge.mock.mockResolvedValueOnce(undefined);
+    112|     expect(await nativeSessionSave()).toBeUndefined();
+    113|     expect(bridge.mock).toHaveBeenCalledWith("elementSessionSave", []);
+       |                         ^
+    114|   });
+    115|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[86/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeSession.test.ts > void session wrappers > nativeSessionSaveAs resolves void
+AssertionError: expected "vi.fn()" to be called with arguments: [ 'elementSessionSaveAs', [] ]
+
+Number of calls: 0
+
+ ❯ src/bridge/__tests__/nativeSession.test.ts:119:25
+    117|     bridge.mock.mockResolvedValueOnce(undefined);
+    118|     expect(await nativeSessionSaveAs()).toBeUndefined();
+    119|     expect(bridge.mock).toHaveBeenCalledWith("elementSessionSaveAs", […
+       |                         ^
+    120|   });
+    121| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[87/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeSession.test.ts > nativeSessionListFiles > happy path: returns parsed entries array from JSON string
+AssertionError: expected [] to have a length of 1 but got +0
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/bridge/__tests__/nativeSession.test.ts:141:20
+    139|     bridge.mock.mockResolvedValueOnce(JSON.stringify({ entries }));
+    140|     const result = await nativeSessionListFiles();
+    141|     expect(result).toHaveLength(1);
+       |                    ^
+    142|     expect(result[0].name).toBe("b");
+    143|     expect(bridge.mock).toHaveBeenCalledWith("elementSessionListFiles"…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[88/149]⎯
+
+ FAIL  |unit| src/bridge/__tests__/nativeSession.test.ts > nativeSessionListFiles > returns empty array and calls logBridgeError on invalid JSON
+AssertionError: expected "vi.fn()" to be called once, but got 0 times
+ ❯ src/bridge/__tests__/nativeSession.test.ts:159:32
+    157|     bridge.mock.mockResolvedValueOnce("{bad");
+    158|     expect(await nativeSessionListFiles()).toEqual([]);
+    159|     expect(mockLogBridgeError).toHaveBeenCalledOnce();
+       |                                ^
+    160|     expect(mockLogBridgeError.mock.calls[0][0]).toBe(
+    161|       "nativeSessionListFiles.parse",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[89/149]⎯
+
+ FAIL  |unit| src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > populates plugins from bridge response
+AssertionError: expected [] to have a length of 1 but got +0
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/stores/__tests__/usePluginBrowserStore.test.ts:49:21
+     47|     await usePluginBrowserStore.getState().refresh();
+     48|     const { plugins } = usePluginBrowserStore.getState();
+     49|     expect(plugins).toHaveLength(1);
+       |                     ^
+     50|     expect(plugins[0].identifier).toBe("vst3.Reverb");
+     51|     expect(plugins[0].name).toBe("Hall Reverb");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[90/149]⎯
+
+ FAIL  |unit| src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > prefers descriptiveName over name
+TypeError: Cannot read properties of undefined (reading 'name')
+ ❯ src/stores/__tests__/usePluginBrowserStore.test.ts:65:53
+     63|     });
+     64|     await usePluginBrowserStore.getState().refresh();
+     65|     expect(usePluginBrowserStore.getState().plugins[0].name).toBe("Lon…
+       |                                                     ^
+     66|   });
+     67|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[91/149]⎯
+
+ FAIL  |unit| src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > falls back to identifier when name and descriptiveName are absent
+TypeError: Cannot read properties of undefined (reading 'name')
+ ❯ src/stores/__tests__/usePluginBrowserStore.test.ts:75:53
+     73|     });
+     74|     await usePluginBrowserStore.getState().refresh();
+     75|     expect(usePluginBrowserStore.getState().plugins[0].name).toBe("fal…
+       |                                                     ^
+     76|   });
+     77|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[92/149]⎯
+
+ FAIL  |unit| src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > populates favoriteIdentifiers Set
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/stores/__tests__/usePluginBrowserStore.test.ts:86:47
+     84|     await usePluginBrowserStore.getState().refresh();
+     85|     const { favoriteIdentifiers } = usePluginBrowserStore.getState();
+     86|     expect(favoriteIdentifiers.has("vst3.A")).toBe(true);
+       |                                               ^
+     87|     expect(favoriteIdentifiers.has("vst3.B")).toBe(true);
+     88|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[93/149]⎯
+
+ FAIL  |unit| src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > populates recentIdentifiers list
+AssertionError: expected [] to deeply equal [ 'vst3.Recent1', 'vst3.Recent2' ]
+
+- Expected
++ Received
+
+- [
+-   "vst3.Recent1",
+-   "vst3.Recent2",
+- ]
++ []
+
+ ❯ src/stores/__tests__/usePluginBrowserStore.test.ts:97:64
+     95|     });
+     96|     await usePluginBrowserStore.getState().refresh();
+     97|     expect(usePluginBrowserStore.getState().recentIdentifiers).toEqual…
+       |                                                                ^
+     98|       "vst3.Recent1",
+     99|       "vst3.Recent2",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[94/149]⎯
+
+ FAIL  |unit| src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > filters plugins missing identifier
+AssertionError: expected [] to have a length of 1 but got +0
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/stores/__tests__/usePluginBrowserStore.test.ts:114:21
+    112|     await usePluginBrowserStore.getState().refresh();
+    113|     const { plugins } = usePluginBrowserStore.getState();
+    114|     expect(plugins).toHaveLength(1);
+       |                     ^
+    115|     expect(plugins[0].identifier).toBe("vst3.HasId");
+    116|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[95/149]⎯
+
+ FAIL  |unit| src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > accepts JSON string response and parses it
+AssertionError: expected [] to have a length of 1 but got +0
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/stores/__tests__/usePluginBrowserStore.test.ts:126:54
+    124|     bridge.mock.mockResolvedValueOnce(payload);
+    125|     await usePluginBrowserStore.getState().refresh();
+    126|     expect(usePluginBrowserStore.getState().plugins).toHaveLength(1);
+       |                                                      ^
+    127|   });
+    128|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[96/149]⎯
+
+ FAIL  |unit| src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > skips non-string entries in favoriteIdentifiers
+AssertionError: expected +0 to be 2 // Object.is equality
+
+- Expected
++ Received
+
+- 2
++ 0
+
+ ❯ src/stores/__tests__/usePluginBrowserStore.test.ts:158:38
+    156|     await usePluginBrowserStore.getState().refresh();
+    157|     const { favoriteIdentifiers } = usePluginBrowserStore.getState();
+    158|     expect(favoriteIdentifiers.size).toBe(2);
+       |                                      ^
+    159|     expect(favoriteIdentifiers.has("vst3.Good")).toBe(true);
+    160|     expect(favoriteIdentifiers.has("vst3.Also")).toBe(true);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[97/149]⎯
+
+ FAIL  |unit| src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > category 'Instrument' -> blockCategory 'Synth Bass'
+ FAIL  |unit| src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > category 'synth lead' -> blockCategory 'SynthMaster'
+ FAIL  |unit| src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > category 'sampler' -> blockCategory 'Kontakt'
+ FAIL  |unit| src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > category 'Generator' -> blockCategory 'Kick Gen'
+ FAIL  |unit| src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > category 'MIDI' -> blockCategory 'Arp+'
+ FAIL  |unit| src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > category 'Sequencer' -> blockCategory 'Step Seq'
+ FAIL  |unit| src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > category 'Utility' -> blockCategory 'Gain Trim'
+ FAIL  |unit| src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > category 'Analysis' -> blockCategory 'Spectrum'
+ FAIL  |unit| src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > category 'Reverb' -> blockCategory 'Hall Verb'
+ FAIL  |unit| src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > category 'Delay' -> blockCategory 'Tape Echo'
+ FAIL  |unit| src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > category 'Uncategorised' -> blockCategory 'Unknown'
+ FAIL  |unit| src/stores/__tests__/usePluginBrowserStore.test.ts > usePluginBrowserStore.refresh > category '' -> blockCategory 'No Category'
+TypeError: Cannot read properties of undefined (reading 'blockCategory')
+ ❯ src/stores/__tests__/usePluginBrowserStore.test.ts:189:55
+    187|       });
+    188|       await usePluginBrowserStore.getState().refresh();
+    189|       expect(usePluginBrowserStore.getState().plugins[0].blockCategory…
+       |                                                       ^
+    190|     },
+    191|   );
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[98/149]⎯
+
+ FAIL  |unit| src/components/canvas/__tests__/Block.test.tsx > <Block /> > shows mute overlay when muted=true
+AssertionError: expected null not to be null
+ ❯ src/components/canvas/__tests__/Block.test.tsx:145:25
+    143|     // Mute overlay background is rgba(0,0,0,0.38)
+    144|     const overlay = container.querySelector('[style*="rgba(0,0,0,0.38)…
+    145|     expect(overlay).not.toBeNull();
+       |                         ^
+    146|   });
+    147|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[99/149]⎯
+
+ FAIL  |unit| src/components/canvas/__tests__/Block.test.tsx > <Block /> > renders error indicator when error=true
+AssertionError: expected null not to be null
+ ❯ src/components/canvas/__tests__/Block.test.tsx:154:23
+    152|     // Error badge text or aria-label varies; check presence of error-…
+    153|     const errEl = screen.queryByText(/error|failed|!/i);
+    154|     expect(errEl).not.toBeNull();
+       |                       ^
+    155|   });
+    156|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[100/149]⎯
+
+ FAIL  |unit| src/components/canvas/__tests__/Block.test.tsx > <Block /> > applies generator (blue) accent for category=generator
+AssertionError: expected null not to be null
+ ❯ src/components/canvas/__tests__/Block.test.tsx:162:20
+    160|     const { container } = renderBlock({ category: "generator" });
+    161|     const el = container.querySelector('[style*="#4A90D9"]');
+    162|     expect(el).not.toBeNull();
+       |                    ^
+    163|   });
+    164|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[101/149]⎯
+
+ FAIL  |unit| src/components/canvas/__tests__/Block.test.tsx > <Block /> > applies modifier (orange) accent for category=modifier
+AssertionError: expected null not to be null
+ ❯ src/components/canvas/__tests__/Block.test.tsx:168:20
+    166|     const { container } = renderBlock({ category: "modifier" });
+    167|     const el = container.querySelector('[style*="#E8A838"]');
+    168|     expect(el).not.toBeNull();
+       |                    ^
+    169|   });
+    170|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[102/149]⎯
+
+ FAIL  |unit| src/components/canvas/__tests__/Block.test.tsx > <Block /> > applies logic (teal) accent for category=logic
+AssertionError: expected null not to be null
+ ❯ src/components/canvas/__tests__/Block.test.tsx:174:20
+    172|     const { container } = renderBlock({ category: "logic" });
+    173|     const el = container.querySelector('[style*="#2BC4C4"]');
+    174|     expect(el).not.toBeNull();
+       |                    ^
+    175|   });
+    176|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[103/149]⎯
+
+ FAIL  |unit| src/components/canvas/__tests__/Block.test.tsx > <Block /> > strips ARGB prefix from JUCE Colour::toString() (#AARRGGBB → #RRGGBB)
+AssertionError: expected null not to be null
+ ❯ src/components/canvas/__tests__/Block.test.tsx:183:20
+    181|     // hostColourOutline maps #FF1A2B3C → #1A2B3C
+    182|     const el = container.querySelector('[style*="#1A2B3C"]');
+    183|     expect(el).not.toBeNull();
+       |                    ^
+    184|   });
+    185|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[104/149]⎯
+
+ FAIL  |unit| src/components/canvas/__tests__/Block.test.tsx > <Block /> > uses 7-char hex colour directly
+AssertionError: expected null not to be null
+ ❯ src/components/canvas/__tests__/Block.test.tsx:189:20
+    187|     const { container } = renderBlock({ hostColor: "#1A2B3C" });
+    188|     const el = container.querySelector('[style*="#1A2B3C"]');
+    189|     expect(el).not.toBeNull();
+       |                    ^
+    190|   });
+    191|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[105/149]⎯
+
+ FAIL  |unit| src/components/canvas/__tests__/CommandPalette.test.tsx > <CommandPalette /> > shows plugin entries
+TestingLibraryElementError: Unable to find an element with the text: Surge XT. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make your matcher more flexible.
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33manimate[39m=[32m"visible"[39m
+      [33mclass[39m=[32m"fixed inset-0 z-[60] bg-canvas/80"[39m
+      [33mexit[39m=[32m"exit"[39m
+      [33minitial[39m=[32m"hidden"[39m
+      [33mtransition[39m=[32m"[object Object]"[39m
+      [33mvariants[39m=[32m"[object Object]"[39m
+    [36m/>[39m
+    [36m<div[39m
+      [33manimate[39m=[32m"visible"[39m
+      [33mclass[39m=[32m"fixed z-[61] left-1/2 -translate-x-1/2"[39m
+      [33mexit[39m=[32m"exit"[39m
+      [33minitial[39m=[32m"hidden"[39m
+      [33mstyle[39m=[32m"top: 40%;"[39m
+      [33mtransition[39m=[32m"[object Object]"[39m
+      [33mvariants[39m=[32m"[object Object]"[39m
+    [36m>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"w-[520px] max-h-[420px] bg-panel rounded-lg overflow-hidden flex flex-col"[39m
+        [33mstyle[39m=[32m"box-shadow: 0 16px 64px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.05);"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"p-3 border-b border-white/5"[39m
+        [36m>[39m
+          [36m<input[39m
+            [33mclass[39m=[32m"w-full bg-pressed border-none rounded px-3 py-1.5 text-[11px] text-text-primary placeholder-text-dim shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] outline-none focus:ring-1 focus:ring-generator/30 transition-shadow duration-100 !text-[13px] !py-2.5 !px-4"[39m
+            [33mplaceholder[39m=[32m"Search commands, plugins, blocks, scenes..."[39m
+            [33mtype[39m=[32m"text"[39m
+            [33mvalue[39m=[32m""[39m
+          [36m/>[39m
+        [36m</div>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"flex-1 overflow-y-auto py-2"[39m
+        [36m>[39m
+          [36m<div>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"px-4 pt-3 pb-1 text-[10px] text-text-dim font-bold uppercase tracking-widest"[39m
+            [36m>[39m
+              [0mActions[0m
+            [36m</div>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"w-full text-left px-4 py-1.5 flex items-center justify-between gap-4 transition-colors bg-elevated text-text-primary"[39m
+              [33mdata-active[39m=[32m"true"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[12px] truncate"[39m
+              [36m>[39m
+                [0mUndo[0m
+              [36m</span>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[10px] text-text-dim shrink-0 tabular"[39m
+              [36m>[39m
+                [0mCmd+Z[0m
+              [36m</span>[39m
+            [36m</button>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"w-full text-left px-4 py-1.5 flex items-center justify-between gap-4 transition-colors text-text-secondary"[39m
+              [33mdata-active[39m=[32m"false"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[12px] truncate"[39m
+              [36m>[39m
+                [0mRedo[0m
+              [36m</span>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[10px] text-text-dim shrink-0 tabular"[39m
+              [36m>[39m
+                [0mCmd+Shift+Z[0m
+              [36m</span>[39m
+            [36m</button>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"w-full text-left px-4 py-1.5 flex items-center justify-between gap-4 transition-colors text-text-secondary"[39m
+              [33mdata-active[39m=[32m"false"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[12px] truncate"[39m
+              [36m>[39m
+                [0mSave Project[0m
+              [36m</span>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[10px] text-text-dim shrink-0 tabular"[39m
+              [36m>[39m
+                [0mCmd+S[0m
+              [36m</span>[39m
+            [36m</button>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"w-full text-left px-4 py-1.5 flex items-center justify-between gap-4 transition-colors text-text-secondary"[39m
+              [33mdata-active[39m=[32m"false"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[12px] truncate"[39m
+              [36m>[39m
+                [0mOpen Project…[0m
+              [36m</span>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[10px] text-text-dim shrink-0 tabular"[39m
+              [36m>[39m
+                [0mFile dialog[0m
+              [36m</span>[39m
+            [36m</button>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"w-full text-left px-4 py-1.5 flex items-center justify-between gap-4 transition-colors text-text-secondary"[39m
+              [33mdata-active[39m=[32m"false"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[12px] truncate"[39m
+              [36m>[39m
+                [0mPlay / Pause Engine[0m
+              [36m</span>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[10px] text-text-dim shrink-0 tabular"[39m
+              [36m>[39m
+                [0mTransport[0m
+              [36m</span>[39m
+            [36m</button>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"w-full text-left px-4 py-1.5 flex items-center justify-between gap-4 transition-colors text-text-secondary"[39m
+              [33mdata-active[39m=[32m"false"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[12px] truncate"[39m
+              [36m>[39m
+                [0mBypass All Blocks[0m
+              [36m</span>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[10px] text-text-dim shrink-0 tabular"[39m
+              [36m>[39m
+                [0m2 blocks[0m
+              [36m</span>[39m
+            [36m</button>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"w-full text-left px-4 py-1.5 flex items-center justify-between gap-4 transition-colors text-text-secondary"[39m
+              [33mdata-active[39m=[32m"false"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[12px] truncate"[39m
+              [36m>[39m
+                [0mFit Board to View[0m
+              [36m</span>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[10px] text-text-dim shrink-0 tabular"[39m
+              [36m>[39m
+                [0mCmd+0[0m
+              [36m</span>[39m
+            [36m</button>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"w-full text-left px-4 py-1.5 flex items-center justify-between gap-4 transition-colors text-text-secondary"[39m
+              [33mdata-active[39m=[32m"false"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[12px] truncate"[39m
+              [36m>[39m
+                [0mToggle Edit / Perform[0m
+              [36m</span>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[10px] text-text-dim shrink-0 tabular"[39m
+              [36m>[39m
+                [0mMode switch[0m
+              [36m</span>[39m
+            [36m</button>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"w-full text-left px-4 py-1.5 flex items-center justify-between gap-4 transition-colors text-text-secondary"[39m
+              [33mdata-active[39m=[32m"false"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[12px] truncate"[39m
+              [36m>[39m
+                [0mToggle Minimap[0m
+              [36m</span>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[10px] text-text-dim shrink-0 tabular"[39m
+              [36m>[39m
+                [0mShift+M[0m
+              [36m</span>[39m
+            [36m</button>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"w-full text-left px-4 py-1.5 flex items-center justify-between gap-4 transition-colors text-text-secondary"[39m
+              [33mdata-active[39m=[32m"false"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[12px] truncate"[39m
+              [36m>[39m
+                [0mCreate Comment Box[0m
+              [36m</span>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[10px] text-text-dim shrink-0 tabular"[39m
+              [36m>[39m
+                [0mShift+C[0m
+              [36m</span>[39m
+            [36m</button>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"w-full text-left px-4 py-1.5 flex items-center justify-between gap-4 transition-colors text-text-secondary"[39m
+              [33mdata-active[39m=[32m"false"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[12px] truncate"[39m
+              [36m>[39m
+                [0mStart Recording[0m
+              [36m</span>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[10px] text-text-dim shrink-0 tabular"[39m
+              [36m>[39m
+                [0mTransport[0m
+              [36m</span>[39m
+            [36m</button>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"w-full text-left px-4 py-1.5 flex items-center justify-between gap-4 transition-colors text-text-secondary"[39m
+              [33mdata-active[39m=[32m"false"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[12px] truncate"[39m
+              [36m>[39m
+                [0mStop Recording[0m
+              [36m</span>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[10px] text-text-dim shrink-0 tabular"[39m
+              [36m>[39m
+                [0mTransport[0m
+              [36m</span>[39m
+            [36m</button>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"w-full text-left px-4 py-1.5 flex items-center justify-between gap-4 transition-colors text-text-secondary"[39m
+              [33mdata-active[39m=[32m"false"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[12px] truncate"[39m
+              [36m>[39m
+                [0mHide All Plugin Windows[0m
+              [36m</span>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[10px] text-text-dim shrink-0 tabular"[39m
+              [36m>[39m
+                [0mPlugin editors[0m
+              [36m</span>[39m
+            [36m</button>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"w-full text-left px-4 py-1.5 flex items-center justify-between gap-4 transition-colors text-text-secondary"[39m
+              [33mdata-active[39m=[32m"false"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[12px] truncate"[39m
+              [36m>[39m
+                [0mToggle Virtual Keyboard[0m
+              [36m</span>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[10px] text-text-dim shrink-0 tabular"[39m
+              [36m>[39m
+                [0mMIDI input · Shift+K[0m
+              [36m</span>[39m
+            [36m</button>[39m
+          [36m</div>[39m
+          [36m<div>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"px-4 pt-3 pb-1 text-[10px] text-text-dim font-bold uppercase tracking-widest"[39m
+            [36m>[39m
+              [0mBlocks on Canvas[0m
+            [36m</div>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"w-full text-left px-4 py-1.5 flex items-center justify-between gap-4 transition-colors text-text-secondary"[39m
+              [33mdata-active[39m=[32m"false"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[12px] truncate"[39m
+              [36m/>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[10px] text-text-dim shrink-0 tabular"[39m
+              [36m>[39m
+                [0mundefined · undefined[0m
+              [36m</span>[39m
+            [36m</button>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"w-full text-left px-4 py-1.5 flex items-center justify-between gap-4 transition-colors text-text-secondary"[39m
+              [33mdata-active[39m=[32m"false"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[12px] truncate"[39m
+              [36m/>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[10px] text-text-dim shrink-0 tabular"[39m
+              [36m>[39m
+                [0mundefined · undefined[0m
+              [36m</span>[39m
+            [36m</button>[39m
+          [36m</div>[39m
+        [36m</div>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"px-4 py-2 border-t border-white/5 flex items-center gap-4 text-[10px] text-text-dim"[39m
+        [36m>[39m
+          [36m<span>[39m
+            [36m<kbd[39m
+              [33mclass[39m=[32m"px-1 py-0.5 bg-pressed rounded text-[10px]"[39m
+            [36m>[39m
+              [0m↑↓[0m
+            [36m</kbd>[39m
+            [0m [0m
+            [0mnavigate[0m
+          [36m</span>[39m
+          [36m<span>[39m
+            [36m<kbd[39m
+              [33mclass[39m=[32m"px-1 py-0.5 bg-pressed rounded text-[10px]"[39m
+            [36m>[39m
+              [0m↵[0m
+            [36m</kbd>[39m
+            [0m [0m
+            [0mselect[0m
+          [36m</span>[39m
+          [36m<span>[39m
+            [36m<kbd[39m
+              [33mclass[39m=[32m"px-1 py-0.5 bg-pressed rounded text-[10px]"[39m
+            [36m>[39m
+              [0mesc[0m
+            [36m</kbd>[39m
+            [0m [0m
+            [0mclose[0m
+          [36m</span>[39m
+        [36m</div>[39m
+      [36m</div>[39m
+    [36m</div>[39m
+  [36m</div>[39m
+[36m</body>[39m
+ ❯ Object.getElementError node_modules/@testing-library/dom/dist/config.js:37:19
+ ❯ node_modules/@testing-library/dom/dist/query-helpers.js:76:38
+ ❯ node_modules/@testing-library/dom/dist/query-helpers.js:52:17
+ ❯ node_modules/@testing-library/dom/dist/query-helpers.js:95:19
+ ❯ src/components/canvas/__tests__/CommandPalette.test.tsx:162:19
+    160|   it("shows plugin entries", () => {
+    161|     render(<CommandPalette open={true} onClose={onClose} />);
+    162|     expect(screen.getByText("Surge XT")).toBeInTheDocument();
+       |                   ^
+    163|     expect(screen.getByText("EQ Pro")).toBeInTheDocument();
+    164|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[106/149]⎯
+
+ FAIL  |unit| src/components/canvas/__tests__/CommandPalette.test.tsx > <CommandPalette /> > filters results by search query
+ FAIL  |unit| src/components/canvas/__tests__/CommandPalette.test.tsx > <CommandPalette /> > is case-insensitive
+ FAIL  |unit| src/components/canvas/__tests__/CommandPalette.test.tsx > <CommandPalette /> > shows empty state when no results match
+TypeError: Cannot read properties of undefined (reading 'toLowerCase')
+ ❯ src/components/canvas/CommandPalette.tsx:345:22
+    343|     return allResults.filter(
+    344|       (result) =>
+    345|         result.label.toLowerCase().includes(q) ||
+       |                      ^
+    346|         result.hint?.toLowerCase().includes(q) ||
+    347|         result.category.includes(q),
+ ❯ src/components/canvas/CommandPalette.tsx:343:23
+ ❯ updateMemo node_modules/react-dom/cjs/react-dom-client.development.js:8795:19
+ ❯ Object.useMemo node_modules/react-dom/cjs/react-dom-client.development.js:26484:18
+ ❯ process.env.NODE_ENV.exports.useMemo node_modules/react/cjs/react.development.js:1251:34
+ ❯ CommandPalette src/components/canvas/CommandPalette.tsx:340:20
+ ❯ Object.react_stack_bottom_frame node_modules/react-dom/cjs/react-dom-client.development.js:25904:20
+ ❯ renderWithHooks node_modules/react-dom/cjs/react-dom-client.development.js:7662:22
+ ❯ updateFunctionComponent node_modules/react-dom/cjs/react-dom-client.development.js:10166:19
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[107/149]⎯
+
+ FAIL  |unit| src/components/canvas/__tests__/CommandPalette.test.tsx > <CommandPalette /> > renders category headers
+TestingLibraryElementError: Unable to find an element with the text: Plugins. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make your matcher more flexible.
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33manimate[39m=[32m"visible"[39m
+      [33mclass[39m=[32m"fixed inset-0 z-[60] bg-canvas/80"[39m
+      [33mexit[39m=[32m"exit"[39m
+      [33minitial[39m=[32m"hidden"[39m
+      [33mtransition[39m=[32m"[object Object]"[39m
+      [33mvariants[39m=[32m"[object Object]"[39m
+    [36m/>[39m
+    [36m<div[39m
+      [33manimate[39m=[32m"visible"[39m
+      [33mclass[39m=[32m"fixed z-[61] left-1/2 -translate-x-1/2"[39m
+      [33mexit[39m=[32m"exit"[39m
+      [33minitial[39m=[32m"hidden"[39m
+      [33mstyle[39m=[32m"top: 40%;"[39m
+      [33mtransition[39m=[32m"[object Object]"[39m
+      [33mvariants[39m=[32m"[object Object]"[39m
+    [36m>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"w-[520px] max-h-[420px] bg-panel rounded-lg overflow-hidden flex flex-col"[39m
+        [33mstyle[39m=[32m"box-shadow: 0 16px 64px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.05);"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"p-3 border-b border-white/5"[39m
+        [36m>[39m
+          [36m<input[39m
+            [33mclass[39m=[32m"w-full bg-pressed border-none rounded px-3 py-1.5 text-[11px] text-text-primary placeholder-text-dim shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] outline-none focus:ring-1 focus:ring-generator/30 transition-shadow duration-100 !text-[13px] !py-2.5 !px-4"[39m
+            [33mplaceholder[39m=[32m"Search commands, plugins, blocks, scenes..."[39m
+            [33mtype[39m=[32m"text"[39m
+            [33mvalue[39m=[32m""[39m
+          [36m/>[39m
+        [36m</div>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"flex-1 overflow-y-auto py-2"[39m
+        [36m>[39m
+          [36m<div>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"px-4 pt-3 pb-1 text-[10px] text-text-dim font-bold uppercase tracking-widest"[39m
+            [36m>[39m
+              [0mActions[0m
+            [36m</div>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"w-full text-left px-4 py-1.5 flex items-center justify-between gap-4 transition-colors bg-elevated text-text-primary"[39m
+              [33mdata-active[39m=[32m"true"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[12px] truncate"[39m
+              [36m>[39m
+                [0mUndo[0m
+              [36m</span>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[10px] text-text-dim shrink-0 tabular"[39m
+              [36m>[39m
+                [0mCmd+Z[0m
+              [36m</span>[39m
+            [36m</button>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"w-full text-left px-4 py-1.5 flex items-center justify-between gap-4 transition-colors text-text-secondary"[39m
+              [33mdata-active[39m=[32m"false"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[12px] truncate"[39m
+              [36m>[39m
+                [0mRedo[0m
+              [36m</span>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[10px] text-text-dim shrink-0 tabular"[39m
+              [36m>[39m
+                [0mCmd+Shift+Z[0m
+              [36m</span>[39m
+            [36m</button>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"w-full text-left px-4 py-1.5 flex items-center justify-between gap-4 transition-colors text-text-secondary"[39m
+              [33mdata-active[39m=[32m"false"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[12px] truncate"[39m
+              [36m>[39m
+                [0mSave Project[0m
+              [36m</span>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[10px] text-text-dim shrink-0 tabular"[39m
+              [36m>[39m
+                [0mCmd+S[0m
+              [36m</span>[39m
+            [36m</button>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"w-full text-left px-4 py-1.5 flex items-center justify-between gap-4 transition-colors text-text-secondary"[39m
+              [33mdata-active[39m=[32m"false"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[12px] truncate"[39m
+              [36m>[39m
+                [0mOpen Project…[0m
+              [36m</span>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[10px] text-text-dim shrink-0 tabular"[39m
+              [36m>[39m
+                [0mFile dialog[0m
+              [36m</span>[39m
+            [36m</button>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"w-full text-left px-4 py-1.5 flex items-center justify-between gap-4 transition-colors text-text-secondary"[39m
+              [33mdata-active[39m=[32m"false"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[12px] truncate"[39m
+              [36m>[39m
+                [0mPlay / Pause Engine[0m
+              [36m</span>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[10px] text-text-dim shrink-0 tabular"[39m
+              [36m>[39m
+                [0mTransport[0m
+              [36m</span>[39m
+            [36m</button>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"w-full text-left px-4 py-1.5 flex items-center justify-between gap-4 transition-colors text-text-secondary"[39m
+              [33mdata-active[39m=[32m"false"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[12px] truncate"[39m
+              [36m>[39m
+                [0mBypass All Blocks[0m
+              [36m</span>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[10px] text-text-dim shrink-0 tabular"[39m
+              [36m>[39m
+                [0m2 blocks[0m
+              [36m</span>[39m
+            [36m</button>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"w-full text-left px-4 py-1.5 flex items-center justify-between gap-4 transition-colors text-text-secondary"[39m
+              [33mdata-active[39m=[32m"false"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[12px] truncate"[39m
+              [36m>[39m
+                [0mFit Board to View[0m
+              [36m</span>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[10px] text-text-dim shrink-0 tabular"[39m
+              [36m>[39m
+                [0mCmd+0[0m
+              [36m</span>[39m
+            [36m</button>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"w-full text-left px-4 py-1.5 flex items-center justify-between gap-4 transition-colors text-text-secondary"[39m
+              [33mdata-active[39m=[32m"false"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[12px] truncate"[39m
+              [36m>[39m
+                [0mToggle Edit / Perform[0m
+              [36m</span>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[10px] text-text-dim shrink-0 tabular"[39m
+              [36m>[39m
+                [0mMode switch[0m
+              [36m</span>[39m
+            [36m</button>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"w-full text-left px-4 py-1.5 flex items-center justify-between gap-4 transition-colors text-text-secondary"[39m
+              [33mdata-active[39m=[32m"false"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[12px] truncate"[39m
+              [36m>[39m
+                [0mToggle Minimap[0m
+              [36m</span>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[10px] text-text-dim shrink-0 tabular"[39m
+              [36m>[39m
+                [0mShift+M[0m
+              [36m</span>[39m
+            [36m</button>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"w-full text-left px-4 py-1.5 flex items-center justify-between gap-4 transition-colors text-text-secondary"[39m
+              [33mdata-active[39m=[32m"false"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[12px] truncate"[39m
+              [36m>[39m
+                [0mCreate Comment Box[0m
+              [36m</span>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[10px] text-text-dim shrink-0 tabular"[39m
+              [36m>[39m
+                [0mShift+C[0m
+              [36m</span>[39m
+            [36m</button>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"w-full text-left px-4 py-1.5 flex items-center justify-between gap-4 transition-colors text-text-secondary"[39m
+              [33mdata-active[39m=[32m"false"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[12px] truncate"[39m
+              [36m>[39m
+                [0mStart Recording[0m
+              [36m</span>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[10px] text-text-dim shrink-0 tabular"[39m
+              [36m>[39m
+                [0mTransport[0m
+              [36m</span>[39m
+            [36m</button>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"w-full text-left px-4 py-1.5 flex items-center justify-between gap-4 transition-colors text-text-secondary"[39m
+              [33mdata-active[39m=[32m"false"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[12px] truncate"[39m
+              [36m>[39m
+                [0mStop Recording[0m
+              [36m</span>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[10px] text-text-dim shrink-0 tabular"[39m
+              [36m>[39m
+                [0mTransport[0m
+              [36m</span>[39m
+            [36m</button>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"w-full text-left px-4 py-1.5 flex items-center justify-between gap-4 transition-colors text-text-secondary"[39m
+              [33mdata-active[39m=[32m"false"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[12px] truncate"[39m
+              [36m>[39m
+                [0mHide All Plugin Windows[0m
+              [36m</span>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[10px] text-text-dim shrink-0 tabular"[39m
+              [36m>[39m
+                [0mPlugin editors[0m
+              [36m</span>[39m
+            [36m</button>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"w-full text-left px-4 py-1.5 flex items-center justify-between gap-4 transition-colors text-text-secondary"[39m
+              [33mdata-active[39m=[32m"false"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[12px] truncate"[39m
+              [36m>[39m
+                [0mToggle Virtual Keyboard[0m
+              [36m</span>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[10px] text-text-dim shrink-0 tabular"[39m
+              [36m>[39m
+                [0mMIDI input · Shift+K[0m
+              [36m</span>[39m
+            [36m</button>[39m
+          [36m</div>[39m
+          [36m<div>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"px-4 pt-3 pb-1 text-[10px] text-text-dim font-bold uppercase tracking-widest"[39m
+            [36m>[39m
+              [0mBlocks on Canvas[0m
+            [36m</div>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"w-full text-left px-4 py-1.5 flex items-center justify-between gap-4 transition-colors text-text-secondary"[39m
+              [33mdata-active[39m=[32m"false"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[12px] truncate"[39m
+              [36m/>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[10px] text-text-dim shrink-0 tabular"[39m
+              [36m>[39m
+                [0mundefined · undefined[0m
+              [36m</span>[39m
+            [36m</button>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"w-full text-left px-4 py-1.5 flex items-center justify-between gap-4 transition-colors text-text-secondary"[39m
+              [33mdata-active[39m=[32m"false"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[12px] truncate"[39m
+              [36m/>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-[10px] text-text-dim shrink-0 tabular"[39m
+              [36m>[39m
+                [0mundefined · undefined[0m
+              [36m</span>[39m
+            [36m</button>[39m
+          [36m</div>[39m
+        [36m</div>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"px-4 py-2 border-t border-white/5 flex items-center gap-4 text-[10px] text-text-dim"[39m
+        [36m>[39m
+          [36m<span>[39m
+            [36m<kbd[39m
+              [33mclass[39m=[32m"px-1 py-0.5 bg-pressed rounded text-[10px]"[39m
+            [36m>[39m
+              [0m↑↓[0m
+            [36m</kbd>[39m
+            [0m [0m
+            [0mnavigate[0m
+          [36m</span>[39m
+          [36m<span>[39m
+            [36m<kbd[39m
+              [33mclass[39m=[32m"px-1 py-0.5 bg-pressed rounded text-[10px]"[39m
+            [36m>[39m
+              [0m↵[0m
+            [36m</kbd>[39m
+            [0m [0m
+            [0mselect[0m
+          [36m</span>[39m
+          [36m<span>[39m
+            [36m<kbd[39m
+              [33mclass[39m=[32m"px-1 py-0.5 bg-pressed rounded text-[10px]"[39m
+            [36m>[39m
+              [0mesc[0m
+            [36m</kbd>[39m
+            [0m [0m
+            [0mclose[0m
+          [36m</span>[39m
+        [36m</div>[39m
+      [36m</div>[39m
+    [36m</div>[39m
+  [36m</div>[39m
+[36m</body>[39m
+ ❯ Object.getElementError node_modules/@testing-library/dom/dist/config.js:37:19
+ ❯ node_modules/@testing-library/dom/dist/query-helpers.js:76:38
+ ❯ node_modules/@testing-library/dom/dist/query-helpers.js:52:17
+ ❯ node_modules/@testing-library/dom/dist/query-helpers.js:95:19
+ ❯ src/components/canvas/__tests__/CommandPalette.test.tsx:271:19
+    269|     render(<CommandPalette open={true} onClose={onClose} />);
+    270|     expect(screen.getByText("Actions")).toBeInTheDocument();
+    271|     expect(screen.getByText("Plugins")).toBeInTheDocument();
+       |                   ^
+    272|   });
+    273| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[108/149]⎯
+
+ FAIL  |unit| src/components/layout/__tests__/ConnectionEditor.test.tsx > ConnectionEditor > falls back to port ID when label is absent
+TestingLibraryElementError: Unable to find an element with the text: out-0. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make your matcher more flexible.
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"flex flex-col h-full gap-3 p-4"[39m
+    [36m>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"flex items-center justify-between"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"flex items-center gap-2"[39m
+        [36m>[39m
+          [36m<svg[39m
+            [33maria-hidden[39m=[32m"true"[39m
+            [33mclass[39m=[32m"lucide lucide-cable text-text-secondary"[39m
+            [33mfill[39m=[32m"none"[39m
+            [33mheight[39m=[32m"14"[39m
+            [33mstroke[39m=[32m"currentColor"[39m
+            [33mstroke-linecap[39m=[32m"round"[39m
+            [33mstroke-linejoin[39m=[32m"round"[39m
+            [33mstroke-width[39m=[32m"1.5"[39m
+            [33mviewBox[39m=[32m"0 0 24 24"[39m
+            [33mwidth[39m=[32m"14"[39m
+            [33mxmlns[39m=[32m"http://www.w3.org/2000/svg"[39m
+          [36m>[39m
+            [36m<path[39m
+              [33md[39m=[32m"M17 19a1 1 0 0 1-1-1v-2a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2a1 1 0 0 1-1 1z"[39m
+            [36m/>[39m
+            [36m<path[39m
+              [33md[39m=[32m"M17 21v-2"[39m
+            [36m/>[39m
+            [36m<path[39m
+              [33md[39m=[32m"M19 14V6.5a1 1 0 0 0-7 0v11a1 1 0 0 1-7 0V10"[39m
+            [36m/>[39m
+            [36m<path[39m
+              [33md[39m=[32m"M21 21v-2"[39m
+            [36m/>[39m
+            [36m<path[39m
+              [33md[39m=[32m"M3 5V3"[39m
+            [36m/>[39m
+            [36m<path[39m
+              [33md[39m=[32m"M4 10a2 2 0 0 1-2-2V6a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2a2 2 0 0 1-2 2z"[39m
+            [36m/>[39m
+            [36m<path[39m
+              [33md[39m=[32m"M7 5V3"[39m
+            [36m/>[39m
+          [36m</svg>[39m
+          [36m<span[39m
+            [33mclass[39m=[32m"text-[10px] font-bold text-text-secondary uppercase tracking-widest"[39m
+          [36m>[39m
+            [0mConnections[0m
+          [36m</span>[39m
+          [36m<span[39m
+            [33mclass[39m=[32m"text-[9px] text-text-dim tabular-nums bg-pressed px-1.5 py-0.5 rounded border border-white/5"[39m
+          [36m>[39m
+            [0m1[0m
+          [36m</span>[39m
+        [36m</div>[39m
+      [36m</div>[39m
+      [36m<input[39m
+        [33mclass[39m=[32m"w-full bg-pressed border-none rounded px-3 py-1.5 text-[11px] text-text-primary placeholder-text-dim shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] outline-none focus:ring-1 focus:ring-generator/30 transition-shadow duration-100 "[39m
+        [33mplaceholder[39m=[32m"Search blocks or ports…"[39m
+        [33mtype[39m=[32m"text"[39m
+        [33mvalue[39m=[32m""[39m
+      [36m/>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"flex gap-1 flex-wrap"[39m
+      [36m>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"px-2 py-0.5 rounded border text-[9px] font-bold uppercase tracking-wider transition-colors bg-surface border-white/10 text-text-primary"[39m
+        [36m>[39m
+          [0mAll[0m
+        [36m</button>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"px-2 py-0.5 rounded border text-[9px] font-bold uppercase tracking-wider transition-colors bg-pressed border-white/5 text-text-dim hover:text-text-secondary hover:bg-surface"[39m
+        [36m>[39m
+          [0mAudio[0m
+        [36m</button>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"px-2 py-0.5 rounded border text-[9px] font-bold uppercase tracking-wider transition-colors bg-pressed border-white/5 text-text-dim hover:text-text-secondary hover:bg-surface"[39m
+        [36m>[39m
+          [0mMIDI[0m
+        [36m</button>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"px-2 py-0.5 rounded border text-[9px] font-bold uppercase tracking-wider transition-colors bg-pressed border-white/5 text-text-dim hover:text-text-secondary hover:bg-surface"[39m
+        [36m>[39m
+          [0mValue[0m
+        [36m</button>[39m
+      [36m</div>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"flex-1 overflow-y-auto space-y-1 min-h-0 pr-0.5"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"flex items-center gap-2 px-2 py-1.5 rounded border border-white/5 bg-surface shadow-[-1px_-1px_4px_rgba(255,255,255,0.03),1px_1px_4px_rgba(0,0,0,0.25)] hover:bg-elevated transition-colors group"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"flex items-center gap-1 min-w-0 flex-1"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"inline-block w-1.5 h-1.5 rounded-full shrink-0 bg-generator"[39m
+            [36m/>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"text-[10px] text-text-primary font-bold truncate"[39m
+            [36m>[39m
+              [0mSynth[0m
+            [36m</span>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"text-text-dim text-[9px] shrink-0"[39m
+            [36m>[39m
+              [0m·[0m
+            [36m</span>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"text-[9px] text-text-secondary truncate"[39m
+            [36m/>[39m
+          [36m</div>[39m
+          [36m<svg[39m
+            [33maria-hidden[39m=[32m"true"[39m
+            [33mclass[39m=[32m"lucide lucide-play text-text-dim shrink-0"[39m
+            [33mfill[39m=[32m"none"[39m
+            [33mheight[39m=[32m"10"[39m
+            [33mstroke[39m=[32m"currentColor"[39m
+            [33mstroke-linecap[39m=[32m"round"[39m
+            [33mstroke-linejoin[39m=[32m"round"[39m
+            [33mstroke-width[39m=[32m"1.5"[39m
+            [33mviewBox[39m=[32m"0 0 24 24"[39m
+            [33mwidth[39m=[32m"10"[39m
+            [33mxmlns[39m=[32m"http://www.w3.org/2000/svg"[39m
+          [36m>[39m
+            [36m<path[39m
+              [33md[39m=[32m"M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z"[39m
+            [36m/>[39m
+          [36m</svg>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"flex items-center gap-1 min-w-0 flex-1"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"inline-block w-1.5 h-1.5 rounded-full shrink-0 bg-modifier"[39m
+            [36m/>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"text-[10px] text-text-primary font-bold truncate"[39m
+            [36m>[39m
+              [0mReverb[0m
+            [36m</span>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"text-text-dim text-[9px] shrink-0"[39m
+            [36m>[39m
+              [0m·[0m
+            [36m</span>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"text-[9px] text-text-secondary truncate"[39m
+            [36m>[39m
+              [0mIn L[0m
+            [36m</span>[39m
+          [36m</div>[39m
+          [36m<span[39m
+            [33mclass[39m=[32m"inline-flex items-center px-1.5 py-0.5 rounded border text-[9px] font-bold uppercase tracking-wider tabular-nums shrink-0 text-generator border-generator/30 bg-generator/10"[39m
+          [36m>[39m
+            [0mAudio[0m
+          [36m</span>[39m
+          [36m<button[39m
+            [33maria-label[39m=[32m"Remove cable from Synth to Reverb"[39m
+            [33mclass[39m=[32m"shrink-0 w-5 h-5 flex items-center justify-center rounded text-text-dim hover:text-error hover:bg-error/10 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"lucide lucide-x"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mheight[39m=[32m"12"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+              [33mstroke-linecap[39m=[32m"round"[39m
+              [33mstroke-linejoin[39m=[32m"round"[39m
+              [33mstroke-width[39m=[32m"1.5"[39m
+              [33mviewBox[39m=[32m"0 0 24 24"[39m
+              [33mwidth[39m=[32m"12"[39m
+              [33mxmlns[39m=[32m"http://www.w3.org/2000/svg"[39m
+            [36m>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M18 6 6 18"[39m
+              [36m/>[39m
+              [36m<path[39m
+                [33md[39m=[32m"m6 6 12 12"[39m
+              [36m/>[39m
+            [36m</svg>[39m
+          [36m</button>[39m
+        [36m</div>[39m
+      [36m</div>[39m
+      [36m<button[39m
+        [33mclass[39m=[32m"inline-flex items-center justify-center rounded border font-bold uppercase tracking-wider select-none transition-all duration-100 shadow-[-2px_-2px_8px_rgba(255,255,255,0.04),2px_2px_8px_rgba(0,0,0,0.35)] active:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] active:translate-y-px bg-surface text-text-primary border-white/5 hover:bg-elevated py-1.5 px-2.5 text-[10px] gap-1.5 w-full"[39m
+      [36m>[39m
+        [36m<svg[39m
+          [33maria-hidden[39m=[32m"true"[39m
+          [33mclass[39m=[32m"lucide lucide-plus"[39m
+          [33mfill[39m=[32m"none"[39m
+          [33mheight[39m=[32m"12"[39m
+          [33mstroke[39m=[32m"currentColor"[39m
+          [33mstroke-linecap[39m=[32m"round"[39m
+          [33mstroke-linejoin[39m=[32m"round"[39m
+          [33mstroke-width[39m=[32m"1.5"[39m
+          [33mviewBox[39m=[32m"0 0 24 24"[39m
+          [33mwidth[39m=[32m"12"[39m
+          [33mxmlns[39m=[32m"http://www.w3.org/2000/svg"[39m
+        [36m>[39m
+          [36m<path[39m
+            [33md[39m=[32m"M5 12h14"[39m
+          [36m/>[39m
+          [36m<path[39m
+            [33md[39m=[32m"M12 5v14"[39m
+          [36m/>[39m
+        [36m</svg>[39m
+        [0mAdd Cable[0m
+      [36m</button>[39m
+    [36m</div>[39m
+  [36m</div>[39m
+[36m</body>[39m
+ ❯ Object.getElementError node_modules/@testing-library/dom/dist/config.js:37:19
+ ❯ node_modules/@testing-library/dom/dist/query-helpers.js:76:38
+ ❯ node_modules/@testing-library/dom/dist/query-helpers.js:52:17
+ ❯ node_modules/@testing-library/dom/dist/query-helpers.js:95:19
+ ❯ src/components/layout/__tests__/ConnectionEditor.test.tsx:350:19
+    348|     render(<ConnectionEditor />);
+    349|     // port label "" → should fall back to "out-0"
+    350|     expect(screen.getByText("out-0")).toBeInTheDocument();
+       |                   ^
+    351|   });
+    352| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[109/149]⎯
+
+ FAIL  |unit| src/components/layout/__tests__/PresetStrip.stale.test.tsx > PresetStrip — §3.7 stale-fetch cancellation > (H-cov-4a) loads preset list for the selected node on mount
+AssertionError: expected 0 to be greater than or equal to 1
+ ❯ src/components/layout/__tests__/PresetStrip.stale.test.tsx:157:32
+    155|     // The presets should have been fetched; bridge call was made
+    156|     const presetCalls = bridge.callsOf("elementPresetList");
+    157|     expect(presetCalls.length).toBeGreaterThanOrEqual(1);
+       |                                ^
+    158|   });
+    159|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[110/149]⎯
+
+ FAIL  |unit| src/components/layout/__tests__/PresetStrip.stale.test.tsx > PresetStrip — §3.7 stale-fetch cancellation > (H-cov-4b) immediate [] reset on nodeId change — stale data does not flash
+AssertionError: expected 0 to be greater than or equal to 1
+ ❯ src/components/layout/__tests__/PresetStrip.stale.test.tsx:218:32
+    216|     // Beta's fetch was invoked at least once
+    217|     const presetCalls = bridge.callsOf("elementPresetList");
+    218|     expect(presetCalls.length).toBeGreaterThanOrEqual(1);
+       |                                ^
+    219|   });
+    220|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[111/149]⎯
+
+ FAIL  |unit| src/components/layout/__tests__/PresetStrip.stale.test.tsx > PresetStrip — §3.7 stale-fetch cancellation > (H-cov-4c) cancelled alpha fetch does NOT clobber beta's empty presets list
+AssertionError: expected 0 to be greater than or equal to 2
+ ❯ src/components/layout/__tests__/PresetStrip.stale.test.tsx:284:56
+    282|
+    283|     // At least 2 elementPresetList calls were made (one per node sele…
+    284|     expect(bridge.callsOf("elementPresetList").length).toBeGreaterThan…
+       |                                                        ^
+    285|   });
+    286| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[112/149]⎯
+
+
+ Test Files  19 failed | 74 passed (93)
+      Tests  147 failed | 831 passed (978)
+   Start at  19:17:12
+   Duration  12.88s (transform 79.89s, setup 98.00s, import 101.72s, tests 15.01s, environment 83.99s)
+
+TEST_EXIT=1

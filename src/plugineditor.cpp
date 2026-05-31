@@ -353,6 +353,18 @@ PluginEditor::~PluginEditor()
     EL_LOG_THREAD ("AU", "PluginEditor dtor begin"
                           << " this=" << juce::String::toHexString ((juce::pointer_sized_int) this));
 
+    // CF1: Tear down the editor's accessibility-peer subtree FIRST, on the
+    // message thread, while this editor + its children + the native window
+    // peer are all still alive and intact.  setAccessible(false) destroys the
+    // AccessibilityHandler tree synchronously here (and posts
+    // NSAccessibilityUIElementDestroyedNotification), so the macOS AX peers are
+    // released at a clean, controlled point and AppKit drops its cached refs.
+    // Without this, the AX peers were freed implicitly during the host's
+    // native window-peer teardown, leaving a window where an in-flight Mach AX
+    // query (_AXXMIGCopyAttributeValue -> respondsToSelector:) could deref a
+    // freed NSAccessibilityElement on the host's main thread (EXC_BAD_ACCESS).
+    setAccessible (false);
+
     auto* const app = processor.getServices();
     auto* const gui = app != nullptr ? app->find<UI>() : nullptr;
 

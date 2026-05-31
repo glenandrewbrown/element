@@ -1,13 +1,32 @@
 import { memo, useMemo, useState } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import type { BlockCategory, BlockData, CableData } from "../../data/types";
+import { useShallow } from "zustand/react/shallow";
+import type { BlockCategory, BlockData, CableData, Port } from "../../data/types";
 import {
   useGraphStore,
   selectZoomTier,
   selectEdges,
 } from "../../stores/useGraphStore";
 import { useBusStore } from "../../stores/useBusStore";
+import { useParameterStore } from "../../stores/useParameterStore";
+import { nativeSetNodeParameter } from "../../bridge/nativeGraph";
+import { getFunctionMeta } from "../../data/functionGroup";
+import { NeuKnob } from "../neu/NeuKnob";
 import { BlockEmbed } from "./BlockEmbed";
+
+// On-Block knob colour by category (verdict 1 + verdict 8). NeuKnob has no
+// purple tier yet, so modulators borrow blue until verdict 8 adds purple.
+const catToKnob: Record<BlockCategory, "blue" | "orange" | "teal"> = {
+  instrument: "blue",
+  audiofx: "orange",
+  midifx: "teal",
+  modulator: "blue",
+};
+
+// The live 15 Hz delta channel carries values only, no parameter names. Until
+// real metadata is wired (Inspector path), label knobs generically by index —
+// guessing "Gain/Mix/Freq" would misreport what the param actually is.
+const ON_BLOCK_KNOBS = 3;
 
 // ── Category config ──
 
@@ -166,6 +185,14 @@ interface PortHandleProps {
   /** Phase 5B — when set, the connected cable is rendered as a wireless bus
    *  badge instead of a drawn curve. */
   busName?: string;
+  /** Real port name from the engine (verdict 1 — labeled ports). Rendered
+   *  OUTWARD of the chassis (in the canvas gutter, like a bus badge) so it never
+   *  overlaps body content, and only when revealed (port hover or block
+   *  hover/selected) so the canvas stays clean at rest. */
+  label?: string;
+  /** Block-level reveal (hovered or selected) — forces the port label visible
+   *  even when this specific port isn't hovered. */
+  showLabel?: boolean;
 }
 
 function PortHandle({
@@ -176,8 +203,18 @@ function PortHandle({
   position,
   topPercent,
   busName,
+  label,
+  showLabel,
 }: PortHandleProps) {
   const [hovered, setHovered] = useState(false);
+  // Inward of the chassis, in the port lane — contained + blended like the
+  // mockup (small mono, low-opacity, signal-tinted), not a loud gutter chip.
+  const inward: React.CSSProperties =
+    position === Position.Left
+      ? { left: "calc(100% + 5px)", textAlign: "left" }
+      : { right: "calc(100% + 5px)", textAlign: "right" };
+  const labelVisible = !!label && !busName;
+  void showLabel;
 
   // Offset the 24px hitbox so it's centred on the block edge
   const translateX =
@@ -211,37 +248,29 @@ function PortHandle({
           signalType={portType}
           side={position === Position.Left ? "left" : "right"}
         />
+      ) : labelVisible ? (
+        <span
+          className="font-mono tracking-tight whitespace-nowrap leading-none overflow-hidden text-ellipsis"
+          style={{
+            position: "absolute",
+            top: "50%",
+            transform: "translateY(-50%)",
+            ...inward,
+            maxWidth: 60,
+            fontSize: "8.5px",
+            color: portColor[portType] ?? "#8E8E93",
+            opacity: hovered ? 0.95 : 0.62,
+            pointerEvents: "none",
+            transition: "opacity 120ms ease",
+          }}
+        >
+          {label}
+        </span>
       ) : null}
     </Handle>
   );
 }
 
-// ── Mini waveform (generator viz) ──
-
-function MiniWaveform({ color }: { color: string }) {
-  const bars = [
-    { h: 8, o: 0.4 },
-    { h: 12, o: 0.6 },
-    { h: 16, o: 1 },
-    { h: 12, o: 0.6 },
-    { h: 8, o: 0.4 },
-  ];
-  return (
-    <div className="h-6 bg-pressed neu-inset rounded flex items-center justify-around px-1">
-      {bars.map((b, i) => (
-        <div
-          key={i}
-          className="w-[2px] rounded-full"
-          style={{
-            height: b.h,
-            backgroundColor: color,
-            opacity: b.o,
-          }}
-        />
-      ))}
-    </div>
-  );
-}
 
 // ── Neumorphic shadow constants ──
 
@@ -249,24 +278,94 @@ const shadowRaised =
   "4px 4px 12px rgba(0,0,0,0.4), -2px -2px 8px rgba(255,255,255,0.05)";
 const shadowPressed =
   "inset 2px 2px 6px rgba(0,0,0,0.4), inset -1px -1px 4px rgba(255,255,255,0.05)";
-// ── Bypass stripe overlay ──
 
-const bypassOverlay: React.CSSProperties = {
-  position: "absolute",
-  inset: 0,
-  background:
-    "repeating-linear-gradient(135deg, transparent, transparent 4px, rgba(0,0,0,0.15) 4px, rgba(0,0,0,0.15) 6px)",
-  pointerEvents: "none",
-  borderRadius: "inherit",
-};
+// ── State overlays ──────────────────────────────────────────────────────────
+// Two SEMANTICALLY-DISTINCT states (Glen, feedback 7/8):
+//
+//  • MUTED   — signal is HARD-BLOCKED. A red wash covers the WHOLE block body
+//    INCLUDING the port lane (so no port pip pokes through and reads as a
+//    cheap box-on-top), with the MUTED chip integrated dead-centre + a kill-X.
+//    Transcribed from the mockup's muted overlay (status-clip wash + X + chip).
+//
+//  • BYPASSED — signal PASSES THROUGH untouched. The chassis is desaturated /
+//    dimmed (it's "off"), BUT a pass-through cue stays lit — the load bar reads
+//    green and the port pips stay visible (rendered ABOVE the dim) so you can
+//    see signal is still flowing. This is the one place we go beyond the
+//    mockup (its bypass was greyscale-only, which Glen rejected).
 
-const muteOverlay: React.CSSProperties = {
-  position: "absolute",
-  inset: 0,
-  background: "rgba(0,0,0,0.38)",
-  pointerEvents: "none",
-  borderRadius: "inherit",
-};
+/** MUTED overlay — covers the body below the header (incl. the whole port lane)
+ *  so the block reads as a hard block. pointer-events:none keeps the header B/M
+ *  buttons underneath clickable to undo the state. */
+function MutedOverlay() {
+  return (
+    <div
+      className="nodeblock-mute absolute left-0 right-0 bottom-0 pointer-events-none flex items-center justify-center z-30"
+      style={{
+        top: 26, // clear the gradient header — its M stays clickable
+        borderBottomLeftRadius: "inherit",
+        borderBottomRightRadius: "inherit",
+        // OPAQUE dark-red base (Glen, feedback 7): a hard block must read as a
+        // solid red wash with NOTHING showing through — at 0.32 alpha the body
+        // (knobs, meter, In/Out pips + labels) bled through and read as a cheap
+        // box-on-top. A deep opaque red + a status-clip tint on top keeps the X
+        // and chip legible while fully hiding the ports beneath.
+        background: "linear-gradient(hsl(358 55% 14%), hsl(358 58% 11%))",
+        boxShadow:
+          "inset 0 0 0 2px hsl(var(--status-clip) / 0.85), inset 0 0 24px hsl(358 70% 6% / 0.9)",
+      }}
+    >
+      {/* Kill-X — unmistakable "blocked" mark (mockup) */}
+      <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none" viewBox="0 0 100 100">
+        <line x1="4" y1="4" x2="96" y2="96" stroke="hsl(var(--status-clip))" strokeWidth="3.5" strokeLinecap="round" opacity="0.85" vectorEffect="non-scaling-stroke" />
+        <line x1="96" y1="4" x2="4" y2="96" stroke="hsl(var(--status-clip))" strokeWidth="3.5" strokeLinecap="round" opacity="0.85" vectorEffect="non-scaling-stroke" />
+      </svg>
+      <span
+        className="relative text-[10px] font-mono font-bold tracking-[0.18em] px-2.5 py-1 rounded-[3px]"
+        style={{
+          // Slightly deeper red than the wash so the white glyphs pop and the
+          // kill-X (which passes BEHIND this opaque chip) never bleeds into the
+          // text. Integrated into the X, not floating (Glen, feedback 7).
+          background: "hsl(358 72% 42%)",
+          color: "#FFFFFF",
+          boxShadow:
+            "0 3px 10px rgba(0,0,0,0.65), inset 0 1px 0 rgba(255,255,255,0.22), inset 0 0 0 1px hsl(var(--status-clip))",
+        }}
+      >
+        MUTED
+      </span>
+    </div>
+  );
+}
+
+/** BYPASSED dim — a desaturating wash over the body only (NOT the load bar, NOT
+ *  the port pips). Distinct from mute: the chassis goes "off" but the
+ *  pass-through indicators (load bar + lit pips) stay visible above it. */
+function BypassedDim() {
+  return (
+    <div
+      className="absolute left-0 right-0 pointer-events-none flex items-center justify-center z-10"
+      style={{
+        top: 26, // header stays full-colour so its B stays legible + clickable
+        bottom: 2, // leave the 2px load bar lit — signal passes through
+        background: "rgba(20,20,24,0.42)",
+        backdropFilter: "grayscale(0.92) saturate(0.18) brightness(0.8)",
+        WebkitBackdropFilter: "grayscale(0.92) saturate(0.18) brightness(0.8)",
+      }}
+    >
+      <span
+        className="flex items-center gap-1 text-[10px] font-mono font-bold tracking-[0.18em] px-2 py-0.5 rounded-[3px]"
+        style={{
+          color: "#D5D5DB",
+          background: "rgba(0,0,0,0.55)",
+          boxShadow: "0 1px 5px rgba(0,0,0,0.7)",
+        }}
+      >
+        {/* arrow → reinforces "signal passes through" vs mute's block */}
+        <span style={{ opacity: 0.85 }}>→</span> BYPASSED
+      </span>
+    </div>
+  );
+}
 
 /** JUCE `Colour::toString()` is often `#AARRGGBB`; CSS border wants opaque RGB. */
 function hostColourOutline(raw: string | undefined): string | undefined {
@@ -276,6 +375,48 @@ function hostColourOutline(raw: string | undefined): string | undefined {
   if (t.startsWith("#") && t.length === 7) return t;
   return undefined;
 }
+
+// ── Header controls (bake-off verdict 1 — re-housed from the mockup) ──
+//
+// Always-on B/M/S state buttons + a signal LED, lifted in spirit from the
+// mockup's NodeBlock but wired to Element's REAL engine state: B → toggleBypass,
+// M → toggleMute (both optimistic + host-confirmed via useGraphStore). Solo (S)
+// has no engine concept in Element yet (the mockup's was local-only too), so it
+// is a local visual toggle pending a parity decision — it must NOT pretend to
+// mute the rest of the graph.
+
+interface StateBtnProps {
+  letter: string;
+  active: boolean;
+  activeColor: string;
+  onClick: (e: React.MouseEvent) => void;
+  title: string;
+}
+
+function StateBtn({ letter, active, activeColor, onClick, title }: StateBtnProps) {
+  // Measured mockup values: 15x15, 8px mono bold, 2px radius, dark idle
+  // gradient, dark text + filled category colour when active.
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      className="w-[15px] h-[15px] flex items-center justify-center rounded-[2px] text-[8px] font-mono font-bold shrink-0"
+      style={{
+        color: active ? "#15151A" : "rgba(139,139,146,0.85)",
+        background: active
+          ? activeColor
+          : "linear-gradient(180deg, rgb(41,41,46) 0%, rgb(26,26,30) 100%)",
+        boxShadow: active
+          ? "inset 0 1px 0 rgba(255,255,255,0.25), 0 1px 1px rgba(0,0,0,0.5)"
+          : "inset 1px 1px 1.5px rgba(0,0,0,0.7), inset -0.5px -0.5px 0.5px rgba(255,255,255,0.04)",
+      }}
+    >
+      {letter}
+    </button>
+  );
+}
+
 
 // ── Block component ──
 
@@ -298,12 +439,229 @@ function hostColourOutline(raw: string | undefined): string | undefined {
  * (the per-Block model from `useGraphStore`) and `selected` drives the
  * category micro-glow.
  */
+// Function-type icon for the gradient header — a MEANINGFUL line glyph (reverb
+// arcs, EQ curve, synth wave, drum…) inferred from the Block's name + category
+// (re-housed from the mockup's function-group library). Glen: the abstract
+// geometric category shapes "mean nothing"; the function icon is the useful cue.
+function FunctionIcon({
+  name,
+  category,
+  color = "#15151A",
+  size = 13,
+}: {
+  name: string;
+  category: BlockCategory;
+  color?: string;
+  size?: number;
+}) {
+  const { iconPath } = getFunctionMeta(name, category);
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="shrink-0"
+    >
+      <path d={iconPath} />
+    </svg>
+  );
+}
+
+// Compact horizontal segmented RMS meter — the mockup's SHAPE (Glen explicitly
+// likes this; do NOT use vertical bars). ~14 thin segments, ~6px tall: green
+// floor → amber shoulder (last ~4) → red ceiling (last ~2). Honest: `level` is
+// real 0–1 amplitude and defaults to 0 (idle) — never fabricates motion. The
+// strip flexes to fill remaining deck width (two stacked = L/R).
+function RmsMeter({
+  level = 0,
+  active,
+  clip,
+  accent,
+}: {
+  level?: number;
+  active: boolean;
+  clip: boolean;
+  accent: string;
+}) {
+  const SEG = 14;
+  const lit = clip ? SEG : Math.round(level * SEG);
+  return (
+    <div
+      className="flex gap-px h-[6px] items-stretch"
+      style={{
+        padding: "1px",
+        borderRadius: 2,
+        background: "hsl(240 10% 8%)",
+        boxShadow:
+          "inset 1px 1px 1.5px rgba(0,0,0,0.7), inset -0.5px -0.5px 0.5px rgba(255,255,255,0.03)",
+      }}
+    >
+      {Array.from({ length: SEG }).map((_, i) => {
+        const isClipSeg = i >= SEG - 2;
+        const isWarnSeg = i >= SEG - 4;
+        const litThis = i < lit;
+        return (
+          <div
+            key={i}
+            className="flex-1 rounded-[0.5px]"
+            style={{
+              background: litThis
+                ? isClipSeg
+                  ? "hsl(var(--status-clip))"
+                  : isWarnSeg
+                    ? "hsl(var(--status-warn))"
+                    : accent
+                // Idle/unlit cells: a single UNIFORM grey, just bright enough
+                // that the 14 segments read as an IDLE METER at rest rather than
+                // a dead void (Glen, feedback 6). Uniform — color appears ONLY
+                // when a segment is lit (mockup idiom), so an idle meter can
+                // never misread as "near clip". Honest: no fabricated level.
+                : "hsl(240 7% 22%)",
+              opacity: litThis ? (active ? 1 : 0.4) : 1,
+            }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+// Chassis corner radius per category — a synth reads differently from an FX
+// rack at a glance (mockup's getChassisShape, radius only). Matches the
+// mockup's vst-instrument / vst-effect / vst-midi / logic silhouettes.
+const chassisRadius: Record<BlockCategory, string> = {
+  instrument: "11px 11px 3px 3px", // "keyboard cap"
+  audiofx: "5px", // "rack module"
+  midifx: "3px 12px 12px 3px", // "data dart"
+  modulator: "3px", // "CV chip"
+};
+
+const PORT_LANE_H = 16;
+
+// One port row in the port lane (mockup port-well + always-on mono label):
+// a recessed `.port-well` socket at the chassis edge with a signal-coloured
+// pip inside, and a GREY mono label inward (the pip carries the signal colour,
+// the label stays neutral — mockup parity). The RF `<Handle>` IS the well
+// (relative-positioned so it flows in the row, yet React Flow still resolves
+// its rect for connections). The label is ALWAYS visible (never hover-gated).
+function PortRow({
+  port,
+  side,
+  top,
+  busName,
+}: {
+  port: Port;
+  side: "input" | "output";
+  top: number;
+  busName?: string;
+}) {
+  const color = portColor[port.type] ?? portColor.audio;
+  const isInput = side === "input";
+  const isSidechain =
+    /side\s*chain|(^|[^a-z])sc([^a-z]|$)/i.test(port.label) ||
+    /(^|[^a-z])sc([^a-z]|$)/i.test(port.id);
+  const labelText =
+    busName ?? (isSidechain && /^sc$/i.test(port.label) ? "SC" : port.label);
+  return (
+    <div
+      className="absolute flex items-center gap-1"
+      style={{
+        top,
+        transform: "translateY(-50%)",
+        ...(isInput
+          ? { left: -7 }
+          : { right: -7, flexDirection: "row-reverse" }),
+      }}
+    >
+      {/* `.port-well` recessed socket; the RF Handle is styled AS the well so
+          connections wire. A signal-coloured pip (~5px) reads the type. */}
+      <Handle
+        id={port.id}
+        type={isInput ? "target" : "source"}
+        position={isInput ? Position.Left : Position.Right}
+        className={`port-well ${isSidechain ? "port-sidechain" : ""}`}
+        style={{
+          position: "relative",
+          transform: "none",
+          top: "auto",
+          left: "auto",
+          right: "auto",
+          // .port-well supplies size/recess; just augment the connected glow.
+          boxShadow: port.connected
+            ? `inset 1.5px 1.5px 2.5px rgba(0,0,0,0.9), inset -1px -1px 1.5px rgba(255,255,255,0.05), 0 0 5px ${color}66`
+            : undefined,
+          cursor: "crosshair",
+        }}
+      >
+        <span
+          style={{
+            width: 5,
+            height: 5,
+            borderRadius: "50%",
+            background: port.connected ? color : `${color}88`,
+            boxShadow: port.connected ? `0 0 3px ${color}` : "none",
+            pointerEvents: "none",
+          }}
+        />
+      </Handle>
+      <span
+        className="font-mono whitespace-nowrap overflow-hidden text-ellipsis leading-none"
+        style={{
+          fontSize: "8.5px",
+          color: "rgba(139,139,146,0.85)", // grey label (mockup); pip = signal
+          fontWeight: 400,
+          maxWidth: 80,
+        }}
+      >
+        {labelText}
+      </span>
+    </div>
+  );
+}
+
 function BlockComponent({ data, selected }: NodeProps) {
   const d = data as unknown as BlockData;
   const cat = catConfig[d.category] ?? catConfig.instrument;
   const isContainer = d.containerNodeCount != null;
   const isPortal = d.isPortal ?? false;
   const zoomTier = useGraphStore(selectZoomTier);
+
+  // ── Header state actions (verdict 1) — real engine wiring for B/M ──
+  // Solo (S) is intentionally absent: Element's engine has no solo concept
+  // (Glen, 2026-05-30). Re-add a real S button when engine-solo lands; do NOT
+  // fake it client-side.
+  const toggleBypass = useGraphStore((s) => s.toggleBypass);
+  const toggleMute = useGraphStore((s) => s.toggleMute);
+
+  // ── On-Block knobs (verdict 1) — live param values + real host write ──
+  // Read the first N param values for this Block off the 15 Hz delta channel.
+  // useShallow is mandatory: a fresh array each call would loop useSyncExternal-
+  // Store (same reason BlockEmbed wraps its selector).
+  const setLocalParam = useParameterStore((s) => s.setLocal);
+  const paramValues = useParameterStore(
+    useShallow((st) => {
+      const out: number[] = new Array(ON_BLOCK_KNOBS);
+      const prefix = `${d.id}:`;
+      for (let i = 0; i < ON_BLOCK_KNOBS; ++i) {
+        const v = st.values[prefix + i];
+        out[i] = typeof v === "number" ? v : NaN;
+      }
+      return out;
+    }),
+  );
+  const knobParams = paramValues
+    .map((v, i) => ({ i, v }))
+    .filter((p) => Number.isFinite(p.v));
+
+  // Block-level hover swaps the sculpt chassis to its lighter hover variant
+  // (no size/layout change). Port labels are now always-on (mockup), so hover
+  // no longer gates them.
+  const [hovered, setHovered] = useState(false);
 
   const inputPorts = d.ports.filter((p) => p.direction === "input");
   const outputPorts = d.ports.filter((p) => p.direction === "output");
@@ -440,129 +798,210 @@ function BlockComponent({ data, selected }: NodeProps) {
   // ── Standard block ──
 
   const hostOutline = hostColourOutline(d.hostColor);
+  const isAudioBearing = d.category === "instrument" || d.category === "audiofx";
+  const active = !d.bypassed && !d.muted;
+  const accentHsl = `hsl(var(--cat-${d.category}))`;
+  // Header LED + load-bar use status hsl (scoped tokens). Bypassed reads as a
+  // dim-but-flowing pass-through, so its LED is dark while the load bar stays
+  // lit (signal still passes); muted is a hard block (load bar greyed).
+  const ledColor = active
+    ? "hsl(var(--status-ok))"
+    : "hsl(240 6% 30%)";
 
   return (
     <div
       style={{
-        contain: "content",
-        boxShadow: shadowRaised,
+        // `layout style` (not `content`) — keeps per-node layout/style isolation
+        // for React Flow perf WITHOUT paint-clipping. The chassis itself uses
+        // overflow-hidden (below) so wells half-tuck and overlays clip cleanly.
+        contain: "layout style",
+        borderRadius: chassisRadius[d.category],
         ...(hostOutline ? { borderColor: hostOutline } : {}),
       }}
       className={[
-        "w-48 bg-[#252529] rounded-lg overflow-visible flex flex-col relative transition-shadow duration-150",
-        selected && cat.glowClass,
+        // `.nodeblock-v3` scopes the mockup tokens/classes to this subtree.
+        // Hover swaps `.neu-sculpt` → `.neu-sculpt-hover` (lighter gradient +
+        // stronger shadow, NO size/layout change). Selected → category glow.
+        "nodeblock-v3 w-52 overflow-hidden flex flex-col relative t-precision",
+        selected
+          ? `neu-glow-${d.category}`
+          : hovered
+            ? "neu-sculpt-hover"
+            : "neu-sculpt",
         d.error && "animate-pulse",
       ]
         .filter(Boolean)
         .join(" ")}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
     >
       {/* Error pulsing border */}
       {d.error && (
-        <div className="absolute inset-0 rounded-lg ring-1 ring-error/60 pointer-events-none" />
+        <div className="absolute inset-0 ring-1 ring-error/60 pointer-events-none z-40" style={{ borderRadius: "inherit" }} />
       )}
 
-      {/* Bypass stripe overlay */}
-      {d.bypassed && <div style={bypassOverlay} />}
-
-      {d.muted && <div style={muteOverlay} />}
-
-      {/* Top colour stripe */}
-      <div className={`h-1 ${cat.bg} rounded-t-lg`} />
-
-      {/* Header — 24px, semantic bg */}
+      {/* Header — full-width gradient category bar (mockup language). All
+          elements vertically centred on one baseline via `items-center` +
+          `leading-none`; even `gap-1.5` rhythm (Glen: alignment). */}
       <div
-        className="px-2 py-1 bg-[#2A2A2E] flex items-center justify-between h-6"
-        style={{ opacity: d.bypassed ? 0.6 : 1 }}
+        className="flex items-center gap-1.5 px-2 shrink-0 relative z-10"
+        style={{
+          height: 26,
+          background: `linear-gradient(180deg, ${cat.hex} 0%, ${cat.hex}B8 100%)`,
+          color: "#15151A",
+          boxShadow:
+            "inset 0 1px 0 rgba(255,255,255,0.18), inset 0 -1px 0 rgba(0,0,0,0.3)",
+          borderTopLeftRadius: "inherit",
+          borderTopRightRadius: "inherit",
+        }}
       >
-        <div className="flex items-center gap-1.5 min-w-0">
-          <div className={cat.shape} />
-          <span className="text-[11px] font-bold text-white/90 truncate uppercase tracking-tight">
-            {d.name}
-          </span>
-        </div>
-        <div className="flex items-center gap-1 shrink-0">
-          {d.muteInput ? (
-            <span className="text-[8px] font-black text-accent-orange uppercase px-1 rounded bg-accent-orange/15">
-              M in
-            </span>
-          ) : null}
+        <FunctionIcon name={d.name} category={d.category} />
+        <span className="text-[11px] font-bold truncate flex-1 leading-none tracking-wide">
+          {d.name}
+        </span>
+
+        {/* Signal LED — pulses green while passing signal, dark when off. */}
+        <span
+          className="w-[6px] h-[6px] rounded-full shrink-0"
+          style={{
+            backgroundColor: ledColor,
+            boxShadow: active
+              ? `0 0 4px ${ledColor}, inset 0 0.5px 0 rgba(255,255,255,0.4)`
+              : "inset 1px 1px 1px rgba(0,0,0,0.6)",
+            animation: active ? "led-pulse 1.6s ease-in-out infinite" : undefined,
+          }}
+          title={active ? "Signal" : "Idle"}
+        />
+
+        {/* CPU readout — styled like the format pill (dark pill, near-white
+            text) so the header has ONE consistent baseline of pills. Tabular
+            nums + px padding so it never reads cramped (Glen: alignment). */}
+        {d.cpuLoad > 0 && (
           <span
-            className="text-[10px] font-bold tabular-nums"
-            style={{ color: `${cat.hex}CC` }}
+            className="text-[7.5px] font-mono font-bold px-1 rounded leading-none shrink-0 tabular-nums"
+            style={{
+              background: "rgba(0,0,0,0.32)",
+              color: "rgba(255,255,255,0.85)",
+              letterSpacing: "0.02em",
+            }}
+            title={`CPU ${d.cpuLoad.toFixed(1)}%${d.latencyMs > 0 ? ` · ${d.latencyMs}ms latency` : ""}`}
           >
-            {d.format}
+            {d.cpuLoad.toFixed(0)}%
           </span>
+        )}
+        {d.muteInput ? (
+          <span
+            className="text-[7px] font-mono font-bold px-1 rounded leading-none shrink-0"
+            style={{ background: "rgba(0,0,0,0.32)", color: "rgba(255,255,255,0.85)" }}
+            title="Input muted"
+          >
+            Min
+          </span>
+        ) : null}
+        <span
+          className="text-[7.5px] font-mono font-bold px-1 rounded leading-none shrink-0"
+          style={{
+            background: "rgba(0,0,0,0.32)",
+            color: "rgba(255,255,255,0.85)",
+            letterSpacing: "0.04em",
+          }}
+        >
+          {d.format}
+        </span>
+        <div className="flex items-center gap-px shrink-0">
+          <StateBtn
+            letter="B"
+            active={d.bypassed}
+            activeColor={accentHsl}
+            onClick={(e) => {
+              e.stopPropagation();
+              void toggleBypass(d.id);
+            }}
+            title="Bypass"
+          />
+          <StateBtn
+            letter="M"
+            active={!!d.muted}
+            activeColor="hsl(var(--status-clip))"
+            onClick={(e) => {
+              e.stopPropagation();
+              void toggleMute(d.id);
+            }}
+            title="Mute"
+          />
         </div>
       </div>
 
-      {/* Body — tight 8px padding, UE5-like density */}
-      {/* Hidden by .perform-mode .block-body { display:none } */}
-      {/* At the expanded tier the BlockEmbed below renders real faders/meter, so
-          the placeholder viz + latency/cpu rows are redundant and only add
-          vertical height. Gating them at expanded tier keeps the block under the
-          ~140px legacy column gap so vertically-adjacent blocks don't overlap
-          (LAYOUT-P1 / BLOCK-OVERLAP). They still show at the standard tier. */}
+      {/* Control deck — mockup's two-branch body (NO dead space, Glen):
+          • knobs present  → knob bank + a flex-1 stacked L/R RMS strip
+          • no knobs, audio → flex-1 stacked L/R RMS meters fill the deck
+          • no knobs, midi/mod → status text + activity dot (mockup) */}
       {zoomTier !== "expanded" && (
         <div
-          className="block-body p-2 space-y-1.5"
-          style={{ opacity: d.bypassed ? 0.6 : 1 }}
+          className="block-body flex items-center gap-1.5 px-2 relative z-[5]"
+          style={{ height: 54 }}
         >
-          {/* Category-specific viz */}
-          {d.category === "instrument" && <MiniWaveform color={cat.hex} />}
-
-          {d.category === "audiofx" && (
-            <div className="text-[9px] text-white/30 tracking-widest text-center uppercase font-medium">
-              Signal Processing
+          {knobParams.length > 0 ? (
+            <>
+              {knobParams.map(({ i, v }) => (
+                <NeuKnob
+                  key={i}
+                  size="xs"
+                  compact
+                  color={catToKnob[d.category]}
+                  label={`P${i + 1}`}
+                  value={Math.round(v * 100)}
+                  onChange={(nv) => {
+                    const norm = Math.max(0, Math.min(1, nv / 100));
+                    setLocalParam(d.id, i, norm); // optimistic
+                    void nativeSetNodeParameter(d.id, i, norm); // host write
+                  }}
+                />
+              ))}
+              {/* RMS strip fills remaining width — stacked L/R (mockup). Idle
+                  until real per-block levels wire (Q-VU-PER-BLOCK). */}
+              <div className="flex-1 flex flex-col gap-px ml-1 min-w-0">
+                <RmsMeter active={active} clip={d.error} accent={accentHsl} />
+                <RmsMeter active={active} clip={d.error} accent={accentHsl} />
+              </div>
+            </>
+          ) : isAudioBearing ? (
+            // Audio Block with no exposed knobs → the meter strip becomes the
+            // whole deck, filling the space (no dead middle).
+            <div className="flex-1 flex flex-col gap-1 min-w-0 justify-center">
+              <RmsMeter active={active} clip={d.error} accent={accentHsl} />
+              <RmsMeter active={active} clip={d.error} accent={accentHsl} />
+            </div>
+          ) : (
+            // MIDI / modulator → status text + activity dot (mockup).
+            <div className="flex-1 flex items-center gap-2 min-w-0">
+              <FunctionIcon name={d.name} category={d.category} color={accentHsl} />
+              <div className="flex flex-col min-w-0 flex-1">
+                <span
+                  className="text-[10px] font-mono leading-tight truncate tabular-nums"
+                  style={{ color: "hsl(var(--foreground))" }}
+                >
+                  {d.category === "midifx" ? "MIDI · routing" : "Modulation"}
+                </span>
+                <span
+                  className="text-[9px] uppercase tracking-wider leading-tight"
+                  style={{ color: "hsl(var(--muted-foreground))" }}
+                >
+                  Pass-through
+                </span>
+              </div>
+              {active && (
+                <span
+                  className="w-[4px] h-[4px] rounded-full shrink-0"
+                  style={{
+                    backgroundColor: accentHsl,
+                    boxShadow: `0 0 5px ${accentHsl}`,
+                    animation: "led-pulse 1.6s ease-in-out infinite",
+                  }}
+                />
+              )}
             </div>
           )}
-
-          {d.category === "midifx" && (
-            <div className="text-[9px] text-white/30 tracking-widest text-center uppercase font-medium">
-              Routing
-            </div>
-          )}
-
-          {d.category === "modulator" && (
-            <div className="text-[9px] text-white/30 tracking-widest text-center uppercase font-medium">
-              Modulation
-            </div>
-          )}
-
-          {/* Latency readout */}
-          {d.latencyMs > 0 && (
-            <div className="flex justify-between items-center text-[10px] text-text-secondary font-medium uppercase tracking-tighter">
-              <span>LATENCY</span>
-              <span className="tabular-nums" style={{ color: cat.hex }}>
-                {d.latencyMs}ms
-              </span>
-            </div>
-          )}
-
-          {/* CPU readout — tiny, bottom-right */}
-          {d.cpuLoad > 0 && (
-            <div className="text-right">
-              <span className="text-[10px] tabular-nums text-text-dim font-medium">
-                {d.cpuLoad.toFixed(1)}ms
-              </span>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Macro strip — only visible in .perform-mode via CSS */}
-      {/* .perform-mode .block-macro-strip { display:flex } */}
-      {d.isMacroTagged && (
-        <div className="block-macro-strip hidden items-center justify-center gap-1 px-2 py-1.5">
-          <div
-            className="w-3 h-3 rounded-full border"
-            style={{ borderColor: cat.hex, boxShadow: `0 0 4px ${cat.hex}40` }}
-          />
-          <span
-            className="text-[10px] font-bold uppercase tracking-wider"
-            style={{ color: cat.hex }}
-          >
-            Macro
-          </span>
         </div>
       )}
 
@@ -571,33 +1010,55 @@ function BlockComponent({ data, selected }: NodeProps) {
         <BlockEmbed nodeId={d.id} category={d.category} />
       )}
 
-      {/* ── Input handles (left side) ── */}
-      {inputPorts.map((port, i) => (
-        <PortHandle
-          key={port.id}
-          portId={port.id}
-          portType={port.type}
-          connected={port.connected}
-          handleType="target"
-          position={Position.Left}
-          topPercent={30 + ((i + 1) / (inputPorts.length + 1)) * 60}
-          busName={portBusMap.get(port.id)}
-        />
-      ))}
+      {/* Port lane — dedicated band below the deck (mockup). z-20 so the port
+          pips stay VISIBLE above the bypass dim (signal passes through) but
+          BELOW the muted overlay (z-30, hard block hides them). */}
+      <div
+        className="relative shrink-0 z-20"
+        style={{ height: Math.max(inputPorts.length, outputPorts.length, 1) * PORT_LANE_H + 6 }}
+      >
+        {inputPorts.map((port, i) => (
+          <PortRow
+            key={port.id}
+            port={port}
+            side="input"
+            top={i * PORT_LANE_H + PORT_LANE_H / 2 + 2}
+            busName={portBusMap.get(port.id)}
+          />
+        ))}
+        {outputPorts.map((port, i) => (
+          <PortRow
+            key={port.id}
+            port={port}
+            side="output"
+            top={i * PORT_LANE_H + PORT_LANE_H / 2 + 2}
+            busName={portBusMap.get(port.id)}
+          />
+        ))}
+      </div>
 
-      {/* ── Output handles (right side) ── */}
-      {outputPorts.map((port, i) => (
-        <PortHandle
-          key={port.id}
-          portId={port.id}
-          portType={port.type}
-          connected={port.connected}
-          handleType="source"
-          position={Position.Right}
-          topPercent={30 + ((i + 1) / (outputPorts.length + 1)) * 60}
-          busName={portBusMap.get(port.id)}
-        />
-      ))}
+      {/* Load bar — thin status rail at the chassis foot (mockup). Bypassed
+          keeps a lit (dimmed-green) rail = signal passes THROUGH; muted greys
+          out = hard block. z-40 so it stays above the bypass dim. */}
+      <div
+        className="shrink-0 relative z-40"
+        style={{
+          height: 2,
+          borderBottomLeftRadius: "inherit",
+          borderBottomRightRadius: "inherit",
+          background: d.error
+            ? "hsl(var(--status-clip))"
+            : d.muted
+              ? "rgba(120,120,130,0.4)"
+              : d.bypassed
+                ? "hsl(var(--status-ok) / 0.4)" // dimmed-green: passes through
+                : "hsl(var(--status-ok) / 0.55)",
+        }}
+      />
+
+      {/* State overlays (last in DOM, highest z). Muted (red, hard block)
+          outranks bypassed (dim, pass-through) when both set. */}
+      {d.muted ? <MutedOverlay /> : d.bypassed ? <BypassedDim /> : null}
     </div>
   );
 }

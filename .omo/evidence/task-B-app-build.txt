@@ -1,0 +1,13 @@
+getGraphState fix — element_app build verification (verify agent a52ac174c0a9833be)
+Build cmd: cmake --build build-merged --target element_app -j8
+Result: Built target element_app (exit 0 per bg notification)
+Genuine recompile + relink CONFIRMED via mtimes:
+  src/ui/element_webview_host.cpp      edited  May 29 20:34:55 2026
+  .../element.dir/ui/element_webview_host.cpp.o compiled May 29 20:38:38 2026
+  Element.app/Contents/MacOS/Element   linked  May 29 20:38:45 2026
+  (build log lines 4,27-29: "Building CXX ... element_webview_host.cpp.o",
+   "Linking CXX executable .../Element", "Bundling WebView production assets",
+   "Built target element_app")
+Fix present in source: src/ui/element_webview_host.cpp:869
+  postCompletion (completion, JSON::parse (buildActiveGraphJson()));  // structured var, mirrors :883 getPluginList
+webview/dist UNCHANGED (C++-only fix) — no reconfigure needed; .o recompiled because .cpp changed.

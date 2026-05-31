@@ -1,0 +1,7 @@
+{
+  "tool_name": "mcp__chrome-devtools__new_page",
+  "tool_input_preview": "{\"url\":\"http://localhost:6008/iframe.html?id=components-layout-aboutmodal--default&viewMode=story\",\"timeout\":20000}",
+  "error": "MCP server \"chrome-devtools\" tool \"new_page\" timed out after 1s",
+  "timestamp": "2026-05-30T20:50:53.062Z",
+  "retry_count": 1
+}

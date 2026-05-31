@@ -1,0 +1,67 @@
+{
+  "timestamp": "2026-05-07T22:56:42.527849+00:00",
+  "checks": [
+    {
+      "check": "window_exists",
+      "target": "Element",
+      "expected": true,
+      "observed": true,
+      "passed": true,
+      "method": "AXWindows search",
+      "latency_ms": 84.9
+    },
+    {
+      "check": "demo_plugin_strings_absent",
+      "target": "F-101 \u2014 pluginsDemoFallback removed",
+      "expected": true,
+      "observed": true,
+      "passed": true,
+      "method": "AX BFS scan for forbidden strings",
+      "leaked_titles": []
+    },
+    {
+      "check": "element_exists",
+      "target": "TAP",
+      "expected": true,
+      "observed": true,
+      "passed": true,
+      "method": "BFS AXChildren search",
+      "latency_ms": 3.5
+    },
+    {
+      "check": "record_button_exists",
+      "target": "F-204 \u2014 Record button reachable",
+      "expected": true,
+      "observed": false,
+      "passed": false,
+      "method": "AX BFS for AXButton with 'record' in description/title",
+      "note": "Record button may exist in DOM but be opaque to AX (icon-only)."
+    },
+    {
+      "check": "plugin_editor_open_in_bundle",
+      "target": "F-105 \u2014 elementPluginEditorOpen present in shipped JS",
+      "expected": true,
+      "observed": true,
+      "passed": true,
+      "method": "Filesystem scan of dist/ JS bundle for bridge identifier",
+      "scanned_dir": "/Volumes/Projects/Development_Projects/Github_Repos/element/tools/automation/../../build-merged/element_app_artefacts/Element.app/Contents/Resources/webview/assets"
+    },
+    {
+      "check": "tap_changes_bpm",
+      "target": "F-104 \u2014 clicking TAP changes BPM",
+      "expected": true,
+      "observed": true,
+      "passed": true,
+      "method": "AXPress x4 then compare BPM AXValue",
+      "start_bpm": "120.00",
+      "end_bpm": null
+    }
+  ],
+  "summary": {
+    "total": 6,
+    "passed": 5,
+    "failed": 1,
+    "result": "FAIL"
+  },
+  "elapsed_s": 6.96
+}

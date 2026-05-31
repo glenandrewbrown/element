@@ -123,30 +123,27 @@ describe("<Block />", () => {
 
   // ── Bypass / mute states ────────────────────────────────────────────────
 
-  it("shows bypass overlay when bypassed=true", () => {
-    const { container } = renderBlock({ bypassed: true });
-    // Bypass overlay uses an inline repeating-linear-gradient background.
-    // We check an element with style containing "repeating-linear-gradient"
-    const overlay = container.querySelector(
-      '[style*="repeating-linear-gradient"]'
-    );
-    expect(overlay).not.toBeNull();
+  it("shows BYPASSED overlay when bypassed=true", () => {
+    // State overlays now carry a glance-readable label (grey BYPASSED /
+    // red MUTED) instead of a bare style wash.
+    renderBlock({ bypassed: true });
+    expect(screen.getByText("BYPASSED")).toBeInTheDocument();
   });
 
-  it("does not show bypass overlay when bypassed=false", () => {
-    const { container } = renderBlock({ bypassed: false });
-    const overlay = container.querySelector(
-      '[style*="repeating-linear-gradient"]'
-    );
-    expect(overlay).toBeNull();
+  it("does not show BYPASSED overlay when bypassed=false", () => {
+    renderBlock({ bypassed: false });
+    expect(screen.queryByText("BYPASSED")).toBeNull();
   });
 
-  it("shows mute overlay when muted=true", () => {
-    const { container } = renderBlock({ muted: true });
-    // Mute overlay background is rgba(0,0,0,0.38) (Block.tsx:260). jsdom
-    // serializes inline rgba with spaces, so match the spaced form.
-    const overlay = container.querySelector('[style*="rgba(0, 0, 0, 0.38)"]');
-    expect(overlay).not.toBeNull();
+  it("shows MUTED overlay when muted=true", () => {
+    renderBlock({ muted: true });
+    expect(screen.getByText("MUTED")).toBeInTheDocument();
+  });
+
+  it("muted (red) overlay outranks bypassed when both set", () => {
+    renderBlock({ muted: true, bypassed: true });
+    expect(screen.getByText("MUTED")).toBeInTheDocument();
+    expect(screen.queryByText("BYPASSED")).toBeNull();
   });
 
   // ── Error state ─────────────────────────────────────────────────────────
@@ -160,33 +157,28 @@ describe("<Block />", () => {
   });
 
   // ── Category colour coding ───────────────────────────────────────────────
-  // Accent colours moved to Tailwind arbitrary-value classes `bg-[#hex]`
-  // (Block.tsx:20,26,32) rather than inline rgba. jsdom preserves class
-  // attributes verbatim but normalises inline hex → rgb()/rgba(), so we
-  // query the className.
+  // Accent colour now drives the gradient header (inline `background`) +
+  // port/knob hues. Match the category hex anywhere in the rendered markup,
+  // case-insensitively (jsdom may normalise hex case in gradient values).
 
   it("applies instrument (blue) accent for category=instrument", () => {
     const { container } = renderBlock({ category: "instrument" });
-    const el = container.querySelector('[class*="bg-[#4A90D9]"]');
-    expect(el).not.toBeNull();
+    expect(container.innerHTML).toContain("rgb(74, 144, 217)");
   });
 
   it("applies audiofx (orange) accent for category=audiofx", () => {
     const { container } = renderBlock({ category: "audiofx" });
-    const el = container.querySelector('[class*="bg-[#E8A838]"]');
-    expect(el).not.toBeNull();
+    expect(container.innerHTML).toContain("rgb(232, 168, 56)");
   });
 
   it("applies midifx (teal) accent for category=midifx", () => {
     const { container } = renderBlock({ category: "midifx" });
-    const el = container.querySelector('[class*="bg-[#2BC4C4]"]');
-    expect(el).not.toBeNull();
+    expect(container.innerHTML).toContain("rgb(43, 196, 196)");
   });
 
   it("applies modulator (purple) accent for category=modulator", () => {
     const { container } = renderBlock({ category: "modulator" });
-    const el = container.querySelector('[class*="bg-[#A87FE0]"]');
-    expect(el).not.toBeNull();
+    expect(container.innerHTML).toContain("rgb(168, 127, 224)");
   });
 
   // ── hostColor ────────────────────────────────────────────────────────────
@@ -238,7 +230,9 @@ describe("<Block />", () => {
     expect(() => renderBlock({ ports: [] })).not.toThrow();
   });
 
-  it("renders cpu load label", () => {
+  it("shows cpu load in the header (always visible, no hover reflow)", () => {
+    // CPU moved into the header (Glen — more visible) and is always shown when
+    // > 0, so the block never changes shape on hover.
     renderBlock({ cpuLoad: 42 });
     expect(screen.getByText(/42/)).toBeInTheDocument();
   });

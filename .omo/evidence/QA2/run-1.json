@@ -1,0 +1,62 @@
+{
+  "comment": "Run-1 represents the AX-suite baseline AFTER team-d D-1..D-3 + Undo/Redo landed but BEFORE QA2 cycle 2 fixes (F-101, F-104, F-105, F-204). Captured against Element.app PID 42201 BEFORE the rebuild.",
+  "ax_suite_summary": {
+    "plugin-browser": {
+      "passed": 0,
+      "total": 4,
+      "result": "FAIL",
+      "note": "All / Favorites / Recent / search-area absent — suite uses stale labels, current ToolPalette has 'Plugins'/'Projects' tabs and GEN/MOD/LOGIC category buttons. Webview content nested inside opaque AXWebArea."
+    },
+    "session-browser": {
+      "passed": 0,
+      "total": 3,
+      "result": "FAIL",
+      "note": "All Files / Recent / search-area absent — labels never matched"
+    },
+    "navigation": {
+      "passed": 2,
+      "total": 4,
+      "result": "FAIL",
+      "note": "view + Graph found via JUCE shell; Plugins + Sessions not in AX tree (rendered inside opaque AXWebArea)"
+    },
+    "toolbar": {
+      "passed": 1,
+      "total": 1,
+      "result": "PASS",
+      "note": "AXValue contains 'Device:' — JUCE status bar"
+    },
+    "dashboard-builder": {
+      "passed": 0,
+      "total": 3,
+      "result": "FAIL"
+    },
+    "command-palette": {
+      "passed": 1,
+      "total": 2,
+      "result": "FAIL"
+    },
+    "bus-inspector": {
+      "passed": 1,
+      "total": 2,
+      "result": "FAIL"
+    },
+    "virtual-keyboard": {
+      "passed": 1,
+      "total": 2,
+      "result": "FAIL"
+    }
+  },
+  "ax_suite_total": {
+    "total": 21,
+    "passed": 6,
+    "failed": 15,
+    "result": "FAIL"
+  },
+  "qa2_runtime_suite_run1": "not run before fixes — directed suite was authored AFTER F-101/104/105/204 to verify them; baseline failures inferred from static-code state below",
+  "static_state_at_run1": {
+    "F-101_pluginsDemoFallback_present": true,
+    "F-104_TAP_button_no_onClick": true,
+    "F-105_block_double_click_plugin_GUI": "no-op for plugin Blocks",
+    "F-204_Record_button_present": false
+  }
+}

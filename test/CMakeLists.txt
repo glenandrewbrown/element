@@ -167,6 +167,18 @@ add_test(NAME "PackMidiNodeTests"       COMMAND test_element --run_test=PackMidi
 add_test(NAME "UnpackMidiNodeTests"     COMMAND test_element --run_test=UnpackMidiNodeTests)
 add_test(NAME "WetDryProcessorTests"    COMMAND test_element --run_test=WetDryProcessorTests)
 
+# Phase N — coverage-gap skeletons: graph edge-cases, MIDI error handling,
+#            Lua stress/sandbox, DSP robustness
+add_test(NAME "GraphConnectionValidationTests" COMMAND test_element --run_test=GraphConnectionValidationTests)
+add_test(NAME "GraphTopologyRobustnessTests"   COMMAND test_element --run_test=GraphTopologyRobustnessTests)
+add_test(NAME "GraphBuilderEdgeCaseTests"      COMMAND test_element --run_test=GraphBuilderEdgeCaseTests)
+add_test(NAME "MidiErrorHandlingTests"         COMMAND test_element --run_test=MidiErrorHandlingTests)
+add_test(NAME "MidiEdgeCaseMessageTests"       COMMAND test_element --run_test=MidiEdgeCaseMessageTests)
+add_test(NAME "LuaStressTests"                 COMMAND test_element --run_test=LuaStressTests)
+add_test(NAME "LuaSandboxBoundaryTests"        COMMAND test_element --run_test=LuaSandboxBoundaryTests)
+add_test(NAME "DspRobustnessTests"             COMMAND test_element --run_test=DspRobustnessTests)
+add_test(NAME "DspStateRoundTripTests"         COMMAND test_element --run_test=DspStateRoundTripTests)
+
 option(ELEMENT_RT_STRESS_TEST "Build and register the audio-thread stress test" OFF)
 if (ELEMENT_RT_STRESS_TEST)
     target_compile_definitions(test_element PRIVATE ELEMENT_RT_STRESS_TEST=1)

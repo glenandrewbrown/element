@@ -1,0 +1,67 @@
+# graphify scope control — keep the knowledge graph to real first-party source
+# + curated project docs. Wins over .gitignore (last-match-wins). See `/graphify`.
+#
+# Philosophy (per Glen): exclude third-party, build output, and machine-generated
+# junk — but KEEP hand-written architecture/research/audit/spec/history docs,
+# including those under .omo/ and .sisyphus/ (audits, plans, reports, handovers).
+# Only the machine-generated DUMPS inside those dirs are stripped, not the prose.
+
+# ── Third-party / vendored ──
+webview/vendor/
+deps/
+node_modules/
+
+# ── Build trees + fetched deps ──
+build*/
+**/_deps/
+installer/output/
+
+# ── Python virtualenvs & bytecode (the .omo/.sisyphus bulk = qa-venv) ──
+**/qa-venv/
+**/.venv/
+**/venv/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyi
+*.so
+*.typed
+*.dist-info/
+
+# ── Machine-generated session / state / run dumps (NOT docs) ──
+.omc/sessions/        # 1319 session JSONs
+.omc/state/
+.omc/logs/
+webview/.omc/
+**/run-continuation/
+**/boulder.json
+.remember/
+.opencode/
+.wwebjs_auth/
+.claude/worktrees/
+.claude/skills/
+
+# ── evidence/ & qa/ : pure machine-generated dumps (console logs, ax-tree
+#    captures, test-runner output, screenshots). Dropped wholesale per Glen.
+#    Architecture/history lives in audit/ plans/ reports/ handover/ (KEPT below).
+.omo/evidence/
+.omo/qa/
+.sisyphus/evidence/
+.sisyphus/qa/
+
+# ── graphify's own output ──
+graphify-out/
+
+# ── Binary / media artifacts (no value as nodes; avoid vision/Whisper cost) ──
+*.db
+*.exe
+*.mp4
+*.mov
+*.webm
+*.mkv
+*.avi
+LICENSES/
+
+# KEPT on purpose: .omo|.sisyphus/{audit,plans,reports,handover,notepads,drafts,
+# handoffs}, root HANDOVER*.md, coordination.md, RESTART-PROMPT.md, .omc/{specs,plans},
+# docs/**, all src/** + webview/src/**, package.json/tsconfig (deps).

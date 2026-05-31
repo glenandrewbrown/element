@@ -1,0 +1,40 @@
+# Task 3 — Structural sweep (exhaustiveness proof)
+
+## A. ALL exported store selectors that derive (only .find — returns existing element ref, no allocation):
+src/stores/usePerformStore.ts:243:export const selectMapMode = (s: PerformStore) => s.mapModeActive;
+src/stores/usePerformStore.ts:244:export const selectMappedParameters = (s: PerformStore) => s.mappedParameters;
+
+## B. ALL inline component store selectors deriving objects/arrays (multiline PCRE scan webview/src/**):
+src/components/canvas/QuickAddPopup.tsx:124:  const refreshPlugins = usePluginBrowserStore((s) => s.refresh);
+src/components/canvas/QuickAddPopup.tsx:125:
+src/components/canvas/QuickAddPopup.tsx:126:  useEffect(() => {
+src/components/canvas/QuickAddPopup.tsx:127:    void refreshPlugins();
+src/components/canvas/QuickAddPopup.tsx:128:  }, [refreshPlugins]);
+src/components/canvas/QuickAddPopup.tsx:129:
+src/components/canvas/QuickAddPopup.tsx:130:  const plugins = useMemo((): PluginEntry[] => {
+src/components/canvas/QuickAddPopup.tsx:131:    return nativePlugins.map((p) => ({
+src/components/canvas/Cable.tsx:86:  const fanOffset = useGraphStore((s) => {
+src/components/canvas/Cable.tsx:87:    if (routing !== "manhattan") return 0;
+src/components/canvas/Cable.tsx:88:    const node = s.nodes.find((n) => n.id === source);
+src/components/canvas/Cable.tsx:89:    if (!node) return 0;
+src/components/canvas/Cable.tsx:90:    const outPorts = node.ports.filter((p) => p.direction === "output");
+src/components/layout/InspectorHub.tsx:504:  const lines = useHostExtrasStore((s) => s.logLines);
+src/components/layout/InspectorHub.tsx:505:  const tail = lines.slice(-300);
+src/components/layout/InspectorHub.tsx:528:  const nCables = useCableMeterStore((s) => Object.keys(s.levels).length);
+src/components/layout/InspectorHub.tsx:642:  const toggleMuteInput = useGraphStore((s) => s.toggleMuteInput);
+src/components/layout/InspectorHub.tsx:643:
+src/components/layout/InspectorHub.tsx:644:  const showScriptTab = selectedBlock != null && isScriptNode(selectedBlock);
+src/components/layout/InspectorHub.tsx:645:
+src/components/layout/InspectorHub.tsx:646:  const tabs: { id: Tab; label: string }[] = [
+src/components/layout/InspectorHub.tsx:647:    { id: "inspector", label: "INSPECTOR" },
+src/components/layout/InspectorHub.tsx:648:    ...(showScriptTab ? [{ id: "script" as Tab, label: "SCRIPT" }] : []),
+src/components/layout/MacroDashboard.tsx:54:  const toggleMapMode = usePerformStore((s) => s.toggleMapMode);
+src/components/layout/MacroDashboard.tsx:55:  const allNodes = useGraphStore((s) => s.nodes);
+src/components/layout/MacroDashboard.tsx:56:  const toggleBypass = useGraphStore((s) => s.toggleBypass);
+src/components/layout/MacroDashboard.tsx:57:  const effectBlocks = allNodes.filter((n) => n.category !== "generator");
+
+## C. useShallow occurrences (the fix already applied):
+src/components/canvas/BlockEmbed.tsx:2:import { useShallow } from "zustand/react/shallow";
+src/components/canvas/BlockEmbed.tsx:115:  // in `useShallow`: Zustand v5 forwards the raw selector result to React's
+src/components/canvas/BlockEmbed.tsx:120:  // `useShallow` element-compares and returns the cached array when unchanged.
+src/components/canvas/BlockEmbed.tsx:122:    useShallow((st) => {

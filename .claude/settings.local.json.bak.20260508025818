@@ -1,0 +1,53 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_response.filePath // .tool_input.file_path // empty' | { read -r f; [ -z \"$f\" ] && exit 0; case \"$f\" in */engine/*|*/nodes/*) matches=$(grep -nE '(\\bnew\\b |\\bdelete\\b |\\bmalloc\\b|\\bfree\\b|\\bmutex\\b|\\block_guard\\b|\\bunique_lock\\b|juce::CriticalSection|juce::SpinLock)' \"$f\" 2>/dev/null | grep -v '//.*no-rt-check' | grep -v 'prepareToRender\\|releaseResources\\|setState\\|getState' | head -5); if [ -n \"$matches\" ]; then echo \"{\\\"decision\\\": \\\"block\\\", \\\"reason\\\": \\\"RT-SAFETY: Potential real-time unsafe code in audio path. Found:\\n${matches}\\nUse pre-allocated buffers/atomics, or add //no-rt-check comment if intentional.\\\"}\"; fi;; esac; } 2>/dev/null || true"
+          }
+        ]
+      }
+    ]
+  },
+  "enabledPlugins": {
+    "vercel@claude-plugins-official": false,
+    "nextjs-vercel-pro@claude-code-templates": false,
+    "frontend-design@claude-plugins-official": false,
+    "figma@claude-plugins-official": false,
+    "firebase@claude-plugins-official": false,
+    "laravel-boost@claude-plugins-official": false,
+    "data-engineering@claude-plugins-official": false,
+    "product-tracking-skills@claude-plugins-official": false,
+    "fastly-agent-toolkit@claude-plugins-official": false,
+    "stagehand@claude-plugins-official": false,
+    "nimble@claude-plugins-official": false,
+    "goodmem@claude-plugins-official": false,
+    "autofix-bot@claude-plugins-official": false,
+    "huggingface-skills@claude-plugins-official": true,
+    "ai-ml-toolkit@claude-code-templates": false,
+    "mcp-server-dev@claude-plugins-official": true,
+    "chrome-devtools-mcp@claude-plugins-official": true,
+    "firecrawl@claude-plugins-official": false,
+    "devops-automation@claude-code-templates": false,
+    "documentation-generator@claude-code-templates": false,
+    "performance-optimizer@claude-code-templates": false,
+    "project-management-suite@claude-code-templates": true,
+    "voltagent-data-ai@voltagent-subagents": false,
+    "voltagent-lang@voltagent-subagents": false,
+    "voltagent-meta@voltagent-subagents": false,
+    "voltagent-research@voltagent-subagents": false,
+    "voltagent-biz@voltagent-subagents": false,
+    "voltagent-core-dev@voltagent-subagents": false,
+    "voltagent-dev-exp@voltagent-subagents": false,
+    "voltagent-domains@voltagent-subagents": false,
+    "typescript-lsp@claude-plugins-official": false,
+    "swift-lsp@claude-plugins-official": false,
+    "pyright-lsp@claude-plugins-official": true,
+    "superpowers-chrome@superpowers-marketplace": false,
+    "testing-suite@claude-code-templates": false,
+    "clangd-lsp@claude-plugins-official": true
+  }
+}

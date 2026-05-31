@@ -19,6 +19,9 @@ const colorClasses = {
 } as const;
 
 const sizeMap = {
+  // `xs` — on-Block density tier (verdict 1). ~34px dial sized to fill the
+  // Block body across 3 knobs; used with `compact` to drop the numeric readout.
+  xs: { outer: 34, inner: 23, inset: 5, indicator: { w: 3, h: 8, top: 3 } },
   sm: { outer: 48, inner: 32, inset: 8, indicator: { w: 4, h: 10, top: 4 } },
   md: { outer: 64, inner: 48, inset: 8, indicator: { w: 4, h: 12, top: 4 } },
   lg: { outer: 80, inner: 56, inset: 12, indicator: { w: 4, h: 14, top: 6 } },
@@ -36,13 +39,18 @@ interface NeuKnobProps {
    * generator, `orange` = modifier, `teal` = logic. Default `blue`.
    */
   color?: "blue" | "orange" | "teal";
-  /** Diameter tier: `sm` / `md` (default) / `lg`. */
-  size?: "sm" | "md" | "lg";
+  /** Diameter tier: `xs` / `sm` / `md` (default) / `lg`. */
+  size?: "xs" | "sm" | "md" | "lg";
   /**
    * Called with the new 0–100 value during a vertical drag (hold Shift for
    * fine control). Omit to render a read-only indicator knob.
    */
   onChange?: (value: number) => void;
+  /**
+   * Compact mode (on-Block use): tightens the wrapper gap, drops the numeric
+   * readout + sourceLabel, and shrinks the caption. Pair with `size="xs"`.
+   */
+  compact?: boolean;
   /** Optional className appended to the wrapper. */
   className?: string;
 }
@@ -61,6 +69,7 @@ export function NeuKnob({
   color = "blue",
   size = "md",
   onChange,
+  compact = false,
   className = "",
 }: NeuKnobProps) {
   const hex = colorHex[color];
@@ -105,7 +114,7 @@ export function NeuKnob({
   const arcLength = (value / 100) * (270 / 360) * circumference;
 
   return (
-    <div className={`flex flex-col items-center gap-2 ${className}`}>
+    <div className={`flex flex-col items-center ${compact ? "gap-0.5" : "gap-2"} ${className}`}>
       {/* Knob body */}
       <div
         className={[
@@ -178,13 +187,17 @@ export function NeuKnob({
 
       {/* Labels */}
       <div className="text-center leading-none">
-        <div className="text-[10px] font-bold text-text-primary uppercase tracking-tight">
+        <div
+          className={`${compact ? "text-[7px]" : "text-[10px]"} font-bold text-text-secondary uppercase tracking-tight leading-none`}
+        >
           {label}
         </div>
-        <div className={`text-[10px] font-bold tabular mt-0.5 ${text}`}>
+        <div
+          className={`${compact ? "text-[8px] mt-px text-text-primary" : `text-[10px] mt-0.5 ${text}`} font-bold tabular leading-none`}
+        >
           {value}
         </div>
-        {sourceLabel && (
+        {!compact && sourceLabel && (
           <div className="text-[10px] font-medium text-text-secondary uppercase tracking-widest mt-0.5">
             {sourceLabel}
           </div>

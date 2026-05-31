@@ -1,0 +1,48 @@
+{
+  "active_plan": "/Volumes/Projects/Development_Projects/Github_Repos/element/.omo/plans/deep-app-audit.md",
+  "started_at": "2026-05-29T18:11:15.939Z",
+  "session_ids": [
+    "ses_18b1113c1ffeIk4TAdNfQRzY9m"
+  ],
+  "plan_name": "deep-app-audit",
+  "session_origins": {
+    "ses_18b1113c1ffeIk4TAdNfQRzY9m": "direct"
+  },
+  "task_sessions": {},
+  "schema_version": 2,
+  "works": {
+    "bug-catcher-wave2-legacy": {
+      "work_id": "bug-catcher-wave2-legacy",
+      "active_plan": "/Volumes/Projects/Development_Projects/Github_Repos/element/.sisyphus/plans/bug-catcher-wave2.md",
+      "plan_name": "bug-catcher-wave2",
+      "started_at": "2026-05-08T02:05:14.588Z",
+      "session_ids": [
+        "ses_1faab0a77ffenAEVqNCbc89rdm"
+      ],
+      "session_origins": {
+        "ses_1faab0a77ffenAEVqNCbc89rdm": "direct"
+      },
+      "task_sessions": {}
+    },
+    "deep-app-audit-bf0c51af": {
+      "work_id": "deep-app-audit-bf0c51af",
+      "active_plan": "/Volumes/Projects/Development_Projects/Github_Repos/element/.omo/plans/deep-app-audit.md",
+      "plan_name": "deep-app-audit",
+      "status": "active",
+      "started_at": "2026-05-29T18:11:15.939Z",
+      "updated_at": "2026-05-29T18:11:15.939Z",
+      "session_ids": [
+        "ses_18b1113c1ffeIk4TAdNfQRzY9m"
+      ],
+      "session_origins": {
+        "ses_18b1113c1ffeIk4TAdNfQRzY9m": "direct"
+      },
+      "agent": "atlas",
+      "task_sessions": {}
+    }
+  },
+  "active_work_id": "deep-app-audit-bf0c51af",
+  "status": "active",
+  "updated_at": "2026-05-29T18:11:15.939Z",
+  "agent": "atlas"
+}

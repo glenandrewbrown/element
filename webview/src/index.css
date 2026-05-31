@@ -232,6 +232,22 @@ body {
   50%      { outline-color: rgba(74, 144, 217, 0.7); }
 }
 
+/* Block signal LED (verdict 1) — soft breathing while passing signal. */
+@keyframes led-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.55; }
+}
+
+/* React Flow wraps every node in `.react-flow__node` with `contain: content`,
+   whose PAINT containment clips anything drawn outside the node box — our
+   outward port labels + bus badges in the canvas gutter, and the selection
+   glow. Drop paint-containment for Block nodes only (keep layout + style
+   isolation so large-graph perf is unaffected). Specificity (0,2,0) beats
+   React Flow's `.react-flow__node` (0,1,0) without !important. */
+.react-flow .react-flow__node-block {
+  contain: layout style;
+}
+
 .map-mode-banner {
   position: absolute;
   top: 8px;
@@ -271,4 +287,106 @@ body {
   .react-flow__viewport {
     will-change: auto;
   }
+}
+
+/* ============================================================
+   NODEBLOCK V3 — faithful visual port of the mindful-studio
+   mockup's NodeBlock (header gradient + sculpted chassis + port
+   wells + segmented RMS meter). Everything is scoped under
+   `.nodeblock-v3` so the HSL tokens (--cat-* / --sig-* /
+   --status-*) and the helper classes can be transcribed VERBATIM
+   from the mockup without colliding with Element's @theme hex
+   tokens above. The block root carries `.nodeblock-v3`.
+   ============================================================ */
+
+.nodeblock-v3 {
+  /* Category accents (block category) — HSL form, mockup parity */
+  --cat-instrument: 210 65% 57%;
+  --cat-midifx: 180 65% 47%;
+  --cat-audiofx: 38 80% 56%;
+  --cat-modulator: 266 64% 69%;
+
+  /* Signal-type accents (drives the port pip colour) */
+  --sig-audio: 210 65% 57%;
+  --sig-midi: 180 65% 47%;
+  --sig-value: 38 80% 56%;
+
+  /* Status */
+  --status-ok: 142 69% 58%;
+  --status-warn: 38 80% 56%;
+  --status-clip: 358 75% 59%;
+
+  /* Text (mockup refs these in port labels / readouts) */
+  --foreground: 240 11% 91%;
+  --muted-foreground: 240 3% 56%;
+}
+
+/* SCULPT — primary block chassis (mockup .neu-sculpt, verbatim).
+   Micro-gradient face + outer drop + inner highlight. COMPOUND selector
+   (`.nodeblock-v3.neu-sculpt`, no space) — the root div carries BOTH classes,
+   so this must match a single element, not a descendant. */
+.nodeblock-v3.neu-sculpt {
+  background: linear-gradient(180deg, hsl(240 5% 20%) 0%, hsl(240 6% 15%) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.075),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.45),
+    -5px -5px 16px rgba(255, 255, 255, 0.05),
+    6px 6px 22px rgba(0, 0, 0, 0.7),
+    0 1px 0 rgba(255, 255, 255, 0.03);
+}
+/* HOVER — lighter gradient + stronger shadow. NO size/layout change. */
+.nodeblock-v3.neu-sculpt-hover {
+  background: linear-gradient(180deg, hsl(240 5% 22%) 0%, hsl(240 6% 16%) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.09),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.5),
+    -6px -6px 20px rgba(255, 255, 255, 0.065),
+    7px 7px 26px rgba(0, 0, 0, 0.78);
+}
+
+/* PORT WELL — recessed circular socket (mockup .port-well, verbatim) */
+.nodeblock-v3 .port-well {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: hsl(240 10% 9%);
+  box-shadow:
+    inset 1.5px 1.5px 2.5px rgba(0, 0, 0, 0.9),
+    inset -1px -1px 1.5px rgba(255, 255, 255, 0.05);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.nodeblock-v3 .port-sidechain {
+  outline: 1px dashed hsl(var(--cat-audiofx) / 0.7);
+  outline-offset: 1px;
+}
+
+/* Selected-state category glow (mockup .neu-glow-*, verbatim) */
+.nodeblock-v3.neu-glow-instrument {
+  box-shadow: 0 0 0 1.5px hsl(var(--cat-instrument)), 0 0 24px 0 hsl(var(--cat-instrument) / 0.45), -3px -3px 10px rgba(255, 255, 255, 0.06), 4px 4px 14px rgba(0, 0, 0, 0.6);
+}
+.nodeblock-v3.neu-glow-midifx {
+  box-shadow: 0 0 0 1.5px hsl(var(--cat-midifx)), 0 0 24px 0 hsl(var(--cat-midifx) / 0.45), -3px -3px 10px rgba(255, 255, 255, 0.06), 4px 4px 14px rgba(0, 0, 0, 0.6);
+}
+.nodeblock-v3.neu-glow-audiofx {
+  box-shadow: 0 0 0 1.5px hsl(var(--cat-audiofx)), 0 0 24px 0 hsl(var(--cat-audiofx) / 0.45), -3px -3px 10px rgba(255, 255, 255, 0.06), 4px 4px 14px rgba(0, 0, 0, 0.6);
+}
+.nodeblock-v3.neu-glow-modulator {
+  box-shadow: 0 0 0 1.5px hsl(var(--cat-modulator)), 0 0 24px 0 hsl(var(--cat-modulator) / 0.45), -3px -3px 10px rgba(255, 255, 255, 0.06), 4px 4px 14px rgba(0, 0, 0, 0.6);
+}
+
+/* Signal LED pulse (mockup @keyframes led-pulse, verbatim) */
+@keyframes led-pulse {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.6); }
+}
+
+/* Smooth, non-layout transition for the sculpt→hover swap (mockup
+   .t-precision). Transitioning `box-shadow`+`background` only — never size —
+   so hover NEVER changes the block's shape/footprint (Glen, feedback 3). */
+.nodeblock-v3.t-precision {
+  transition: box-shadow 200ms cubic-bezier(0.16, 1, 0.3, 1),
+    background 200ms cubic-bezier(0.16, 1, 0.3, 1);
 }

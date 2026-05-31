@@ -1,0 +1,36 @@
+name: Chromatic
+
+# Publishes the webview Storybook to Chromatic.
+# - on PRs: opens a UI Review (per-component side-by-side diffs + threaded comments).
+# - on main: refreshes the baseline.
+# Requires repo secret CHROMATIC_PROJECT_TOKEN (Settings -> Secrets and variables
+# -> Actions -> New repository secret). NEVER commit the token.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  chromatic:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Chromatic needs full git history for baselines
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install webview deps
+        run: npm ci
+        working-directory: webview
+
+      - name: Publish to Chromatic
+        uses: chromaui/action@latest
+        with:
+          projectToken: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
+          workingDir: webview
+          exitZeroOnChanges: true # visual changes are reviewed, not CI failures
+          onlyChanged: true # TurboSnap: snapshot only stories affected by the diff

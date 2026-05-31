@@ -1,0 +1,59 @@
+TASK 2 — JS<->C++ BRIDGE CALL-SITE DIFF (authoritative)
+Generated: 2026-05-29  Branch: local-enhancements
+Repo: /Volumes/Projects/Development_Projects/Github_Repos/element
+
+METHOD
+  JS-called set  = union of:
+    rg -oN 'invokeElementNative\(\s*"(element[A-Za-z]+)"' webview/src -r '$1'
+    rg -oN 'invokeNativeFunction\("(element[A-Za-z]+)"'    webview/src -r '$1'
+    (path prefix stripped; __tests__ excluded)
+  C++-registered = name literal following each `registerFn (` in
+    src/ui/element_webview_host.cpp  (registerFn -> opts.withNativeFunction)
+
+COUNTS
+  JS-called (non-test src) : 80   (incl. 1 synthetic test name, see below)
+  C++-registered           : 86
+
+=== MISSING: called by JS src but NOT registered in C++ ===
+elementAnyCall      <-- FALSE POSITIVE. Only occurs in
+                        webview/src/bridge/__tests__/juceBackend.test.ts:39
+                        as a synthetic arg-passthrough test. NOT a real call site.
+
+  => TRUE missing-registered-native set = {} (EMPTY).
+     Every native React actually invokes IS registered in C++.
+
+=== UNUSED: registered in C++ but NOT called by JS src (7) — verified via comm -13 ===
+elementGraphCreateWirelessBus
+elementGraphDeleteWirelessBus
+elementGraphDuplicateNodesWithRewire
+elementGraphGetWirelessBuses
+elementGraphSetConnectionSource
+elementGraphSetConnectionTarget
+elementPerformMarkParameterMapped
+  (C++ ahead of React — registered but no React caller yet. Not a Wave-4 build target.)
+  (elementGraphGetConnectionList IS called by nativeGraph.ts — confirmed in js_called.txt,
+   so it is NOT in this unused set.)
+
+=== AUDIT ESTIMATE CROSS-CHECK (docs/REACT_UI_AUDIT_2026-05-24.md L170-186) ===
+Audit "Missing from C++" listed 7 P0 fns. rg over webview/src finds ZERO call sites
+for ANY of them:
+  elementScanPlugins        : not found in webview/src
+  elementGetPluginPaths     : not found in webview/src
+  elementAddPluginPath      : not found in webview/src
+  elementRemovePluginPath   : not found in webview/src
+  elementGetPluginFormats   : not found in webview/src
+  elementSetPluginFormat    : not found in webview/src
+  elementGetAudioDevices    : not found in webview/src
+  => These are NOT "registered-native gaps". They are UNBUILT FEATURES (no React caller
+     AND no C++ registration). BUG-004 (audio devices) is already satisfied by
+     elementGetEngineSnapshot.audioSetup (keys verified). BUG-002 (plugin-path mgmt)
+     is a genuinely absent feature on both sides.
+
+=== BLOCK-JSON SHAPE GAP (real, verified) ===
+Plugin LIST blocks  (elementGetPluginList, host L4381-4388): EMIT name/descriptiveName/
+   manufacturer/format/category/identifier  -> COMPLETE for usePluginBrowserStore.
+Graph-state BLOCKS (elementGetGraphState, host L4207-4250): DO NOT emit `format` or
+   `category`. JS mapBlock (useJuceBridge L201-207) falls back to inferFormat()=="INT"
+   always (BUG-013) and inferCategory() crude name match (BUG-012).
+   Fix is feasible: node ValueTree carries tags::format (host L2166); PluginDescription
+   carries desc.category (host L4386).

@@ -1,0 +1,13 @@
+ ✓ |storybook (chromium)| src/components/canvas/Block.stories.tsx > Errored 29ms
+ × |storybook (chromium)| src/components/layout/ToolPalette.stories.tsx > Empty 29ms
+ × |storybook (chromium)| src/components/layout/SessionTree.stories.tsx > Single Graph 1019ms
+ ✓ |storybook (chromium)| src/components/layout/QuickAccess.stories.tsx > With Blocks 104ms
+ ✓ |storybook (chromium)| src/components/layout/QuickAccess.stories.tsx > Empty 27ms
+ ✓ |storybook (chromium)| src/components/layout/QuickAccess.stories.tsx > High Cpu 18ms
+ FAIL  |storybook (chromium)| src/components/layout/SessionTree.stories.tsx > Single Graph
+TestingLibraryElementError: 
+ FAIL  |storybook (chromium)| src/components/layout/ToolPalette.stories.tsx > Empty
+TestingLibraryElementError: 
+ ❯ Object.getElementError node_modules/.cache/storybook/10.4.1/ce5ea496cd31a2737663aacd24e4eed0877795be3932f227bf2a696cdc0f0853/sb-vitest/deps/test-Bstapbw7.js?v=8dd7514a:16394:52
+ ❯ getElementError node_modules/.cache/storybook/10.4.1/ce5ea496cd31a2737663aacd24e4eed0877795be3932f227bf2a696cdc0f0853/sb-vitest/deps/test-Bstapbw7.js?v=8dd7514a:16777:20
+ ❯ getMultipleElementsFoundError node_modules/.cache/storybook/10.4.1/ce5ea496cd31a2737663aacd24e4eed0877795be3932f227bf2a696cdc0f0853/sb-vitest/deps/test-Bstapbw7.js?v=8dd7514a:16780:8
