@@ -51,6 +51,37 @@ const initialState: EngineSnapshotState = {
   hasHostData: false,
 };
 
+/**
+ * True when the freshly-polled snapshot differs from what the store already
+ * holds. `cpu` is the only field that jitters every 250ms tick, so it is
+ * compared at 0.1%-of-fraction resolution (imperceptible on screen) — an
+ * exact-equality diff would almost never skip and the idle-tick win would
+ * not materialise. During playback `transportFrame`/`transportTimecode`
+ * change every tick, so the diff correctly fires then; the win is the
+ * stopped/idle case where nothing actually changes.
+ */
+function snapshotChanged(
+  prev: EngineSnapshotState,
+  snap: EngineSnapshot,
+): boolean {
+  return (
+    Math.round(snap.cpu * 1000) !== Math.round(prev.cpu * 1000) ||
+    snap.engineRunning !== prev.engineRunning ||
+    snap.sampleRate !== prev.sampleRate ||
+    snap.bufferSize !== prev.bufferSize ||
+    snap.deviceName !== prev.deviceName ||
+    snap.deviceLatencyInputMs !== prev.deviceLatencyInputMs ||
+    snap.deviceLatencyOutputMs !== prev.deviceLatencyOutputMs ||
+    snap.transportPlaying !== prev.transportPlaying ||
+    snap.transportRecording !== prev.transportRecording ||
+    snap.tempoBpm !== prev.tempoBpm ||
+    snap.timeSig[0] !== prev.timeSig[0] ||
+    snap.timeSig[1] !== prev.timeSig[1] ||
+    snap.transportFrame !== prev.transportFrame ||
+    snap.transportTimecode !== prev.transportTimecode
+  );
+}
+
 export const useEngineSnapshotStore = create<EngineSnapshotStore>()(
   (set, get) => ({
     ...initialState,
@@ -58,6 +89,12 @@ export const useEngineSnapshotStore = create<EngineSnapshotStore>()(
     refresh: async () => {
       const snap = await nativeGetEngineSnapshot();
       if (snap == null) return;
+      // Idle-tick guard: when the host payload is identical to what we
+      // already hold, skip BOTH the store set() and the usePerformStore
+      // write-through below. Each write-through builds a fresh `liveHealth`
+      // object that re-renders every StatusBar/Toolbar/LiveHealth/Inspector
+      // consumer; doing that 4×/sec while nothing changes is pure waste.
+      if (get().hasHostData && !snapshotChanged(get(), snap)) return;
       set({
         ...snap,
         lastUpdated: Date.now(),

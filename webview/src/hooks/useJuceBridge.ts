@@ -413,6 +413,42 @@ declare global {
 
 export { invokeElementNative } from "../bridge/juceBackend";
 
+// ── Cable-level rAF coalescing ──
+//
+// The host emits a FULL snapshot of every cable's level ~60Hz on
+// `onCableLevels`. Forwarding each push straight to the store does a Zustand
+// set() per host message; we instead keep only the LATEST snapshot and flush
+// at most once per animation frame (session-drift perf plan Rank 1). The
+// buffer is REPLACED (not accumulated) each call — every push is a complete
+// snapshot, so an older buffered array would be stale.
+let pendingCableLevels: Array<{ id: string; level: number }> | null = null;
+let cableLevelsRaf = 0;
+
+function flushCableLevels(): void {
+  cableLevelsRaf = 0;
+  const items = pendingCableLevels;
+  pendingCableLevels = null;
+  if (items) useCableMeterStore.getState().setCableLevels(items);
+}
+
+function scheduleCableLevels(items: Array<{ id: string; level: number }>): void {
+  pendingCableLevels = items;
+  if (cableLevelsRaf !== 0) return;
+  if (typeof requestAnimationFrame === "function") {
+    cableLevelsRaf = requestAnimationFrame(flushCableLevels);
+  } else {
+    // No rAF (non-browser host) — flush synchronously.
+    flushCableLevels();
+  }
+}
+
+function cancelCableLevels(): void {
+  if (cableLevelsRaf !== 0 && typeof cancelAnimationFrame === "function")
+    cancelAnimationFrame(cableLevelsRaf);
+  cableLevelsRaf = 0;
+  pendingCableLevels = null;
+}
+
 /**
  * Wires `window.__elementNative` callbacks from Element's WebView host into Zustand.
  * Safe in pure Vite dev (no `__JUCE__`): keeps demo graph unless native state is requested.
@@ -446,8 +482,7 @@ export function useJuceBridge() {
       },
       onCableLevels: (items: Array<{ id: string; level: number }>) => {
         prev.onCableLevels?.(items);
-        if (Array.isArray(items))
-          useCableMeterStore.getState().setCableLevels(items);
+        if (Array.isArray(items)) scheduleCableLevels(items);
       },
       onLogHistory: (lines: string[]) => {
         prev.onLogHistory?.(lines);
@@ -534,6 +569,7 @@ export function useJuceBridge() {
       window.__elementNative = prev;
       pluginPollTimers.forEach((id) => window.clearTimeout(id));
       sessionPollTimers.forEach((id) => window.clearTimeout(id));
+      cancelCableLevels();
     };
   }, []);
 

@@ -36,11 +36,30 @@ function getBackend(): BackendEvent | undefined {
 }
 
 let nextPromiseId = 0;
-const pendingPromises: Map<
-  number,
-  { resolve: (v: unknown) => void; reject: (e: unknown) => void }
-> = new Map();
+type PendingEntry = {
+  resolve: (v: unknown) => void;
+  reject: (e: unknown) => void;
+  timer: ReturnType<typeof setTimeout>;
+};
+const pendingPromises: Map<number, PendingEntry> = new Map();
 let listenerWired = false;
+
+// Drop a bridge call that the host never answers (host not ready, graph
+// reload mid-call, host crash) so its Map entry cannot leak for the whole
+// session. We RESOLVE `undefined` rather than reject: that matches the
+// no-bridge contract callers already handle and avoids unhandled-rejection
+// noise on fire-and-forget `void invokeElementNative(...)` paths.
+const PENDING_TIMEOUT_MS = 15000;
+// Belt-and-suspenders cap in case a burst out-runs the timeouts.
+const MAX_PENDING = 4096;
+
+function settlePending(id: number, value: unknown): void {
+  const entry = pendingPromises.get(id);
+  if (entry == null) return;
+  pendingPromises.delete(id);
+  clearTimeout(entry.timer);
+  entry.resolve(value);
+}
 
 function wireCompletionListener(backend: BackendEvent): void {
   if (listenerWired) return;
@@ -49,10 +68,7 @@ function wireCompletionListener(backend: BackendEvent): void {
     if (payload == null || typeof payload !== "object") return;
     const obj = payload as { promiseId?: unknown; result?: unknown };
     if (typeof obj.promiseId !== "number") return;
-    const entry = pendingPromises.get(obj.promiseId);
-    if (entry == null) return;
-    pendingPromises.delete(obj.promiseId);
-    entry.resolve(obj.result);
+    settlePending(obj.promiseId, obj.result);
   });
 }
 
@@ -70,7 +86,15 @@ export async function invokeElementNative(
   wireCompletionListener(backend);
   const promiseId = nextPromiseId++;
   const promise = new Promise<unknown>((resolve, reject) => {
-    pendingPromises.set(promiseId, { resolve, reject });
+    const timer = setTimeout(() => settlePending(promiseId, undefined), PENDING_TIMEOUT_MS);
+    pendingPromises.set(promiseId, { resolve, reject, timer });
+    // Evict the oldest (lowest id, Map preserves insertion order) if the
+    // queue grows past the cap before timeouts fire.
+    if (pendingPromises.size > MAX_PENDING) {
+      const oldest = pendingPromises.keys().next().value;
+      if (typeof oldest === "number" && oldest !== promiseId)
+        settlePending(oldest, undefined);
+    }
   });
   backend.emitEvent("__juce__invoke", {
     name,

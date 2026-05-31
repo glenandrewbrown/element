@@ -211,8 +211,16 @@ export const usePerformStore = create<PerformStore>()((set, get) => ({
 // Honest representation: the bridge today gives us *one* number — we map
 // it to `outputPeak`. Input metering and per-channel L/R are tracked under
 // Q-id Q-VU-INPUT and Q-VU-LR (need C++ bridge extension).
+let _meteringChainInstalled = false;
 function installMeteringChain(): void {
   if (typeof window === "undefined") return;
+  // Idempotent: prepending a link to `onMetering` on every module
+  // evaluation (HMR / repeated import) would stack callbacks that never get
+  // removed, so each metering tick would do 2×, 3×… work. Guard so the
+  // chain is installed exactly once per JS context (matches juceBackend's
+  // `listenerWired`).
+  if (_meteringChainInstalled) return;
+  _meteringChainInstalled = true;
   // Capture whatever was registered before us (could be undefined or set
   // by useJuceBridge effect on a later tick — both are fine because we
   // chain into prev.onMetering, and useJuceBridge will chain into ours).

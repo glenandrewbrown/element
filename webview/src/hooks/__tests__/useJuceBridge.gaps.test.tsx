@@ -116,11 +116,16 @@ describe("useJuceBridge — gap coverage", () => {
     renderHook(() => useJuceBridge());
     await act(async () => { await flushAsync(); });
 
-    act(() => {
+    // onCableLevels coalesces into the store on the next animation frame
+    // (perf: one set() per frame, not per ~60Hz host push) — flush a frame.
+    await act(async () => {
       window.__elementNative?.onCableLevels?.([
         { id: "cable-1", level: 0.75 },
         { id: "cable-2", level: 0.25 },
       ]);
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => resolve()),
+      );
     });
 
     const levels = useCableMeterStore.getState().levels;
