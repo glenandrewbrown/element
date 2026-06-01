@@ -11,9 +11,10 @@ import { useBusStore } from "../../stores/useBusStore";
 import { useBlockOutputLevel } from "../../stores/useCableMeterStore";
 import { useParameterStore } from "../../stores/useParameterStore";
 import { nativeSetNodeParameter } from "../../bridge/nativeGraph";
-import { getFunctionMeta } from "../../data/functionGroup";
 import { NeuKnob } from "../neu/NeuKnob";
 import { BlockEmbed } from "./BlockEmbed";
+import { Icon } from "../neu/Icon";
+import { iconForCategory } from "../neu/iconForCategory";
 
 // On-Block knob colour by category (verdict 1 + verdict 8). NeuKnob has no
 // purple tier yet, so modulators borrow blue until verdict 8 adds purple.
@@ -440,10 +441,13 @@ function StateBtn({ letter, active, activeColor, onClick, title }: StateBtnProps
  * (the per-Block model from `useGraphStore`) and `selected` drives the
  * category micro-glow.
  */
-// Function-type icon for the gradient header — a MEANINGFUL line glyph (reverb
-// arcs, EQ curve, synth wave, drum…) inferred from the Block's name + category
-// (re-housed from the mockup's function-group library). Glen: the abstract
-// geometric category shapes "mean nothing"; the function icon is the useful cue.
+// Function-type icon for the gradient header — a MEANINGFUL Lucide glyph
+// inferred from the Block's name + category via iconForCategory (the single
+// source of truth). Replaces the old inline SVG path approach so that all
+// icon decisions are centralised in iconForCategory.ts.
+//
+// Icon.tsx does not accept an arbitrary hex via `tone` (tone is a semantic key),
+// so we wrap in a span with currentColor and set color on the wrapper.
 function FunctionIcon({
   name,
   category,
@@ -455,21 +459,16 @@ function FunctionIcon({
   color?: string;
   size?: number;
 }) {
-  const { iconPath } = getFunctionMeta(name, category);
+  const iconName = iconForCategory(category, name);
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke={color}
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="shrink-0"
-    >
-      <path d={iconPath} />
-    </svg>
+    <span className="shrink-0 inline-flex" style={{ color }}>
+      <Icon
+        name={iconName}
+        size={size}
+        strokeWidth={2}
+        aria-hidden
+      />
+    </span>
   );
 }
 

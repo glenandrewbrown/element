@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { NeuInput, EmptyState } from "../neu";
+import { Icon } from "../neu/Icon";
+import { categoryIconName } from "../neu/iconForCategory";
 import type { BlockCategory } from "../../data/types";
 import { usePluginBrowserStore } from "../../stores/usePluginBrowserStore";
 import {
@@ -20,42 +22,40 @@ import {
   useHostExtrasStore,
   type GraphOutlineNode,
 } from "../../stores/useHostExtrasStore";
-import { Icon } from "../neu";
 import { EV_OPEN_PREFERENCES } from "../../events";
 
-// ── Category shape components (colour-blind safety: shape + colour) ──
+// ── Category icon components (meaningful icons, colour-blind safe) ──
+//
+// Previously used geometric shapes (●◆▲⬡) which Glen flagged as meaningless.
+// Now uses meaningful Lucide icons via iconForCategory — the single source of
+// truth. Colour is still applied (category hue) for the dopamine micro-glow;
+// the icon carries the semantic load.
 
 function CategoryShape({ category }: { category: BlockCategory }) {
   const color = `hsl(var(--cat-${category}))`;
-  if (category === "instrument")
-    return <span className="inline-block w-2 h-2 rounded-full" style={{ background: color }} />;
-  if (category === "audiofx")
-    return <span className="inline-block w-2 h-2 rotate-45" style={{ background: color }} />;
-  if (category === "midifx")
-    return (
-      <span
-        className="inline-block w-2 h-2"
-        style={{ background: color, clipPath: "polygon(50% 0%, 0% 100%, 100% 100%)" }}
-      />
-    );
+  const iconName = categoryIconName(category);
   return (
-    <span
-      className="inline-block w-2 h-2"
-      style={{
-        background: color,
-        clipPath: "polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)",
-      }}
-    />
+    <span className="inline-flex shrink-0" style={{ color }}>
+      <Icon name={iconName} size={12} strokeWidth={1.75} aria-hidden />
+    </span>
   );
 }
 
-// Collapsed-rail glyphs per category (matches the canvas shape language)
-const RAIL_GLYPH: Record<BlockCategory, string> = {
-  instrument: "●",
-  midifx: "▲",
-  audiofx: "◆",
-  modulator: "⬡",
-};
+// Collapsed-rail icons per category — meaningful Lucide glyphs replace the
+// old Unicode geometric shapes (●▲◆⬡). Rendered via CategoryShape so the
+// single source (iconForCategory.ts) drives all surfaces.
+function RailCategoryIcon({ category, active }: { category: BlockCategory; active: boolean }) {
+  const color = `hsl(var(--cat-${category}))`;
+  const iconName = categoryIconName(category);
+  return (
+    <span
+      className="inline-flex"
+      style={{ color, opacity: active ? 1 : 0.5, transition: "opacity 150ms ease" }}
+    >
+      <Icon name={iconName} size={14} strokeWidth={1.75} aria-hidden />
+    </span>
+  );
+}
 
 // Inline glyphs not in the Icon allowlist (Icon.tsx is out of scope this wave).
 // 1.5px stroke / 24-grid to match the canonical <Icon /> grammar.
@@ -466,15 +466,14 @@ export function ToolPalette({
               setActiveCategory(activeCategory === cat ? null : cat);
               onToggleCollapse?.();
             }}
-            className="w-6 h-6 flex items-center justify-center text-[13px] leading-none transition-opacity hover:opacity-100"
-            style={{
-              color: `hsl(var(--cat-${cat}))`,
-              opacity: activeCategory === null || activeCategory === cat ? 1 : 0.5,
-            }}
+            className="w-6 h-6 flex items-center justify-center transition-opacity hover:opacity-100"
             title={`Filter: ${cat}`}
             aria-label={`Filter ${cat}`}
           >
-            {RAIL_GLYPH[cat]}
+            <RailCategoryIcon
+              category={cat}
+              active={activeCategory === null || activeCategory === cat}
+            />
           </button>
         ))}
       </div>

@@ -29,37 +29,53 @@ import {
   AudioWaveform,
   Cable,
   Camera,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Circle,
   Clock,
+  Command,
+  Copy,
   Cpu,
   Folder,
+  GitBranch,
   GripVertical,
   HeartPulse,
   HelpCircle,
+  Info,
   Layers,
   LayoutGrid,
   Link,
   List,
+  LogIn,
+  Maximize2,
   MoreVertical,
   Music,
   Network,
+  Palette,
   Pause,
   Pencil,
+  Piano,
   Play,
+  Plug,
   Plus,
   Power,
   Puzzle,
   Redo2,
+  RefreshCw,
   Search,
   Settings,
   SkipBack,
+  SlidersHorizontal,
   Square,
+  Star,
   Trash2,
   Undo2,
+  Unplug,
   Volume2,
+  Waves,
   X,
+  Zap,
 } from "lucide-react";
 import type { LucideProps } from "lucide-react";
 import type { ComponentType } from "react";
@@ -83,36 +99,53 @@ const ICON_MAP: Record<string, ComponentType<LucideProps>> = {
   AudioWaveform,
   Cable,
   Camera,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Circle,
   Clock,
+  Command,
+  Copy,          // clipboard copy (context menus)
   Cpu,
   Folder,
+  // Category icons (meaningful, not geometric) — see iconForCategory.ts
+  GitBranch,     // midifx: MIDI routing / signal routing / transform
   GripVertical,
   HeartPulse,
+  Info,
   Layers,
   LayoutGrid,
   Link,
   List,
+  LogIn,         // mute-input indicator (context menus)
+  Maximize2,     // zoom-to-fit (canvas context menu)
   MoreVertical,
   Music,
-  Network,
+  Network,       // bus / OSC / network routing
+  Palette,       // colour picker (context menus — honest-disabled)
   Pause,
   Pencil,
+  Piano,         // instrument: keyboard = synth/sampler/audio-in
   Play,
+  Plug,          // remove-from-bus / make-wired
   Plus,
   Power,
   Puzzle,
   Redo2,
+  RefreshCw,
   Search,
   Settings,
   SkipBack,
+  SlidersHorizontal, // audiofx: horizontal faders = EQ/processing
   Square,
+  Star,
   Trash2,
   Undo2,
+  Unplug,        // disconnect ports (context menus)
   Volume2,
+  Waves,         // modulator: undulating sine = LFO/CV/modulation
   X,
+  Zap,           // oversample (context menus — honest-disabled)
 };
 
 /** Icon names available without an Icon.tsx edit (string-typed for ergonomics). */
@@ -129,12 +162,21 @@ export interface IconProps {
   className?: string;
   /** Semantic tone — sets stroke colour to the design-system hue. */
   tone?: IconTone;
+  /**
+   * Arbitrary CSS colour string (e.g. a hex category accent).
+   * Takes precedence over `tone` when both are supplied.
+   * Prefer `tone` for the 5 design-system hues; use `color` only when
+   * a context-specific accent (e.g. per-category hex) is needed.
+   */
+  color?: string;
   /** Stroke width override; default 1.5 (V3.0 brand grammar). */
   strokeWidth?: number;
   /** Accessible label for content icons. */
   "aria-label"?: string;
   /** Pass-through for decorative icons (default true when no aria-label). */
   "aria-hidden"?: boolean | "true" | "false";
+  /** Inline style passthrough to the underlying SVG element. */
+  style?: React.CSSProperties;
 }
 
 // ── Unknown-name dev warnings (deduplicated) ────────────────────────────────
@@ -171,9 +213,11 @@ export function Icon({
   size = 16,
   className,
   tone,
+  color: colorProp,
   strokeWidth = 1.5,
   "aria-label": ariaLabel,
   "aria-hidden": ariaHidden,
+  style,
 }: IconProps) {
   const Resolved = ICON_MAP[name];
 
@@ -193,7 +237,8 @@ export function Icon({
         ? ariaHidden
         : true;
 
-  const color = tone ? TONE_COLORS[tone] : undefined;
+  // Explicit `color` prop takes precedence over `tone` palette entry.
+  const color = colorProp ?? (tone ? TONE_COLORS[tone] : undefined);
 
   return (
     <LucideComponent
@@ -204,6 +249,7 @@ export function Icon({
       aria-label={ariaLabel}
       aria-hidden={resolvedAriaHidden as boolean | undefined}
       role={ariaLabel ? "img" : undefined}
+      style={style}
     />
   );
 }
