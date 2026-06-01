@@ -9,9 +9,16 @@ import type { BlockData, CableData } from "../../data/types";
 // useBusStore, and live per-cable levels from useCableMeterStore (for the
 // Send/Receive meters). Seed all three in each story's decorator.
 //
-// Wizard R1 #4 reworked this away from the old "wireless bus" framing into the
-// IO send/receive model — a Bus is a named rail that blocks SEND TO / RECEIVE
-// FROM (Bus Send / Bus Receive), not a wireless cable.
+// R3: meters now reflect REAL channel topology + signal type from CableData:
+//   • channelCount 1 → Mono single column
+//   • channelCount 2 → Stereo L/R pair
+//   • channelCount 6 → 5.1 Surround per-channel columns
+//   • signalType midi → MidiActivityIndicator (no VU)
+//   • isSidechain → orange trough + SC prefix
+//
+// Per-channel level split (true per-lane amplitude) is NOT yet bridged —
+// useCableMeterStore provides a single scalar per cable. All columns share
+// that scalar (honest-idle). See Pillar-2 backlog.
 
 const meta = {
   title: "Layout/BusInspector",
@@ -21,7 +28,7 @@ const meta = {
     docs: {
       description: {
         component:
-          "The IO send/receive Bus auditor. Lists every named Bus on the Board; each row shows SEPARATE live Send + Receive activity meters (real per-cable RMS / activity from useCableMeterStore), the signal-type colour, a sidechain badge where any feed is a sidechain, the sender/receiver block names, and — when given an onOpenBlock handler — a direct 'Open editor' affordance that dives the Bus's destination block (e.g. a reverb on the Bus). A Bus is a named rail that blocks Bus-Send to / Bus-Receive from — NOT a wireless cable. Empty state teaches the Bus Send / Bus Receive model.",
+          "The IO send/receive Bus auditor — now topology-aware. Mono buses show a single column meter, Stereo shows L/R pair, 5.1 Surround shows six labelled columns. MIDI buses replace the VU entirely with a teal activity indicator (blink-dot + event bead). Sidechain buses render an orange-tinted trough with SC prefix. All channel count + signal type data sourced from real CableData fields. Per-channel level split (per-lane RMS) is not yet bridged — Pillar-2 backlog.",
       },
     },
   },
@@ -31,7 +38,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-// ── shared data ──
+// ── helpers ──────────────────────────────────────────────────────────────────
 
 function makeBlock(id: string, name: string, category: BlockData["category"]): BlockData {
   return {
@@ -52,27 +59,34 @@ function makeBlock(id: string, name: string, category: BlockData["category"]): B
   };
 }
 
-const SYNTH  = makeBlock("synth-1",  "Synth Lead",   "instrument");
-const REVERB = makeBlock("reverb-1", "Hall Reverb",  "audiofx");
-const DELAY  = makeBlock("delay-1",  "Tape Delay",   "audiofx");
-const CHOIR  = makeBlock("choir-1",  "Choir Layer",  "instrument");
+const SYNTH  = makeBlock("synth-1",  "Synth Lead",    "instrument");
+const REVERB = makeBlock("reverb-1", "Hall Reverb",   "audiofx");
+const DELAY  = makeBlock("delay-1",  "Tape Delay",    "audiofx");
+const CHOIR  = makeBlock("choir-1",  "Choir Layer",   "instrument");
+const DRUM   = makeBlock("drum-1",   "Drum Machine",  "instrument");
+const COMP   = makeBlock("comp-1",   "Compressor",    "audiofx");
+const SEQ    = makeBlock("seq-1",    "Step Sequencer","midifx");
+const ARPEG  = makeBlock("arp-1",    "Arpeggiator",   "midifx");
 
-const makeEdge = (
+function makeEdge(
   id: string,
   source: string,
   target: string,
   signalType: CableData["signalType"],
+  channelCount: CableData["channelCount"] = 2,
   isSidechain = false,
-): CableData => ({
-  id,
-  source,
-  sourcePort: "out-L",
-  target,
-  targetPort: "in-L",
-  signalType,
-  channelCount: 2,
-  isSidechain,
-});
+): CableData {
+  return {
+    id,
+    source,
+    sourcePort: "out-L",
+    target,
+    targetPort: "in-L",
+    signalType,
+    channelCount,
+    isSidechain,
+  };
+}
 
 function seedStores(
   nodes: BlockData[],
@@ -84,6 +98,8 @@ function seedStores(
   useBusStore.setState({ cableBus });
   useCableMeterStore.setState((s) => ({ ...s, levels }));
 }
+
+// ── Stories ───────────────────────────────────────────────────────────────────
 
 // Empty state: no buses — teaches the Bus Send / Bus Receive model.
 export const Empty: Story = {
@@ -101,17 +117,40 @@ export const Empty: Story = {
     docs: {
       description: {
         story:
-          "No Buses yet — the panel teaches the IO model: add a Bus Send block to push a signal onto a named Bus and a Bus Receive block to pull it back. The common first-run state.",
+          "No Buses yet — the panel teaches the IO model: add a Bus Send block to push a signal onto a named Bus and a Bus Receive block to pull it back.",
       },
     },
   },
 };
 
-// Single audio bus with a live Send/Receive level.
-export const SingleBus: Story = {
+// Mono audio bus (channelCount: 1) — single centred column.
+export const MonoBus: Story = {
   decorators: [
     (Story) => {
-      const edges = [makeEdge("c1", "synth-1", "reverb-1", "audio")];
+      const edges = [makeEdge("c1", "synth-1", "reverb-1", "audio", 1)];
+      seedStores([SYNTH, REVERB], edges, { c1: "Mono Cue" }, { c1: 0.68 });
+      return (
+        <div style={{ width: 320 }} className="bg-canvas p-4">
+          <Story />
+        </div>
+      );
+    },
+  ],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "A mono (1-channel) audio bus — renders a single centred VU column labelled 'M'. Channel count sourced from real CableData.channelCount.",
+      },
+    },
+  },
+};
+
+// Stereo audio bus (channelCount: 2) — L/R pair, the typical case.
+export const StereoBus: Story = {
+  decorators: [
+    (Story) => {
+      const edges = [makeEdge("c1", "synth-1", "reverb-1", "audio", 2)];
       seedStores([SYNTH, REVERB], edges, { c1: "FX Send A" }, { c1: 0.55 });
       return (
         <div style={{ width: 320 }} className="bg-canvas p-4">
@@ -124,20 +163,112 @@ export const SingleBus: Story = {
     docs: {
       description: {
         story:
-          "One audio Bus (FX Send A) — the minimal populated row, showing the blue audio glyph, the live Send + Receive VU meters (lit from a real 0.55 cable level), and the Synth Lead → Hall Reverb endpoints.",
+          "A stereo (2-channel) audio bus — renders L/R column pair. The most common bus topology for FX sends.",
       },
     },
   },
 };
 
-// Single bus + open-editor affordance wired (handler passed via args).
+// Surround bus (channelCount: 6) — six labelled columns: L R C LF Ls Rs.
+export const SurroundBus: Story = {
+  decorators: [
+    (Story) => {
+      const edges = [makeEdge("c1", "synth-1", "reverb-1", "audio", 6)];
+      seedStores([SYNTH, REVERB], edges, { c1: "5.1 Room" }, { c1: 0.72 });
+      return (
+        <div style={{ width: 320 }} className="bg-canvas p-4">
+          <Story />
+        </div>
+      );
+    },
+  ],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "A 5.1 surround (6-channel) audio bus — renders six labelled columns in two visual groups: L/R/C (front) and LF/Ls/Rs (surround + LFE). All columns share the cable scalar level (per-lane RMS split not yet bridged — Pillar-2 backlog).",
+      },
+    },
+  },
+};
+
+// MIDI bus — NO audio VU; shows teal activity dot + event bead.
+export const MidiBus: Story = {
+  decorators: [
+    (Story) => {
+      const edges = [makeEdge("c1", "seq-1", "arp-1", "midi", 1)];
+      seedStores([SEQ, ARPEG], edges, { c1: "MIDI Clock" }, { c1: 0.6 });
+      return (
+        <div style={{ width: 320 }} className="bg-canvas p-4">
+          <Story />
+        </div>
+      );
+    },
+  ],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "A MIDI bus — the VU is replaced entirely by a teal blink-dot activity indicator + event-density bead. 'Display differently' per Glen's R3 review item. Level 0.6 = moderately busy MIDI stream.",
+      },
+    },
+  },
+};
+
+// MIDI bus idle — dot is dark, bead absent.
+export const MidiBusIdle: Story = {
+  decorators: [
+    (Story) => {
+      const edges = [makeEdge("c1", "seq-1", "arp-1", "midi", 1)];
+      seedStores([SEQ, ARPEG], edges, { c1: "MIDI Bus Idle" }, { c1: 0 });
+      return (
+        <div style={{ width: 320 }} className="bg-canvas p-4">
+          <Story />
+        </div>
+      );
+    },
+  ],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "MIDI bus at zero activity — the dot is dark, the bead is absent, the level reads '—'. Shows the idle-state honest rendering.",
+      },
+    },
+  },
+};
+
+// Sidechain bus — orange trough, SC label prefix, SIDECHAIN badge.
+export const SidechainBus: Story = {
+  decorators: [
+    (Story) => {
+      const edges = [makeEdge("c1", "drum-1", "comp-1", "audio", 2, true)];
+      seedStores([DRUM, COMP], edges, { c1: "Duck Bus" }, { c1: 0.45 });
+      return (
+        <div style={{ width: 320 }} className="bg-canvas p-4">
+          <Story />
+        </div>
+      );
+    },
+  ],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "A sidechain bus — isSidechain=true on the cable. The meter renders with an orange trough shadow, SC prefix label, and the SIDECHAIN badge in the header. Clearly distinct from regular audio buses at a glance.",
+      },
+    },
+  },
+};
+
+// Open-editor affordance — onOpenBlock handler wired.
 export const WithOpenEditor: Story = {
   args: {
     onOpenBlock: (id: string) => console.log("open block", id),
   },
   decorators: [
     (Story) => {
-      const edges = [makeEdge("c1", "synth-1", "reverb-1", "audio")];
+      const edges = [makeEdge("c1", "synth-1", "reverb-1", "audio", 2)];
       seedStores([SYNTH, REVERB], edges, { c1: "Reverb Send" }, { c1: 0.42 });
       return (
         <div style={{ width: 320 }} className="bg-canvas p-4">
@@ -150,52 +281,37 @@ export const WithOpenEditor: Story = {
     docs: {
       description: {
         story:
-          "Same Bus with an onOpenBlock handler supplied — the 'Open editor' affordance appears, diving the Bus's destination block (Hall Reverb) so its controls open in the Block tab. This is how InspectorHub wires it.",
+          "Stereo bus with an onOpenBlock handler supplied — 'Open editor' affordance appears, diving the bus's destination block (Hall Reverb) so its controls surface in the Block tab.",
       },
     },
   },
 };
 
-// Sidechain feed → SIDECHAIN badge + audiofx-tinted display.
-export const SidechainBus: Story = {
-  decorators: [
-    (Story) => {
-      const edges = [makeEdge("c1", "synth-1", "reverb-1", "audio", true)];
-      seedStores([SYNTH, REVERB], edges, { c1: "Duck Bus" }, { c1: 0.3 });
-      return (
-        <div style={{ width: 320 }} className="bg-canvas p-4">
-          <Story />
-        </div>
-      );
-    },
-  ],
-  parameters: {
-    docs: {
-      description: {
-        story:
-          "A Bus carrying a sidechain feed — the SIDECHAIN badge surfaces (sidechain DISPLAY, Wizard R1 P2), tinted in the audio-effect hue so the routing is obvious at a glance.",
-      },
-    },
-  },
-};
-
-// Multiple buses: audio + midi, to show different signal-type colours.
-export const MultipleBuses: Story = {
+// Mixed topology board — Mono + Stereo + 5.1 + MIDI + Sidechain on one board.
+export const MixedTopologies: Story = {
   decorators: [
     (Story) => {
       const edges = [
-        makeEdge("c1", "synth-1",  "reverb-1", "audio"),
-        makeEdge("c2", "choir-1",  "delay-1",  "audio"),
-        makeEdge("c3", "synth-1",  "reverb-1", "midi"),
+        makeEdge("c1", "synth-1", "reverb-1", "audio", 2),          // Stereo FX send
+        makeEdge("c2", "choir-1", "delay-1",  "audio", 1),           // Mono cue
+        makeEdge("c3", "synth-1", "reverb-1", "audio", 6),           // 5.1 Room
+        makeEdge("c4", "seq-1",   "arp-1",    "midi",  1),           // MIDI
+        makeEdge("c5", "drum-1",  "comp-1",   "audio", 2, true),     // Sidechain
       ];
       seedStores(
-        [SYNTH, REVERB, DELAY, CHOIR],
+        [SYNTH, REVERB, DELAY, CHOIR, SEQ, ARPEG, DRUM, COMP],
         edges,
-        { c1: "FX Send A", c2: "Verb Return", c3: "MIDI Clock" },
-        { c1: 0.6, c2: 0.25, c3: 0.5 },
+        {
+          c1: "FX Send A",
+          c2: "Mono Cue",
+          c3: "5.1 Room",
+          c4: "MIDI Clock",
+          c5: "Duck Bus",
+        },
+        { c1: 0.6, c2: 0.35, c3: 0.8, c4: 0.5, c5: 0.28 },
       );
       return (
-        <div style={{ width: 320 }} className="bg-canvas p-4">
+        <div style={{ width: 340 }} className="bg-canvas p-4">
           <Story />
         </div>
       );
@@ -205,17 +321,17 @@ export const MultipleBuses: Story = {
     docs: {
       description: {
         story:
-          "Several Buses mixing audio and MIDI signal types — demonstrates the per-signal colour coding (blue audio, teal MIDI) plus live Send/Receive levels that let the user tell routes apart at a glance.",
+          "Full mixed-topology board: Stereo FX Send (L/R pair), Mono Cue (single column), 5.1 Room (6 columns), MIDI Clock (activity indicator), and a Sidechain Bus (orange trough). Demonstrates Glen's R3 requirement that each bus meter matches the real channel count and signal type.",
       },
     },
   },
 };
 
-// Bus with unknown block ID — endpoint falls back to "?".
+// Orphan endpoint — block id missing from node list, falls back to '?'.
 export const OrphanEndpoint: Story = {
   decorators: [
     (Story) => {
-      const edges = [makeEdge("c1", "ghost-id", "reverb-1", "audio")];
+      const edges = [makeEdge("c1", "ghost-id", "reverb-1", "audio", 2)];
       seedStores([REVERB], edges, { c1: "Ghost Bus" });
       return (
         <div style={{ width: 320 }} className="bg-canvas p-4">
@@ -228,7 +344,7 @@ export const OrphanEndpoint: Story = {
     docs: {
       description: {
         story:
-          "Edge case: a Bus endpoint references a Block that no longer exists — the Send meter's endpoint list degrades gracefully to a \"?\" label instead of crashing.",
+          "Edge case: a bus endpoint references a block that no longer exists. The meter renders with stereo L/R columns, the endpoint name degrades gracefully to '?' — no crash.",
       },
     },
   },
