@@ -2,10 +2,16 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { BusInspector } from "./BusInspector";
 import { useGraphStore } from "../../stores/useGraphStore";
 import { useBusStore } from "../../stores/useBusStore";
+import { useCableMeterStore } from "../../stores/useCableMeterStore";
 import type { BlockData, CableData } from "../../data/types";
 
-// BusInspector reads edges/nodes from useGraphStore and wireless bus assignments
-// from useBusStore. Seed both in each story's decorator.
+// BusInspector reads edges/nodes from useGraphStore, bus assignments from
+// useBusStore, and live per-cable levels from useCableMeterStore (for the
+// Send/Receive meters). Seed all three in each story's decorator.
+//
+// Wizard R1 #4 reworked this away from the old "wireless bus" framing into the
+// IO send/receive model — a Bus is a named rail that blocks SEND TO / RECEIVE
+// FROM (Bus Send / Bus Receive), not a wireless cable.
 
 const meta = {
   title: "Layout/BusInspector",
@@ -15,7 +21,7 @@ const meta = {
     docs: {
       description: {
         component:
-          "Inspector section listing every named wireless Bus on the current Board. Use it to audit where signal is routed without drawn Cables (reverb/delay sends, parallel chains): each row shows the Bus name, signal-type colour, Cable count and endpoints. Click a Bus to select its first Cable, or dissolve it back to wired. Shows an explanatory tip when no Buses exist.",
+          "The IO send/receive Bus auditor. Lists every named Bus on the Board; each row shows SEPARATE live Send + Receive activity meters (real per-cable RMS / activity from useCableMeterStore), the signal-type colour, a sidechain badge where any feed is a sidechain, the sender/receiver block names, and — when given an onOpenBlock handler — a direct 'Open editor' affordance that dives the Bus's destination block (e.g. a reverb on the Bus). A Bus is a named rail that blocks Bus-Send to / Bus-Receive from — NOT a wireless cable. Empty state teaches the Bus Send / Bus Receive model.",
       },
     },
   },
@@ -51,7 +57,13 @@ const REVERB = makeBlock("reverb-1", "Hall Reverb",  "audiofx");
 const DELAY  = makeBlock("delay-1",  "Tape Delay",   "audiofx");
 const CHOIR  = makeBlock("choir-1",  "Choir Layer",  "instrument");
 
-const makeEdge = (id: string, source: string, target: string, signalType: CableData["signalType"]): CableData => ({
+const makeEdge = (
+  id: string,
+  source: string,
+  target: string,
+  signalType: CableData["signalType"],
+  isSidechain = false,
+): CableData => ({
   id,
   source,
   sourcePort: "out-L",
@@ -59,19 +71,21 @@ const makeEdge = (id: string, source: string, target: string, signalType: CableD
   targetPort: "in-L",
   signalType,
   channelCount: 2,
-  isSidechain: false,
+  isSidechain,
 });
 
 function seedStores(
   nodes: BlockData[],
   edges: CableData[],
   cableBus: Record<string, string>,
+  levels: Record<string, number> = {},
 ) {
   useGraphStore.setState({ nodes, edges, selectedNodeId: null, selectedEdgeId: null, commentBoxes: [] });
   useBusStore.setState({ cableBus });
+  useCableMeterStore.setState((s) => ({ ...s, levels }));
 }
 
-// Empty state: no buses — shows the informational tip.
+// Empty state: no buses — teaches the Bus Send / Bus Receive model.
 export const Empty: Story = {
   decorators: [
     (Story) => {
@@ -87,18 +101,18 @@ export const Empty: Story = {
     docs: {
       description: {
         story:
-          "No wireless Buses yet — the panel teaches the feature, prompting the user to right-click a Cable and choose Make Wireless. The common first-run state.",
+          "No Buses yet — the panel teaches the IO model: add a Bus Send block to push a signal onto a named Bus and a Bus Receive block to pull it back. The common first-run state.",
       },
     },
   },
 };
 
-// Single audio bus.
+// Single audio bus with a live Send/Receive level.
 export const SingleBus: Story = {
   decorators: [
     (Story) => {
       const edges = [makeEdge("c1", "synth-1", "reverb-1", "audio")];
-      seedStores([SYNTH, REVERB], edges, { "c1": "FX Send A" });
+      seedStores([SYNTH, REVERB], edges, { c1: "FX Send A" }, { c1: 0.55 });
       return (
         <div style={{ width: 320 }} className="bg-canvas p-4">
           <Story />
@@ -110,7 +124,56 @@ export const SingleBus: Story = {
     docs: {
       description: {
         story:
-          "One audio Bus (FX Send A) carrying a single Cable — the minimal populated row, showing the blue audio swatch, Cable count and source/target endpoints.",
+          "One audio Bus (FX Send A) — the minimal populated row, showing the blue audio glyph, the live Send + Receive VU meters (lit from a real 0.55 cable level), and the Synth Lead → Hall Reverb endpoints.",
+      },
+    },
+  },
+};
+
+// Single bus + open-editor affordance wired (handler passed via args).
+export const WithOpenEditor: Story = {
+  args: {
+    onOpenBlock: (id: string) => console.log("open block", id),
+  },
+  decorators: [
+    (Story) => {
+      const edges = [makeEdge("c1", "synth-1", "reverb-1", "audio")];
+      seedStores([SYNTH, REVERB], edges, { c1: "Reverb Send" }, { c1: 0.42 });
+      return (
+        <div style={{ width: 320 }} className="bg-canvas p-4">
+          <Story />
+        </div>
+      );
+    },
+  ],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Same Bus with an onOpenBlock handler supplied — the 'Open editor' affordance appears, diving the Bus's destination block (Hall Reverb) so its controls open in the Block tab. This is how InspectorHub wires it.",
+      },
+    },
+  },
+};
+
+// Sidechain feed → SIDECHAIN badge + audiofx-tinted display.
+export const SidechainBus: Story = {
+  decorators: [
+    (Story) => {
+      const edges = [makeEdge("c1", "synth-1", "reverb-1", "audio", true)];
+      seedStores([SYNTH, REVERB], edges, { c1: "Duck Bus" }, { c1: 0.3 });
+      return (
+        <div style={{ width: 320 }} className="bg-canvas p-4">
+          <Story />
+        </div>
+      );
+    },
+  ],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "A Bus carrying a sidechain feed — the SIDECHAIN badge surfaces (sidechain DISPLAY, Wizard R1 P2), tinted in the audio-effect hue so the routing is obvious at a glance.",
       },
     },
   },
@@ -128,7 +191,8 @@ export const MultipleBuses: Story = {
       seedStores(
         [SYNTH, REVERB, DELAY, CHOIR],
         edges,
-        { "c1": "FX Send A", "c2": "Verb Return", "c3": "MIDI Clock" },
+        { c1: "FX Send A", c2: "Verb Return", c3: "MIDI Clock" },
+        { c1: 0.6, c2: 0.25, c3: 0.5 },
       );
       return (
         <div style={{ width: 320 }} className="bg-canvas p-4">
@@ -141,7 +205,7 @@ export const MultipleBuses: Story = {
     docs: {
       description: {
         story:
-          "Several Buses mixing audio and MIDI signal types — demonstrates the per-signal colour coding (blue audio, teal MIDI) that lets the user tell routes apart at a glance.",
+          "Several Buses mixing audio and MIDI signal types — demonstrates the per-signal colour coding (blue audio, teal MIDI) plus live Send/Receive levels that let the user tell routes apart at a glance.",
       },
     },
   },
@@ -152,7 +216,7 @@ export const OrphanEndpoint: Story = {
   decorators: [
     (Story) => {
       const edges = [makeEdge("c1", "ghost-id", "reverb-1", "audio")];
-      seedStores([REVERB], edges, { "c1": "Ghost Bus" });
+      seedStores([REVERB], edges, { c1: "Ghost Bus" });
       return (
         <div style={{ width: 320 }} className="bg-canvas p-4">
           <Story />
@@ -164,7 +228,7 @@ export const OrphanEndpoint: Story = {
     docs: {
       description: {
         story:
-          "Edge case: a Bus endpoint references a Block that no longer exists — the row degrades gracefully to a \"?\" label instead of crashing.",
+          "Edge case: a Bus endpoint references a Block that no longer exists — the Send meter's endpoint list degrades gracefully to a \"?\" label instead of crashing.",
       },
     },
   },

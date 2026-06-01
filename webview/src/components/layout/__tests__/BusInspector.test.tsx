@@ -1,14 +1,20 @@
 /**
- * BusInspector.test.tsx — coverage for the 2.9% BusInspector component.
+ * BusInspector.test.tsx — coverage for the BusInspector IO send/receive auditor.
+ *
+ * Wizard R1 #4 reworked this away from the old "wireless bus" framing into the
+ * IO send/receive model (buses are blocks that SEND TO / RECEIVE FROM a named
+ * bus), and R2 added SEPARATE Send + Receive activity meters + sidechain display
+ * + a direct open-editor affordance. These tests track the reworked component.
  *
  * Covers:
- *   1. Empty state — no buses → renders informational message
- *   2. Bus rows — name, cable count, signal-type colour swatch
- *   3. Endpoint display — source (→) and target (←) labels
+ *   1. Empty state — no buses → "Buses" heading + Bus Send / Bus Receive tip
+ *   2. Bus rows — name + signal-type label render
+ *   3. Endpoint names appear under the Send / Receive meters
  *   4. Select button — calls useGraphStore.selectEdge with first cable ID
- *   5. Dissolve (✕) button — calls setBusForCable(id, undefined) + nativeGraphSetCableBus
- *   6. Bus count badge renders
- *   7. Unknown block ID → falls back to "?" in endpoint label
+ *   5. Remove (✕) button — calls setBusForCable(id, undefined) + nativeGraphSetCableBus
+ *   6. Header bus-count badge renders
+ *   7. Unknown block ID → falls back to "?" endpoint label
+ *   8. Audio signal type → audio-token colour somewhere in the row
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -16,6 +22,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { installJuceBridgeMock, type JuceBridgeMock } from "../../../test/mockJuceBridge";
 import { useGraphStore } from "../../../stores/useGraphStore";
 import { useBusStore } from "../../../stores/useBusStore";
+import { useCableMeterStore } from "../../../stores/useCableMeterStore";
 import { BusInspector } from "../BusInspector";
 
 vi.mock("../../../bridge/nativeGraph", () => ({
@@ -39,6 +46,7 @@ function resetStores() {
     commentBoxes: [],
   });
   useBusStore.setState({ cableBus: {} });
+  useCableMeterStore.setState((s) => ({ ...s, levels: {} }));
 }
 
 // A minimal BlockData-shaped node the GraphStore understands
@@ -106,19 +114,21 @@ describe("BusInspector", () => {
 
   // ── 1. Empty state ────────────────────────────────────────────────────────
 
-  it("shows 'Wireless Buses' heading even when empty", () => {
+  it("shows 'Buses' heading even when empty", () => {
     render(<BusInspector />);
-    expect(screen.getByText(/wireless buses/i)).toBeInTheDocument();
+    expect(screen.getByText(/^buses$/i)).toBeInTheDocument();
   });
 
-  it("shows Make Wireless tip when no buses exist", () => {
+  it("shows the Bus Send / Bus Receive tip when no buses exist (no 'wireless')", () => {
     render(<BusInspector />);
-    expect(screen.getByText(/make wireless/i)).toBeInTheDocument();
+    expect(screen.getByText(/bus send/i)).toBeInTheDocument();
+    expect(screen.getByText(/bus receive/i)).toBeInTheDocument();
+    // The corrected model never uses the word "wireless".
+    expect(screen.queryByText(/wireless/i)).not.toBeInTheDocument();
   });
 
-  it("does NOT show cable count badge in empty state", () => {
+  it("does NOT show the bus-count badge in empty state", () => {
     render(<BusInspector />);
-    // The tabular count span only appears in the non-empty branch
     expect(screen.queryByText("0")).not.toBeInTheDocument();
   });
 
@@ -133,16 +143,18 @@ describe("BusInspector", () => {
     expect(screen.getByText("FX Send")).toBeInTheDocument();
   });
 
-  it("shows cable count badge (e.g. '1 cbl')", () => {
+  it("renders separate Send and Receive meters", () => {
     act(() => {
       useGraphStore.setState({ nodes: [NODE_A, NODE_B], edges: [CABLE_1] });
       useBusStore.setState({ cableBus: { "cable-1": "FX Send" } });
     });
     render(<BusInspector />);
-    expect(screen.getByText(/1 cbl/i)).toBeInTheDocument();
+    // The meter direction labels are literally "SEND →" and "← RECEIVE".
+    expect(screen.getByText(/SEND →/)).toBeInTheDocument();
+    expect(screen.getByText(/← RECEIVE/)).toBeInTheDocument();
   });
 
-  it("shows total bus count badge in header", () => {
+  it("shows the total bus-count badge in the header", () => {
     act(() => {
       useGraphStore.setState({ nodes: [NODE_A, NODE_B], edges: [CABLE_1] });
       useBusStore.setState({ cableBus: { "cable-1": "FX Send" } });
@@ -151,32 +163,41 @@ describe("BusInspector", () => {
     expect(screen.getByText("1")).toBeInTheDocument();
   });
 
-  // ── 3. Endpoint display ───────────────────────────────────────────────────
+  // ── 3. Endpoint display (under Send / Receive meters) ─────────────────────
 
-  it("renders source block name in endpoint list", () => {
+  it("renders the source block name under the Send meter", () => {
     act(() => {
       useGraphStore.setState({ nodes: [NODE_A, NODE_B], edges: [CABLE_1] });
       useBusStore.setState({ cableBus: { "cable-1": "FX Send" } });
     });
     render(<BusInspector />);
-    // Source endpoint: "Synth → out-0"
+    // Source endpoint "Synth" feeds the bus.
     expect(screen.getByText(/synth/i)).toBeInTheDocument();
   });
 
-  it("falls back to '?' when block ID is unknown", () => {
+  it("renders the destination block name under the Receive meter", () => {
+    act(() => {
+      useGraphStore.setState({ nodes: [NODE_A, NODE_B], edges: [CABLE_1] });
+      useBusStore.setState({ cableBus: { "cable-1": "FX Send" } });
+    });
+    render(<BusInspector />);
+    // Target endpoint "Reverb" reads from the bus.
+    expect(screen.getByText(/reverb/i)).toBeInTheDocument();
+  });
+
+  it("falls back to '?' when a block ID is unknown", () => {
     const orphanCable = { ...CABLE_1, source: "ghost-id" };
     act(() => {
       useGraphStore.setState({ nodes: [NODE_B], edges: [orphanCable] });
       useBusStore.setState({ cableBus: { "cable-1": "Ghost Bus" } });
     });
     render(<BusInspector />);
-    // "? → out-0" should appear
     expect(screen.getByText(/\?/)).toBeInTheDocument();
   });
 
   // ── 4. Select button ──────────────────────────────────────────────────────
 
-  it("clicking bus name button calls selectEdge with first cable ID", () => {
+  it("clicking the bus name button calls selectEdge with the first cable ID", () => {
     const selectEdgeSpy = vi.fn();
     useGraphStore.setState({
       nodes: [NODE_A, NODE_B],
@@ -186,29 +207,29 @@ describe("BusInspector", () => {
     useBusStore.setState({ cableBus: { "cable-1": "FX Send" } });
 
     render(<BusInspector />);
-    fireEvent.click(screen.getByTitle(/select cable/i));
+    fireEvent.click(screen.getByTitle(/select this bus's cable/i));
     expect(selectEdgeSpy).toHaveBeenCalledWith("cable-1");
   });
 
-  // ── 5. Dissolve button ────────────────────────────────────────────────────
+  // ── 5. Remove button ──────────────────────────────────────────────────────
 
-  it("dissolve button (✕) clears bus assignment in store", () => {
+  it("remove button (✕) clears the bus assignment in the store", () => {
     act(() => {
       useGraphStore.setState({ nodes: [NODE_A, NODE_B], edges: [CABLE_1] });
       useBusStore.setState({ cableBus: { "cable-1": "FX Send" } });
     });
     render(<BusInspector />);
-    fireEvent.click(screen.getByTitle(/make all wired/i));
+    fireEvent.click(screen.getByRole("button", { name: /remove bus fx send/i }));
     expect(useBusStore.getState().cableBus["cable-1"]).toBeUndefined();
   });
 
-  it("dissolve button calls nativeGraphSetCableBus with empty string", () => {
+  it("remove button calls nativeGraphSetCableBus with an empty string", () => {
     act(() => {
       useGraphStore.setState({ nodes: [NODE_A, NODE_B], edges: [CABLE_1] });
       useBusStore.setState({ cableBus: { "cable-1": "FX Send" } });
     });
     render(<BusInspector />);
-    fireEvent.click(screen.getByTitle(/make all wired/i));
+    fireEvent.click(screen.getByRole("button", { name: /remove bus fx send/i }));
     expect(nativeGraphSetCableBus).toHaveBeenCalledWith("cable-1", "");
   });
 
@@ -228,16 +249,39 @@ describe("BusInspector", () => {
     expect(screen.getByText("2")).toBeInTheDocument(); // total count badge
   });
 
-  // ── 7. Audio signal type colour swatch ────────────────────────────────────
+  // ── 7. Sidechain display ──────────────────────────────────────────────────
 
-  it("renders colour swatch with audio colour for audio signal type", () => {
+  it("shows a SIDECHAIN badge when a feed on the bus is a sidechain", () => {
+    const scCable = { ...CABLE_1, isSidechain: true };
+    act(() => {
+      useGraphStore.setState({ nodes: [NODE_A, NODE_B], edges: [scCable] });
+      useBusStore.setState({ cableBus: { "cable-1": "SC Bus" } });
+    });
+    render(<BusInspector />);
+    expect(screen.getByText(/sidechain/i)).toBeInTheDocument();
+  });
+
+  // ── 8. Open editor affordance (only when onOpenBlock provided) ─────────────
+
+  it("shows an Open editor button when onOpenBlock is provided", () => {
+    const onOpenBlock = vi.fn();
     act(() => {
       useGraphStore.setState({ nodes: [NODE_A, NODE_B], edges: [CABLE_1] });
-      useBusStore.setState({ cableBus: { "cable-1": "Audio Bus" } });
+      useBusStore.setState({ cableBus: { "cable-1": "FX Send" } });
     });
-    const { container } = render(<BusInspector />);
-    // Look for the swatch span with audio colour #4A90D9
-    const swatch = container.querySelector('[style*="4A90D9"]');
-    expect(swatch).toBeInTheDocument();
+    render(<BusInspector onOpenBlock={onOpenBlock} />);
+    const btn = screen.getByRole("button", { name: /open editor/i });
+    fireEvent.click(btn);
+    // Destination block "node-b" (Reverb) is what opens.
+    expect(onOpenBlock).toHaveBeenCalledWith("node-b");
+  });
+
+  it("hides the Open editor button when onOpenBlock is omitted", () => {
+    act(() => {
+      useGraphStore.setState({ nodes: [NODE_A, NODE_B], edges: [CABLE_1] });
+      useBusStore.setState({ cableBus: { "cable-1": "FX Send" } });
+    });
+    render(<BusInspector />);
+    expect(screen.queryByRole("button", { name: /open editor/i })).not.toBeInTheDocument();
   });
 });

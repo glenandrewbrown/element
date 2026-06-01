@@ -34,6 +34,7 @@ import type {
   BlockCategory,
   BlockData,
   CableData,
+  Port,
   SignalType,
 } from "../../data/types";
 import {
@@ -50,12 +51,6 @@ import {
 import { useHostExtrasStore } from "../../stores/useHostExtrasStore";
 import { useCableMeterStore } from "../../stores/useCableMeterStore";
 import {
-  deriveBuses,
-  selectCableBusMap,
-  useBusStore,
-  type BusEntry,
-} from "../../stores/useBusStore";
-import {
   nativePluginEditorClose,
   nativePluginEditorFloat,
   nativePluginEditorOpen,
@@ -66,14 +61,13 @@ import { ScriptEditor } from "../canvas/ScriptEditor";
 import { BusInspector } from "./BusInspector";
 import { LiveHealth } from "./LiveHealth";
 import { NeuPromptModal } from "./NeuPromptModal";
-// The BlockHeader glyph must be the SAME function-inferred line icon the Block
-// draws in its gradient header (verdict #6), not the old generic radio SVG.
-// Block.tsx's FunctionIcon is module-local (not exported) and the disjoint-file
-// rule forbids editing Block.tsx to export it, so we reconstruct the IDENTICAL
-// icon here from the shared, already-exported `getFunctionMeta` source — same
-// iconPath, same SVG attributes → pixel-identical output, single source of the
-// path data, zero edit to Block.tsx.
-import { getFunctionMeta } from "../../data/functionGroup";
+import { Icon } from "../neu/Icon";
+// Wizard R2 (icon P0): category + function glyphs come from the SINGLE shared
+// source `iconForCategory` (meaningful line icons — piano / faders / branch /
+// waves + function-keyword overrides), rendered through the canonical <Icon>.
+// This replaces the old locally-reconstructed FunctionIcon SVG so the Block,
+// ToolPalette, QuickAdd and Inspector never diverge on what a category looks like.
+import { iconForCategory } from "../neu/iconForCategory";
 
 // Verdict #6 — the docked tabbed shell: Block / Bus / Cable / Health. The
 // per-block detail (params, A/B, plugin embed, notes, script) lives under Block;
@@ -220,12 +214,16 @@ function VuLadder({
   );
 }
 
-// Function-type icon — the MEANINGFUL line glyph (reverb arcs, EQ curve, synth
-// wave, drum…) inferred from the Block's name + category. This mirrors
-// Block.tsx's FunctionIcon byte-for-byte (same `getFunctionMeta(...).iconPath`,
-// same SVG attributes); reconstructed locally because Block's copy is not
-// exported and Block.tsx is out of scope to edit. Glen: the abstract geometric
-// category shape "means nothing"; the function icon is the useful cue.
+// Function-type icon — the MEANINGFUL glyph (piano / faders / branch / waves,
+// plus function-keyword overrides like reverb→Waves, delay→Clock) resolved from
+// the SHARED `iconForCategory` source and drawn through the canonical <Icon>.
+// Wizard R2 icon-P0: one source feeds Block + ToolPalette + QuickAdd + Inspector
+// so a category never looks different in two places; the abstract geometric
+// shape Glen called meaningless is gone everywhere.
+//
+// <Icon> colours only via the semantic `tone` palette, but the gradient header
+// needs a raw near-black glyph — so we tint through `currentColor` on a wrapping
+// span (lucide inherits `currentColor` when no explicit colour is set).
 function FunctionIcon({
   name,
   category,
@@ -237,21 +235,15 @@ function FunctionIcon({
   color?: string;
   size?: number;
 }) {
-  const { iconPath } = getFunctionMeta(name, category);
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke={color}
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="shrink-0"
-    >
-      <path d={iconPath} />
-    </svg>
+    <span style={{ color, display: "inline-flex" }} className="shrink-0">
+      <Icon
+        name={iconForCategory(category, name)}
+        size={size}
+        strokeWidth={2}
+        aria-hidden
+      />
+    </span>
   );
 }
 
@@ -481,6 +473,8 @@ function formatParamDisplay(p: NodeParameterRow): string {
   return `${(p.value * 100).toFixed(1)}%`;
 }
 
+// Lives inside an InspectorSection now, so it drops its own header. Two compact
+// metric rows (CPU + latency); "Ports" moved to the dedicated I/O Ports section.
 function BlockMetrics({ block }: { block: BlockData }) {
   const rows = [
     { label: "CPU (est.)", value: `${block.cpuLoad.toFixed(1)}%` },
@@ -488,20 +482,82 @@ function BlockMetrics({ block }: { block: BlockData }) {
       label: "Latency",
       value: block.latencyMs > 0 ? `${block.latencyMs.toFixed(1)} ms` : "—",
     },
-    { label: "Ports", value: String(block.ports.length) },
   ];
   return (
-    <NeuDisplay className="h-auto min-h-[5rem] p-3 space-y-2">
-      <div className="text-[10px] font-bold text-text-secondary uppercase tracking-widest">
-        Block metrics
-      </div>
+    <div className="space-y-1.5">
       {rows.map((r) => (
         <div key={r.label} className="flex justify-between text-[10px]">
           <span className="text-text-secondary">{r.label}</span>
-          <span className="font-bold text-text-primary tabular">{r.value}</span>
+          <span className="font-bold text-text-primary tabular-nums">{r.value}</span>
         </div>
       ))}
-    </NeuDisplay>
+    </div>
+  );
+}
+
+// Signal colour for a Port — the SEPARATE signal-type palette (audio blue / midi
+// teal / value amber), the STANDING design bar's port colour-coding.
+const portSigAccent: Record<SignalType, string> = {
+  audio: "var(--sig-audio)",
+  midi: "var(--sig-midi)",
+  value: "var(--sig-value)",
+};
+
+/**
+ * I/O Ports list — every port on the Block, colour-coded by signal type, grouped
+ * inputs then outputs, with a connected dot. The STANDING bar wants ports +
+ * labels signal-coloured and the port count obvious; the header only showed a
+ * bare "N in · M out" summary before. Lives in a (collapsed-by-default) section.
+ */
+function BlockPortList({ block }: { block: BlockData }) {
+  const inputs = block.ports.filter((p) => p.direction === "input");
+  const outputs = block.ports.filter((p) => p.direction === "output");
+
+  const Row = ({ p }: { p: Port }) => {
+    const accent = `hsl(${portSigAccent[p.type]})`;
+    return (
+      <div className="flex items-center gap-1.5 min-w-0">
+        <span
+          className="inline-block w-1.5 h-1.5 rounded-full shrink-0"
+          style={{
+            background: p.connected ? accent : "hsl(var(--muted-foreground))",
+            boxShadow: p.connected ? `0 0 4px ${accent}` : "none",
+          }}
+        />
+        <span
+          className="text-[10px] font-medium truncate"
+          style={{ color: p.connected ? accent : "hsl(var(--muted-foreground))" }}
+          title={`${p.label} · ${sigLabel[p.type]}${p.connected ? "" : " · unpatched"}`}
+        >
+          {p.label}
+        </span>
+      </div>
+    );
+  };
+
+  return (
+    <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+      <div className="space-y-1.5">
+        <div className="text-[8px] font-bold uppercase tracking-widest text-text-dim leading-none">
+          In · {inputs.length}
+        </div>
+        {inputs.length === 0 ? (
+          <div className="text-[9px] text-text-dim">none</div>
+        ) : (
+          inputs.map((p) => <Row key={p.id} p={p} />)
+        )}
+      </div>
+      <div className="space-y-1.5">
+        <div className="text-[8px] font-bold uppercase tracking-widest text-text-dim leading-none">
+          Out · {outputs.length}
+        </div>
+        {outputs.length === 0 ? (
+          <div className="text-[9px] text-text-dim">none</div>
+        ) : (
+          outputs.map((p) => <Row key={p.id} p={p} />)
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -542,24 +598,36 @@ function BlockNoteEditor({ block }: { block: BlockData }) {
     };
   }, [draft, block.id]);
 
+  // Headerless — the wrapping InspectorSection ("Notes") supplies the label.
   return (
-    <div className="space-y-1">
-      <label className="text-[10px] font-bold text-text-secondary uppercase tracking-widest">
-        Notes
-      </label>
-      <textarea
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        placeholder="Add a note for this block…"
-        rows={3}
-        className="w-full text-[11px] bg-pressed text-text-primary rounded-md p-2 outline-none border border-white/5 focus:border-accent-blue/40 placeholder-text-secondary/60 resize-y shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)]"
-        spellCheck={false}
-      />
-    </div>
+    <textarea
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      placeholder="Add a note for this block…"
+      rows={3}
+      aria-label="Block note"
+      className="w-full text-[11px] bg-pressed text-text-primary rounded-md p-2 outline-none border border-white/5 focus:border-accent-blue/40 placeholder-text-secondary/60 resize-y shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)]"
+      spellCheck={false}
+    />
   );
 }
 
-function BlockParameterList({ nodeId }: { nodeId: string }) {
+/**
+ * Live parameter subscription for a node — lifted OUT of the list component so
+ * the parent (BlockTabBody) can gate section visibility on the real count
+ * (Wizard R2 smart-layout: hide the params section entirely when a node exposes
+ * none, rather than burying the page in a "no parameters" placeholder).
+ *
+ * `setParam` writes the optimistic value locally + flushes to the engine.
+ */
+interface NodeParams {
+  params: NodeParameterRow[];
+  loading: boolean;
+  setParam: (index: number, value: number) => void;
+  reload: () => void;
+}
+
+function useNodeParameters(nodeId: string): NodeParams {
   const [params, setParams] = useState<NodeParameterRow[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -575,27 +643,35 @@ function BlockParameterList({ nodeId }: { nodeId: string }) {
     reload();
   }, [reload]);
 
-  const onChangeNorm = (index: number, value: number) => {
-    const clamped = Math.max(0, Math.min(1, value));
-    setParams((prev) =>
-      prev.map((p) => (p.index === index ? { ...p, value: clamped } : p)),
-    );
-    void nativeSetNodeParameter(nodeId, index, clamped);
-  };
+  const setParam = useCallback(
+    (index: number, value: number) => {
+      const clamped = Math.max(0, Math.min(1, value));
+      setParams((prev) =>
+        prev.map((p) => (p.index === index ? { ...p, value: clamped } : p)),
+      );
+      void nativeSetNodeParameter(nodeId, index, clamped);
+    },
+    [nodeId],
+  );
 
+  return { params, loading, setParam, reload };
+}
+
+function BlockParameterList({
+  params,
+  loading,
+  onChangeNorm,
+  onReload,
+}: {
+  params: NodeParameterRow[];
+  loading: boolean;
+  onChangeNorm: (index: number, value: number) => void;
+  onReload: () => void;
+}) {
   if (loading) {
     return (
       <div className="text-[10px] text-text-secondary py-4 text-center">
         Loading parameters…
-      </div>
-    );
-  }
-
-  if (params.length === 0) {
-    return (
-      <div className="text-[10px] text-text-secondary py-4 text-center leading-relaxed">
-        No automatable parameters for this block (internal routing or host-only
-        node).
       </div>
     );
   }
@@ -662,7 +738,7 @@ function BlockParameterList({ nodeId }: { nodeId: string }) {
           </div>
         );
       })}
-      <NeuButton size="sm" className="w-full mt-2" onClick={reload}>
+      <NeuButton size="sm" className="w-full mt-2" onClick={onReload}>
         Refresh parameters
       </NeuButton>
     </div>
@@ -862,32 +938,21 @@ function usePeakHold(level: number, resetKey: string | undefined): number {
 }
 
 // Small signal-coloured icon used in the Cable/Bus monitor headers — the
-// MEANINGFUL signal glyph (audio waveform / MIDI note / CV step), not an
-// abstract shape. Lucide paths inlined to keep this disjoint from Icon.tsx.
+// MEANINGFUL signal glyph (audio waveform / MIDI note / CV wave), drawn through
+// the canonical <Icon> so it shares the allowlisted lucide set. Signal glyphs
+// are a SEPARATE axis from `iconForCategory` (which is category-only), so the
+// signal→icon map lives here: audio = AudioWaveform, midi = Music, value = Waves.
+const SIGNAL_ICON: Record<SignalType, string> = {
+  audio: "AudioWaveform",
+  midi: "Music",
+  value: "Waves",
+};
+
 function SignalGlyph({ type, size = 13, color }: { type: SignalType; size?: number; color: string }) {
-  const path =
-    type === "audio"
-      ? // AudioWaveform
-        "M2 13a2 2 0 0 0 2-2V7a2 2 0 0 1 4 0v13a2 2 0 0 0 4 0V4a2 2 0 0 1 4 0v13a2 2 0 0 0 4 0v-4a2 2 0 0 1 2-2"
-      : type === "midi"
-        ? // Music note
-          "M9 18V5l12-2v13M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm12-2a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"
-        : // CV / value — stepped activity
-          "M3 12h4l2-7 4 14 2-7h6";
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke={color}
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="shrink-0"
-    >
-      <path d={path} />
-    </svg>
+    <span style={{ color, display: "inline-flex" }} className="shrink-0">
+      <Icon name={SIGNAL_ICON[type]} size={size} strokeWidth={2} aria-hidden />
+    </span>
   );
 }
 
@@ -960,6 +1025,185 @@ function useCableRoute(cable: CableData | undefined) {
       targetPort: portLabel(tgt, cable.targetPort),
     };
   }, [cable, nodes]);
+}
+
+// ── Flow-metadata inference (Wizard R2 — MIDI + logic/utility/command) ──
+//
+// CableData carries no per-message MIDI/CV telemetry (no bridge yet), but the
+// PORT LABELS the cable connects to encode real routing semantics the user set
+// up — "Gate", "Trigger", "CC 1", "Note", "Clock", "Velocity", "Mod". Surfacing
+// those turns the monitor into a flow-DEBUGGING aid (what kind of event is this
+// wire actually carrying?) and a conditional-routing reference, all from real
+// graph data — never invented. Anything needing a live per-message feed is shown
+// as an explicit honest gap, not faked.
+
+interface FlowTag {
+  label: string;
+  /** semantic role, drives ordering/emphasis */
+  kind: "trigger" | "data" | "clock" | "note" | "mod" | "command" | "generic";
+}
+
+/** Infer routing tags from a port label (real, user-authored). */
+function inferFlowTags(portLabel: string): FlowTag[] {
+  const l = portLabel.toLowerCase();
+  const tags: FlowTag[] = [];
+  const add = (label: string, kind: FlowTag["kind"]) => {
+    if (!tags.some((t) => t.label === label)) tags.push({ label, kind });
+  };
+  if (/gate/.test(l)) add("Gate", "trigger");
+  if (/trig/.test(l)) add("Trigger", "trigger");
+  if (/\bcc\b|control change|\bcc\s*\d+/.test(l)) add("CC", "data");
+  if (/note|key/.test(l)) add("Note", "note");
+  if (/vel/.test(l)) add("Velocity", "data");
+  if (/clock|sync|tempo/.test(l)) add("Clock", "clock");
+  if (/mod|lfo|env/.test(l)) add("Mod", "mod");
+  if (/pitch|bend|pb/.test(l)) add("Pitch", "data");
+  if (/cmd|command|program|prog/.test(l)) add("Command", "command");
+  if (/cv|control.?volt/.test(l)) add("CV", "data");
+  return tags;
+}
+
+// Raw token name per tag kind so we can compose the same `hsl(var(--x) / a)`
+// alpha syntax the rest of the file uses (no color-mix dependency).
+const flowTagToken: Record<FlowTag["kind"], string> = {
+  trigger: "--status-warn",
+  clock: "--sig-midi",
+  note: "--sig-midi",
+  data: "--sig-value",
+  mod: "--cat-modulator",
+  command: "--cat-modulator",
+  generic: "--muted-foreground",
+};
+
+function FlowTagPill({ tag }: { tag: FlowTag }) {
+  const token = flowTagToken[tag.kind];
+  return (
+    <span
+      className="text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded leading-none"
+      style={{ background: `hsl(var(${token}) / 0.16)`, color: `hsl(var(${token}))` }}
+    >
+      {tag.label}
+    </span>
+  );
+}
+
+/** One label/value metadata line inside a flow panel. */
+function MetaRow({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-center gap-2 min-h-[16px]">
+      <span className="text-[9px] uppercase tracking-wider text-text-secondary shrink-0 w-[68px]">
+        {label}
+      </span>
+      <div className="flex items-center gap-1 flex-wrap min-w-0 flex-1">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Flow-metadata panel for NON-audio cables (MIDI / Value-CV) — the R2 enrichment.
+ * Derives the carried-event tags from the real source/target port labels and the
+ * live activity, framed for flow-debugging + conditional routing. Per-message-type
+ * counters (how many Note-Ons/CCs/sec) have no bridge → shown as an honest gap.
+ */
+function FlowMetaPanel({
+  cable,
+  sourcePort,
+  targetPort,
+  active,
+  accent,
+}: {
+  cable: CableData;
+  sourcePort: string;
+  targetPort: string;
+  active: boolean;
+  accent: string;
+}) {
+  const isMidi = cable.signalType === "midi";
+  const srcTags = inferFlowTags(sourcePort);
+  const tgtTags = inferFlowTags(targetPort);
+  // Merge for the "carries" summary (unique by label).
+  const carries: FlowTag[] = [];
+  for (const t of [...srcTags, ...tgtTags])
+    if (!carries.some((c) => c.label === t.label)) carries.push(t);
+  // A wire is "conditional" routing when either end is a gate/trigger/command —
+  // the classic logic-gate / utility / command case Glen called out.
+  const isConditional = carries.some(
+    (t) => t.kind === "trigger" || t.kind === "command",
+  );
+
+  return (
+    <div className="rounded-lg bg-surface neu-raised p-3 space-y-2">
+      <div className="flex items-center gap-2">
+        <span className="text-[10px] font-bold uppercase tracking-widest text-text-secondary">
+          {isMidi ? "MIDI flow" : "Control flow"}
+        </span>
+        {isConditional && (
+          <span
+            className="text-[7px] font-bold uppercase tracking-wider px-1 py-0.5 rounded leading-none"
+            style={{
+              background: "hsl(var(--status-warn) / 0.16)",
+              color: "hsl(var(--status-warn))",
+            }}
+            title="This wire gates / triggers / commands downstream — conditional routing"
+          >
+            Conditional
+          </span>
+        )}
+        <div className="flex-1" />
+        <span
+          className="inline-block w-1.5 h-1.5 rounded-full"
+          style={{
+            background: active ? accent : "hsl(var(--muted-foreground))",
+            boxShadow: active ? `0 0 5px ${accent}` : "none",
+          }}
+        />
+      </div>
+
+      <MetaRow label="Carries">
+        {carries.length > 0 ? (
+          carries.map((t) => <FlowTagPill key={t.label} tag={t} />)
+        ) : (
+          <span className="text-[9px] text-text-dim">
+            {isMidi ? "Generic MIDI stream" : "Generic control signal"}
+          </span>
+        )}
+      </MetaRow>
+      <MetaRow label="From">
+        <span className="text-[10px] text-text-primary font-medium truncate">
+          {sourcePort}
+        </span>
+      </MetaRow>
+      <MetaRow label="To">
+        <span className="text-[10px] text-text-primary font-medium truncate">
+          {targetPort}
+        </span>
+      </MetaRow>
+      <MetaRow label="State">
+        <span
+          className="text-[9px] font-bold uppercase tracking-wider"
+          style={{ color: active ? "hsl(var(--status-ok))" : "hsl(var(--muted-foreground))" }}
+        >
+          {active ? (isMidi ? "Events flowing" : "Modulating") : "Idle"}
+        </span>
+      </MetaRow>
+
+      {/* Honest gap — per-message-type counters need a bridge the engine
+          doesn't expose; only the packed activity level is live. */}
+      <div className="text-[8px] text-text-dim leading-snug pt-0.5 border-t border-white/5">
+        {isMidi
+          ? "Per-message counters (Note-On / CC / PB per sec) aren't bridged yet — only packed activity is live. Tags are inferred from the real port wiring. Pillar-2."
+          : "Per-step value read-out isn't bridged yet — only packed activity is live. Tags are inferred from the real port wiring. Pillar-2."}
+      </div>
+    </div>
+  );
 }
 
 /** The full monitor for ONE selected cable. */
@@ -1109,16 +1353,27 @@ function CableMonitor({ cable }: { cable: CableData }) {
         />
       </div>
 
+      {/* Flow metadata — MIDI + logic/utility/command enrichment (Wizard R2).
+          Real routing tags inferred from the port wiring, for flow-debugging +
+          conditional routing. Audio cables skip this (they get spectrum/phase). */}
+      {!isAudio && route && (
+        <FlowMetaPanel
+          cable={cable}
+          sourcePort={route.sourcePort}
+          targetPort={route.targetPort}
+          active={active}
+          accent={accent}
+        />
+      )}
+
       {/* Honest gaps — monitors with no engine bridge yet. */}
       <div className="space-y-2">
-        <NotWiredTile
-          label="Spectrum"
-          detail={
-            isAudio
-              ? "Per-cable FFT bins are not exposed by the engine bridge yet — only summed RMS is. Pillar-2."
-              : "Spectral analysis applies to audio cables only."
-          }
-        />
+        {isAudio && (
+          <NotWiredTile
+            label="Spectrum"
+            detail="Per-cable FFT bins are not exposed by the engine bridge yet — only summed RMS is. Pillar-2."
+          />
+        )}
         {isAudio && channels >= 2 && (
           <NotWiredTile
             label="Phase / correlation"
@@ -1227,181 +1482,21 @@ function CableTabBody() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-//  BUS TAB (P2 depth) — keep the praised BusInspector UI, ADD a live
-//  activity panel above it: per-bus level meters, volume read-out, sidechain
-//  state, and a direct "open bus editor" affordance (dives the bus endpoint
-//  block so its effects — e.g. a reverb — surface in the Block tab).
+//  BUS TAB (Wizard R1 #4 + R2) — the IO send/receive auditor (BusInspector).
 //
-//  DECISION (Wizard R1 #4): buses are IO send/receive blocks, NOT wireless
-//  cables. This panel is framed as monitoring/opening EXISTING buses, never as
-//  creating wireless ones. The broader send/receive-block model is a separate
-//  queued task — this panel just must not contradict the decision.
+//  BusInspector now carries the full live surface: SEPARATE Send + Receive
+//  activity meters per bus (real per-cable RMS / activity), a live volume per
+//  side, sidechain DISPLAY, and a direct "Open editor" affordance that dives the
+//  bus's destination block so its effects (e.g. a reverb) open in the Block tab.
+//
+//  DECISION (Wizard R1 #4): buses are IO blocks that SEND TO / RECEIVE FROM a
+//  named bus (Bus Send / Bus Receive), NOT "wireless cables". All framing here
+//  follows that model — no "wireless" language anywhere. The broader send/receive
+//  Bus-block model is a separate queued task; this surface audits/opens EXISTING
+//  buses and must not contradict the decision.
 // ════════════════════════════════════════════════════════════════════════
 
-/** Live max level over a bus's cables (real per-edge RMS, primitive result). */
-function useBusLevel(cableIds: string[]): number {
-  return useCableMeterStore((s) => {
-    let max = 0;
-    for (const id of cableIds) {
-      const lvl = s.levels[id] ?? 0;
-      if (lvl > max) max = lvl;
-    }
-    return max;
-  });
-}
-
-function BusActivityRow({
-  bus,
-  cables,
-  blockNames,
-  onOpenEditor,
-  onSelect,
-}: {
-  bus: BusEntry;
-  cables: CableData[];
-  blockNames: Map<string, string>;
-  onOpenEditor: (blockId: string) => void;
-  onSelect: () => void;
-}) {
-  const accent = `hsl(${sigAccent[bus.signalType]})`;
-  const level = useBusLevel(bus.cableIds);
-  const amp = Math.min(1, Math.max(0, level));
-  const active = amp > 0.01;
-  // Sidechain state: real — derived from whether ANY cable on the bus is a
-  // sidechain feed.
-  const hasSidechain = bus.cableIds.some(
-    (id) => cables.find((c) => c.id === id)?.isSidechain,
-  );
-  // The "open the bus" target = the first DESTINATION block the bus feeds
-  // (e.g. the reverb a Reverb Send bus lands on). Opening it surfaces that
-  // block's controls in the Block tab.
-  const destEndpoint = bus.endpoints.find((e) => e.direction === "target");
-  const destName = destEndpoint
-    ? (blockNames.get(destEndpoint.blockId) ?? destEndpoint.blockId)
-    : undefined;
-
-  return (
-    <div
-      className="rounded-md bg-surface p-2.5 space-y-2 t-precision shadow-[-1px_-1px_4px_rgba(255,255,255,0.03),1px_1px_5px_rgba(0,0,0,0.32)] hover:shadow-[0_0_0_1px_var(--bus-accent),-1px_-1px_4px_rgba(255,255,255,0.04),1px_1px_6px_rgba(0,0,0,0.4)]"
-      style={{ ["--bus-accent" as string]: `hsl(${sigAccent[bus.signalType]} / 0.5)` }}
-    >
-      {/* Row 1: name + signal swatch + sidechain badge + level numeric */}
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={onSelect}
-          className="flex items-center gap-2 min-w-0 flex-1 text-left"
-          title="Select bus cable"
-        >
-          <span
-            className="inline-block w-2 h-2 rounded-full shrink-0"
-            style={{ background: accent, boxShadow: `0 0 5px ${accent}` }}
-          />
-          <span
-            className="text-[11px] font-bold uppercase tracking-tight truncate"
-            style={{ color: accent }}
-          >
-            {bus.name}
-          </span>
-          {hasSidechain && (
-            <span
-              className="text-[7px] font-bold uppercase tracking-wider px-1 py-0.5 rounded leading-none shrink-0"
-              style={{ background: "hsl(var(--cat-audiofx) / 0.18)", color: "hsl(var(--cat-audiofx))" }}
-            >
-              SC
-            </span>
-          )}
-        </button>
-        <span
-          className="text-[10px] font-mono font-bold tabular-nums shrink-0"
-          style={{ color: active ? accent : "hsl(var(--muted-foreground))" }}
-        >
-          {bus.signalType === "audio"
-            ? `${toDbfs(amp)} dB`
-            : `${Math.round(amp * 100)}%`}
-        </span>
-      </div>
-
-      {/* Row 2: live activity meter (real bus level) */}
-      <VuLadder level={amp} active={active} segments={20} height={7} />
-
-      {/* Row 3: routing summary + actions */}
-      <div className="flex items-center gap-2">
-        <span className="text-[9px] text-text-dim truncate flex-1">
-          {bus.cableIds.length} cable{bus.cableIds.length === 1 ? "" : "s"}
-          {destName ? ` → ${destName}` : ""}
-        </span>
-        {destEndpoint && (
-          <button
-            type="button"
-            onClick={() => onOpenEditor(destEndpoint.blockId)}
-            className="text-[9px] font-bold uppercase tracking-wider px-2 py-1 rounded-md bg-pressed text-text-secondary t-precision shadow-[inset_1px_1px_3px_rgba(0,0,0,0.5),inset_-1px_-1px_2px_rgba(255,255,255,0.04)] hover:text-text-primary hover:shadow-[0_0_0_1px_var(--bus-accent),inset_1px_1px_3px_rgba(0,0,0,0.5)]"
-            title={`Open ${destName ?? "destination"} — work on the bus's effects`}
-          >
-            Open editor
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/**
- * Bus activity panel — the depth ADDED above the kept BusInspector. Shows live
- * level + volume + sidechain per active bus, and an open-editor affordance.
- */
-function BusActivityPanel({ onOpenBlock }: { onOpenBlock: (blockId: string) => void }) {
-  const edges = useGraphStore(selectEdges) as CableData[];
-  const nodes = useGraphStore(selectNodes);
-  const cableBus = useBusStore(selectCableBusMap);
-  const selectEdgeOnGraph = useGraphStore((s) => s.selectEdge);
-
-  const buses = useMemo(() => deriveBuses(edges, cableBus), [edges, cableBus]);
-  const blockNames = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const n of nodes) m.set(n.id, n.name);
-    return m;
-  }, [nodes]);
-
-  if (buses.length === 0) return null;
-
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <span className="text-[11px] font-bold text-text-secondary uppercase tracking-widest">
-          Bus Activity
-        </span>
-        <span className="text-[10px] text-text-dim tabular-nums">
-          {buses.length}
-        </span>
-      </div>
-      <div className="space-y-1.5">
-        {buses.map((bus) => (
-          <BusActivityRow
-            key={bus.name}
-            bus={bus}
-            cables={edges}
-            blockNames={blockNames}
-            onOpenEditor={onOpenBlock}
-            onSelect={() => {
-              if (bus.cableIds.length > 0) selectEdgeOnGraph(bus.cableIds[0]);
-            }}
-          />
-        ))}
-      </div>
-      {/* Honest framing of the bus-volume datum: the level above is real
-          (max RMS over the bus's cables). A dedicated per-bus FADER value is
-          not yet bridged — when send/receive Bus blocks land (queued), their
-          fader will read here. */}
-      <div className="text-[8px] text-text-dim leading-snug pt-0.5">
-        Level is live (max RMS across the bus's cables). A dedicated bus-fader
-        value needs the send/receive Bus-block bridge — Pillar-2.
-      </div>
-    </div>
-  );
-}
-
-/** Bus tab body — activity panel (new) above the kept BusInspector. */
+/** Bus tab body — the enriched BusInspector, wired to open a block in the Block tab. */
 function BusTabBody() {
   const selectNodeOnGraph = useGraphStore((s) => s.selectNode);
   const setActiveTabRef = useContext(InspectorTabContext);
@@ -1415,12 +1510,7 @@ function BusTabBody() {
     [selectNodeOnGraph, setActiveTabRef],
   );
 
-  return (
-    <div className="space-y-4">
-      <BusActivityPanel onOpenBlock={openBlock} />
-      <BusInspector />
-    </div>
-  );
+  return <BusInspector onOpenBlock={openBlock} />;
 }
 
 function PluginEditorControls({ block }: { block: BlockData }) {
@@ -1506,35 +1596,56 @@ function PluginEditorControls({ block }: { block: BlockData }) {
 }
 
 /**
- * Collapsible section used to stack the Health tab's panels (engine vitals,
- * host meters, log) into one scrollable column without three competing
- * full-height headers fighting for space.
+ * Collapsible inspector section — the smart-layout primitive (Wizard R2). Stacks
+ * panels into one scrollable column without competing full-height headers, and
+ * carries an optional right-aligned `summary` (e.g. a param count, a state pill)
+ * so a collapsed section still tells you what's inside without expanding.
+ *
+ * Callers HIDE a section entirely (don't render it) when it has nothing to show
+ * — this component only handles the open/closed state of a section that exists.
+ * `accent` tints the disclosure chevron + hover for category-hue dopamine.
  */
-function HealthSection({
+function InspectorSection({
   title,
   defaultOpen = true,
+  summary,
+  accent,
   children,
 }: {
   title: string;
   defaultOpen?: boolean;
+  summary?: React.ReactNode;
+  accent?: string;
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className="rounded-lg bg-surface border border-white/5 overflow-hidden shadow-[-2px_-2px_8px_rgba(255,255,255,0.03),2px_2px_8px_rgba(0,0,0,0.35)]">
+    <div
+      className="rounded-lg bg-surface border border-white/5 overflow-hidden t-precision shadow-[-2px_-2px_8px_rgba(255,255,255,0.03),2px_2px_8px_rgba(0,0,0,0.35)] hover:shadow-[0_0_0_1px_var(--sec-accent),-2px_-2px_8px_rgba(255,255,255,0.04),2px_2px_8px_rgba(0,0,0,0.4)]"
+      style={accent ? ({ ["--sec-accent" as string]: accent } as React.CSSProperties) : undefined}
+    >
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="w-full flex items-center justify-between px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-text-secondary hover:text-text-primary transition-colors"
+        className="w-full flex items-center gap-2 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
       >
-        <span>{title}</span>
         <span
-          className="text-[9px] text-text-dim transition-transform"
-          style={{ transform: open ? "rotate(90deg)" : "rotate(0deg)" }}
+          className="text-[9px] transition-transform shrink-0"
+          style={{
+            transform: open ? "rotate(90deg)" : "rotate(0deg)",
+            color: accent ?? "hsl(var(--muted-foreground))",
+          }}
         >
           ▶
         </span>
+        <span className="truncate">{title}</span>
+        <div className="flex-1" />
+        {summary != null && (
+          <span className="text-[9px] font-mono font-bold tabular-nums text-text-dim normal-case tracking-normal shrink-0">
+            {summary}
+          </span>
+        )}
       </button>
       {open && <div className="px-3 pb-3">{children}</div>}
     </div>
@@ -1542,10 +1653,31 @@ function HealthSection({
 }
 
 /**
- * The Block tab body — the full per-Block detail surface. Block selected:
- * gradient header, A/B preset compare, parameter sliders, plugin-window embed,
- * bypass/mute controls, metrics, notes, and (for Script Blocks) the inline
- * Script editor. No Block selected: the Project Overview resting state.
+ * Back-compat thin alias — the Health tab (APPROVED, untouched) keeps calling
+ * `HealthSection`; it is now `InspectorSection` with the same surface.
+ */
+function HealthSection(props: {
+  title: string;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  return <InspectorSection {...props} />;
+}
+
+/**
+ * The Block tab body — SMART relevance-ordered layout (Wizard R2). Sections are
+ * ordered by how often you reach for them and EMPTY ones are hidden entirely so
+ * the important info is never buried under dead placeholders ("screen space is
+ * precious"):
+ *
+ *   1. Header (always)            5. I/O Ports — collapsed, signal-coloured
+ *   2. Presets A/B (always)       6. State (bypass/mute) — collapsed
+ *   3. Parameters — only if the   7. Metrics (CPU/latency) — collapsed
+ *      node exposes any (or       8. Notes — collapsed, shows • when written
+ *      while loading); open       9. Script editor — script Blocks only
+ *   4. Plugin window — plugins only (self-gated)
+ *
+ * No Block selected: the Project Overview resting state.
  */
 function BlockTabBody({
   selectedBlock,
@@ -1556,60 +1688,129 @@ function BlockTabBody({
   const toggleMute = useGraphStore((s) => s.toggleMute);
   const toggleMuteInput = useGraphStore((s) => s.toggleMuteInput);
 
+  // Lifted so we can gate the whole Parameters section on the real count.
+  // (Hooks must run unconditionally — call before the early return; nodeId is
+  // "" when nothing is selected, and the bridge returns an empty list for it.)
+  const nodeId = selectedBlock?.id ?? "";
+  const { params, loading, setParam, reload } = useNodeParameters(nodeId);
+
   if (!selectedBlock) {
     return <ProjectOverview />;
   }
+
+  const accent = `hsl(${catAccent[selectedBlock.category]})`;
+  const isPlugin = selectedBlock.format !== "INT";
+  const hasParams = loading || params.length > 0;
+  const hasNote = (selectedBlock.note ?? "").trim().length > 0;
+  const stateSummary = selectedBlock.muted
+    ? "MUTED"
+    : selectedBlock.bypassed
+      ? "BYPASS"
+      : "active";
 
   return (
     <>
       <BlockHeader block={selectedBlock} />
       <PresetStrip nodeId={selectedBlock.id} />
 
-      <div className="p-3 bg-pressed rounded-lg shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] space-y-3">
-        <BlockParameterList nodeId={selectedBlock.id} />
-      </div>
-
-      <PluginEditorControls key={selectedBlock.id} block={selectedBlock} />
-
-      <div className="grid grid-cols-1 gap-2">
-        <NeuButton
-          variant={selectedBlock.bypassed ? "active" : "default"}
-          size="sm"
-          onClick={() => toggleBypass(selectedBlock.id)}
+      {/* PARAMETERS — the primary surface; hidden entirely when the node has
+          none (internal routing / host-only), so no "no parameters" filler. */}
+      {hasParams && (
+        <InspectorSection
+          title="Parameters"
+          accent={accent}
+          summary={loading ? "…" : params.length}
         >
-          {selectedBlock.bypassed ? "BYPASSED" : "BYPASS"}
-        </NeuButton>
-        <NeuButton
-          variant={selectedBlock.muted ? "active" : "default"}
-          size="sm"
-          onClick={() => toggleMute(selectedBlock.id)}
-        >
-          {selectedBlock.muted ? "MUTED" : "MUTE"}
-        </NeuButton>
-        <NeuButton
-          variant={selectedBlock.muteInput ? "active" : "default"}
-          size="sm"
-          onClick={() => toggleMuteInput(selectedBlock.id)}
-        >
-          {selectedBlock.muteInput ? "IN MUTED" : "MUTE INPUTS"}
-        </NeuButton>
-      </div>
-
-      <BlockMetrics block={selectedBlock} />
-
-      <BlockNoteEditor block={selectedBlock} />
-
-      {/* Script Blocks fold their editor INTO the Block tab (verdict #6 — the
-          Script tab is retired; per-block editing belongs to the block). */}
-      {isScriptNode(selectedBlock) && (
-        <div className="space-y-1">
-          <div className="text-[10px] font-bold text-text-secondary uppercase tracking-widest">
-            Script
+          <div className="p-3 bg-pressed rounded-lg shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] space-y-3">
+            <BlockParameterList
+              params={params}
+              loading={loading}
+              onChangeNorm={setParam}
+              onReload={reload}
+            />
           </div>
+        </InspectorSection>
+      )}
+
+      {/* PLUGIN WINDOW — self-gates to null for internal nodes. */}
+      {isPlugin && (
+        <PluginEditorControls key={selectedBlock.id} block={selectedBlock} />
+      )}
+
+      {/* I/O PORTS — signal-coloured, collapsed by default. */}
+      <InspectorSection
+        title="I/O Ports"
+        accent={accent}
+        defaultOpen={false}
+        summary={`${selectedBlock.ports.filter((p) => p.direction === "input").length} · ${selectedBlock.ports.filter((p) => p.direction === "output").length}`}
+      >
+        <BlockPortList block={selectedBlock} />
+      </InspectorSection>
+
+      {/* STATE — bypass / mute / mute-inputs. Collapsed when the block is in its
+          default ACTIVE state (the header already says so), but AUTO-OPENS when
+          something is engaged (bypassed / muted / inputs muted) so the live
+          toggle is right there — smart-layout surfacing what's relevant. */}
+      <InspectorSection
+        title="State"
+        accent={accent}
+        defaultOpen={
+          selectedBlock.bypassed ||
+          Boolean(selectedBlock.muted) ||
+          Boolean(selectedBlock.muteInput)
+        }
+        summary={stateSummary}
+      >
+        <div className="grid grid-cols-1 gap-2">
+          <NeuButton
+            variant={selectedBlock.bypassed ? "active" : "default"}
+            size="sm"
+            onClick={() => toggleBypass(selectedBlock.id)}
+          >
+            {selectedBlock.bypassed ? "BYPASSED" : "BYPASS"}
+          </NeuButton>
+          <NeuButton
+            variant={selectedBlock.muted ? "active" : "default"}
+            size="sm"
+            onClick={() => toggleMute(selectedBlock.id)}
+          >
+            {selectedBlock.muted ? "MUTED" : "MUTE"}
+          </NeuButton>
+          <NeuButton
+            variant={selectedBlock.muteInput ? "active" : "default"}
+            size="sm"
+            onClick={() => toggleMuteInput(selectedBlock.id)}
+          >
+            {selectedBlock.muteInput ? "IN MUTED" : "MUTE INPUTS"}
+          </NeuButton>
+        </div>
+      </InspectorSection>
+
+      {/* METRICS — CPU / latency, collapsed. */}
+      <InspectorSection title="Metrics" accent={accent} defaultOpen={false}>
+        <BlockMetrics block={selectedBlock} />
+      </InspectorSection>
+
+      {/* NOTES — collapsed; a • in the summary flags when a note exists so you
+          don't have to open it to know. */}
+      <InspectorSection
+        title="Notes"
+        accent={accent}
+        defaultOpen={false}
+        summary={hasNote ? "•" : undefined}
+      >
+        <BlockNoteEditor block={selectedBlock} />
+      </InspectorSection>
+
+      {/* SCRIPT — folds the editor INTO the Block tab for Script Blocks (verdict
+          #6 — the Script tab is retired; per-block editing belongs to the block).
+          Hidden for every non-script Block. */}
+      {isScriptNode(selectedBlock) && (
+        <InspectorSection title="Script" accent={accent}>
           <div className="min-h-[360px] rounded-lg overflow-hidden border border-white/5">
             <ScriptEditor nodeId={selectedBlock.id} />
           </div>
-        </div>
+        </InspectorSection>
       )}
     </>
   );

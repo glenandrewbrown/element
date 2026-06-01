@@ -169,39 +169,47 @@ const STEPS: Step[] = [
   },
   {
     key: "bus",
-    name: "BUS tab — wireless-bus auditor",
+    name: "BUS tab — IO send/receive auditor",
     tab: "BUS",
     seed: () => {
       seedNodeSelected(selectedModifier);
       useBusStore.setState({ cableBus: { e1: "Reverb Send A" } });
+      useCableMeterStore.setState((s) => ({ ...s, levels: { e1: 0.55 } }));
     },
     mockupImg: "/review-mockups/inspector-bus.png",
     changed: [
-      "BUS is a first-class tab now (was only an empty-state) — the wireless-bus auditor (BusInspector).",
-      "Lists each named bus on the board with its signal-type colour, level, peer/cable count.",
-      "Wired to useBusStore (cableBus) — seeded here with one 'Reverb Send A' audio bus.",
+      "REWORKED off the 'wireless bus' model → IO send/receive (Wizard R1 #4): a Bus is a named rail blocks SEND TO / RECEIVE FROM (Bus Send / Bus Receive), never a wireless cable. All copy reworded.",
+      "SEPARATE live Send + Receive activity meters per bus (R2) — real per-cable RMS from useCableMeterStore, with a dBFS / % read-out per side.",
+      "Sidechain DISPLAY badge where any feed is a sidechain; signal-type colour + meaningful glyph.",
+      "Direct 'Open editor' affordance dives the bus's destination block (e.g. the reverb) into the Block tab.",
     ],
     judge: [
-      "Bus row reads as cleanly as the mockup (name + AUDIO pill + LVL + PEERS)?",
-      "Signal-type colour-coding correct (audio = blue)?",
-      "Mute/Solo affordances present + legible in the one-chassis palette?",
+      "Do the separate Send + Receive meters read clearly + light from real level?",
+      "Is the IO send/receive framing unambiguous (no 'wireless' anywhere)?",
+      "Sidechain badge + signal colour legible in the one-chassis palette?",
+      "Open-editor affordance discoverable + on-brand?",
     ],
   },
   {
     key: "cable",
-    name: "CABLE tab — routing editor",
+    name: "CABLE tab — live signal monitor",
     tab: "CABLE",
-    seed: () => seedNodeSelected(selectedModifier),
+    seed: () => {
+      seedProjectOverview();
+      useGraphStore.setState((s) => ({ ...s, selectedNodeId: null, selectedEdgeId: "e1" }));
+      useCableMeterStore.setState((s) => ({ ...s, levels: { e1: 0.62 } }));
+    },
     mockupImg: "/review-mockups/inspector-cable.png",
     changed: [
-      "CABLE tab = the ConnectionEditor: connection list, signal-type filters, Add Cable, plus the smart-cable meter count from the engine.",
-      "Wired to the live graph edges (useGraphStore) + useCableMeterStore.",
-      "Mockup shows the single-cable detail (source → target, GAIN, Swap/Cut); ours is the full list editor.",
+      "REWORKED into a live signal MONITOR (Wizard R1 P1 — it was 'wrong on both Element AND mockup'): NOT a routing editor.",
+      "AUTO-displays the selected cable's full detail (no extra click) — faithful digital-VU ladder + peak-hold, dBFS, signal type, channels, sidechain — all from the real 60Hz useCableMeterStore feed.",
+      "R2 enrichment: MIDI + logic/utility/command flow metadata — carried-event tags (Gate/Trigger/CC/Note/Clock…) inferred from the real port wiring, with a Conditional flag for gate/trigger/command wires.",
+      "Honest gaps (spectrum / phase / per-message counters) show explicit 'not wired' tiles — nothing faked.",
     ],
     judge: [
-      "Does our list-editor cover the mockup's cable-detail intent (endpoints, gain, swap)?",
-      "Signal-type filter chips clear?",
-      "Add Cable affordance discoverable + on-brand?",
+      "Does the auto-shown monitor read as a real signal meter (VU ramp faithful, dBFS right)?",
+      "Is the MIDI / control flow metadata genuinely useful for flow-debugging?",
+      "Are the honest 'not wired' gaps acceptable, or which one should be bridged first?",
     ],
   },
   {

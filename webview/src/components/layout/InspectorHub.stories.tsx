@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, userEvent, within } from "storybook/test";
+import { expect, userEvent, waitFor, within } from "storybook/test";
 import { InspectorHub } from "./InspectorHub";
 import { useGraphStore } from "../../stores/useGraphStore";
 import { usePerformStore } from "../../stores/usePerformStore";
@@ -410,8 +410,11 @@ export const BusTab: Story = {
       "aria-selected",
       "true",
     );
-    // The new live-activity surface + open-editor affordance are present.
-    await expect(canvas.getByText("Bus Activity")).toBeInTheDocument();
+    // The reworked IO send/receive auditor: "Buses" heading, separate Send +
+    // Receive meters per bus (two seeded), and the open-editor affordance.
+    await expect(canvas.getByText(/^Buses$/)).toBeInTheDocument();
+    await expect(canvas.getAllByText(/SEND →/).length).toBeGreaterThan(0);
+    await expect(canvas.getAllByText(/← RECEIVE/).length).toBeGreaterThan(0);
     await expect(
       canvas.getAllByRole("button", { name: "Open editor" }).length,
     ).toBeGreaterThan(0);
@@ -483,6 +486,8 @@ export const CableTab_Midi: Story = {
     await userEvent.click(canvas.getByRole("tab", { name: "CABLE" }));
     await expect(canvas.getByText("MIDI Cable")).toBeInTheDocument();
     await expect(canvas.getByText("MIDI ACTIVITY")).toBeInTheDocument();
+    // R2 enrichment — the MIDI flow metadata panel auto-shows for non-audio cables.
+    await expect(canvas.getByText("MIDI flow")).toBeInTheDocument();
   },
 };
 
@@ -516,6 +521,131 @@ export const CableTab_Overview: Story = {
     await expect(canvas.getByText("Cable Monitor")).toBeInTheDocument();
     // Three demo cables → three rows.
     await expect(canvas.getByText(/3 cables/)).toBeInTheDocument();
+  },
+};
+
+// ── CABLE tab — Value/CV cable carrying a Gate (conditional routing) ──
+// Exercises the R2 flow-metadata enrichment: a CV wire whose ports are named
+// "Gate"/"Trigger" infers the Gate + Trigger tags and flags the wire as
+// Conditional routing — the logic-gate / utility / command case Glen called out.
+export const CableTab_ValueGate: Story = {
+  decorators: [
+    (Story) => {
+      const lfo: BlockData = {
+        id: "lfo-1",
+        name: "Step LFO",
+        category: "modulator",
+        format: "INT",
+        position: { x: 80, y: 60 },
+        ports: [
+          { id: "gate-out", type: "value", direction: "output", label: "Gate Out", connected: true },
+        ],
+        cpuLoad: 0.2,
+        latencyMs: 0,
+        bypassed: false,
+        muted: false,
+        muteInput: false,
+        error: false,
+        isMacroTagged: false,
+      };
+      const filt: BlockData = {
+        id: "filt-1",
+        name: "Ladder Filter",
+        category: "audiofx",
+        format: "VST3",
+        position: { x: 320, y: 60 },
+        ports: [
+          { id: "trig-in", type: "value", direction: "input", label: "Trigger In", connected: true },
+        ],
+        cpuLoad: 1.1,
+        latencyMs: 0,
+        bypassed: false,
+        muted: false,
+        muteInput: false,
+        error: false,
+        isMacroTagged: false,
+      };
+      const cvCable = {
+        id: "e-cv",
+        source: "lfo-1",
+        sourcePort: "gate-out",
+        target: "filt-1",
+        targetPort: "trig-in",
+        signalType: "value" as const,
+        channelCount: 1 as const,
+        isSidechain: false,
+      };
+      useGraphStore.setState((s) => ({
+        ...s,
+        nodes: [lfo, filt],
+        edges: [cvCable],
+        selectedNodeId: null,
+        selectedEdgeId: "e-cv",
+      }));
+      usePerformStore.setState((s) => ({ liveHealth: { ...s.liveHealth, ...defaultHealth } }));
+      useCableMeterStore.setState((s) => ({ ...s, levels: { "e-cv": 0.7 } }));
+      return (
+        <div style={PANEL} className="bg-panel">
+          <Story />
+        </div>
+      );
+    },
+  ],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "CABLE tab with a Value/CV cable selected whose ports are a Gate → Trigger — the live monitor " +
+          "auto-shows the Control-flow panel, infers the Gate + Trigger tags from the REAL port wiring, and " +
+          "flags the wire as Conditional routing (the logic-gate / utility / command case). Per-step value " +
+          "counters show an honest 'not bridged' note — no faked numbers.",
+      },
+    },
+  },
+  play: async ({ canvas }) => {
+    await userEvent.click(canvas.getByRole("tab", { name: "CABLE" }));
+    await expect(canvas.getByText("Value / CV Cable")).toBeInTheDocument();
+    await expect(canvas.getByText("Control flow")).toBeInTheDocument();
+    // Inferred routing tags + the conditional flag.
+    await expect(canvas.getByText("Gate")).toBeInTheDocument();
+    await expect(canvas.getByText("Trigger")).toBeInTheDocument();
+    await expect(canvas.getByText("Conditional")).toBeInTheDocument();
+  },
+};
+
+// ── BLOCK tab — internal node with no params (smart layout hides the section) ──
+export const BlockTab_InternalNoParams: Story = {
+  decorators: [
+    (Story) => {
+      seedNodeSelected(selectedScript);
+      return (
+        <div style={PANEL} className="bg-panel">
+          <Story />
+        </div>
+      );
+    },
+  ],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "BLOCK tab, internal Script node selected — Storybook has no JUCE bridge so the parameter list is " +
+          "empty. The SMART layout (Wizard R2) HIDES the Parameters section entirely instead of burying the " +
+          "page under a 'no parameters' placeholder, while the I/O Ports + State + Notes sections (and the " +
+          "Script editor) still appear — no wasted empty middle space.",
+      },
+    },
+  },
+  play: async ({ canvas }) => {
+    // The relevant sections + the Script fold are present.
+    await expect(canvas.getByText("I/O Ports")).toBeInTheDocument();
+    await expect(canvas.getByText("Save & Compile")).toBeInTheDocument();
+    // Parameters section is omitted once the (empty) bridge fetch resolves —
+    // smart layout hides it rather than showing a placeholder. Wait for the
+    // brief loading window to settle before asserting absence.
+    await waitFor(() =>
+      expect(canvas.queryByText("Parameters")).not.toBeInTheDocument(),
+    );
   },
 };
 
