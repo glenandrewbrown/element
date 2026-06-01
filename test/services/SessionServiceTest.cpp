@@ -144,10 +144,13 @@ BOOST_AUTO_TEST_CASE (sig_session_loaded_fires_on_default_reload)
     BOOST_REQUIRE (svc != nullptr);
 
     int callCount = 0;
+    BOOST_TEST_CHECKPOINT ("connecting sigSessionLoaded");
     auto conn = svc->sigSessionLoaded.connect ([&]() { ++callCount; });
-
+    BOOST_TEST_CHECKPOINT ("calling openDefaultSession");
     BOOST_CHECK_NO_THROW (svc->openDefaultSession());
+    BOOST_TEST_CHECKPOINT ("openDefaultSession returned");
     juce::MessageManager::getInstance()->runDispatchLoopUntil (50);
+    BOOST_TEST_CHECKPOINT ("dispatch loop returned");
 
     BOOST_CHECK (callCount >= 1);
     conn.disconnect();
@@ -169,6 +172,15 @@ BOOST_AUTO_TEST_CASE (open_nonexistent_file_does_not_crash)
 {
     auto* svc = test::getService<SessionService>();
     BOOST_REQUIRE (svc != nullptr);
+
+    // Put the document in a clean, file-less state first. openFile() on a
+    // .els path calls FileBasedDocument::saveIfNeededAndUserAgrees(), which
+    // pops a MODAL "Save changes?" AlertWindow when the document is dirty.
+    // In this headless runner that modal can never be dismissed and the test
+    // hangs forever (runModalLoop spins in mach_msg). Resetting clears the
+    // changed flag so the dirty-check short-circuits the modal and we still
+    // exercise the real fail-soft missing-file load path this test covers.
+    svc->resetChanges (true);
 
     juce::File missing (juce::File::getSpecialLocation (juce::File::tempDirectory)
                             .getChildFile ("__element_phaseH_does_not_exist__.els"));
@@ -198,6 +210,11 @@ BOOST_AUTO_TEST_CASE (new_session_does_not_crash)
 {
     auto* svc = test::getService<SessionService>();
     BOOST_REQUIRE (svc != nullptr);
+    // newSession() pops a MODAL "Save Session?" yes/no/cancel AlertWindow when
+    // the document is dirty (sessionservice.cpp). In this headless runner that
+    // modal can never be answered and the test would hang. Reset to a clean
+    // state first so newSession() proceeds straight to loadNewSessionData().
+    svc->resetChanges (true);
     BOOST_CHECK_NO_THROW (svc->newSession());
     juce::MessageManager::getInstance()->runDispatchLoopUntil (10);
     BOOST_CHECK_NO_THROW (svc->resetChanges());
