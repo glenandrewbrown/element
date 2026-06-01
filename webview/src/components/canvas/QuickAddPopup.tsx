@@ -5,26 +5,94 @@ import {
   useCallback,
   useMemo,
   type KeyboardEvent,
-  type ReactElement,
 } from "react";
-import { NeuInput, EmptyState } from "../neu";
+import { NeuInput, EmptyState, Icon } from "../neu";
 import type { BlockCategory, SignalType } from "../../data/types";
 import { usePluginBrowserStore } from "../../stores/usePluginBrowserStore";
 import { nativeGraphAddPlugin } from "../../bridge/nativeGraph";
 import { EV_OPEN_PREFERENCES } from "../../events";
+import { iconForCategory } from "../neu/iconForCategory";
 
-// ── Lightweight fuzzy search ─────────────────────────────────────────────────
-// No external dep. Scores a plugin name against the query string. Higher = better.
-// Returns null when there is no meaningful match.
-function fuzzyScore(name: string, query: string): number | null {
-  if (!query) return 0;
-  const n = name.toLowerCase();
+// ── Category → hue colour ────────────────────────────────────────────────────
+// Icon.tsx's `tone` only maps audio/midi/cv/primary/secondary; category hues
+// use --cat-* CSS vars. We derive the colour directly from those vars so it
+// always stays in sync with the design-system tokens.
+const CAT_COLOR: Record<BlockCategory, string> = {
+  instrument: "hsl(var(--cat-instrument))",
+  audiofx:    "hsl(var(--cat-audiofx))",
+  midifx:     "hsl(var(--cat-midifx))",
+  modulator:  "hsl(var(--cat-modulator))",
+};
+
+// ── Category → glow CSS var (for the hover/active dopamine ring) ─────────────
+const CAT_GLOW_VAR: Record<BlockCategory, string> = {
+  instrument: "var(--cat-instrument)",
+  audiofx:    "var(--cat-audiofx)",
+  midifx:     "var(--cat-midifx)",
+  modulator:  "var(--cat-modulator)",
+};
+
+// ── Signal-type metadata ─────────────────────────────────────────────────────
+
+/**
+ * Signal type a Block emits / passes, derived from its category. Used to
+ * port-type-filter the list when QuickAdd is opened from a cable-drag.
+ *
+ * NOTE: the design mockup hand-tags `acceptsType` per block and can split
+ * modulators between audio and CV; we cannot reproduce that split from
+ * category alone (see the task report — a per-plugin signal-output field on
+ * `BrowserPlugin` would be needed for full parity).
+ */
+const CATEGORY_SIGNAL: Record<BlockCategory, SignalType> = {
+  instrument: "audio",
+  audiofx:    "audio",
+  midifx:     "midi",
+  modulator:  "value",
+};
+
+/** Frozen signal-type accent tokens (HSL) — W0-TOKENS. */
+const SIGNAL_HSL: Record<SignalType, string> = {
+  audio: "var(--sig-audio)",
+  midi:  "var(--sig-midi)",
+  value: "var(--sig-value)",
+};
+
+/** Header label per signal type — "ADD BLOCK ACCEPTING <LABEL>". */
+const SIGNAL_LABEL: Record<SignalType, string> = {
+  audio: "AUDIO",
+  midi:  "MIDI",
+  value: "CV",
+};
+
+// ── Signal-type search aliases ────────────────────────────────────────────────
+// These terms let users type signal-domain words (e.g. "audio fx", "cv",
+// "midi") and find blocks by their derived signal type. Matched against the
+// query before the per-field fuzzy scoring runs.
+const SIGNAL_ALIASES: Record<SignalType, string[]> = {
+  audio: ["audio", "audiofx", "audio fx", "audio effect", "instrument", "synth", "sampler"],
+  midi:  ["midi", "midifx", "midi fx", "midi effect", "arp", "chord", "sequence"],
+  value: ["cv", "value", "modulator", "lfo", "envelope", "utility"],
+};
+
+// ── Metadata fuzzy search ────────────────────────────────────────────────────
+
+/**
+ * Scores a single text field against the query string.
+ * Returns null when there is no meaningful match.
+ *
+ * Scoring tiers:
+ *   1. Exact substring   → 100 + prefix bonus (highest)
+ *   2. All-chars ordered → 20 + consecutive bonus (subsequence)
+ *   3. Acronym match     → 10 (initials)
+ */
+function fuzzyScoreField(field: string, query: string): number | null {
+  if (!query || !field) return null;
+  const f = field.toLowerCase();
   const q = query.toLowerCase();
 
-  // 1. Exact substring match — highest rank
-  const idx = n.indexOf(q);
+  // 1. Exact substring match
+  const idx = f.indexOf(q);
   if (idx !== -1) {
-    // Bonus for prefix match, penalise deep offset
     return 100 + (idx === 0 ? 40 : 0) - idx;
   }
 
@@ -32,154 +100,113 @@ function fuzzyScore(name: string, query: string): number | null {
   let qi = 0;
   let consecutive = 0;
   let prevMatch = -1;
-  for (let ni = 0; ni < n.length && qi < q.length; ni++) {
-    if (n[ni] === q[qi]) {
-      consecutive += prevMatch === ni - 1 ? 1 : 0;
-      prevMatch = ni;
+  for (let fi = 0; fi < f.length && qi < q.length; fi++) {
+    if (f[fi] === q[qi]) {
+      consecutive += prevMatch === fi - 1 ? 1 : 0;
+      prevMatch = fi;
       qi++;
     }
   }
   if (qi === q.length) {
-    // Score: consecutive bonus, penalise total name length (prefer shorter names)
-    return 20 + consecutive * 5 - n.length;
+    return 20 + consecutive * 5 - f.length;
   }
 
   // 3. Acronym match — initials of words match query chars
-  const words = n.split(/[\s\-_.]+/);
+  const words = f.split(/[\s\-_.]+/);
   const initials = words.map((w) => w[0] ?? "").join("");
   if (initials.includes(q)) return 10;
 
-  return null; // no match
+  return null;
 }
 
 interface PluginEntry {
-  id: string;
-  name: string;
-  category: BlockCategory;
-  format: string;
+  id:           string;
+  name:         string;
+  category:     BlockCategory;
+  format:       string;
+  /** Raw C++-scanned category string (e.g. "EQ", "Reverb", "Synth"). Used for metadata fuzzy search. */
+  rawCategory:  string;
+  /** Plugin manufacturer name (e.g. "FabFilter", "Valhalla DSP"). Used for metadata fuzzy search. */
+  manufacturer: string;
 }
 
 /**
- * Signal type a Block emits / passes, derived from its category. Used to
- * port-type-filter the list when QuickAdd is opened from a cable-drag.
+ * Scores a PluginEntry against the query across ALL metadata fields:
+ *   - name         (weight 1.0  — highest relevance)
+ *   - manufacturer (weight 0.7  — "valhalla" finds ValhallaVintageVerb)
+ *   - rawCategory  (weight 0.8  — "reverb" finds all reverbs)
+ *   - blockCategory  (weight 0.6  — "audiofx" / "audio fx")
+ *   - signal aliases (weight 0.5  — "audio", "cv", "midi" match by signal type)
  *
- * Element's scanned-plugin metadata (`BrowserPlugin`) carries only
- * `blockCategory`, so this is a deterministic 1:1 map mirroring the locked
- * `--cat-*` ↔ `--sig-*` token parity in index.css (instrument/audiofx share
- * the audio/value hues, midifx = MIDI, modulator → value/CV). NOTE: the design
- * mockup hand-tags `acceptsType` per block and can split modulators between
- * audio and CV; we cannot reproduce that split from category alone (see the
- * task report — a per-plugin signal-output field on `BrowserPlugin` would be
- * needed for full parity).
+ * Returns null when no field produces any meaningful match.
  */
-const CATEGORY_SIGNAL: Record<BlockCategory, SignalType> = {
-  instrument: "audio",
-  audiofx: "audio",
-  midifx: "midi",
-  modulator: "value",
-};
+function fuzzyScoreEntry(entry: PluginEntry, query: string): number | null {
+  const q = query.trim().toLowerCase();
+  if (!q) return 0;
 
-/** Frozen signal-type accent tokens (HSL) — W0-TOKENS. */
-const SIGNAL_HSL: Record<SignalType, string> = {
-  audio: "var(--sig-audio)",
-  midi: "var(--sig-midi)",
-  value: "var(--sig-value)",
-};
+  // Signal-alias shortcut: if the query matches a signal-type alias keyword,
+  // we score entries of that signal type uniformly rather than going through
+  // fuzzy logic (so "reverb" → audiofx, "midi" → midifx, "cv" → modulator).
+  for (const [sig, aliases] of Object.entries(SIGNAL_ALIASES) as [SignalType, string[]][]) {
+    if (aliases.some((alias) => alias.includes(q) || q.includes(alias))) {
+      const entrySignal = CATEGORY_SIGNAL[entry.category];
+      if (entrySignal === sig) return 55; // signal-alias match — lower than substring
+    }
+  }
 
-/** Header label per signal type — "ADD BLOCK ACCEPTING <LABEL>". */
-const SIGNAL_LABEL: Record<SignalType, string> = {
-  audio: "AUDIO",
-  midi: "MIDI",
-  value: "CV",
-};
+  const scores: number[] = [];
 
-/** Filled circle for Instrument (●) */
-function InstrumentDot() {
-  return (
-    <span
-      className="shrink-0 text-[10px] leading-none"
-      style={{ color: "hsl(var(--cat-instrument))" }}
-      aria-label="Instrument"
-    >
-      ●
-    </span>
-  );
+  const nameScore = fuzzyScoreField(entry.name, q);
+  if (nameScore !== null) scores.push(nameScore * 1.0);
+
+  const rawCatScore = fuzzyScoreField(entry.rawCategory, q);
+  if (rawCatScore !== null) scores.push(rawCatScore * 0.8);
+
+  const mfgScore = fuzzyScoreField(entry.manufacturer, q);
+  if (mfgScore !== null) scores.push(mfgScore * 0.7);
+
+  const blockCatScore = fuzzyScoreField(entry.category, q);
+  if (blockCatScore !== null) scores.push(blockCatScore * 0.6);
+
+  if (scores.length === 0) return null;
+  return Math.max(...scores);
 }
 
-/** Filled diamond for AudioFx (◆) */
-function EffectDot() {
+// ── Sub-components ───────────────────────────────────────────────────────────
+
+/**
+ * Category icon — uses the iconForCategory helper (V3 bake-off verdict) rather
+ * than unicode glyphs so every icon surface stays in sync. Colour is derived
+ * from the category CSS var so it matches the rest of the design system.
+ */
+function CategoryIcon({ category, name }: { category: BlockCategory; name: string }) {
+  const iconName = iconForCategory(category, name);
   return (
     <span
-      className="shrink-0 text-[10px] leading-none"
-      style={{ color: "hsl(var(--cat-audiofx))" }}
-      aria-label="Audio FX"
+      className="shrink-0 inline-flex items-center justify-center"
+      style={{ color: CAT_COLOR[category] ?? CAT_COLOR.audiofx }}
+      aria-hidden="true"
     >
-      ◆
+      <Icon name={iconName} size={11} strokeWidth={1.75} />
     </span>
   );
-}
-
-/** Filled triangle for MidiFx (▲) */
-function MidiDot() {
-  return (
-    <span
-      className="shrink-0 text-[10px] leading-none"
-      style={{ color: "hsl(var(--cat-midifx))" }}
-      aria-label="MIDI FX"
-    >
-      ▲
-    </span>
-  );
-}
-
-/** Hexagon for Modulator (⬡) */
-function ModulatorDot() {
-  return (
-    <span
-      className="shrink-0 text-[10px] leading-none"
-      style={{ color: "hsl(var(--cat-modulator))" }}
-      aria-label="Modulator"
-    >
-      ⬡
-    </span>
-  );
-}
-
-const CAT_ICON: Record<BlockCategory, () => ReactElement> = {
-  instrument: InstrumentDot,
-  audiofx: EffectDot,
-  midifx: MidiDot,
-  modulator: ModulatorDot,
-};
-
-/** Per-category CSS var for the dopamine hover-glow. */
-const CAT_GLOW_VAR: Record<BlockCategory, string> = {
-  instrument: "var(--cat-instrument)",
-  audiofx: "var(--cat-audiofx)",
-  midifx: "var(--cat-midifx)",
-  modulator: "var(--cat-modulator)",
-};
-
-function CategoryIcon({ category }: { category: BlockCategory }) {
-  const Icon = CAT_ICON[category] ?? EffectDot;
-  return <Icon />;
 }
 
 /** Small format pill badge */
 function FormatBadge({ format }: { format: string }) {
   if (!format || format === "INT") return null;
   return (
-    <span className="shrink-0 text-[8px] px-1 py-0.5 rounded bg-white/10 text-text-dim uppercase font-bold leading-none">
+    <span className="shrink-0 text-[8px] px-1 py-0.5 rounded bg-white/10 text-text-dim uppercase font-bold leading-none tracking-wider">
       {format}
     </span>
   );
 }
 
 interface PluginRowProps {
-  plugin: PluginEntry;
-  isActive: boolean;
-  onSelect: (id: string) => void;
-  onHover: () => void;
+  plugin:    PluginEntry;
+  isActive:  boolean;
+  onSelect:  (id: string) => void;
+  onHover:   () => void;
 }
 
 function PluginRow({ plugin, isActive, onSelect, onHover }: PluginRowProps) {
@@ -191,7 +218,7 @@ function PluginRow({ plugin, isActive, onSelect, onHover }: PluginRowProps) {
       onMouseEnter={onHover}
       className={[
         "w-full text-left px-2.5 py-1.5 text-[11px] rounded flex items-center gap-2",
-        "transition-all duration-100",
+        "transition-all duration-100 cursor-pointer",
         isActive
           ? "bg-elevated text-text-primary"
           : "text-text-secondary hover:text-text-primary",
@@ -204,14 +231,19 @@ function PluginRow({ plugin, isActive, onSelect, onHover }: PluginRowProps) {
           : undefined
       }
     >
-      <CategoryIcon category={plugin.category} />
+      <CategoryIcon category={plugin.category} name={plugin.name} />
       <span className="truncate flex-1 min-w-0">{plugin.name}</span>
+      {plugin.manufacturer && (
+        <span className="shrink-0 text-[9px] text-text-dim truncate max-w-[64px] hidden sm:inline">
+          {plugin.manufacturer}
+        </span>
+      )}
       <FormatBadge format={plugin.format} />
     </button>
   );
 }
 
-/** Shared section header label — "Favorites" / "Recents". */
+/** Shared section header label — "Favorites" / "Recents" / "All". */
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
     <div className="px-2.5 pt-1 pb-0.5 text-[9px] uppercase tracking-widest text-text-dim">
@@ -225,7 +257,9 @@ function SectionDivider() {
   return <div className="mx-2 my-1 border-t border-white/5" />;
 }
 
-interface QuickAddPopupProps {
+// ── Props + main component ────────────────────────────────────────────────────
+
+export interface QuickAddPopupProps {
   /** Viewport X (clientX) of the cursor where the popup opens; clamped to keep the popup on-screen. */
   x: number;
   /** Viewport Y (clientY) of the cursor where the popup opens; clamped to keep the popup on-screen. */
@@ -235,8 +269,7 @@ interface QuickAddPopupProps {
    * port-drag. When set, the list is filtered to Blocks that accept/pass that
    * signal type and the header reads "ADD BLOCK ACCEPTING <TYPE>". When
    * omitted (right-click on empty canvas), the full plugin list is shown with
-   * favourites pinned — the generic QuickAdd. See `GraphCanvas` plumbing note
-   * in the task report: today only the generic path is wired.
+   * favourites pinned — the generic QuickAdd.
    */
   portType?: SignalType;
   /** Called to dismiss the popup (backdrop click, Escape, or after a Block is inserted). */
@@ -244,47 +277,53 @@ interface QuickAddPopupProps {
 }
 
 /**
- * QuickAddPopup — the fastest path to add a Block to the Board. A small,
- * keyboard-first search popup anchored at the cursor, opening focused with
- * favourites pinned on top, navigable entirely by keyboard (type to filter,
- * ↑↓ to move, ↵ to insert, esc to cancel). Each result is shape- and
- * colour-coded by category (● instrument / ◆ audio FX / ▲ MIDI FX / ⬡
- * modulator) so the signal role reads instantly.
+ * QuickAddPopup — the fastest path to add a Block to the Board.
+ *
+ * A small, keyboard-first search popup anchored at the cursor.
+ *
+ * Browse mode (empty search):
+ *   1. Favorites   — starred plugins, port-filtered, preserving store order
+ *   2. Recents     — recently-used, port-filtered, excluding favorites
+ *   3. Others      — remaining plugins, port-filtered, excluding fav+recent
+ *
+ * Fuzzy search mode (user has typed):
+ *   Full list scored across ALL metadata fields (name, manufacturer, raw
+ *   category, blockCategory, signal-type aliases). "valhalla" finds
+ *   ValhallaVintageVerb; "reverb" finds all reverb plugins; "audio fx" finds
+ *   all instrument + audiofx blocks. Port-type filter still applies.
+ *
+ * Category icons use iconForCategory() — the V3 bake-off icon verdict — so
+ * every surface that renders category glyphs (Block, ToolPalette, QuickAdd,
+ * Inspector) stays in sync automatically.
  *
  * Two modes:
- *  - **Generic** (no `portType`) — mounted from `GraphCanvas`'s
- *    `onPaneContextMenu` (right-click empty canvas). Shows every scanned
- *    plugin, favourites first.
- *  - **Port-type-aware** (`portType` set) — opened by dragging a Cable off a
- *    port. Shows only Blocks that accept that signal type, under an
- *    "ADD BLOCK ACCEPTING <TYPE>" header tinted in the signal's hue.
- *
- * It reads the scanned plugin list from `usePluginBrowserStore` and, when no
- * plugins have been scanned, shows an empty state with a link to Preferences
- * instead of fabricated entries.
+ *  - Generic (no portType)    — right-click empty canvas, full list.
+ *  - Port-type-aware (portType) — dragged off a port, filtered + tinted header.
  */
 export function QuickAddPopup({ x, y, portType, onClose }: QuickAddPopupProps) {
-  const [search, setSearch] = useState("");
+  const [search, setSearch]         = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
-  const listRef = useRef<HTMLDivElement>(null);
+  const listRef  = useRef<HTMLDivElement>(null);
 
-  const nativePlugins = usePluginBrowserStore((s) => s.plugins);
-  const favoriteIdentifiers = usePluginBrowserStore((s) => s.favoriteIdentifiers);
-  const recentIdentifiers = usePluginBrowserStore((s) => s.recentIdentifiers);
-  const refreshPlugins = usePluginBrowserStore((s) => s.refresh);
+  const nativePlugins        = usePluginBrowserStore((s) => s.plugins);
+  const favoriteIdentifiers  = usePluginBrowserStore((s) => s.favoriteIdentifiers);
+  const recentIdentifiers    = usePluginBrowserStore((s) => s.recentIdentifiers);
+  const refreshPlugins       = usePluginBrowserStore((s) => s.refresh);
 
   useEffect(() => {
     void refreshPlugins();
   }, [refreshPlugins]);
 
-  /** Full plugin list as flat PluginEntry array. */
+  /** Full plugin list as flat PluginEntry array — includes metadata fields. */
   const plugins = useMemo((): PluginEntry[] => {
     return nativePlugins.map((p) => ({
-      id: p.identifier,
-      name: p.name,
-      category: p.blockCategory,
-      format: p.format,
+      id:           p.identifier,
+      name:         p.name,
+      category:     p.blockCategory,
+      format:       p.format,
+      rawCategory:  p.category,       // e.g. "EQ", "Reverb", "Synth"
+      manufacturer: p.manufacturer,   // e.g. "FabFilter", "Valhalla DSP"
     }));
   }, [nativePlugins]);
 
@@ -308,17 +347,15 @@ export function QuickAddPopup({ x, y, portType, onClose }: QuickAddPopupProps) {
   );
 
   /**
-   * Display list, computed differently depending on whether the user has typed.
+   * Display list. Two modes:
    *
-   * EMPTY SEARCH (on open):
-   *   1. Favorites   — starred plugins, port-filtered, preserving store order
-   *   2. Recents     — recently-used, port-filtered, excluding favorites
-   *   3. Others      — remaining plugins, port-filtered, excluding fav+recent
+   * EMPTY SEARCH (browse mode):
+   *   Favorites → Recents → Others (port-filtered throughout)
    *
-   * TYPED SEARCH (fuzzy):
-   *   Full plugin list, port-filtered, fuzzy-scored and sorted. Favorites keep
-   *   a section header above the matched set; recents are folded into the main
-   *   results (order by score). "No matches" shown when the scored set is empty.
+   * TYPED SEARCH (fuzzy metadata mode):
+   *   All plugins scored across name + manufacturer + rawCategory +
+   *   blockCategory + signal-type aliases. Port-filter still applies.
+   *   Section headers collapse to a flat scored list.
    */
   const { favorites, recents, others, fuzzyResults, isSearching } =
     useMemo(() => {
@@ -326,12 +363,12 @@ export function QuickAddPopup({ x, y, portType, onClose }: QuickAddPopupProps) {
 
       if (!isSearching) {
         // ── Browse mode: recents-first layout ────────────────────────────────
-        const favSet = favoriteIdentifiers;
+        const favSet   = favoriteIdentifiers;
         const recentSet = new Set(recentIdentifiers);
 
-        const favs: PluginEntry[] = [];
-        const recs: PluginEntry[] = [];
-        const rest: PluginEntry[] = [];
+        const favs: PluginEntry[]  = [];
+        const recs: PluginEntry[]  = [];
+        const rest: PluginEntry[]  = [];
 
         // Favorites: preserve stable plugin order, just filter to starred
         for (const p of plugins) {
@@ -355,29 +392,29 @@ export function QuickAddPopup({ x, y, portType, onClose }: QuickAddPopupProps) {
         }
 
         return {
-          favorites: favs,
-          recents: recs,
-          others: rest,
+          favorites:    favs,
+          recents:      recs,
+          others:       rest,
           fuzzyResults: [] as PluginEntry[],
-          isSearching: false,
+          isSearching:  false,
         };
       }
 
-      // ── Fuzzy-search mode: score across the full list ─────────────────────
+      // ── Fuzzy-search mode: score across all metadata fields ───────────────
       const scored: Array<{ plugin: PluginEntry; score: number }> = [];
       for (const p of plugins) {
         if (!passesPortFilter(p)) continue;
-        const score = fuzzyScore(p.name, search.trim());
+        const score = fuzzyScoreEntry(p, search);
         if (score !== null) scored.push({ plugin: p, score });
       }
       scored.sort((a, b) => b.score - a.score);
 
       return {
-        favorites: [] as PluginEntry[],
-        recents: [] as PluginEntry[],
-        others: [] as PluginEntry[],
+        favorites:    [] as PluginEntry[],
+        recents:      [] as PluginEntry[],
+        others:       [] as PluginEntry[],
         fuzzyResults: scored.map((s) => s.plugin),
-        isSearching: true,
+        isSearching:  true,
       };
     }, [
       search,
@@ -443,19 +480,10 @@ export function QuickAddPopup({ x, y, portType, onClose }: QuickAddPopupProps) {
     [flatList, activeIndex, handleSelect, onClose],
   );
 
-  const popupW = 224;
+  const popupW    = 224;
   const popupMaxH = 320;
-  // Clamp both axes — Math.min stops the popup escaping the right/bottom
-  // edge, Math.max stops it from running off the left/top on small windows
-  // or when invoked from a viewport corner.
-  const clampedX = Math.max(
-    8,
-    Math.min(x, window.innerWidth - popupW - 8),
-  );
-  const clampedY = Math.max(
-    8,
-    Math.min(y, window.innerHeight - popupMaxH - 8),
-  );
+  const clampedX  = Math.max(8, Math.min(x, window.innerWidth  - popupW    - 8));
+  const clampedY  = Math.max(8, Math.min(y, window.innerHeight - popupMaxH - 8));
 
   const signalHsl = portType ? SIGNAL_HSL[portType] : null;
 
@@ -489,8 +517,8 @@ export function QuickAddPopup({ x, y, portType, onClose }: QuickAddPopupProps) {
                 className="text-[9px] font-bold tabular px-1.5 py-0.5 rounded uppercase leading-none"
                 style={{
                   backgroundColor: `hsl(${signalHsl} / 0.18)`,
-                  color: `hsl(${signalHsl})`,
-                  boxShadow: `0 0 6px hsl(${signalHsl} / 0.35)`,
+                  color:           `hsl(${signalHsl})`,
+                  boxShadow:       `0 0 6px hsl(${signalHsl} / 0.35)`,
                 }}
               >
                 {SIGNAL_LABEL[portType]}
@@ -512,8 +540,6 @@ export function QuickAddPopup({ x, y, portType, onClose }: QuickAddPopupProps) {
             className="max-h-52 overflow-y-auto px-1 pb-1.5"
           >
             {plugins.length === 0 ? (
-              // F-101 sibling fix: no demoPlugins fallback. Show real empty state
-              // with a CTA to open Preferences (mirrors ToolPalette commit cadec9bd).
               <div className="px-2 py-3">
                 <EmptyState
                   illustration="no-plugins"
@@ -524,7 +550,7 @@ export function QuickAddPopup({ x, y, portType, onClose }: QuickAddPopupProps) {
                   action={
                     <button
                       type="button"
-                      className="px-3 py-1 rounded bg-pressed text-[10px] uppercase tracking-widest text-accent-blue hover:bg-elevated transition-colors"
+                      className="px-3 py-1 rounded bg-pressed text-[10px] uppercase tracking-widest text-accent-blue hover:bg-elevated transition-colors cursor-pointer"
                       onClick={() => {
                         window.dispatchEvent(new Event(EV_OPEN_PREFERENCES));
                         onClose();
@@ -586,6 +612,11 @@ export function QuickAddPopup({ x, y, portType, onClose }: QuickAddPopupProps) {
                   <>
                     {(favorites.length > 0 || recents.length > 0) && (
                       <SectionDivider />
+                    )}
+                    {/* "All" label only appears when there are also recents/favs,
+                        so the unlabelled rest-of-list is clearly distinct. */}
+                    {(favorites.length > 0 || recents.length > 0) && (
+                      <SectionLabel>All</SectionLabel>
                     )}
                     <div className="space-y-px">
                       {others.map((plugin, i) => {

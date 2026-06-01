@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, within } from "storybook/test";
+import { expect, userEvent, within } from "storybook/test";
 import { QuickAddPopup } from "./QuickAddPopup";
 import {
   usePluginBrowserStore,
@@ -7,10 +7,11 @@ import {
 } from "../../stores/usePluginBrowserStore";
 
 // ── Store seeding ──
-// QuickAddPopup reads the plugin list + favorites from usePluginBrowserStore
-// and calls refresh() on mount. With no backend, refresh() early-returns
-// without clearing the store, so the seeded list survives. nativeGraphAddPlugin
-// is a no-op. Positioned at (x, y) viewport coords.
+// QuickAddPopup reads the plugin list + favorites + recents from
+// usePluginBrowserStore and calls refresh() on mount. With no backend,
+// refresh() early-returns without clearing the store, so the seeded list
+// survives. nativeGraphAddPlugin is a no-op. Positioned at (x, y) viewport
+// coords.
 
 const demoPlugins: BrowserPlugin[] = [
   {
@@ -45,6 +46,22 @@ const demoPlugins: BrowserPlugin[] = [
     category: "Modulator",
     blockCategory: "modulator",
   },
+  {
+    identifier: "com.vendor.ValhallaVV",
+    name: "ValhallaVintageVerb",
+    manufacturer: "Valhalla DSP",
+    format: "AU",
+    category: "Reverb",
+    blockCategory: "audiofx",
+  },
+  {
+    identifier: "com.vendor.ProC2",
+    name: "Pro-C 2",
+    manufacturer: "FabFilter",
+    format: "AU",
+    category: "Compressor",
+    blockCategory: "audiofx",
+  },
 ];
 
 function seed(
@@ -67,7 +84,16 @@ const meta = {
     docs: {
       description: {
         component:
-          "QuickAddPopup — the fastest path to add a Block to the Board. A small keyboard-first search popup anchored at the cursor, opening focused with favourites pinned on top and results shape/colour-coded by category (● instrument / ◆ audio FX / ▲ MIDI FX / ⬡ modulator). Two modes: GENERIC (right-click empty canvas — full plugin list, favourites first) and PORT-TYPE-AWARE (dragged off a port — only Blocks accepting that signal type, under an \"ADD BLOCK ACCEPTING <TYPE>\" header tinted in the signal's hue). It reads the scanned plugin list from usePluginBrowserStore (seeded here) and shows an empty state when nothing is scanned.",
+          "QuickAddPopup — the fastest path to add a Block to the Board. " +
+          "A small keyboard-first search popup anchored at the cursor, opening " +
+          "focused with favourites pinned on top and results icon- and colour-coded " +
+          "by category (icons from iconForCategory: Piano/instrument, SlidersHorizontal/audiofx, " +
+          "GitBranch/midifx, Waves/modulator). " +
+          "Two modes: GENERIC (right-click empty canvas — full plugin list, recents then favourites first) " +
+          "and PORT-TYPE-AWARE (dragged off a port — only Blocks accepting that signal type, " +
+          "under an 'ADD BLOCK ACCEPTING <TYPE>' header tinted in the signal's hue). " +
+          "Fuzzy search (R2) matches across name, manufacturer, raw category, blockCategory, " +
+          "and signal-type aliases — 'valhalla', 'reverb', and 'audio fx' all find the right blocks.",
       },
     },
   },
@@ -82,7 +108,9 @@ export const Open: Story = {
     docs: {
       description: {
         story:
-          'GENERIC mode (no portType) with a favourite pinned — the right-click-canvas path. Shows the "Favorites" section above the rest of the scanned plugins, no port-type header. The primary in-use state.',
+          'GENERIC mode (no portType) with a favourite pinned — the right-click-canvas path. ' +
+          'Shows the "Favorites" section above the rest of the scanned plugins, no port-type header. ' +
+          'Category icons from iconForCategory (Piano/SlidersHorizontal/GitBranch/Waves) replace the old unicode glyphs.',
       },
     },
   },
@@ -112,7 +140,9 @@ export const PortTypeAudio: Story = {
     docs: {
       description: {
         story:
-          'PORT-TYPE-AWARE mode — opened by dragging a Cable off an AUDIO port. Header reads "ADD BLOCK ACCEPTING AUDIO" with a blue signal pill, and the list is filtered to Blocks that pass audio (instruments + audio FX). MIDI FX (Stepic) and modulators are hidden. This is the dragged-off-port flow.',
+          'PORT-TYPE-AWARE mode — opened by dragging a Cable off an AUDIO port. Header reads ' +
+          '"ADD BLOCK ACCEPTING AUDIO" with a blue signal pill, and the list is filtered to Blocks ' +
+          'that pass audio (instruments + audio FX). MIDI FX (Stepic) and modulators are hidden.',
       },
     },
   },
@@ -146,7 +176,8 @@ export const PortTypeMidi: Story = {
     docs: {
       description: {
         story:
-          'PORT-TYPE-AWARE mode — dragged off a MIDI port. Header reads "ADD BLOCK ACCEPTING MIDI" with a teal pill; only Blocks that accept MIDI (instruments + MIDI FX) pass the filter.',
+          'PORT-TYPE-AWARE mode — dragged off a MIDI port. Header reads "ADD BLOCK ACCEPTING MIDI" ' +
+          'with a teal pill; only Blocks that accept MIDI (instruments + MIDI FX) pass the filter.',
       },
     },
   },
@@ -174,7 +205,8 @@ export const PortTypeNoMatch: Story = {
     docs: {
       description: {
         story:
-          'PORT-TYPE-AWARE mode with no compatible Blocks — dragged off a value/CV port when only audio/MIDI Blocks are scanned. Shows the "No compatible blocks" message under the CV header rather than the generic "No matches".',
+          'PORT-TYPE-AWARE mode with no compatible Blocks — dragged off a value/CV port when only ' +
+          'audio/MIDI Blocks are scanned. Shows the "No compatible blocks" message under the CV header.',
       },
     },
   },
@@ -202,7 +234,8 @@ export const NoFavorites: Story = {
     docs: {
       description: {
         story:
-          'No favourites — confirms the popup renders a single flat plugin list (no "Favorites" header) when nothing is starred.',
+          'No favourites — confirms the popup renders a single flat plugin list (no "Favorites" ' +
+          'header) when nothing is starred.',
       },
     },
   },
@@ -224,7 +257,8 @@ export const NoPluginsScanned: Story = {
     docs: {
       description: {
         story:
-          'No plugins scanned — shows the empty state with an "Open Preferences" CTA instead of fabricated entries. The honest first-run state.',
+          'No plugins scanned — shows the empty state with an "Open Preferences" CTA instead of ' +
+          'fabricated entries. The honest first-run state.',
       },
     },
   },
@@ -244,7 +278,6 @@ export const NoPluginsScanned: Story = {
  * RecentsFirstOnOpen — on open before the user types, the list leads with a
  * "Recents" section (most-recently-used first), then falls through to the
  * remaining plugins. Favorites are pinned above recents when both are present.
- * This is the P2 refinement Glen requested.
  */
 export const RecentsFirstOnOpen: Story = {
   args: { x: 80, y: 60, onClose: () => {} },
@@ -252,7 +285,10 @@ export const RecentsFirstOnOpen: Story = {
     docs: {
       description: {
         story:
-          'RECENTS-FIRST on open (empty search). The list leads with a "Recents" section ordered most-recently-used first (LFOTool, then Stepic), a "Favorites" section above it for starred plugins (Surge XT), and the remaining plugins below. No search query typed — this is the browse-mode layout.',
+          'RECENTS-FIRST on open (empty search). The list leads with a "Favorites" section ' +
+          'for starred plugins (Surge XT), then a "Recents" section ordered most-recently-used ' +
+          'first (LFOTool, then Stepic), then an "All" section for the remainder. ' +
+          'No search query typed — this is the browse-mode layout.',
       },
     },
   },
@@ -290,8 +326,7 @@ export const RecentsFirstOnOpen: Story = {
 /**
  * FuzzySearchResults — once the user types, the full list is fuzzy-scored and
  * reordered. Exact prefix matches rank highest; subsequence matches appear
- * below. The section headers (Favorites / Recents) collapse — only a flat
- * scored list is shown, so the user sees the best matches regardless of recency.
+ * below. Section headers collapse to a flat scored list.
  */
 export const FuzzySearchResults: Story = {
   args: { x: 80, y: 60, onClose: () => {} },
@@ -299,7 +334,8 @@ export const FuzzySearchResults: Story = {
     docs: {
       description: {
         story:
-          'FUZZY SEARCH in action. Typing "pro" scores Pro-Q 4 highest (exact prefix). Typing "lf" scores LFOTool first (prefix). Section headers collapse; the flat scored list shows only matching blocks. Port-type filter still applies when portType is set.',
+          'FUZZY SEARCH in action. Typing "pro" scores Pro-Q 4 / Pro-C 2 highest (exact prefix). ' +
+          'Section headers collapse; the flat scored list shows only matching blocks.',
       },
     },
   },
@@ -321,13 +357,70 @@ export const FuzzySearchResults: Story = {
     const body = within(canvasElement.ownerDocument.body);
     const input = body.getByPlaceholderText("Add block...");
 
-    // Type "pro" — Pro-Q 4 should appear; Surge XT, Stepic, LFOTool should not
-    await import("storybook/test").then(({ userEvent }) =>
-      userEvent.type(input, "pro"),
-    );
+    // Type "pro" — Pro-Q 4 and Pro-C 2 should appear; Surge XT, Stepic, LFOTool should not
+    await userEvent.type(input, "pro");
     await expect(body.getByText("Pro-Q 4")).toBeVisible();
+    await expect(body.getByText("Pro-C 2")).toBeVisible();
     // Section labels gone while searching
     await expect(body.queryByText("Favorites")).toBeNull();
     await expect(body.queryByText("Recents")).toBeNull();
+  },
+};
+
+/**
+ * MetadataSearch — R2 refinement. Fuzzy search matches metadata fields beyond
+ * the display name: manufacturer, raw C++ category string, blockCategory, and
+ * signal-type keyword aliases. This story verifies all three axes:
+ *   1. Manufacturer match  — "valhalla" finds ValhallaVintageVerb
+ *   2. Category match      — "reverb"   finds plugins with category="Reverb"
+ *   3. Signal-type alias   — "audio fx" finds audiofx-category blocks
+ */
+export const MetadataSearch: Story = {
+  args: { x: 80, y: 60, onClose: () => {} },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          'METADATA FUZZY SEARCH (R2). The search field matches name, manufacturer, raw category ' +
+          'string, blockCategory, and signal-type aliases simultaneously. ' +
+          'Typing "valhalla" finds ValhallaVintageVerb via its manufacturer field. ' +
+          'Typing "reverb" finds it via its raw category "Reverb". ' +
+          'Typing "fabfilter" finds Pro-Q 4 and Pro-C 2 via manufacturer. ' +
+          'Typing "audio fx" finds all audiofx-category blocks via signal alias. ' +
+          'This is the real-data R2 implementation — no fake tag arrays needed.',
+      },
+    },
+  },
+  decorators: [
+    (Story) => {
+      seed(demoPlugins);
+      return (
+        <div className="bg-canvas" style={{ height: 480 }}>
+          <Story />
+        </div>
+      );
+    },
+  ],
+  play: async ({ canvasElement }) => {
+    const body  = within(canvasElement.ownerDocument.body);
+    const input = body.getByPlaceholderText("Add block...");
+
+    // ── Test 1: manufacturer match — "valhalla" → ValhallaVintageVerb ────────
+    await userEvent.type(input, "valhalla");
+    await expect(body.getByText("ValhallaVintageVerb")).toBeVisible();
+    // Other plugins NOT matched by "valhalla"
+    await expect(body.queryByText("Surge XT")).toBeNull();
+
+    // ── Test 2: raw category match — "reverb" → ValhallaVintageVerb ──────────
+    await userEvent.clear(input);
+    await userEvent.type(input, "reverb");
+    await expect(body.getByText("ValhallaVintageVerb")).toBeVisible();
+
+    // ── Test 3: manufacturer match — "fabfilter" → Pro-Q 4 + Pro-C 2 ─────────
+    await userEvent.clear(input);
+    await userEvent.type(input, "fabfilter");
+    await expect(body.getByText("Pro-Q 4")).toBeVisible();
+    await expect(body.getByText("Pro-C 2")).toBeVisible();
+    await expect(body.queryByText("Surge XT")).toBeNull();
   },
 };

@@ -28,19 +28,20 @@ import type { SignalType } from "../../data/types";
 // ── Seed (cribbed from QuickAddPopup.stories.tsx — matches the component's
 //    real usePluginBrowserStore reads; nativeGraphAddPlugin no-ops) ──
 const demoPlugins: BrowserPlugin[] = [
-  { identifier: "com.vendor.SurgeXT", name: "Surge XT", manufacturer: "Surge Synth Team", format: "VST3", category: "Synth", blockCategory: "instrument" },
-  { identifier: "com.vendor.ProQ4", name: "Pro-Q 4", manufacturer: "FabFilter", format: "AU", category: "EQ", blockCategory: "audiofx" },
-  { identifier: "com.vendor.Stepic", name: "Stepic", manufacturer: "Audiomodern", format: "CLAP", category: "MIDI", blockCategory: "midifx" },
-  { identifier: "com.vendor.LFOTool", name: "LFOTool", manufacturer: "Xfer", format: "VST3", category: "Modulator", blockCategory: "modulator" },
-  { identifier: "com.vendor.Diva", name: "Diva", manufacturer: "u-he", format: "VST3", category: "Synth", blockCategory: "instrument" },
-  { identifier: "com.vendor.ValhallaVV", name: "ValhallaVintageVerb", manufacturer: "Valhalla DSP", format: "AU", category: "Reverb", blockCategory: "audiofx" },
+  { identifier: "com.vendor.SurgeXT",    name: "Surge XT",            manufacturer: "Surge Synth Team", format: "VST3", category: "Synth",      blockCategory: "instrument" },
+  { identifier: "com.vendor.ProQ4",      name: "Pro-Q 4",             manufacturer: "FabFilter",        format: "AU",   category: "EQ",          blockCategory: "audiofx" },
+  { identifier: "com.vendor.Stepic",     name: "Stepic",              manufacturer: "Audiomodern",      format: "CLAP", category: "MIDI",         blockCategory: "midifx" },
+  { identifier: "com.vendor.LFOTool",    name: "LFOTool",             manufacturer: "Xfer",             format: "VST3", category: "Modulator",   blockCategory: "modulator" },
+  { identifier: "com.vendor.Diva",       name: "Diva",                manufacturer: "u-he",             format: "VST3", category: "Synth",        blockCategory: "instrument" },
+  { identifier: "com.vendor.ValhallaVV", name: "ValhallaVintageVerb", manufacturer: "Valhalla DSP",     format: "AU",   category: "Reverb",       blockCategory: "audiofx" },
+  { identifier: "com.vendor.ProC2",      name: "Pro-C 2",             manufacturer: "FabFilter",        format: "AU",   category: "Compressor",   blockCategory: "audiofx" },
 ];
 
-function seed(plugins: BrowserPlugin[], favorites: string[] = []) {
+function seed(plugins: BrowserPlugin[], favorites: string[] = [], recents: string[] = []) {
   usePluginBrowserStore.setState({
     plugins,
     favoriteIdentifiers: new Set(favorites),
-    recentIdentifiers: [],
+    recentIdentifiers: recents,
   });
 }
 
@@ -51,6 +52,8 @@ interface Step {
   /** undefined → generic (right-click) mode; set → port-type-aware mode. */
   portType?: SignalType;
   favorites: string[];
+  /** Most-recently-used identifiers, most-recent first. */
+  recents: string[];
   mockupImg: string | null;
   mockupNote?: string;
   changed: string[];
@@ -63,38 +66,83 @@ const STEPS: Step[] = [
     name: "Port-type AUDIO — filtered (dragged off an audio port)",
     portType: "audio",
     favorites: [],
+    recents: [],
     mockupImg: "/review-mockups/quickadd-audio.png",
     changed: [
       "PORT-TYPE-AWARE mode: opened by dragging a Cable off an AUDIO port. Header reads 'ADD BLOCK ACCEPTING AUDIO' with a blue signal pill.",
       "List is FILTERED to Blocks that pass audio (instruments + audio FX); MIDI FX + modulators are hidden.",
-      "Results are shape + colour-coded by category (● instrument / ◆ audio FX / ▲ MIDI FX / ⬡ modulator), matching the mockup's glyph system.",
+      "R1 ICON SWAP: category icons now use iconForCategory() (Piano/SlidersHorizontal/GitBranch/Waves) instead of unicode glyphs (●◆▲⬡). Same colour coding, better legibility.",
       "Keyboard-first: opens focused on the search box, arrow-key navigable.",
     ],
     judge: [
       "Header + tinted AUDIO pill match the mockup?",
-      "Shape/colour glyphs per row faithful (● / ◆ / ⬡) and legible?",
+      "Icon-per-row legible + more meaningful than old unicode glyphs (●/◆/⬡)?",
       "Filtered list (audio-passers only) correct + the right density?",
       "Popup chassis (neu shadow + hairline outline) coheres with the one-chassis tokens?",
     ],
   },
   {
-    key: "generic",
-    name: "Generic — right-click empty canvas (full list)",
+    key: "recents",
+    name: "Recents-first on open — browse mode (R1 P2)",
     portType: undefined,
     favorites: ["com.vendor.SurgeXT"],
+    recents: ["com.vendor.ValhallaVV", "com.vendor.LFOTool", "com.vendor.Stepic"],
     mockupImg: null,
     mockupNote:
-      "No mockup reference for this mode.\n\nThe mindful-studio QuickAddPopup ONLY modelled the port-type-aware variants (audio / midi / cv / empty) — it never modelled the GENERIC right-click-canvas flow (full plugin list, no port-type header, Favorites pinned on top).\n\nThis is an Element-specific affordance. Judge ours against intent:\n• NO 'accepting <type>' header (it's the unfiltered add)\n• A 'Favorites' section pinned above the rest (Surge XT is starred here)\n• All four categories visible, each shape/colour-coded\n• Same keyboard-first popup chassis as the AUDIO step\n\nDoes the generic mode read as the 'fast add anything' path, clearly distinct from the filtered port-drag mode?",
+      "No mockup reference for recents-first.\n\nThe mindful-studio mockup never modelled the browse-mode layout (it only showed filtered / empty states). Recents-first is an Element-specific R1 P2 refinement requested by Glen.\n\nJudge ours against intent:\n• 'Favorites' section pinned top (Surge XT starred)\n• 'Recents' section below, most-recently-used first: Valhalla → LFOTool → Stepic\n• 'All' section for the remainder (unlabelled in old code, now clearly labelled)\n• NO port-type header — this is the full unfiltered add\n\nDoes the Favorites → Recents → All layout feel like the right mental model for the 'fast add anything' path?",
     changed: [
-      "GENERIC mode: the right-click-empty-canvas path. NO port-type header — the full scanned plugin list.",
-      "A 'Favorites' section is pinned on top (here: Surge XT) above the rest of the catalogue.",
-      "Same shape/colour-coded rows + keyboard-first chassis as the filtered mode.",
-      "This mode has no mockup counterpart (mockup only did port-typed variants) — flagging that gap.",
+      "R1 P2 RECENTS-FIRST: the browse list now leads Favorites → Recents (most-recent first) → All.",
+      "A dedicated 'All' section label appears when recents/favorites are present, so the unlabelled tail is clear.",
+      "Recents come from the real recentIdentifiers store field (populated by the C++ bridge on plugin use).",
+      "The old store already had recentIdentifiers — this just makes the ordering explicit and solid.",
     ],
     judge: [
-      "Generic mode clearly distinct from the filtered port-drag mode (no type header)?",
-      "Favorites-pinned-on-top useful + visually separated?",
-      "Worth building a mockup for this mode, or is the current treatment enough?",
+      "Favorites → Recents → All mental model correct?",
+      "'All' label for the tail: helpful or noise?",
+      "Most-recently-used at the top of the Recents section (Valhalla first here)?",
+      "Does this feel faster than a flat alphabetical list on open?",
+    ],
+  },
+  {
+    key: "generic",
+    name: "Generic — right-click empty canvas (no recents/favorites)",
+    portType: undefined,
+    favorites: [],
+    recents: [],
+    mockupImg: null,
+    mockupNote:
+      "No mockup reference for this mode.\n\nThe mindful-studio QuickAddPopup ONLY modelled port-type-aware variants — it never modelled the generic right-click-canvas flow.\n\nThis is the fallback state: no favorites, no recents, just the full flat list. Judge against intent:\n• NO port-type header\n• NO section labels (single flat list with no Favorites/Recents to separate)\n• All four categories visible, each icon-coded\n• Same keyboard-first chassis as the filtered mode",
+    changed: [
+      "GENERIC mode: the right-click-empty-canvas path. NO port-type header.",
+      "When no favorites or recents exist, the list is a clean flat catalogue (no empty-section noise).",
+      "All four categories visible, each icon-coded via iconForCategory.",
+    ],
+    judge: [
+      "Clean flat list with no section labels when nothing is starred/recent?",
+      "Icon density + row height feel right for fast scanning?",
+    ],
+  },
+  {
+    key: "metadata",
+    name: "Metadata fuzzy search (R2) — manufacturer + category match",
+    portType: undefined,
+    favorites: [],
+    recents: [],
+    mockupImg: null,
+    mockupNote:
+      "R2 METADATA SEARCH — no mockup counterpart.\n\nThe old fuzzy search only matched the display name. R2 extends matching to:\n  • manufacturer  — 'valhalla' finds ValhallaVintageVerb\n  • raw category  — 'reverb' finds all plugins with category='Reverb'\n  • blockCategory — 'audiofx' finds all audio-effect blocks\n  • signal aliases — 'audio fx', 'cv', 'midi' map to the derived signal type\n\nTry searching for each:\n  'valhalla'   → should return ValhallaVintageVerb\n  'reverb'     → should return ValhallaVintageVerb (category match)\n  'fabfilter'  → should return Pro-Q 4 + Pro-C 2\n  'audio fx'   → should return all audiofx + instrument blocks\n  'eq'         → should return Pro-Q 4 (raw category = 'EQ')\n\nDoes the metadata search feel fast + discoverable for real-world plugin hunting?",
+    changed: [
+      "R2 METADATA FUZZY SEARCH: fuzzyScoreEntry() now scores across name, manufacturer, rawCategory, blockCategory, and signal-type aliases.",
+      "Real data sources: manufacturer and category come directly from the C++ plugin scanner (via BrowserPlugin.manufacturer + BrowserPlugin.category).",
+      "Signal-type aliases let users type 'audio', 'cv', 'midi' to filter by signal role without knowing the plugin name.",
+      "Scoring is weighted: name (1.0) > rawCategory (0.8) > manufacturer (0.7) > blockCategory (0.6) > signal-alias (0.5).",
+    ],
+    judge: [
+      "'valhalla' returns ValhallaVintageVerb (manufacturer match)?",
+      "'reverb' returns ValhallaVintageVerb (category match)?",
+      "'fabfilter' returns Pro-Q 4 + Pro-C 2 (manufacturer match)?",
+      "Signal alias ('audio fx') returns the right set of blocks?",
+      "Does weighted multi-field scoring feel accurate — right results near the top?",
     ],
   },
 ];
@@ -103,7 +151,7 @@ const SEVERITIES = ["P0", "P1", "P2", "P3"] as const;
 
 // ── Live pane: contains the fixed-position popup via a transform wrapper ──
 function LivePane({ step }: { step: Step }) {
-  seed(demoPlugins, step.favorites);
+  seed(demoPlugins, step.favorites, step.recents);
   return (
     <div
       key={step.key}
