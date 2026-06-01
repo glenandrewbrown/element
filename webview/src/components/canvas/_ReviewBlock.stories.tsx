@@ -147,6 +147,168 @@ const STEPS: Step[] = [
 
 const SEVERITIES = ["P0", "P1", "P2", "P3"] as const;
 
+// ── Prior-feedback hook ──
+// Fetches all comments once per wizard mount and surfaces the latest record for
+// a given storyId. Silently returns null when the dev-server isn't running
+// (vitest / build-storybook contexts) — no throw, no fake data.
+interface PriorRecord {
+  text: string;
+  status: string;
+  severity: string | null;
+  resolvedNote?: string;
+  resolvedCommit?: string;
+}
+
+function usePriorFeedback(): (storyId: string) => PriorRecord | null {
+  const [byStory, setByStory] = useState<Map<string, PriorRecord>>(new Map());
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/__ui_comments", { signal: AbortSignal.timeout(2000) });
+        if (!res.ok) return;
+        const data = (await res.json()) as {
+          comments?: Array<{
+            storyId?: string | null;
+            text?: string;
+            status?: string;
+            severity?: string | null;
+            ts?: string;
+            resolvedNote?: string;
+            resolvedCommit?: string;
+          }>;
+        };
+        if (!Array.isArray(data.comments)) return;
+        // Latest record per storyId (sort ascending, last wins)
+        const sorted = [...data.comments].sort((a, b) =>
+          (a.ts ?? "").localeCompare(b.ts ?? ""),
+        );
+        const m = new Map<string, PriorRecord>();
+        for (const c of sorted) {
+          if (!c.storyId) continue;
+          m.set(c.storyId, {
+            text: String(c.text ?? ""),
+            status: String(c.status ?? "open"),
+            severity: c.severity ?? null,
+            resolvedNote: c.resolvedNote,
+            resolvedCommit: c.resolvedCommit,
+          });
+        }
+        setByStory(m);
+      } catch {
+        /* dev-server not running — ignore */
+      }
+    })();
+  }, []);
+
+  return (storyId: string) => byStory.get(storyId) ?? null;
+}
+
+// ── Prior-feedback banner ──
+function PriorBanner({ record }: { record: PriorRecord | null }) {
+  if (!record) return null;
+
+  const isAddressed =
+    record.status === "resolved" ||
+    record.status === "fixed" ||
+    record.status === "wontfix";
+
+  const sevColors: Record<string, string> = {
+    P0: "#FF453A",
+    P1: "#FF9F0A",
+    P2: "#4A90D9",
+    P3: "#8E8E93",
+  };
+  const accentColor = sevColors[record.severity ?? ""] ?? "#8E8E93";
+
+  const short =
+    record.text.length > 120
+      ? record.text.slice(0, 120) + "…"
+      : record.text;
+
+  return (
+    <div
+      style={{
+        borderRadius: 5,
+        border: `1px solid ${isAddressed ? "#2A3A2A" : "#2E2A1E"}`,
+        background: isAddressed ? "#1A221A" : "#1E1C14",
+        padding: "7px 10px",
+        marginBottom: 8,
+        display: "flex",
+        alignItems: "flex-start",
+        gap: 8,
+      }}
+    >
+      <span style={{ fontSize: 12, flexShrink: 0, marginTop: 1 }}>
+        {isAddressed ? "✅" : "💬"}
+      </span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
+          <span
+            style={{
+              fontSize: 9,
+              fontWeight: 800,
+              letterSpacing: "0.06em",
+              color: isAddressed ? "#34D399" : "#FF9F0A",
+            }}
+          >
+            {isAddressed ? "ADDRESSED" : "OPEN FEEDBACK"}
+          </span>
+          {record.severity && (
+            <span
+              style={{
+                fontSize: 9,
+                fontWeight: 700,
+                color: accentColor,
+                border: `1px solid ${accentColor}44`,
+                borderRadius: 3,
+                padding: "0 4px",
+              }}
+            >
+              {record.severity}
+            </span>
+          )}
+        </div>
+        <p
+          style={{
+            margin: 0,
+            fontSize: 11,
+            color: isAddressed ? "#4A5A4A" : "#9E9080",
+            lineHeight: 1.45,
+          }}
+        >
+          {short}
+        </p>
+        {isAddressed && record.resolvedNote && (
+          <p
+            style={{
+              margin: "4px 0 0",
+              fontSize: 10,
+              color: "#34D399",
+            }}
+          >
+            ↳ {record.resolvedNote}
+            {record.resolvedCommit && (
+              <code
+                style={{
+                  marginLeft: 6,
+                  fontSize: 10,
+                  color: "#4A90D9",
+                  background: "#1A1A2A",
+                  padding: "1px 4px",
+                  borderRadius: 3,
+                }}
+              >
+                {record.resolvedCommit.slice(0, 10)}
+              </code>
+            )}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Wizard ──
 function ReviewWizard() {
   const [i, setI] = useState(0);
@@ -154,6 +316,7 @@ function ReviewWizard() {
   const [sev, setSev] = useState<(typeof SEVERITIES)[number]>("P2");
   const [saved, setSaved] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState(false);
+  const getPrior = usePriorFeedback();
 
   const step = STEPS[i];
   const total = STEPS.length;
@@ -302,6 +465,9 @@ function ReviewWizard() {
             </ul>
           </div>
         </div>
+
+        {/* Prior feedback for this step — null when none or server unavailable */}
+        <PriorBanner record={getPrior(`review:block:${step.key}`)} />
 
         <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>

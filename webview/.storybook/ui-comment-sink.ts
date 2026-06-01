@@ -9,10 +9,12 @@
  * Endpoints (wired via `viteFinal` in main.ts):
  *   POST   /__ui_comment          append a new comment   { storyId, title, name, severity, text }
  *   GET    /__ui_comment          list all comments      → { comments: Record[] }
- *   POST   /__ui_comment/update   patch one comment      { id, status?, delete? }
+ *   GET    /__ui_comments         alias for GET /__ui_comment (plural form for dashboard)
+ *   POST   /__ui_comment/update   patch one comment      { id, status?, resolvedNote?, resolvedCommit?, delete? }
  *
- * Record: { id, ts, storyId, title, name, severity, text, status }
- *   status ∈ "open" | "in-progress" | "fixed" | "wontfix"
+ * Record: { id, ts, storyId, title, name, severity, text, status,
+ *           resolvedAt?, resolvedNote?, resolvedCommit? }
+ *   status ∈ "open" | "in-progress" | "fixed" | "wontfix" | "resolved"
  */
 import type { Plugin } from "vite";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
@@ -23,7 +25,7 @@ import { fileURLToPath } from "node:url";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SINK = resolve(HERE, "../../.omo/audit/ui-comments.jsonl");
 
-interface CommentRecord {
+export interface CommentRecord {
   id: string;
   ts: string;
   storyId: string | null;
@@ -32,6 +34,12 @@ interface CommentRecord {
   severity: string | null;
   text: string;
   status: string;
+  /** ISO timestamp when this record was resolved/fixed */
+  resolvedAt?: string;
+  /** Human note describing what was done to resolve */
+  resolvedNote?: string;
+  /** Git commit sha or branch reference where fix landed */
+  resolvedCommit?: string;
 }
 
 function genId(ts: string): string {
@@ -52,8 +60,8 @@ async function readAll(): Promise<CommentRecord[]> {
     try {
       const d = JSON.parse(t);
       const ts = typeof d.ts === "string" ? d.ts : new Date().toISOString();
-      // Back-compat: older records may lack id/status.
-      out.push({
+      // Back-compat: older records may lack id/status/resolved fields.
+      const rec: CommentRecord = {
         id: typeof d.id === "string" && d.id ? d.id : d.ts || genId(ts),
         ts,
         storyId: d.storyId ?? null,
@@ -62,7 +70,11 @@ async function readAll(): Promise<CommentRecord[]> {
         severity: d.severity ?? null,
         text: String(d.text ?? ""),
         status: typeof d.status === "string" ? d.status : "open",
-      });
+      };
+      if (typeof d.resolvedAt === "string") rec.resolvedAt = d.resolvedAt;
+      if (typeof d.resolvedNote === "string") rec.resolvedNote = d.resolvedNote;
+      if (typeof d.resolvedCommit === "string") rec.resolvedCommit = d.resolvedCommit;
+      out.push(rec);
     } catch {
       /* skip malformed line */
     }
@@ -92,6 +104,28 @@ export function uiCommentSink(): Plugin {
   return {
     name: "element-ui-comment-sink",
     configureServer(server) {
+      // GET /__ui_comments (plural) — alias used by the _ReviewStatus dashboard.
+      // Identical response shape: { comments: CommentRecord[] }
+      server.middlewares.use("/__ui_comments", (req, res) => {
+        if (req.method !== "GET") {
+          res.statusCode = 405;
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify({ ok: false, error: "method not allowed" }));
+          return;
+        }
+        readAll()
+          .then((comments) => {
+            res.statusCode = 200;
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({ comments }));
+          })
+          .catch((e) => {
+            res.statusCode = 500;
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({ ok: false, error: String(e) }));
+          });
+      });
+
       server.middlewares.use("/__ui_comment", (req, res) => {
         const url = req.url || "/";
         const json = (code: number, obj: unknown) => {
@@ -108,22 +142,41 @@ export function uiCommentSink(): Plugin {
           return;
         }
 
-        // POST /__ui_comment/update → patch status / delete
+        // POST /__ui_comment/update → patch status / resolved fields / delete
         if (req.method === "POST" && url.startsWith("/update")) {
           readBody(req)
             .then(async (body) => {
-              const { id, status, delete: del } = JSON.parse(body || "{}");
+              const {
+                id,
+                status,
+                resolvedNote,
+                resolvedCommit,
+                delete: del,
+              } = JSON.parse(body || "{}");
               if (!id) return json(400, { ok: false, error: "missing id" });
               const all = await readAll();
               let next: CommentRecord[];
               if (del) {
                 next = all.filter((r) => r.id !== id);
               } else {
-                next = all.map((r) =>
-                  r.id === id && typeof status === "string"
-                    ? { ...r, status }
-                    : r,
-                );
+                next = all.map((r) => {
+                  if (r.id !== id) return r;
+                  const patched: CommentRecord = { ...r };
+                  if (typeof status === "string") patched.status = status;
+                  // When resolving, stamp resolvedAt and persist note/commit.
+                  const isResolved =
+                    status === "resolved" ||
+                    status === "fixed" ||
+                    status === "wontfix";
+                  if (isResolved && !patched.resolvedAt) {
+                    patched.resolvedAt = new Date().toISOString();
+                  }
+                  if (typeof resolvedNote === "string")
+                    patched.resolvedNote = resolvedNote;
+                  if (typeof resolvedCommit === "string")
+                    patched.resolvedCommit = resolvedCommit;
+                  return patched;
+                });
               }
               await writeAll(next);
               json(200, { ok: true, comments: next });
