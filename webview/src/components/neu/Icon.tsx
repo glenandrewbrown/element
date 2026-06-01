@@ -27,12 +27,14 @@
 import {
   Activity,
   AudioWaveform,
+  BoxSelect,
   Cable,
   Camera,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   Circle,
+  ClipboardPaste,
   Clock,
   Command,
   Copy,
@@ -48,8 +50,10 @@ import {
   Link,
   List,
   LogIn,
+  Map,
   Maximize2,
   MoreVertical,
+  MoveHorizontal,
   Music,
   Network,
   Palette,
@@ -69,6 +73,7 @@ import {
   SlidersHorizontal,
   Square,
   Star,
+  StickyNote,
   Trash2,
   Undo2,
   Unplug,
@@ -76,6 +81,8 @@ import {
   Waves,
   X,
   Zap,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import type { LucideProps } from "lucide-react";
 import type { ComponentType } from "react";
@@ -97,12 +104,14 @@ export type IconTone = keyof typeof TONE_COLORS;
 const ICON_MAP: Record<string, ComponentType<LucideProps>> = {
   Activity,
   AudioWaveform,
+  BoxSelect,     // select-all marquee (canvas context menu)
   Cable,
   Camera,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   Circle,
+  ClipboardPaste, // paste blocks at cursor (canvas context menu)
   Clock,
   Command,
   Copy,          // clipboard copy (context menus)
@@ -118,8 +127,10 @@ const ICON_MAP: Record<string, ComponentType<LucideProps>> = {
   Link,
   List,
   LogIn,         // mute-input indicator (context menus)
+  Map,           // minimap toggle (canvas context menu)
   Maximize2,     // zoom-to-fit (canvas context menu)
   MoreVertical,
+  MoveHorizontal, // auto-layout direction (canvas context menu — honest-disabled)
   Music,
   Network,       // bus / OSC / network routing
   Palette,       // colour picker (context menus — honest-disabled)
@@ -139,6 +150,7 @@ const ICON_MAP: Record<string, ComponentType<LucideProps>> = {
   SlidersHorizontal, // audiofx: horizontal faders = EQ/processing
   Square,
   Star,
+  StickyNote,    // add comment box (canvas context menu)
   Trash2,
   Undo2,
   Unplug,        // disconnect ports (context menus)
@@ -146,6 +158,8 @@ const ICON_MAP: Record<string, ComponentType<LucideProps>> = {
   Waves,         // modulator: undulating sine = LFO/CV/modulation
   X,
   Zap,           // oversample (context menus — honest-disabled)
+  ZoomIn,        // zoom in (canvas context menu)
+  ZoomOut,       // zoom out (canvas context menu)
 };
 
 /** Icon names available without an Icon.tsx edit (string-typed for ergonomics). */

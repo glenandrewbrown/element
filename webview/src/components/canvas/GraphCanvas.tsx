@@ -43,6 +43,7 @@ import { CommentFrame } from "./CommentFrame";
 import { QuickAddPopup } from "./QuickAddPopup";
 import { NodeContextMenu } from "./NodeContextMenu";
 import { EdgeContextMenu } from "./EdgeContextMenu";
+import { CanvasContextMenu } from "./CanvasContextMenu";
 import type { BlockData, CableData, CommentBoxData } from "../../data/types";
 import { EV_FIT_BOARD, EV_CREATE_COMMENT, EV_START_RENAME } from "../../events";
 
@@ -122,6 +123,17 @@ interface EdgeContextMenuState extends ContextMenuPos {
   edgeId: string;
 }
 
+/**
+ * Empty-canvas right-click menu state. Carries both the screen-space anchor
+ * (clientX/clientY, for positioning the menu + the QuickAdd popup it can open)
+ * and the flow-space cursor position (for landing pasted blocks / new comment
+ * boxes AT the cursor).
+ */
+interface CanvasContextMenuState extends ContextMenuPos {
+  flowX: number;
+  flowY: number;
+}
+
 // ── GraphCanvas ──
 
 /**
@@ -154,6 +166,9 @@ export function GraphCanvas() {
   const isEdit = mode === "edit";
 
   const [contextMenu, setContextMenu] = useState<ContextMenuPos | null>(null);
+  const [canvasMenu, setCanvasMenu] = useState<CanvasContextMenuState | null>(
+    null,
+  );
   const [nodeContextMenu, setNodeContextMenu] =
     useState<NodeContextMenuState | null>(null);
   const [edgeContextMenu, setEdgeContextMenu] =
@@ -232,6 +247,7 @@ export function GraphCanvas() {
   const onPaneClick = useCallback(() => {
     clearSelection();
     setContextMenu(null);
+    setCanvasMenu(null);
     setNodeContextMenu(null);
     setEdgeContextMenu(null);
   }, [clearSelection]);
@@ -248,6 +264,7 @@ export function GraphCanvas() {
       if (!isEdit) return;
       selectEdge(edge.id);
       setContextMenu(null);
+      setCanvasMenu(null);
       setNodeContextMenu(null);
       setEdgeContextMenu({
         edgeId: edge.id,
@@ -266,14 +283,19 @@ export function GraphCanvas() {
     (event: MouseEvent | globalThis.MouseEvent) => {
       event.preventDefault();
       if (!isEdit) return;
-      setContextMenu({
-        x: (event as MouseEvent).clientX,
-        y: (event as MouseEvent).clientY,
-      });
+      const clientX = (event as MouseEvent).clientX;
+      const clientY = (event as MouseEvent).clientY;
+      // Capture the flow-space cursor so "Add Block…" / "Add Comment Box" /
+      // "Paste" inside the menu can land at the click point, not the origin.
+      const flow = reactFlow.screenToFlowPosition({ x: clientX, y: clientY });
+      // Right-clicking the empty Board now opens the fuller contextual menu;
+      // "Add Block…" inside it routes to the QuickAdd popup (setContextMenu).
+      setCanvasMenu({ x: clientX, y: clientY, flowX: flow.x, flowY: flow.y });
+      setContextMenu(null);
       setNodeContextMenu(null);
       setEdgeContextMenu(null);
     },
-    [isEdit],
+    [isEdit, reactFlow],
   );
 
   const onNodeContextMenu: NodeMouseHandler = useCallback(
@@ -283,6 +305,7 @@ export function GraphCanvas() {
       if (!isEdit || node.type === "comment") return;
       selectNode(node.id);
       setContextMenu(null);
+      setCanvasMenu(null);
       setEdgeContextMenu(null);
       setNodeContextMenu({
         nodeId: node.id,
@@ -531,14 +554,28 @@ export function GraphCanvas() {
                 Empty Board
               </div>
               <div className="text-[11px] text-text-dim mt-1">
-                Right-click to add a block · Cmd+K to search
+                Right-click for Board actions · Cmd+K to search
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* QuickAdd context menu */}
+      {/* Empty-canvas contextual menu — "Add Block…" routes to QuickAdd below */}
+      {canvasMenu && (
+        <CanvasContextMenu
+          position={{ x: canvasMenu.x, y: canvasMenu.y }}
+          flowPosition={{ x: canvasMenu.flowX, y: canvasMenu.flowY }}
+          onAddBlock={() => {
+            // Hand off to the existing QuickAdd popup at the same cursor anchor.
+            setContextMenu({ x: canvasMenu.x, y: canvasMenu.y });
+            setCanvasMenu(null);
+          }}
+          onClose={() => setCanvasMenu(null)}
+        />
+      )}
+
+      {/* QuickAdd context menu (opened from the canvas menu's "Add Block…") */}
       {contextMenu && (
         <QuickAddPopup
           x={contextMenu.x}
