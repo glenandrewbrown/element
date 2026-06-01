@@ -4,14 +4,13 @@
 #pragma once
 
 #include <element/processor.hpp>
+#include <element/plugins.hpp>
 
 #include "engine/sandboxhost.hpp"
 #include "engine/sandboxparameter.hpp"
 #include "engine/graphnode.hpp"
 
 namespace element {
-
-class PluginManager;
 
 //==============================================================================
 /**
@@ -53,6 +52,18 @@ public:
 
     /** Check if the plugin was loaded successfully. */
     bool isPluginLoaded() const;
+
+    //==========================================================================
+    /** Ask the worker to open the plugin editor in its own OS window (REAPER
+        model — crash-isolated, the editor lives in the worker process). The
+        screen position places the window near the originating Block. */
+    void openEditor (int screenX = 0, int screenY = 0);
+
+    /** Ask the worker to close its editor window. */
+    void closeEditor();
+
+    /** True if the worker reports an editor window is open. */
+    bool isEditorOpen() const;
 
     //==========================================================================
     // Processor interface
@@ -203,6 +214,23 @@ inline void SandboxedProcessorNode::restartSandbox()
 inline bool SandboxedProcessorNode::isPluginLoaded() const
 {
     return sandbox && sandbox->isPluginLoaded();
+}
+
+inline void SandboxedProcessorNode::openEditor (int screenX, int screenY)
+{
+    if (sandbox)
+        sandbox->openEditor (screenX, screenY);
+}
+
+inline void SandboxedProcessorNode::closeEditor()
+{
+    if (sandbox)
+        sandbox->closeEditor();
+}
+
+inline bool SandboxedProcessorNode::isEditorOpen() const
+{
+    return sandbox && sandbox->isEditorOpen();
 }
 
 inline void SandboxedProcessorNode::prepareToRender (double sampleRate, int maxBufferSize)
@@ -410,6 +438,7 @@ inline void SandboxedProcessorNode::sandboxPluginLoadFailed (SandboxHost*,
     pluginLoaded.store (false);
     hasError.store (true);
     lastError = error;
+    pluginManager.emitSandboxEvent (nodeId, PluginManager::SandboxEvent::LoadFailed, error);
 }
 
 inline void SandboxedProcessorNode::sandboxCrashed (SandboxHost*)
@@ -417,12 +446,16 @@ inline void SandboxedProcessorNode::sandboxCrashed (SandboxHost*)
     juce::Logger::writeToLog ("[SandboxedProcessor] Sandbox crashed: " + description.name);
     pluginLoaded.store (false);
     // Note: SandboxHost handles automatic restart attempts
+    pluginManager.emitSandboxEvent (nodeId, PluginManager::SandboxEvent::Crashed,
+                                    description.name + " crashed");
 }
 
 inline void SandboxedProcessorNode::sandboxRestarted (SandboxHost*)
 {
     juce::Logger::writeToLog ("[SandboxedProcessor] Sandbox restarted: " + description.name);
     // Plugin will be reloaded and state restored by SandboxHost
+    pluginManager.emitSandboxEvent (nodeId, PluginManager::SandboxEvent::Restarted,
+                                    description.name + " restarted");
 }
 
 inline void SandboxedProcessorNode::sandboxLatencyChanged (SandboxHost*, int newLatency)

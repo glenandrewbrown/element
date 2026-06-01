@@ -135,6 +135,14 @@ private:
     /** P1-11: connection to EngineService::sigEngineStateChanged. */
     SignalConnection engineStateChangedConnection;
 
+    /** R3: connection to PluginManager::sigSandboxEvent — surfaces out-of-process
+        plugin crash / restart / load-failure to the React Block as a
+        "plugin crashed — reload" affordance. */
+    SignalConnection sandboxEventConnection;
+
+    /** Dispatch a sandbox lifecycle event to the webview (message thread). */
+    void emitSandboxEventToWeb (juce::uint32 nodeId, int kind, const juce::String& reason);
+
     std::unique_ptr<juce::Component> pluginEmbedEditor;
     juce::Rectangle<int> pluginEmbedBounds;
     juce::String pluginEmbedNodeUuid;

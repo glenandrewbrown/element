@@ -51,6 +51,8 @@ enum class SandboxMessageType : uint32_t
     GetState,           // Request plugin state
     SetBypass,          // Enable/disable bypass
     Shutdown,           // Graceful shutdown request
+    OpenEditorWindow,   // Ask worker to create + show the plugin editor in its OWN NSWindow (EditorWindowPayload)
+    CloseEditorWindow,  // Ask worker to close the plugin editor window
 
     // Worker -> Coordinator
     PluginLoaded,       // Plugin loaded successfully
@@ -65,6 +67,29 @@ enum class SandboxMessageType : uint32_t
     Error,              // Error message
     PluginInfo,         // Plugin metadata (param count + names + I/O config) sent after PluginLoaded
     ShutdownAck,        // Worker has finished cleanup and is about to exit (D-4 ordered shutdown)
+    EditorWindowOpened, // Worker created + showed its editor window (EditorWindowPayload, size only)
+    EditorWindowFailed, // Worker could not create an editor (no UI / null view)
+    EditorWindowClosed, // Worker's editor window was closed
+};
+
+//==============================================================================
+/** Separate-window editor bridge (REAPER model): the worker hosts the plugin
+    editor in its OWN real NSWindow, which the WindowServer composites normally.
+    Crash-isolated — the editor lives in the worker process, so a plugin crash
+    takes the window down with the worker and the host survives. No pixel
+    mirroring, no CALayerHost, no input forwarding (the OS routes events to the
+    worker's window directly).
+
+    Host -> Worker on OpenEditorWindow: requested top-left screen position to
+    place the window near the originating Block. Worker -> Host on
+    EditorWindowOpened: the editor's reported size (position echoed for
+    confirmation). */
+struct EditorWindowPayload
+{
+    int32_t  x { 0 };       ///< requested window top-left, global screen coords
+    int32_t  y { 0 };
+    int32_t  width { 0 };   ///< editor size (worker -> host); 0 on request
+    int32_t  height { 0 };
 };
 
 //==============================================================================

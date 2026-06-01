@@ -19,6 +19,7 @@
 #include <element/element_webview_dist.hpp>
 
 #include "engine/midipanic.hpp"
+#include "nodes/sandboxedprocessor.hpp"
 #include "log.hpp"
 #include "messages.hpp"
 #include <element/ui.hpp>
@@ -938,6 +939,88 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                 const int idx = (int) args[1];
                 const float v = (float) args[2];
                 ok = setNodeParameterValue (uuid, idx, v);
+            }
+            postCompletion (completion, ok);
+        });
+
+    // R3 — manual recovery for a crashed out-of-process plugin.
+    //   Input:  args[0] = nodeUuid: String
+    //   Output: bool — true if the node is sandboxed and a restart was issued.
+    // Pairs with the onSandboxEvent("crashed") push: the React Block shows a
+    // "plugin crashed — reload" affordance whose button calls this.
+    registerFn (
+        Identifier ("elementRestartSandbox"),
+        [this, postCompletion] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 1)
+            {
+                const String uuid (args[0].toString());
+                if (auto sess = context.session())
+                {
+                    const Graph G (sess->getCurrentGraph());
+                    const Node n = findNodeByUuidInGraph (G, uuid);
+                    if (n.isValid())
+                        if (auto* sbn = dynamic_cast<SandboxedProcessorNode*> (n.getObject()))
+                        {
+                            sbn->restartSandbox();
+                            ok = true;
+                        }
+                }
+            }
+            postCompletion (completion, ok);
+        });
+
+    // Separate-window editor (REAPER model) — open a sandboxed plugin's editor
+    // in its own crash-isolated OS window (the editor lives in the worker).
+    //   Input:  args[0] = nodeUuid: String, args[1]? = screenX, args[2]? = screenY
+    //   Output: bool — true if the node is sandboxed and an open was issued.
+    // Only meaningful for sandboxed nodes; an in-process node returns false and
+    // the caller should fall back to the existing pluginEditorOpen path.
+    registerFn (
+        Identifier ("elementOpenSandboxedEditor"),
+        [this, postCompletion] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 1)
+            {
+                const String uuid (args[0].toString());
+                const int sx = args.size() >= 2 ? (int) args[1] : 0;
+                const int sy = args.size() >= 3 ? (int) args[2] : 0;
+                if (auto sess = context.session())
+                {
+                    const Graph G (sess->getCurrentGraph());
+                    const Node n = findNodeByUuidInGraph (G, uuid);
+                    if (n.isValid())
+                        if (auto* sbn = dynamic_cast<SandboxedProcessorNode*> (n.getObject()))
+                        {
+                            sbn->openEditor (sx, sy);
+                            ok = true;
+                        }
+                }
+            }
+            postCompletion (completion, ok);
+        });
+
+    // Close a sandboxed plugin's separate editor window.
+    //   Input:  args[0] = nodeUuid: String
+    //   Output: bool — true if the node is sandboxed and a close was issued.
+    registerFn (
+        Identifier ("elementCloseSandboxedEditor"),
+        [this, postCompletion] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 1)
+            {
+                const String uuid (args[0].toString());
+                if (auto sess = context.session())
+                {
+                    const Graph G (sess->getCurrentGraph());
+                    const Node n = findNodeByUuidInGraph (G, uuid);
+                    if (n.isValid())
+                        if (auto* sbn = dynamic_cast<SandboxedProcessorNode*> (n.getObject()))
+                        {
+                            sbn->closeEditor();
+                            ok = true;
+                        }
+                }
             }
             postCompletion (completion, ok);
         });
@@ -3771,6 +3854,15 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
         engineStateChangedConnection = es->sigEngineStateChanged.connect (
             [this] { scheduleGraphPush (40); });
 
+    // R3: subscribe to out-of-process plugin lifecycle events (crash / restart /
+    // load-fail) so the React Block can show "plugin crashed — reload". The
+    // signal may fire from a non-message thread (worker connection-lost callback),
+    // so marshal the JS dispatch onto the message thread in emitSandboxEventToWeb.
+    sandboxEventConnection = ctx.plugins().sigSandboxEvent.connect (
+        [this] (juce::uint32 nodeId, PluginManager::SandboxEvent ev, juce::String reason) {
+            emitSandboxEventToWeb (nodeId, static_cast<int> (ev), reason);
+        });
+
     attachSessionListener();
     startTimerHz (60);
 }
@@ -3779,6 +3871,7 @@ ElementWebViewHost::~ElementWebViewHost()
 {
     stopTimer();
     engineStateChangedConnection.disconnect(); // P1-11
+    sandboxEventConnection.disconnect(); // R3
     detachSessionListener();
     pluginEditorClose();
     if (logForwarder != nullptr)
@@ -4110,6 +4203,51 @@ void ElementWebViewHost::evalInBrowser (const String& js)
 {
     if (browser != nullptr)
         browser->evaluateJavascript (js, nullptr);
+}
+
+void ElementWebViewHost::emitSandboxEventToWeb (juce::uint32 nodeId, int kind, const String& reason)
+{
+    // sigSandboxEvent can fire from the worker connection-lost callback, which is
+    // not guaranteed to be the message thread. evaluateJavascript + session/graph
+    // access must run on the message thread, and the host may be torn down before
+    // the async dispatch runs — guard with a SafePointer (same discipline as the
+    // postCompletion helper in the constructor).
+    juce::Component::SafePointer<ElementWebViewHost> safe (this);
+    juce::MessageManager::callAsync ([safe, nodeId, kind, reason]
+    {
+        auto* self = safe.getComponent();
+        if (self == nullptr)
+            return;
+
+        // Resolve the engine nodeId to the UUID the React Block components key on.
+        String uuid;
+        if (auto sess = self->context.session())
+        {
+            const Graph G (sess->getCurrentGraph());
+            uuid = nodeUuidFromGraphNodeId (G, nodeId);
+        }
+
+        // kind matches PluginManager::SandboxEvent: 0=crashed 1=restarted
+        // 2=loadFailed 3=error.
+        const char* kindStr = "error";
+        switch (kind)
+        {
+            case 0: kindStr = "crashed";    break;
+            case 1: kindStr = "restarted";  break;
+            case 2: kindStr = "loadFailed"; break;
+            default: break;
+        }
+
+        DynamicObject::Ptr payload (new DynamicObject());
+        payload->setProperty ("nodeId", (int64) nodeId);
+        payload->setProperty ("nodeUuid", uuid);
+        payload->setProperty ("kind", String (kindStr));
+        payload->setProperty ("reason", reason);
+
+        self->evalInBrowser (
+            "window.__elementNative && window.__elementNative.onSandboxEvent && window.__elementNative.onSandboxEvent("
+            + JSON::toString (var (payload.get())) + ");");
+    });
 }
 
 String ElementWebViewHost::buildActiveGraphJson() const

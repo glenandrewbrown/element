@@ -82,6 +82,18 @@ public:
         {
             juce::ignoreUnused (index, value);
         }
+
+        //----------------------------------------------------------------------
+        // Separate-window editor bridge (REAPER model)
+        /** Worker created + showed the plugin editor in its own window. */
+        virtual void sandboxEditorWindowOpened (SandboxHost*, int w, int h)
+        {
+            juce::ignoreUnused (w, h);
+        }
+        /** Worker could not create an editor window (no UI / null view). */
+        virtual void sandboxEditorWindowFailed (SandboxHost*) {}
+        /** The editor window was closed (by the user, or on worker teardown). */
+        virtual void sandboxEditorWindowClosed (SandboxHost*) {}
     };
 
     //==========================================================================
@@ -170,6 +182,19 @@ public:
 
     /** Restore plugin state. */
     void setPluginState (const juce::MemoryBlock& state);
+
+    //==========================================================================
+    // Separate-window editor bridge (REAPER model)
+    /** Ask the worker to create + show the plugin editor in its own OS window at
+        the given top-left screen position. Async — listen for
+        sandboxEditorWindowOpened / sandboxEditorWindowFailed. */
+    void openEditor (int screenX = 0, int screenY = 0);
+
+    /** Ask the worker to close its editor window. Async — sandboxEditorWindowClosed. */
+    void closeEditor();
+
+    /** True if the host believes the worker has an editor window open. */
+    bool isEditorOpen() const { return editorOpen.load(); }
 
     //==========================================================================
     /** Add a listener for sandbox events. */
@@ -269,6 +294,9 @@ private:
     static constexpr int pluginReadyTimeoutMs { 5000 };
 
     std::atomic<bool> restartInProgress { false };
+
+    // Separate-window editor bridge state
+    std::atomic<bool> editorOpen { false };
 
     // Message sequencing
     std::atomic<uint32_t> messageSequence { 0 };
@@ -575,6 +603,33 @@ inline void SandboxHost::setPluginState (const juce::MemoryBlock& stateData)
     lastKnownState = stateData;
 }
 
+//==============================================================================
+// Separate-window editor bridge (REAPER model)
+
+inline void SandboxHost::openEditor (int screenX, int screenY)
+{
+    if (! pluginLoaded.load() || ! connectionAlive.load())
+    {
+        listeners.call (&Listener::sandboxEditorWindowFailed, this);
+        return;
+    }
+
+    EditorWindowPayload req {};
+    req.x = screenX;
+    req.y = screenY;
+    sendMessage (SandboxMessageType::OpenEditorWindow, &req, sizeof (req));
+}
+
+inline void SandboxHost::closeEditor()
+{
+    if (! editorOpen.load())
+        return;
+    sendMessage (SandboxMessageType::CloseEditorWindow);
+    // Optimistically clear; EditorWindowClosed confirms. If the worker is
+    // mid-crash, the connection-lost path already cleared this.
+    editorOpen.store (false);
+}
+
 inline void SandboxHost::handleMessageFromWorker (const juce::MemoryBlock& mb)
 {
     SandboxMessageHeader header;
@@ -603,6 +658,12 @@ inline void SandboxHost::handleConnectionLost()
 
     state.store (State::Crashed);
     pluginLoaded.store (false);
+
+    // If an editor window was open when the worker died, it died with it. Tell
+    // the host UI to clear its "editor open" state before any restart so it never
+    // shows a control for a window that no longer exists.
+    if (editorOpen.exchange (false))
+        listeners.call (&Listener::sandboxEditorWindowClosed, this);
 
     listeners.call (&Listener::sandboxCrashed, this);
     crashed();
@@ -751,6 +812,28 @@ inline void SandboxHost::handleWorkerMessage (const SandboxMessageHeader& header
             juce::Logger::writeToLog ("Sandbox error: " + error);
             break;
         }
+
+        //----------------------------------------------------------------------
+        // Separate-window editor bridge (REAPER model)
+        case SandboxMessageType::EditorWindowOpened:
+            if (payload && header.payloadSize >= sizeof (EditorWindowPayload))
+            {
+                EditorWindowPayload p;
+                std::memcpy (&p, payload, sizeof (p));
+                editorOpen.store (true);
+                listeners.call (&Listener::sandboxEditorWindowOpened, this, p.width, p.height);
+            }
+            break;
+
+        case SandboxMessageType::EditorWindowFailed:
+            editorOpen.store (false);
+            listeners.call (&Listener::sandboxEditorWindowFailed, this);
+            break;
+
+        case SandboxMessageType::EditorWindowClosed:
+            editorOpen.store (false);
+            listeners.call (&Listener::sandboxEditorWindowClosed, this);
+            break;
 
         default:
             break;

@@ -7,6 +7,7 @@
 #include <element/plugins.hpp>
 
 #include "sandboxipc.hpp"
+#include "sandboxeditorwindow.hpp"
 #include "sandboxsemaphore.hpp"
 #include "sandboxsharedmemory.hpp"
 
@@ -89,6 +90,11 @@ private:
     void handleGetState();
     void handleSetBypass (const void* payload, uint32_t payloadSize);
     void handleShutdown();
+
+    // Separate-window editor bridge (REAPER model)
+    void handleOpenEditorWindow (const void* payload, uint32_t payloadSize);
+    void handleCloseEditorWindow();
+    void closeEditorWindowIfOpen();
 
     // RT processing thread
     void processAudioBlock();
@@ -309,6 +315,14 @@ inline void SandboxWorker::handleMessage (const SandboxMessageHeader& header,
             handleShutdown();
             break;
 
+        case SandboxMessageType::OpenEditorWindow:
+            handleOpenEditorWindow (payload, header.payloadSize);
+            break;
+
+        case SandboxMessageType::CloseEditorWindow:
+            handleCloseEditorWindow();
+            break;
+
         default:
             juce::Logger::writeToLog ("Unknown message type: " +
                                        juce::String (static_cast<int> (header.type)));
@@ -435,6 +449,10 @@ inline void SandboxWorker::handleLoadPlugin (const void* payload, uint32_t paylo
 inline void SandboxWorker::handleUnloadPlugin()
 {
     stopRTThread();
+
+    // The editor owns an AudioProcessorEditor tied to the plugin — destroy the
+    // window (message thread) before releasing the processor.
+    closeEditorWindowIfOpen();
 
     if (plugin)
     {
@@ -749,6 +767,9 @@ inline void SandboxWorker::handleShutdown()
     stopTimer();
     stopRTThread();
 
+    // Editor owns NSViews tied to the processor — destroy it first.
+    closeEditorWindowIfOpen();
+
     if (plugin)
     {
         if (isPrepared)
@@ -763,6 +784,72 @@ inline void SandboxWorker::handleShutdown()
     juce::Thread::sleep (50);
 
     juce::JUCEApplication::quit();
+}
+
+//==============================================================================
+// Separate-window editor bridge handlers. ChildProcessWorker delivers
+// coordinator messages on a background thread, but DocumentWindow /
+// AudioProcessorEditor creation MUST run on the message thread — marshal each.
+
+inline void SandboxWorker::closeEditorWindowIfOpen()
+{
+    if (! sandbox_editor_window::hasOpenEditorWindow())
+        return;
+
+    auto* mm = juce::MessageManager::getInstance();
+    if (mm->isThisTheMessageThread())
+        sandbox_editor_window::closeEditorWindow();
+    else
+        mm->callSync ([] { sandbox_editor_window::closeEditorWindow(); });
+}
+
+inline void SandboxWorker::handleOpenEditorWindow (const void* payload, uint32_t payloadSize)
+{
+    if (! plugin)
+    {
+        sendResponse (SandboxMessageType::EditorWindowFailed);
+        return;
+    }
+
+    EditorWindowPayload req {};
+    if (payload != nullptr && payloadSize >= sizeof (EditorWindowPayload))
+        std::memcpy (&req, payload, sizeof (req));
+
+    // Notify the host if the USER later closes the window (so the host clears its
+    // "editor open" state + UI). SafePointer not needed — the worker outlives the
+    // window; on shutdown we tear the window down before exiting.
+    sandbox_editor_window::setUserCloseCallback ([this]
+    {
+        sendResponse (SandboxMessageType::EditorWindowClosed);
+    });
+
+    auto* proc = plugin.get();
+    int w = 0, h = 0;
+    bool ok = false;
+
+    juce::MessageManager::getInstance()->callSync ([proc, &req, &w, &h, &ok]
+    {
+        ok = sandbox_editor_window::openEditorWindow (proc, req.x, req.y, w, h);
+    });
+
+    if (! ok)
+    {
+        sendResponse (SandboxMessageType::EditorWindowFailed);
+        return;
+    }
+
+    EditorWindowPayload reply {};
+    reply.x = req.x;
+    reply.y = req.y;
+    reply.width = w;
+    reply.height = h;
+    sendResponse (SandboxMessageType::EditorWindowOpened, &reply, sizeof (reply));
+}
+
+inline void SandboxWorker::handleCloseEditorWindow()
+{
+    closeEditorWindowIfOpen();
+    sendResponse (SandboxMessageType::EditorWindowClosed);
 }
 
 } // namespace element

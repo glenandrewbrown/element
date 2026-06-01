@@ -3,6 +3,7 @@
 
 #include <element/context.hpp>
 #include <element/plugins.hpp>
+#include <element/settings.hpp>
 
 #include "engine/graphmanager.hpp"
 #include "nodes/audioprocessor.hpp"
@@ -318,8 +319,32 @@ bool GraphManager::contains (const uint32 nodeId) const
 Processor* GraphManager::createFilter (const PluginDescription* desc, double x, double y, uint32 nodeId)
 {
     String errorMessage;
-    auto node = std::unique_ptr<Processor> (
-        pluginManager.createGraphNode (*desc, errorMessage));
+    std::unique_ptr<Processor> node;
+
+    // R1 — out-of-process sandbox route. Gated by Settings::shouldSandboxPlugin()
+    // which DEFAULTS TO 0/Disabled (in-process). When the user opts in via
+    // Preferences → Plugins → Sandbox Mode, the plugin instantiates inside a
+    // SandboxWorker child process for crash isolation. Sandboxing is best-effort
+    // here: if the worker fails to launch/load, we fall back to the normal
+    // in-process path so the plugin still loads (default-on hardening is R6).
+    {
+        const Settings settings;
+        if (settings.shouldSandboxPlugin (*desc))
+        {
+            String sandboxError;
+            node.reset (pluginManager.createSandboxedGraphNode (*desc, sandboxError));
+            if (node == nullptr)
+            {
+                std::cerr << "[element] sandbox node creation failed for "
+                          << desc->name.toStdString() << ": "
+                          << sandboxError.toStdString()
+                          << " — falling back to in-process" << std::endl;
+            }
+        }
+    }
+
+    if (node == nullptr)
+        node.reset (pluginManager.createGraphNode (*desc, errorMessage));
 
     if (errorMessage.isNotEmpty())
     {

@@ -4,6 +4,7 @@
 #pragma once
 
 #include <element/juce/audio_processors.hpp>
+#include <element/signals.hpp>
 
 #define EL_PLUGIN_SCANNER_PROCESS_ID "pspelbg"
 
@@ -110,6 +111,29 @@ public:
      *  process is affected, not the main host application.
      */
     Processor* createSandboxedGraphNode (const juce::PluginDescription& desc, juce::String& errorMsg);
+
+    //==========================================================================
+    /** Lifecycle event from a sandboxed (out-of-process) plugin node. */
+    enum class SandboxEvent
+    {
+        Crashed = 0,    ///< Worker process died; recovery may be attempted.
+        Restarted,      ///< Worker process was relaunched after a crash.
+        LoadFailed,     ///< Plugin failed to load in the worker.
+        Error           ///< Non-fatal worker error.
+    };
+
+    /** Emitted (message thread) when a sandboxed plugin node reports a lifecycle
+     *  event. Args: (nodeId, event, reason). Subscribed by the webview host to
+     *  surface a "plugin crashed — reload" affordance on the Block. Emitting is a
+     *  pass-through helper so SandboxedProcessorNode (which only holds a
+     *  PluginManager&) can publish without reaching into UI services. */
+    Signal<void (juce::uint32 /*nodeId*/, SandboxEvent, juce::String /*reason*/)> sigSandboxEvent;
+
+    /** Publish a sandbox lifecycle event on sigSandboxEvent. */
+    void emitSandboxEvent (juce::uint32 nodeId, SandboxEvent event, const juce::String& reason = {})
+    {
+        sigSandboxEvent (nodeId, event, reason);
+    }
 
     /** Set the play config used when instantiating plugins */
     void setPlayConfig (double sampleRate, int blockSize);
