@@ -2,6 +2,7 @@ import { memo, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import type { BlockCategory } from "../../data/types";
 import { useParameterStore } from "../../stores/useParameterStore";
+import { useBlockOutputLevel } from "../../stores/useCableMeterStore";
 
 // ── Design tokens ──
 
@@ -210,9 +211,11 @@ interface MeterEmbedProps {
 }
 
 function MeterEmbed({
-  // Defaults are 0 (silent) until per-block meter bridge channel
-  // lands (Q-VU-PER-BLOCK). Rendering an honest empty meter is
-  // preferred to fabricated levels.
+  // Levels are fed REAL signal by BlockEmbed via `useBlockOutputLevel`
+  // (max live cable level over the Block's outgoing edges, host-pushed
+  // ~60Hz — the same end-to-end-wired source Block.tsx's RmsMeter uses).
+  // Defaults stay 0 so the meter renders an HONEST empty state (silent)
+  // when no signal flows or when mounted standalone — never fabricated.
   leftLevel = 0,
   rightLevel = 0,
   leftPeak = 0,
@@ -242,68 +245,38 @@ function MeterEmbed({
 // ── SpectrumEmbed ──
 
 function SpectrumEmbed() {
-  // Static bezier placeholder — a gentle EQ-style curve
+  // HONEST EMPTY STATE — there is no FFT/spectrum data stream in the app.
+  // The previous static bezier curve was a fake (identical shape regardless of
+  // audio); per the "nothing fake ships" rule it has been removed. This renders
+  // an explicit "spectrum unavailable" placeholder on the same dark inset
+  // surface as the sibling meter — an EmptyState-style honest stand-in that
+  // keeps the expanded-Block height budget (BLOCK-OVERLAP).
+  //
+  // Q-FFT: when a real per-block FFT bridge lands (a spectrum channel pushed
+  // from the C++ host, mirroring the cable-level channel), replace this with a
+  // live analyser that draws REAL magnitude bins. Do NOT reintroduce a
+  // synthesised curve.
   const w = 80;
   const h = 24;
-  const mid = h / 2;
-
-  // Control points for a subtle S-curve EQ shape
-  const path = [
-    `M 0 ${mid + 4}`,
-    `C 12 ${mid + 8} 20 ${mid - 12} 30 ${mid - 8}`,
-    `C 42 ${mid - 4} 52 ${mid + 6} 60 ${mid - 2}`,
-    `C 70 ${mid - 10} 76 ${mid + 4} ${w} ${mid + 2}`,
-  ].join(" ");
-
-  // Filled area below curve
-  const fillPath = [
-    `M 0 ${h}`,
-    `L 0 ${mid + 4}`,
-    `C 12 ${mid + 8} 20 ${mid - 12} 30 ${mid - 8}`,
-    `C 42 ${mid - 4} 52 ${mid + 6} 60 ${mid - 2}`,
-    `C 70 ${mid - 10} 76 ${mid + 4} ${w} ${mid + 2}`,
-    `L ${w} ${h}`,
-    "Z",
-  ].join(" ");
 
   return (
     <div
-      className="rounded-sm overflow-hidden"
+      role="status"
+      aria-label="Spectrum unavailable"
+      className="flex items-center justify-center rounded-sm overflow-hidden"
       style={{
         width: w,
         height: h + 8,
         backgroundColor: "#1A1A1E",
         boxShadow: SHADOW_PRESSED,
-        padding: "4px 0 0 0",
       }}
     >
-      <svg
-        width={w}
-        height={h}
-        viewBox={`0 0 ${w} ${h}`}
-        style={{ display: "block" }}
+      <span
+        className="text-[8px] font-medium uppercase tracking-wide text-center leading-none"
+        style={{ color: "rgba(229,229,234,0.28)" }}
       >
-        {/* Fill area */}
-        <path d={fillPath} fill="rgba(232,168,56,0.08)" />
-        {/* Curve line */}
-        <path
-          d={path}
-          fill="none"
-          stroke="rgba(232,168,56,0.55)"
-          strokeWidth={1.2}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        {/* Zero line */}
-        <line
-          x1={0}
-          y1={mid}
-          x2={w}
-          y2={mid}
-          stroke="rgba(255,255,255,0.08)"
-          strokeWidth={0.5}
-        />
-      </svg>
+        No spectrum
+      </span>
     </div>
   );
 }
@@ -337,6 +310,16 @@ export interface BlockEmbedProps {
  * `useParameterStore` keyed by `nodeId`.
  */
 function BlockEmbedComponent({ nodeId, category, compact = false }: BlockEmbedProps) {
+  // REAL output level for this Block's meter — max live cable level over its
+  // outgoing edges (host-pushed ~60Hz via useCableMeterStore), the same
+  // end-to-end-wired source Block.tsx's RmsMeter uses. Called unconditionally
+  // BEFORE the compact early-return so hook order stays stable across the
+  // zoom-gated mount/unmount. The hook's selector returns a number and is
+  // re-render-safe (see useBlockOutputLevel). Fed to both stereo bars — an
+  // honest mono-derived stereo, matching Block.tsx (no fabricated L≠R split
+  // until a per-channel RMS bridge lands).
+  const level = useBlockOutputLevel(nodeId);
+
   if (compact) return null;
 
   const isAudioFx = category === "audiofx";
@@ -349,8 +332,10 @@ function BlockEmbedComponent({ nodeId, category, compact = false }: BlockEmbedPr
       {/* Meter — instruments and audiofx */}
       {(category === "instrument" || category === "audiofx") && (
         <div className="flex items-center justify-between gap-1">
-          <MeterEmbed />
-          {/* Spectrum only for audiofx (EQ / spectral processors) */}
+          <MeterEmbed leftLevel={level} rightLevel={level} leftPeak={level} rightPeak={level} />
+          {/* Spectrum slot only for audiofx (EQ / spectral processors).
+              Currently an honest "no spectrum" placeholder — no FFT bridge
+              exists yet (Q-FFT). */}
           {isAudioFx && <SpectrumEmbed />}
         </div>
       )}
@@ -358,7 +343,7 @@ function BlockEmbedComponent({ nodeId, category, compact = false }: BlockEmbedPr
       {/* midifx and modulator: just param strip + compact meter */}
       {(category === "midifx" || category === "modulator") && (
         <div className="flex items-center justify-end">
-          <MeterEmbed />
+          <MeterEmbed leftLevel={level} rightLevel={level} leftPeak={level} rightPeak={level} />
         </div>
       )}
     </div>

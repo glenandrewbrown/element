@@ -1,13 +1,19 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { BlockEmbed } from "./BlockEmbed";
 import { useParameterStore } from "../../stores/useParameterStore";
+import { useGraphStore } from "../../stores/useGraphStore";
+import { useCableMeterStore } from "../../stores/useCableMeterStore";
 
 // ── Store seeding ──
-// BlockEmbed reads live parameter values from useParameterStore keyed by
-// `${nodeId}:${index}`. The native delta channel no-ops without a backend,
-// so we seed the store directly to drive the mini fader fills. Meters/spectrum
-// are static placeholders (meters default to an honest 0 until the per-block
-// VU bridge lands).
+// BlockEmbed reads two REAL sources:
+//   1. Mini fader fills — live parameter values from useParameterStore keyed by
+//      `${nodeId}:${index}`.
+//   2. Meter level — useBlockOutputLevel(nodeId) = max live cable level over the
+//      Block's OUTGOING edges (useGraphStore topology × useCableMeterStore levels).
+// The native bridges no-op without a backend, so each story seeds these stores
+// directly to drive the visuals. Meters default to an HONEST 0 (silent) when no
+// outgoing cable carries signal — never fabricated. The spectrum slot is an
+// honest "no spectrum" placeholder (no FFT bridge exists yet — Q-FFT).
 
 function seedParams(nodeId: string, values: number[]) {
   const next: Record<string, number> = {};
@@ -15,6 +21,31 @@ function seedParams(nodeId: string, values: number[]) {
     next[`${nodeId}:${i}`] = v;
   });
   useParameterStore.setState({ values: next });
+}
+
+/**
+ * Light a Block's meter by seeding ONE outgoing edge from `nodeId` and pushing
+ * a real cable level onto it (the same path the host's ~60Hz channel drives).
+ * `useBlockOutputLevel(nodeId)` then reads `level` as the Block's output VU.
+ * Pass level=0 (or omit the call) for the honest silent state.
+ */
+function seedMeter(nodeId: string, level: number) {
+  const edgeId = `${nodeId}-out`;
+  useGraphStore.setState({
+    edges: [
+      {
+        id: edgeId,
+        source: nodeId,
+        sourcePort: "out",
+        target: `${nodeId}-sink`,
+        targetPort: "in",
+        signalType: "audio",
+        channelCount: 2,
+        isSidechain: false,
+      },
+    ],
+  });
+  useCableMeterStore.getState().setCableLevels([{ id: edgeId, level }]);
 }
 
 const meta = {
@@ -46,13 +77,14 @@ export const Instrument: Story = {
     docs: {
       description: {
         story:
-          "Instrument embed — 3-fader param strip + stereo meter, blue accent. The default instrument layout.",
+          "Instrument embed — 3-fader param strip + stereo meter (LIT from a real seeded cable level), blue accent. The default instrument layout.",
       },
     },
   },
   decorators: [
     (Story) => {
       seedParams("gen-1", [0.6, 0.3, 0.85]);
+      seedMeter("gen-1", 0.72);
       return framed(<Story />);
     },
   ],
@@ -64,13 +96,14 @@ export const AudioFx: Story = {
     docs: {
       description: {
         story:
-          "AudioFx embed — the tallest variant: 5 faders + meter + spectrum/EQ curve, orange accent. Drives the BLOCK-OVERLAP height budget.",
+          "AudioFx embed — the tallest variant: 5 faders + LIT stereo meter + honest 'no spectrum' placeholder (no FFT bridge exists yet — Q-FFT), orange accent. Drives the BLOCK-OVERLAP height budget.",
       },
     },
   },
   decorators: [
     (Story) => {
       seedParams("mod-1", [0.5, 0.7, 0.2, 0.9, 0.45]);
+      seedMeter("mod-1", 0.61);
       return framed(<Story />);
     },
   ],
@@ -89,6 +122,7 @@ export const MidiFx: Story = {
   decorators: [
     (Story) => {
       seedParams("log-1", [0.4, 0.6, 0.8]);
+      seedMeter("log-1", 0.55);
       return framed(<Story />);
     },
   ],
@@ -107,6 +141,49 @@ export const Modulator: Story = {
   decorators: [
     (Story) => {
       seedParams("mod2-1", [0.3, 0.7, 0.5]);
+      seedMeter("mod2-1", 0.48);
+      return framed(<Story />);
+    },
+  ],
+};
+
+// ── Kill-fake #2 proof stories ──
+// MeterLit vs MeterSilent prove the meter reflects REAL signal: lit at a
+// non-zero seeded cable level, dark at 0. (Screenshot target for lead review.)
+
+export const MeterLit: Story = {
+  args: { nodeId: "lit-1", category: "audiofx" },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Meter LIT — a real cable level (0.85) is seeded on this Block's outgoing edge, so useBlockOutputLevel drives both stereo bars high. This is the kill-fake #2 evidence shot (real signal, not a hardwired 0).",
+      },
+    },
+  },
+  decorators: [
+    (Story) => {
+      seedParams("lit-1", [0.5, 0.7, 0.2, 0.9, 0.45]);
+      seedMeter("lit-1", 0.85);
+      return framed(<Story />);
+    },
+  ],
+};
+
+export const MeterSilent: Story = {
+  args: { nodeId: "silent-1", category: "audiofx" },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Meter SILENT (honest empty state) — no outgoing cable carries signal (level 0), so the meter renders dark rather than fabricating motion. The honest counterpart to MeterLit.",
+      },
+    },
+  },
+  decorators: [
+    (Story) => {
+      seedParams("silent-1", [0.5, 0.7, 0.2, 0.9, 0.45]);
+      seedMeter("silent-1", 0);
       return framed(<Story />);
     },
   ],

@@ -24,10 +24,22 @@ vi.mock("zustand/react/shallow", () => ({
   useShallow: (fn: unknown) => fn,
 }));
 
+// ── Mock useCableMeterStore (useBlockOutputLevel) ──────────────────────────────
+//
+// BlockEmbed feeds its meter a REAL level via useBlockOutputLevel(nodeId).
+// Mock the hook directly to a controllable value so we can prove the meter
+// lights on a non-zero level and is dark at 0 without a live host bridge.
+let mockBlockLevel = 0;
+
+vi.mock("../../../stores/useCableMeterStore", () => ({
+  useBlockOutputLevel: () => mockBlockLevel,
+}));
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 beforeEach(() => {
   Object.keys(mockStoreValues).forEach((k) => { delete mockStoreValues[k]; });
+  mockBlockLevel = 0;
 });
 
 // ── BlockEmbed (root) ─────────────────────────────────────────────────────────
@@ -55,28 +67,66 @@ describe("BlockEmbed", () => {
     expect(container.querySelector("span")).toBeTruthy();
   });
 
-  it("renders for audiofx category — shows meter + spectrum SVG", () => {
+  it("renders for audiofx category — shows meter + honest spectrum placeholder (NO fake curve)", () => {
     const { container } = render(
       <BlockEmbed nodeId="n1" category="audiofx" />,
     );
-    const svg = container.querySelector("svg");
-    expect(svg).not.toBeNull();
+    // The fake static-bezier spectrum was removed (nothing-fake rule): there
+    // must be NO <svg> anywhere in the embed. Instead an honest "No spectrum"
+    // placeholder is shown.
+    expect(container.querySelector("svg")).toBeNull();
+    expect(screen.getByLabelText("Spectrum unavailable")).toBeInTheDocument();
+    expect(screen.getByText(/no spectrum/i)).toBeInTheDocument();
   });
 
   it("renders for midifx category without spectrum", () => {
     const { container } = render(
       <BlockEmbed nodeId="n1" category="midifx" />,
     );
-    const svg = container.querySelector("svg");
-    expect(svg).toBeNull();
+    expect(container.querySelector("svg")).toBeNull();
+    expect(screen.queryByLabelText("Spectrum unavailable")).toBeNull();
   });
 
   it("renders for modulator category without spectrum", () => {
     const { container } = render(
       <BlockEmbed nodeId="n1" category="modulator" />,
     );
-    const svg = container.querySelector("svg");
-    expect(svg).toBeNull();
+    expect(container.querySelector("svg")).toBeNull();
+    expect(screen.queryByLabelText("Spectrum unavailable")).toBeNull();
+  });
+
+  // ── Meter reflects REAL level (kill-fake #2) ──────────────────────────────
+  // BlockEmbed must feed its meter the real per-block output level from
+  // useBlockOutputLevel — not a hardwired 0. Mocked above via mockBlockLevel.
+
+  it("lights the meter when the block has a non-zero output level", () => {
+    mockBlockLevel = 0.8;
+    const { container } = render(
+      <BlockEmbed nodeId="n1" category="instrument" />,
+    );
+    // Meter level-fill + peak-hold bars get height = `${level*100}%`. At 0.8 →
+    // "80%". (A param-strip fader could coincidentally sit at 0%, so we assert
+    // the POSITIVE 80% meter fills are present rather than the absence of 0%.)
+    const lit = container.querySelectorAll<HTMLElement>("div[style*='height: 80%']");
+    expect(lit.length).toBeGreaterThanOrEqual(2); // L + R level bars lit
+  });
+
+  it("keeps the meter dark (0%) when the block output level is 0", () => {
+    mockBlockLevel = 0;
+    const { container } = render(
+      <BlockEmbed nodeId="n1" category="instrument" />,
+    );
+    const dark = container.querySelectorAll<HTMLElement>("div[style*='height: 0%']");
+    expect(dark.length).toBeGreaterThanOrEqual(2); // L + R bars both silent
+  });
+
+  it("lights the audiofx meter on a non-zero level (peaks track too)", () => {
+    mockBlockLevel = 0.5;
+    const { container } = render(
+      <BlockEmbed nodeId="n1" category="audiofx" />,
+    );
+    const lit = container.querySelectorAll<HTMLElement>("div[style*='height: 50%']");
+    expect(lit.length).toBeGreaterThanOrEqual(2);
   });
 });
 
@@ -161,15 +211,19 @@ describe("MeterEmbed", () => {
 
 // ── SpectrumEmbed ─────────────────────────────────────────────────────────────
 
-describe("SpectrumEmbed", () => {
-  it("renders an SVG with curve and zero-line paths", () => {
+describe("SpectrumEmbed (honest empty state — no fake curve)", () => {
+  it("renders an explicit 'no spectrum' placeholder, NOT a fabricated SVG curve", () => {
     const { container } = render(<SpectrumEmbed />);
-    const svg = container.querySelector("svg");
-    expect(svg).not.toBeNull();
-    const paths = svg!.querySelectorAll("path");
-    expect(paths.length).toBeGreaterThanOrEqual(2); // fill + curve
-    const lines = svg!.querySelectorAll("line");
-    expect(lines.length).toBeGreaterThanOrEqual(1); // zero line
+    // The static bezier fake was removed: there must be NO svg / path / line.
+    expect(container.querySelector("svg")).toBeNull();
+    expect(container.querySelector("path")).toBeNull();
+    expect(container.querySelector("line")).toBeNull();
+  });
+
+  it("exposes an honest status region with a 'No spectrum' label", () => {
+    render(<SpectrumEmbed />);
+    expect(screen.getByLabelText("Spectrum unavailable")).toBeInTheDocument();
+    expect(screen.getByText(/no spectrum/i)).toBeInTheDocument();
   });
 });
 
