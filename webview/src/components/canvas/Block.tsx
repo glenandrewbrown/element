@@ -8,6 +8,7 @@ import {
   selectEdges,
 } from "../../stores/useGraphStore";
 import { useBusStore } from "../../stores/useBusStore";
+import { useBlockOutputLevel } from "../../stores/useCableMeterStore";
 import { useParameterStore } from "../../stores/useParameterStore";
 import { nativeSetNodeParameter } from "../../bridge/nativeGraph";
 import { getFunctionMeta } from "../../data/functionGroup";
@@ -661,6 +662,14 @@ function BlockComponent({ data, selected }: NodeProps) {
   const toggleBypass = useGraphStore((s) => s.toggleBypass);
   const toggleMute = useGraphStore((s) => s.toggleMute);
 
+  // ── VU level (Q-VU-PER-BLOCK fast path) — REAL signal, not fabricated ──
+  // Each RmsMeter is driven by the max live cable level over this Block's
+  // OUTGOING edges (derived from useCableMeterStore, which the host pushes
+  // ~60Hz). Called unconditionally (before any early return) so hook order is
+  // stable across zoom/container/portal branches. Blocks with no outgoing edges
+  // read 0 (idle) — see useBlockOutputLevel for the honesty caveat.
+  const meterLevel = useBlockOutputLevel(d.id);
+
   // ── On-Block knobs (verdict 1) — live param values + real host write ──
   // Read the first N param values for this Block off the 15 Hz delta channel.
   // useShallow is mandatory: a fresh array each call would loop useSyncExternal-
@@ -986,19 +995,20 @@ function BlockComponent({ data, selected }: NodeProps) {
                   }}
                 />
               ))}
-              {/* RMS strip fills remaining width — stacked L/R (mockup). Idle
-                  until real per-block levels wire (Q-VU-PER-BLOCK). */}
+              {/* RMS strip fills remaining width — stacked L/R (mockup). Both
+                  channels read the Block's real output level (max over its
+                  outgoing cables) until a true per-channel L/R bridge lands. */}
               <div className="flex-1 flex flex-col gap-px ml-1 min-w-0">
-                <RmsMeter active={active} clip={d.error} accent={accentHsl} />
-                <RmsMeter active={active} clip={d.error} accent={accentHsl} />
+                <RmsMeter level={meterLevel} active={active} clip={d.error} accent={accentHsl} />
+                <RmsMeter level={meterLevel} active={active} clip={d.error} accent={accentHsl} />
               </div>
             </>
           ) : isAudioBearing ? (
             // Audio Block with no exposed knobs → the meter strip becomes the
             // whole deck, filling the space (no dead middle).
             <div className="flex-1 flex flex-col gap-1 min-w-0 justify-center">
-              <RmsMeter active={active} clip={d.error} accent={accentHsl} />
-              <RmsMeter active={active} clip={d.error} accent={accentHsl} />
+              <RmsMeter level={meterLevel} active={active} clip={d.error} accent={accentHsl} />
+              <RmsMeter level={meterLevel} active={active} clip={d.error} accent={accentHsl} />
             </div>
           ) : (
             // MIDI / modulator → status text + activity dot (mockup).

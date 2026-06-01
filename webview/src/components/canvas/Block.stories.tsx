@@ -4,7 +4,9 @@ import type { Node } from "@xyflow/react";
 import { MiniFlow } from "../../../.storybook/decorators";
 import { Block } from "./Block";
 import { useParameterStore } from "../../stores/useParameterStore";
-import type { BlockData } from "../../data/types";
+import { useGraphStore } from "../../stores/useGraphStore";
+import { useCableMeterStore } from "../../stores/useCableMeterStore";
+import type { BlockData, CableData } from "../../data/types";
 
 // ── Helpers ──
 
@@ -205,6 +207,65 @@ export const Muted: Story = story(
   makeBlock({ name: "Reverb", category: "audiofx", muted: true }),
   "Muted Block — header M lit red + body dimmed. Wired to the real `toggleMute` engine action (optimistic + host-confirmed).",
 );
+
+// Drives the Block VU off REAL cable data: seeds useGraphStore with this block
+// + an outgoing edge, then pushes a non-zero level for that edge into
+// useCableMeterStore (the same store the host fills ~60Hz). useBlockOutputLevel
+// derives the meter level = max over outgoing cables, so the VU lights — proving
+// the signal→meter path end to end, with NO fabricated motion. Stores are
+// restored on unmount so the story stays isolated.
+function VuFlow({ level }: { level: number }) {
+  const data = makeBlock({ name: "Bass Synth", category: "instrument", format: "VST3" });
+  const edgeId = `${data.id}-out`;
+  useEffect(() => {
+    const g = useGraphStore.getState();
+    const prevNodes = g.nodes;
+    const prevEdges = g.edges;
+    const edge: CableData = {
+      id: edgeId,
+      source: data.id,
+      sourcePort: "out",
+      target: "downstream",
+      targetPort: "in",
+      signalType: "audio",
+      channelCount: 2,
+      isSidechain: false,
+    };
+    useGraphStore.setState({ nodes: [data], edges: [edge] });
+    useCableMeterStore.setState({ levels: { [edgeId]: level } });
+    return () => {
+      useGraphStore.setState({ nodes: prevNodes, edges: prevEdges });
+      useCableMeterStore.setState({ levels: {} });
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [level]);
+  return <MiniFlow nodes={[flowNode(data)]} nodeTypes={nodeTypes} height={320} />;
+}
+
+export const VuMeterLit: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "VU lit by REAL signal (Q-VU-PER-BLOCK fast path). The Block's RMS strip is driven by the live level of its OUTGOING cable via `useBlockOutputLevel` (max over outgoing edges in `useCableMeterStore` — the store the host pushes ~60Hz). Here a level of 0.82 is fed for the outgoing cable, so the LED ladder lights into the amber shoulder. At a level of 0 the same meter stays dark — nothing is fabricated. The C++ feeds this store in the running app; a true per-channel L/R bridge is the later D1-full step.",
+      },
+    },
+  },
+  render: () => <VuFlow level={0.82} />,
+};
+
+export const VuMeterIdle: Story = {
+  tags: ["!manifest"],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Honesty control for VuMeterLit — identical Block, outgoing cable level 0, so the VU stays dark. Confirms the meter reflects real signal rather than always-on motion.",
+      },
+    },
+  },
+  render: () => <VuFlow level={0} />,
+};
 
 export const LabeledPorts: Story = {
   parameters: {
