@@ -10,7 +10,7 @@ const meta = {
     docs: {
       description: {
         component:
-          "NeuKnob — the canonical neumorphic rotary control for a single continuous (0–100) parameter, used for mapped Block parameters in the Inspector and Perform-mode dashboards. Drag vertically to adjust (hold Shift for fine control); the value drives a 270° arc ring and the indicator line. `color` matches the source Block's signal role (blue = generator, orange = modifier, teal = logic); `sourceLabel` names the controlled Block.",
+          "NeuKnob — the canonical neumorphic rotary control for a single continuous (0–100) parameter, used for mapped Block parameters in the Inspector and Perform-mode dashboards. Drag vertically to adjust (hold Shift for fine control); the value drives a 270° arc ring and the indicator line. `color` matches the source Block's category: `blue` = Virtual Instruments, `teal` = MIDI Effects, `orange` = Audio Effects, `purple` = Modulators/Utilities. `sourceLabel` names the controlled Block.",
       },
     },
   },
@@ -19,7 +19,7 @@ const meta = {
     value: { control: { type: "range", min: 0, max: 100, step: 1 } },
     color: {
       control: { type: "select" },
-      options: ["blue", "orange", "teal"],
+      options: ["blue", "orange", "teal", "purple"],
     },
     size: {
       control: { type: "select" },
@@ -78,6 +78,24 @@ export const Orange: Story = {
       description: {
         story:
           "Orange modifier accent — use for effect/modifier parameters so the knob's signal role reads at a glance.",
+      },
+    },
+  },
+};
+
+export const Purple: Story = {
+  args: {
+    value: 60,
+    label: "RATE",
+    color: "purple",
+    size: "md",
+    sourceLabel: "LFO 1",
+  },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Purple Modulators/Utilities accent — use for LFO, CV, scripting, and routing-logic parameters. The 4th category in the semantic palette (#A87FE0).",
       },
     },
   },

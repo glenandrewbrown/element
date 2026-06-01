@@ -4,6 +4,9 @@ const colorHex = {
   blue: "#4A90D9",
   orange: "#E8A838",
   teal: "#2BC4C4",
+  // 4-category taxonomy: Virtual Instruments=blue, MIDI Effects=teal,
+  // Audio Effects=orange, Modulators/Utilities=purple
+  purple: "#A87FE0",
 } as const;
 
 const colorClasses = {
@@ -16,6 +19,7 @@ const colorClasses = {
     glow: "shadow-[0_0_4px_rgba(232,168,56,0.6)]",
   },
   teal: { text: "text-accent-teal", glow: "shadow-[0_0_4px_rgba(43,196,196,0.6)]" },
+  purple: { text: "text-accent-purple", glow: "shadow-[0_0_4px_rgba(168,127,224,0.6)]" },
 } as const;
 
 const sizeMap = {
@@ -35,10 +39,11 @@ interface NeuKnobProps {
   /** Optional sub-caption naming the mapped Block/source (e.g. "Reverb 1"). */
   sourceLabel?: string;
   /**
-   * Indicator/arc colour, mapped to Element's semantic palette: `blue` =
-   * generator, `orange` = modifier, `teal` = logic. Default `blue`.
+   * Indicator/arc colour, mapped to Element's 4-category semantic palette:
+   * `blue` = Virtual Instruments, `teal` = MIDI Effects,
+   * `orange` = Audio Effects, `purple` = Modulators/Utilities. Default `blue`.
    */
-  color?: "blue" | "orange" | "teal";
+  color?: "blue" | "orange" | "teal" | "purple";
   /** Diameter tier: `xs` / `sm` / `md` (default) / `lg`. */
   size?: "xs" | "sm" | "md" | "lg";
   /**
