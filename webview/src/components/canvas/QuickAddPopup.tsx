@@ -8,7 +8,7 @@ import {
   type ReactElement,
 } from "react";
 import { NeuInput, EmptyState } from "../neu";
-import type { BlockCategory } from "../../data/types";
+import type { BlockCategory, SignalType } from "../../data/types";
 import { usePluginBrowserStore } from "../../stores/usePluginBrowserStore";
 import { nativeGraphAddPlugin } from "../../bridge/nativeGraph";
 import { EV_OPEN_PREFERENCES } from "../../events";
@@ -20,12 +20,46 @@ interface PluginEntry {
   format: string;
 }
 
+/**
+ * Signal type a Block emits / passes, derived from its category. Used to
+ * port-type-filter the list when QuickAdd is opened from a cable-drag.
+ *
+ * Element's scanned-plugin metadata (`BrowserPlugin`) carries only
+ * `blockCategory`, so this is a deterministic 1:1 map mirroring the locked
+ * `--cat-*` ↔ `--sig-*` token parity in index.css (instrument/audiofx share
+ * the audio/value hues, midifx = MIDI, modulator → value/CV). NOTE: the design
+ * mockup hand-tags `acceptsType` per block and can split modulators between
+ * audio and CV; we cannot reproduce that split from category alone (see the
+ * task report — a per-plugin signal-output field on `BrowserPlugin` would be
+ * needed for full parity).
+ */
+const CATEGORY_SIGNAL: Record<BlockCategory, SignalType> = {
+  instrument: "audio",
+  audiofx: "audio",
+  midifx: "midi",
+  modulator: "value",
+};
+
+/** Frozen signal-type accent tokens (HSL) — W0-TOKENS. */
+const SIGNAL_HSL: Record<SignalType, string> = {
+  audio: "var(--sig-audio)",
+  midi: "var(--sig-midi)",
+  value: "var(--sig-value)",
+};
+
+/** Header label per signal type — "ADD BLOCK ACCEPTING <LABEL>". */
+const SIGNAL_LABEL: Record<SignalType, string> = {
+  audio: "AUDIO",
+  midi: "MIDI",
+  value: "CV",
+};
+
 /** Filled circle for Instrument (●) */
 function InstrumentDot() {
   return (
     <span
       className="shrink-0 text-[10px] leading-none"
-      style={{ color: "#4A90D9" }}
+      style={{ color: "hsl(var(--cat-instrument))" }}
       aria-label="Instrument"
     >
       ●
@@ -38,7 +72,7 @@ function EffectDot() {
   return (
     <span
       className="shrink-0 text-[10px] leading-none"
-      style={{ color: "#E8A838" }}
+      style={{ color: "hsl(var(--cat-audiofx))" }}
       aria-label="Audio FX"
     >
       ◆
@@ -51,7 +85,7 @@ function MidiDot() {
   return (
     <span
       className="shrink-0 text-[10px] leading-none"
-      style={{ color: "#2BC4C4" }}
+      style={{ color: "hsl(var(--cat-midifx))" }}
       aria-label="MIDI FX"
     >
       ▲
@@ -64,7 +98,7 @@ function ModulatorDot() {
   return (
     <span
       className="shrink-0 text-[10px] leading-none"
-      style={{ color: "#A87FE0" }}
+      style={{ color: "hsl(var(--cat-modulator))" }}
       aria-label="Modulator"
     >
       ⬡
@@ -126,24 +160,40 @@ interface QuickAddPopupProps {
   x: number;
   /** Viewport Y (clientY) of the cursor where the popup opens; clamped to keep the popup on-screen. */
   y: number;
+  /**
+   * Signal type of the port a Cable was dragged off, when opened from a
+   * port-drag. When set, the list is filtered to Blocks that accept/pass that
+   * signal type and the header reads "ADD BLOCK ACCEPTING <TYPE>". When
+   * omitted (right-click on empty canvas), the full plugin list is shown with
+   * favourites pinned — the generic QuickAdd. See `GraphCanvas` plumbing note
+   * in the task report: today only the generic path is wired.
+   */
+  portType?: SignalType;
   /** Called to dismiss the popup (backdrop click, Escape, or after a Block is inserted). */
   onClose: () => void;
 }
 
 /**
- * QuickAddPopup — the right-click-at-cursor block inserter for the Board. Use
- * it as the fastest path to add a Block where you're already looking: a small
- * search popup anchored at the click point, opening focused with favourites
- * pinned on top, navigable entirely by keyboard (type to filter, ↑↓ to move, ↵
- * to insert, esc to cancel). Each result is shape- and colour-coded by category
- * (● instrument / ◆ effect / ▲ MIDI) so the signal role reads instantly.
+ * QuickAddPopup — the fastest path to add a Block to the Board. A small,
+ * keyboard-first search popup anchored at the cursor, opening focused with
+ * favourites pinned on top, navigable entirely by keyboard (type to filter,
+ * ↑↓ to move, ↵ to insert, esc to cancel). Each result is shape- and
+ * colour-coded by category (● instrument / ◆ audio FX / ▲ MIDI FX / ⬡
+ * modulator) so the signal role reads instantly.
  *
- * Mount it transiently from `GraphCanvas`'s `onPaneContextMenu` handler at the
- * click position. It reads the scanned plugin list from `usePluginBrowserStore`
- * and, when no plugins have been scanned, shows an empty state with a link to
- * Preferences instead of fabricated entries.
+ * Two modes:
+ *  - **Generic** (no `portType`) — mounted from `GraphCanvas`'s
+ *    `onPaneContextMenu` (right-click empty canvas). Shows every scanned
+ *    plugin, favourites first.
+ *  - **Port-type-aware** (`portType` set) — opened by dragging a Cable off a
+ *    port. Shows only Blocks that accept that signal type, under an
+ *    "ADD BLOCK ACCEPTING <TYPE>" header tinted in the signal's hue.
+ *
+ * It reads the scanned plugin list from `usePluginBrowserStore` and, when no
+ * plugins have been scanned, shows an empty state with a link to Preferences
+ * instead of fabricated entries.
  */
-export function QuickAddPopup({ x, y, onClose }: QuickAddPopupProps) {
+export function QuickAddPopup({ x, y, portType, onClose }: QuickAddPopupProps) {
   const [search, setSearch] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -168,8 +218,13 @@ export function QuickAddPopup({ x, y, onClose }: QuickAddPopupProps) {
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    return plugins.filter((p) => p.name.toLowerCase().includes(q));
-  }, [plugins, search]);
+    return plugins.filter((p) => {
+      // Port-type filter (when opened from a cable drag): keep only Blocks
+      // whose derived signal type matches the dragged port.
+      if (portType && CATEGORY_SIGNAL[p.category] !== portType) return false;
+      return p.name.toLowerCase().includes(q);
+    });
+  }, [plugins, search, portType]);
 
   const { favorites, others } = useMemo(() => {
     const favs = filtered.filter((p) => favoriteIdentifiers.has(p.id));
@@ -246,6 +301,8 @@ export function QuickAddPopup({ x, y, onClose }: QuickAddPopupProps) {
     Math.min(y, window.innerHeight - popupMaxH - 8),
   );
 
+  const signalHsl = portType ? SIGNAL_HSL[portType] : null;
+
   return (
     <>
       <div className="fixed inset-0 z-40" onClick={onClose} />
@@ -263,6 +320,28 @@ export function QuickAddPopup({ x, y, onClose }: QuickAddPopupProps) {
             outline: "1px solid rgba(139, 145, 156, 0.15)",
           }}
         >
+          {/* Port-type-aware header — only when opened from a cable drag. */}
+          {portType && signalHsl && (
+            <div
+              className="flex items-center justify-between px-2.5 pt-2 pb-1.5 border-b border-white/5"
+              style={{ borderColor: `hsl(${signalHsl} / 0.18)` }}
+            >
+              <span className="text-[8.5px] uppercase tracking-[0.16em] text-text-dim leading-none">
+                Add block accepting
+              </span>
+              <span
+                className="text-[9px] font-bold tabular px-1.5 py-0.5 rounded uppercase leading-none"
+                style={{
+                  backgroundColor: `hsl(${signalHsl} / 0.18)`,
+                  color: `hsl(${signalHsl})`,
+                  boxShadow: `0 0 6px hsl(${signalHsl} / 0.35)`,
+                }}
+              >
+                {SIGNAL_LABEL[portType]}
+              </span>
+            </div>
+          )}
+
           <div className="p-2">
             <NeuInput
               ref={inputRef}
@@ -302,7 +381,7 @@ export function QuickAddPopup({ x, y, onClose }: QuickAddPopupProps) {
               </div>
             ) : flatList.length === 0 ? (
               <div className="px-2 py-3 text-[10px] text-text-dim text-center uppercase tracking-widest">
-                No matches
+                {portType ? "No compatible blocks" : "No matches"}
               </div>
             ) : null}
 
