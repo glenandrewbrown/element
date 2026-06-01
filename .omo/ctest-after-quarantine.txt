@@ -1,0 +1,56 @@
+  1/131 Test  #29: SessionChangedTest ...................***Not Run (Disabled)   0.00 sec
+  2/131 Test  #48: BridgeContractTests ..................***Not Run (Disabled)   0.00 sec
+  5/131 Test  #72: SessionServiceObserverTests ..........***Not Run (Disabled)   0.00 sec
+  6/131 Test  #75: RingBufferTests ......................***Not Run (Disabled)   0.00 sec
+  7/131 Test  #77: RerouteNodeTests .....................***Not Run (Disabled)   0.00 sec
+  8/131 Test  #80: NodeEdgeCaseTests ....................***Not Run (Disabled)   0.00 sec
+  9/131 Test  #81: EQFilterTests ........................***Not Run (Disabled)   0.00 sec
+ 10/131 Test  #82: CompressorTests ......................***Not Run (Disabled)   0.00 sec
+ 11/131 Test  #83: MidiRouterNodeTests ..................***Not Run (Disabled)   0.00 sec
+ 12/131 Test  #84: MidiSetListTests .....................***Not Run (Disabled)   0.00 sec
+ 13/131 Test  #86: MidiEngineTests ......................***Not Run (Disabled)   0.00 sec
+ 14/131 Test  #87: AudioFilePlayerTests .................***Not Run (Disabled)   0.00 sec
+ 15/131 Test  #88: GraphManagerTests ....................***Not Run (Disabled)   0.00 sec
+ 16/131 Test  #89: GraphManagerConnectionTests ..........***Not Run (Disabled)   0.00 sec
+ 17/131 Test  #90: GraphManagerChangeTests ..............***Not Run (Disabled)   0.00 sec
+ 18/131 Test  #91: AudioMixerProcessorTests .............***Not Run (Disabled)   0.00 sec
+ 19/131 Test  #97: PlaceholderProcessorTests ............***Not Run (Disabled)   0.00 sec
+ 20/131 Test #104: TransportMonitorTests ................***Not Run (Disabled)   0.00 sec
+ 21/131 Test #107: GraphNodeMidiChannelTests ............***Not Run (Disabled)   0.00 sec
+ 22/131 Test #112: MidiChannelSplitterTests .............***Not Run (Disabled)   0.00 sec
+ 23/131 Test #113: SandboxedProcessorNodeTests ..........***Not Run (Disabled)   0.00 sec
+ 24/131 Test #115: NodeFactoryExtendedTests .............***Not Run (Disabled)   0.00 sec
+ 25/131 Test #118: MidiVelocityAmpTests .................***Not Run (Disabled)   0.00 sec
+ 26/131 Test #122: GraphConnectionValidationTests .......***Not Run (Disabled)   0.00 sec
+ 27/131 Test #123: GraphTopologyRobustnessTests .........***Not Run (Disabled)   0.00 sec
+ 36/131 Test  #73: SessionServiceFileOpsTests ...........***Failed    8.79 sec
+ 41/131 Test #111: MidiChannelFilterNodeTests ...........***Not Run (Disabled)   0.00 sec
+ 62/131 Test #114: PortBufferTests ......................***Not Run (Disabled)   0.00 sec
+97% tests passed, 3 tests failed out of 104
+	 29 - SessionChangedTest (Disabled)
+	 48 - BridgeContractTests (Disabled)
+	 72 - SessionServiceObserverTests (Disabled)
+	 75 - RingBufferTests (Disabled)
+	 77 - RerouteNodeTests (Disabled)
+	 80 - NodeEdgeCaseTests (Disabled)
+	 81 - EQFilterTests (Disabled)
+	 82 - CompressorTests (Disabled)
+	 83 - MidiRouterNodeTests (Disabled)
+	 84 - MidiSetListTests (Disabled)
+	 86 - MidiEngineTests (Disabled)
+	 87 - AudioFilePlayerTests (Disabled)
+	 88 - GraphManagerTests (Disabled)
+	 89 - GraphManagerConnectionTests (Disabled)
+	 90 - GraphManagerChangeTests (Disabled)
+	 91 - AudioMixerProcessorTests (Disabled)
+	 97 - PlaceholderProcessorTests (Disabled)
+	104 - TransportMonitorTests (Disabled)
+	107 - GraphNodeMidiChannelTests (Disabled)
+	111 - MidiChannelFilterNodeTests (Disabled)
+	112 - MidiChannelSplitterTests (Disabled)
+	113 - SandboxedProcessorNodeTests (Disabled)
+	114 - PortBufferTests (Disabled)
+	115 - NodeFactoryExtendedTests (Disabled)
+	118 - MidiVelocityAmpTests (Disabled)
+	122 - GraphConnectionValidationTests (Disabled)
+	123 - GraphTopologyRobustnessTests (Disabled)
