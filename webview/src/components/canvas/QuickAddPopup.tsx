@@ -13,6 +13,45 @@ import { usePluginBrowserStore } from "../../stores/usePluginBrowserStore";
 import { nativeGraphAddPlugin } from "../../bridge/nativeGraph";
 import { EV_OPEN_PREFERENCES } from "../../events";
 
+// ── Lightweight fuzzy search ─────────────────────────────────────────────────
+// No external dep. Scores a plugin name against the query string. Higher = better.
+// Returns null when there is no meaningful match.
+function fuzzyScore(name: string, query: string): number | null {
+  if (!query) return 0;
+  const n = name.toLowerCase();
+  const q = query.toLowerCase();
+
+  // 1. Exact substring match — highest rank
+  const idx = n.indexOf(q);
+  if (idx !== -1) {
+    // Bonus for prefix match, penalise deep offset
+    return 100 + (idx === 0 ? 40 : 0) - idx;
+  }
+
+  // 2. All query characters appear in order (subsequence match)
+  let qi = 0;
+  let consecutive = 0;
+  let prevMatch = -1;
+  for (let ni = 0; ni < n.length && qi < q.length; ni++) {
+    if (n[ni] === q[qi]) {
+      consecutive += prevMatch === ni - 1 ? 1 : 0;
+      prevMatch = ni;
+      qi++;
+    }
+  }
+  if (qi === q.length) {
+    // Score: consecutive bonus, penalise total name length (prefer shorter names)
+    return 20 + consecutive * 5 - n.length;
+  }
+
+  // 3. Acronym match — initials of words match query chars
+  const words = n.split(/[\s\-_.]+/);
+  const initials = words.map((w) => w[0] ?? "").join("");
+  if (initials.includes(q)) return 10;
+
+  return null; // no match
+}
+
 interface PluginEntry {
   id: string;
   name: string;
@@ -113,6 +152,14 @@ const CAT_ICON: Record<BlockCategory, () => ReactElement> = {
   modulator: ModulatorDot,
 };
 
+/** Per-category CSS var for the dopamine hover-glow. */
+const CAT_GLOW_VAR: Record<BlockCategory, string> = {
+  instrument: "var(--cat-instrument)",
+  audiofx: "var(--cat-audiofx)",
+  midifx: "var(--cat-midifx)",
+  modulator: "var(--cat-modulator)",
+};
+
 function CategoryIcon({ category }: { category: BlockCategory }) {
   const Icon = CAT_ICON[category] ?? EffectDot;
   return <Icon />;
@@ -136,23 +183,46 @@ interface PluginRowProps {
 }
 
 function PluginRow({ plugin, isActive, onSelect, onHover }: PluginRowProps) {
+  const glowVar = CAT_GLOW_VAR[plugin.category] ?? CAT_GLOW_VAR.audiofx;
   return (
     <button
       type="button"
       onClick={() => onSelect(plugin.id)}
       onMouseEnter={onHover}
       className={[
-        "w-full text-left px-2.5 py-1.5 text-[11px] rounded flex items-center gap-2 transition-colors",
+        "w-full text-left px-2.5 py-1.5 text-[11px] rounded flex items-center gap-2",
+        "transition-all duration-100",
         isActive
           ? "bg-elevated text-text-primary"
           : "text-text-secondary hover:text-text-primary",
       ].join(" ")}
+      style={
+        isActive
+          ? {
+              boxShadow: `inset 0 0 0 1px hsl(${glowVar} / 0.22), 0 0 8px hsl(${glowVar} / 0.18)`,
+            }
+          : undefined
+      }
     >
       <CategoryIcon category={plugin.category} />
       <span className="truncate flex-1 min-w-0">{plugin.name}</span>
       <FormatBadge format={plugin.format} />
     </button>
   );
+}
+
+/** Shared section header label — "Favorites" / "Recents". */
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="px-2.5 pt-1 pb-0.5 text-[9px] uppercase tracking-widest text-text-dim">
+      {children}
+    </div>
+  );
+}
+
+/** Hairline divider between sections. */
+function SectionDivider() {
+  return <div className="mx-2 my-1 border-t border-white/5" />;
 }
 
 interface QuickAddPopupProps {
@@ -201,12 +271,14 @@ export function QuickAddPopup({ x, y, portType, onClose }: QuickAddPopupProps) {
 
   const nativePlugins = usePluginBrowserStore((s) => s.plugins);
   const favoriteIdentifiers = usePluginBrowserStore((s) => s.favoriteIdentifiers);
+  const recentIdentifiers = usePluginBrowserStore((s) => s.recentIdentifiers);
   const refreshPlugins = usePluginBrowserStore((s) => s.refresh);
 
   useEffect(() => {
     void refreshPlugins();
   }, [refreshPlugins]);
 
+  /** Full plugin list as flat PluginEntry array. */
   const plugins = useMemo((): PluginEntry[] => {
     return nativePlugins.map((p) => ({
       id: p.identifier,
@@ -216,27 +288,111 @@ export function QuickAddPopup({ x, y, portType, onClose }: QuickAddPopupProps) {
     }));
   }, [nativePlugins]);
 
-  const filtered = useMemo(() => {
-    const q = search.toLowerCase();
-    return plugins.filter((p) => {
-      // Port-type filter (when opened from a cable drag): keep only Blocks
-      // whose derived signal type matches the dragged port.
-      if (portType && CATEGORY_SIGNAL[p.category] !== portType) return false;
-      return p.name.toLowerCase().includes(q);
-    });
-  }, [plugins, search, portType]);
+  /** Quick lookup map: identifier → PluginEntry (for recents ordering). */
+  const pluginById = useMemo((): Map<string, PluginEntry> => {
+    const m = new Map<string, PluginEntry>();
+    for (const p of plugins) m.set(p.id, p);
+    return m;
+  }, [plugins]);
 
-  const { favorites, others } = useMemo(() => {
-    const favs = filtered.filter((p) => favoriteIdentifiers.has(p.id));
-    const rest = filtered.filter((p) => !favoriteIdentifiers.has(p.id));
-    return { favorites: favs, others: rest };
-  }, [filtered, favoriteIdentifiers]);
-
-  /** Flat ordered list used for keyboard navigation */
-  const flatList = useMemo(
-    () => [...favorites, ...others],
-    [favorites, others],
+  /**
+   * Port-type predicate — keeps only Blocks whose derived signal type matches
+   * the dragged port when portType is set.
+   */
+  const passesPortFilter = useCallback(
+    (p: PluginEntry) => {
+      if (!portType) return true;
+      return CATEGORY_SIGNAL[p.category] === portType;
+    },
+    [portType],
   );
+
+  /**
+   * Display list, computed differently depending on whether the user has typed.
+   *
+   * EMPTY SEARCH (on open):
+   *   1. Favorites   — starred plugins, port-filtered, preserving store order
+   *   2. Recents     — recently-used, port-filtered, excluding favorites
+   *   3. Others      — remaining plugins, port-filtered, excluding fav+recent
+   *
+   * TYPED SEARCH (fuzzy):
+   *   Full plugin list, port-filtered, fuzzy-scored and sorted. Favorites keep
+   *   a section header above the matched set; recents are folded into the main
+   *   results (order by score). "No matches" shown when the scored set is empty.
+   */
+  const { favorites, recents, others, fuzzyResults, isSearching } =
+    useMemo(() => {
+      const isSearching = search.trim().length > 0;
+
+      if (!isSearching) {
+        // ── Browse mode: recents-first layout ────────────────────────────────
+        const favSet = favoriteIdentifiers;
+        const recentSet = new Set(recentIdentifiers);
+
+        const favs: PluginEntry[] = [];
+        const recs: PluginEntry[] = [];
+        const rest: PluginEntry[] = [];
+
+        // Favorites: preserve stable plugin order, just filter to starred
+        for (const p of plugins) {
+          if (!passesPortFilter(p)) continue;
+          if (favSet.has(p.id)) favs.push(p);
+        }
+
+        // Recents: ordered by recentIdentifiers array (most recent first),
+        // skip favorites (they already appear above)
+        for (const id of recentIdentifiers) {
+          const p = pluginById.get(id);
+          if (!p || !passesPortFilter(p) || favSet.has(p.id)) continue;
+          recs.push(p);
+        }
+
+        // Others: everything that is neither a favorite nor recent
+        for (const p of plugins) {
+          if (!passesPortFilter(p)) continue;
+          if (favSet.has(p.id) || recentSet.has(p.id)) continue;
+          rest.push(p);
+        }
+
+        return {
+          favorites: favs,
+          recents: recs,
+          others: rest,
+          fuzzyResults: [] as PluginEntry[],
+          isSearching: false,
+        };
+      }
+
+      // ── Fuzzy-search mode: score across the full list ─────────────────────
+      const scored: Array<{ plugin: PluginEntry; score: number }> = [];
+      for (const p of plugins) {
+        if (!passesPortFilter(p)) continue;
+        const score = fuzzyScore(p.name, search.trim());
+        if (score !== null) scored.push({ plugin: p, score });
+      }
+      scored.sort((a, b) => b.score - a.score);
+
+      return {
+        favorites: [] as PluginEntry[],
+        recents: [] as PluginEntry[],
+        others: [] as PluginEntry[],
+        fuzzyResults: scored.map((s) => s.plugin),
+        isSearching: true,
+      };
+    }, [
+      search,
+      plugins,
+      pluginById,
+      favoriteIdentifiers,
+      recentIdentifiers,
+      passesPortFilter,
+    ]);
+
+  /** Flat ordered list used for keyboard navigation. */
+  const flatList = useMemo(() => {
+    if (isSearching) return fuzzyResults;
+    return [...favorites, ...recents, ...others];
+  }, [isSearching, fuzzyResults, favorites, recents, others]);
 
   useEffect(() => {
     requestAnimationFrame(() => inputRef.current?.focus());
@@ -385,43 +541,84 @@ export function QuickAddPopup({ x, y, portType, onClose }: QuickAddPopupProps) {
               </div>
             ) : null}
 
-            {favorites.length > 0 && (
+            {/* ── BROWSE MODE (no search typed) ──────────────────────────── */}
+            {!isSearching && (
               <>
-                <div className="px-2.5 pt-1 pb-0.5 text-[9px] uppercase tracking-widest text-text-dim">
-                  Favorites
-                </div>
-                <div className="space-y-px">
-                  {favorites.map((plugin, i) => (
-                    <PluginRow
-                      key={plugin.id}
-                      plugin={plugin}
-                      isActive={i === activeIndex}
-                      onSelect={handleSelect}
-                      onHover={() => setActiveIndex(i)}
-                    />
-                  ))}
-                </div>
+                {favorites.length > 0 && (
+                  <>
+                    <SectionLabel>Favorites</SectionLabel>
+                    <div className="space-y-px">
+                      {favorites.map((plugin, i) => (
+                        <PluginRow
+                          key={plugin.id}
+                          plugin={plugin}
+                          isActive={i === activeIndex}
+                          onSelect={handleSelect}
+                          onHover={() => setActiveIndex(i)}
+                        />
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                {recents.length > 0 && (
+                  <>
+                    {favorites.length > 0 && <SectionDivider />}
+                    <SectionLabel>Recents</SectionLabel>
+                    <div className="space-y-px">
+                      {recents.map((plugin, i) => {
+                        const flatIndex = favorites.length + i;
+                        return (
+                          <PluginRow
+                            key={plugin.id}
+                            plugin={plugin}
+                            isActive={flatIndex === activeIndex}
+                            onSelect={handleSelect}
+                            onHover={() => setActiveIndex(flatIndex)}
+                          />
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+
+                {others.length > 0 && (
+                  <>
+                    {(favorites.length > 0 || recents.length > 0) && (
+                      <SectionDivider />
+                    )}
+                    <div className="space-y-px">
+                      {others.map((plugin, i) => {
+                        const flatIndex =
+                          favorites.length + recents.length + i;
+                        return (
+                          <PluginRow
+                            key={plugin.id}
+                            plugin={plugin}
+                            isActive={flatIndex === activeIndex}
+                            onSelect={handleSelect}
+                            onHover={() => setActiveIndex(flatIndex)}
+                          />
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
               </>
             )}
 
-            {favorites.length > 0 && others.length > 0 && (
-              <div className="mx-2 my-1 border-t border-white/5" />
-            )}
-
-            {others.length > 0 && (
+            {/* ── FUZZY SEARCH MODE (user has typed) ─────────────────────── */}
+            {isSearching && fuzzyResults.length > 0 && (
               <div className="space-y-px">
-                {others.map((plugin, i) => {
-                  const flatIndex = favorites.length + i;
-                  return (
-                    <PluginRow
-                      key={plugin.id}
-                      plugin={plugin}
-                      isActive={flatIndex === activeIndex}
-                      onSelect={handleSelect}
-                      onHover={() => setActiveIndex(flatIndex)}
-                    />
-                  );
-                })}
+                {fuzzyResults.map((plugin, i) => (
+                  <PluginRow
+                    key={plugin.id}
+                    plugin={plugin}
+                    isActive={i === activeIndex}
+                    onSelect={handleSelect}
+                    onHover={() => setActiveIndex(i)}
+                  />
+                ))}
               </div>
             )}
           </div>

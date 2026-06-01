@@ -47,11 +47,15 @@ const demoPlugins: BrowserPlugin[] = [
   },
 ];
 
-function seed(plugins: BrowserPlugin[], favorites: string[] = []) {
+function seed(
+  plugins: BrowserPlugin[],
+  favorites: string[] = [],
+  recents: string[] = [],
+) {
   usePluginBrowserStore.setState({
     plugins,
     favoriteIdentifiers: new Set(favorites),
-    recentIdentifiers: [],
+    recentIdentifiers: recents,
   });
 }
 
@@ -234,4 +238,96 @@ export const NoPluginsScanned: Story = {
       );
     },
   ],
+};
+
+/**
+ * RecentsFirstOnOpen — on open before the user types, the list leads with a
+ * "Recents" section (most-recently-used first), then falls through to the
+ * remaining plugins. Favorites are pinned above recents when both are present.
+ * This is the P2 refinement Glen requested.
+ */
+export const RecentsFirstOnOpen: Story = {
+  args: { x: 80, y: 60, onClose: () => {} },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          'RECENTS-FIRST on open (empty search). The list leads with a "Recents" section ordered most-recently-used first (LFOTool, then Stepic), a "Favorites" section above it for starred plugins (Surge XT), and the remaining plugins below. No search query typed — this is the browse-mode layout.',
+      },
+    },
+  },
+  decorators: [
+    (Story) => {
+      // Surge XT is a favorite; LFOTool + Stepic are recent (LFOTool most recent)
+      seed(
+        demoPlugins,
+        ["com.vendor.SurgeXT"],
+        ["com.vendor.LFOTool", "com.vendor.Stepic"],
+      );
+      return (
+        <div className="bg-canvas" style={{ height: 480 }}>
+          <Story />
+        </div>
+      );
+    },
+  ],
+  play: async ({ canvasElement }) => {
+    const body = within(canvasElement.ownerDocument.body);
+    // Favorites section present with the starred plugin
+    await expect(body.getByText("Favorites")).toBeVisible();
+    await expect(body.getByText("Surge XT")).toBeVisible();
+    // Recents section present, ordered most-recent-first
+    await expect(body.getByText("Recents")).toBeVisible();
+    await expect(body.getByText("LFOTool")).toBeVisible();
+    await expect(body.getByText("Stepic")).toBeVisible();
+    // Non-recent, non-favorite plugin still appears (in the rest section)
+    await expect(body.getByText("Pro-Q 4")).toBeVisible();
+    // No port-type header in generic mode
+    await expect(body.queryByText("Add block accepting")).toBeNull();
+  },
+};
+
+/**
+ * FuzzySearchResults — once the user types, the full list is fuzzy-scored and
+ * reordered. Exact prefix matches rank highest; subsequence matches appear
+ * below. The section headers (Favorites / Recents) collapse — only a flat
+ * scored list is shown, so the user sees the best matches regardless of recency.
+ */
+export const FuzzySearchResults: Story = {
+  args: { x: 80, y: 60, onClose: () => {} },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          'FUZZY SEARCH in action. Typing "pro" scores Pro-Q 4 highest (exact prefix). Typing "lf" scores LFOTool first (prefix). Section headers collapse; the flat scored list shows only matching blocks. Port-type filter still applies when portType is set.',
+      },
+    },
+  },
+  decorators: [
+    (Story) => {
+      seed(
+        demoPlugins,
+        ["com.vendor.SurgeXT"],
+        ["com.vendor.LFOTool", "com.vendor.Stepic"],
+      );
+      return (
+        <div className="bg-canvas" style={{ height: 480 }}>
+          <Story />
+        </div>
+      );
+    },
+  ],
+  play: async ({ canvasElement }) => {
+    const body = within(canvasElement.ownerDocument.body);
+    const input = body.getByPlaceholderText("Add block...");
+
+    // Type "pro" — Pro-Q 4 should appear; Surge XT, Stepic, LFOTool should not
+    await import("storybook/test").then(({ userEvent }) =>
+      userEvent.type(input, "pro"),
+    );
+    await expect(body.getByText("Pro-Q 4")).toBeVisible();
+    // Section labels gone while searching
+    await expect(body.queryByText("Favorites")).toBeNull();
+    await expect(body.queryByText("Recents")).toBeNull();
+  },
 };
