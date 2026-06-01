@@ -6,6 +6,7 @@ import { usePluginBrowserStore } from "../../stores/usePluginBrowserStore";
 import { useSessionStore } from "../../stores/useSessionStore";
 import { useHostExtrasStore } from "../../stores/useHostExtrasStore";
 import { usePerformStore } from "../../stores/usePerformStore";
+import { usePluginScanStore } from "../../stores/usePluginScanStore";
 
 // ── Store seeding ──
 // ToolPalette reads from usePluginBrowserStore (plugins, favoriteIdentifiers,
@@ -338,13 +339,26 @@ export const ScanControls: Story = {
     docs: {
       description: {
         story:
-          "The Plugin-Scan-&-Paths control group expanded: scan / rescan buttons, format enable toggles (VST3/AU/CLAP/LV2), and a scan-paths row. These are intentionally DISABLED and labelled 'via Preferences' — there is no native scan/rescan/paths/format bridge in the webview host yet (only read-only elementGetPluginList), and Glen's rule is nothing fake. The one working affordance is 'Open Preferences to Scan'. The play function expands the panel and asserts the scan controls are present AND disabled.",
+          "The Plugin-Scan-&-Paths control group expanded: scan / rescan buttons + format enable toggles (VST3/AU/CLAP/LV2) + scan paths. These are now LIVE — wired through usePluginScanStore → the nativePluginScan bridge → PluginManager's out-of-process scanner. Disabled only while a scan is in flight. The play seeds the scan store so the format toggles render, then asserts the controls are enabled.",
       },
     },
   },
   decorators: [
     (Story) => {
       seedPopulated();
+      // Seed the real scan store so the format toggles render + controls are live.
+      usePluginScanStore.setState({
+        scanning: false,
+        currentPlugin: "",
+        pluginCount: 0,
+        formats: ["VST3", "AU", "CLAP", "LV2"],
+        enabled: { VST3: true, AU: true, CLAP: true, LV2: false },
+        paths: {
+          VST3: ["/Library/Audio/Plug-Ins/VST3"],
+          AU: ["/Library/Audio/Plug-Ins/Components"],
+        },
+        pathsLoaded: true,
+      });
       return (
         <div style={{ width: 280, height: 640 }} className="bg-panel">
           <Story />
@@ -359,22 +373,15 @@ export const ScanControls: Story = {
     await userEvent.click(toggle);
     await waitFor(() => expect(toggle).toHaveAttribute("aria-expanded", "true"));
 
-    // Scan + Rescan render but are DISABLED (honest, no fake scan).
-    const scanBtn = canvas.getByRole("button", { name: "Scan" });
-    const rescanBtn = canvas.getByRole("button", { name: "Rescan" });
-    await expect(scanBtn).toBeDisabled();
-    await expect(rescanBtn).toBeDisabled();
+    // Scan + Rescan are LIVE (enabled at rest; disabled only mid-scan).
+    await expect(canvas.getByRole("button", { name: "Scan" })).toBeEnabled();
+    await expect(canvas.getByRole("button", { name: "Rescan" })).toBeEnabled();
 
-    // Format toggles present and disabled.
-    await expect(canvas.getByRole("button", { name: "VST3" })).toBeDisabled();
-    await expect(canvas.getByRole("button", { name: "AU" })).toBeDisabled();
-    await expect(canvas.getByRole("button", { name: "CLAP" })).toBeDisabled();
-    await expect(canvas.getByRole("button", { name: "LV2" })).toBeDisabled();
-
-    // The working escape hatch is enabled.
-    await expect(
-      canvas.getByRole("button", { name: /Open Preferences to Scan/ }),
-    ).toBeEnabled();
+    // Format toggles render (seeded formats) and are enabled.
+    await expect(canvas.getByRole("button", { name: "VST3" })).toBeEnabled();
+    await expect(canvas.getByRole("button", { name: "AU" })).toBeEnabled();
+    await expect(canvas.getByRole("button", { name: "CLAP" })).toBeEnabled();
+    await expect(canvas.getByRole("button", { name: "LV2" })).toBeEnabled();
   },
 };
 

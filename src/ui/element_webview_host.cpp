@@ -178,6 +178,74 @@ static String normalizeBlockFormat (const String& rawFormat)
     return "INT";
 }
 
+//==============================================================================
+// Plugin scan / paths / format-enable bridge support.
+//
+// The React UI speaks the compact `PluginFormat` union ("VST3" | "AU" | "CLAP"
+// | "LV2"); JUCE's AudioPluginFormatManager + the persisted scan-path / blacklist
+// settings key on the *canonical* format name ("AudioUnit", "VST3", "CLAP",
+// "LV2"). These helpers translate between the two and centralise the settings
+// keys so the webview path reads/writes the SAME PropertiesFile entries the
+// native PluginListComponent uses (Settings::lastPluginScanPathPrefix + name).
+
+// React UI token → JUCE canonical format name. Returns empty for unknown tokens.
+static String webFormatToJuceName (const String& webFormat)
+{
+    const String f (webFormat.trim().toUpperCase());
+    if (f == "VST3") return "VST3";
+    if (f == "VST")  return "VST";
+    if (f == "AU" || f == "AUDIOUNIT") return "AudioUnit";
+    if (f == "CLAP") return "CLAP";
+    if (f == "LV2")  return "LV2";
+    return {};
+}
+
+// The set of formats surfaced as user-toggleable in the webview. Mirrors the
+// React `PLUGIN_FORMATS` constant (ToolPalette / PreferencesModal). Order is the
+// display order. "VST" (VST2) is intentionally excluded — it needs an external
+// SDK and is off by default.
+static const char* const kWebScanFormats[] = { "VST3", "AU", "CLAP", "LV2" };
+
+// Per-format "enabled" settings key. Defaults to enabled when absent so a fresh
+// install scans everything (matches the pre-existing scan-all behaviour). When a
+// format is disabled it is dropped from the StringArray passed to
+// PluginManager::scanAudioPlugins, so the scan genuinely skips it.
+static String pluginFormatEnabledKey (const String& juceName)
+{
+    return "pluginFormatEnabled_" + juceName;
+}
+
+static bool isPluginFormatEnabledIn (juce::PropertiesFile* props, const String& juceName)
+{
+    if (props == nullptr)
+        return true;
+    return props->getBoolValue (pluginFormatEnabledKey (juceName), true);
+}
+
+// Read the persisted scan path for a format from the SAME key the native
+// PluginListComponent uses (Settings::lastPluginScanPathPrefix + name), falling
+// back to the format's compiled-in default search locations.
+static juce::FileSearchPath lastScanPathFor (Context& ctx, const String& juceName)
+{
+    juce::PropertiesFile* props = ctx.settings().getUserSettings();
+    String def;
+    if (auto* fmt = ctx.plugins().getAudioPluginFormat (juceName))
+        def = fmt->getDefaultLocationsToSearch().toString();
+    const String stored = props != nullptr
+                              ? props->getValue (String (Settings::lastPluginScanPathPrefix) + juceName, def)
+                              : def;
+    return juce::FileSearchPath (stored);
+}
+
+static void setLastScanPathFor (Context& ctx, const String& juceName, const juce::FileSearchPath& path)
+{
+    if (auto* props = ctx.settings().getUserSettings())
+    {
+        props->setValue (String (Settings::lastPluginScanPathPrefix) + juceName, path.toString());
+        props->saveIfNeeded();
+    }
+}
+
 // Map a node to the React `BlockCategory` union: "instrument" | "audiofx" |
 // "midifx" | "modulator". Delegates keyword matching to
 // element::mapBlockCategoryFromStrings (src/ui/blockcategory.hpp) so the
@@ -3818,6 +3886,252 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             result->setProperty ("presets", var (names));
             const String json (JSON::toString (var (result.get())));
             postCompletion (completion, json);
+        });
+
+    //==========================================================================
+    // Plugin scan / paths / format-enable bridge (Pillar-2 — the #1 native gap).
+    //
+    // Backing: PluginManager::scanAudioPlugins (out-of-process child scanner —
+    // message-thread, non-blocking, self-guards against concurrent scans) +
+    // the persisted scan-path / format-enabled settings keys. Scanning never
+    // touches the audio thread. There is no fake progress: getScanStatus exposes
+    // only the real (scanning, currentPlugin) the scanner reports — the React
+    // Scan button shows an honest indeterminate spinner + the plugin name.
+
+    // elementScanPlugins(formats?: string[])
+    //   Input:  args[0]? = array of React format tokens to scan. Empty/absent →
+    //           scan every *enabled* format.
+    //   Output: bool — true if a scan was issued (false if one is already running
+    //           or no enabled formats remain).
+    //   Effect: kicks PluginManager::scanAudioPlugins on the message thread.
+    registerFn (
+        Identifier ("elementScanPlugins"),
+        [this, postCompletion] (const Array<var>& args, auto completion) {
+            auto* props = context.settings().getUserSettings();
+
+            // Resolve the requested format set (React tokens) → JUCE names, then
+            // intersect with the enabled set. Empty request = all enabled.
+            StringArray requested;
+            if (args.size() >= 1)
+                if (const auto* arr = args[0].getArray())
+                    for (const auto& v : *arr)
+                    {
+                        const String jn (webFormatToJuceName (v.toString()));
+                        if (jn.isNotEmpty())
+                            requested.addIfNotAlreadyThere (jn);
+                    }
+
+            StringArray formatsToScan;
+            for (const char* tok : kWebScanFormats)
+            {
+                const String jn (webFormatToJuceName (tok));
+                if (jn.isEmpty())
+                    continue;
+                if (! context.plugins().isAudioPluginFormatSupported (jn))
+                    continue;
+                if (requested.size() > 0 && ! requested.contains (jn))
+                    continue;
+                if (! isPluginFormatEnabledIn (props, jn))
+                    continue;
+                formatsToScan.addIfNotAlreadyThere (jn);
+            }
+
+            bool ok = false;
+            if (! context.plugins().isScanningAudioPlugins() && formatsToScan.size() > 0)
+            {
+                context.plugins().scanAudioPlugins (formatsToScan);
+                ok = true;
+            }
+            postCompletion (completion, ok);
+        });
+
+    // elementRescanPlugins() — convenience: scan all enabled formats (same as
+    // elementScanPlugins() with no args). Kept as a distinct name so the UI can
+    // label "Rescan" without constructing the format list.
+    registerFn (
+        Identifier ("elementRescanPlugins"),
+        [this, postCompletion] (const Array<var>&, auto completion) {
+            auto* props = context.settings().getUserSettings();
+            StringArray formatsToScan;
+            for (const char* tok : kWebScanFormats)
+            {
+                const String jn (webFormatToJuceName (tok));
+                if (jn.isEmpty() || ! context.plugins().isAudioPluginFormatSupported (jn))
+                    continue;
+                if (! isPluginFormatEnabledIn (props, jn))
+                    continue;
+                formatsToScan.addIfNotAlreadyThere (jn);
+            }
+
+            bool ok = false;
+            if (! context.plugins().isScanningAudioPlugins() && formatsToScan.size() > 0)
+            {
+                context.plugins().scanAudioPlugins (formatsToScan);
+                ok = true;
+            }
+            postCompletion (completion, ok);
+        });
+
+    // elementGetScanStatus()
+    //   Output: { scanning: bool, currentPlugin: string, pluginCount: int }
+    //   Polled by the React store while the Scan button is active. `currentPlugin`
+    //   is the real file being validated (honest indeterminate progress — the
+    //   scanner does not expose a total count, so NO fake percentage). React
+    //   refreshes the plugin list when `scanning` transitions true→false.
+    registerFn (
+        Identifier ("elementGetScanStatus"),
+        [this, postCompletion] (const Array<var>&, auto completion) {
+            DynamicObject::Ptr root (new DynamicObject());
+            const bool scanning = context.plugins().isScanningAudioPlugins();
+            root->setProperty ("scanning", scanning);
+            root->setProperty ("currentPlugin",
+                               scanning ? context.plugins().getCurrentlyScannedPluginName() : String());
+            root->setProperty ("pluginCount", context.plugins().getKnownPlugins().getNumTypes());
+            postCompletion (completion, JSON::toString (var (root.get())));
+        });
+
+    // elementGetPluginPaths()
+    //   Output: { paths: { <webFormat>: string[] }, enabled: { <webFormat>: bool },
+    //             formats: string[] }
+    //   Reads the persisted FileSearchPath per supported format (same key the
+    //   native PluginListComponent writes) + the per-format enabled flag.
+    registerFn (
+        Identifier ("elementGetPluginPaths"),
+        [this, postCompletion] (const Array<var>&, auto completion) {
+            auto* props = context.settings().getUserSettings();
+            DynamicObject::Ptr root (new DynamicObject());
+            DynamicObject::Ptr pathsObj (new DynamicObject());
+            DynamicObject::Ptr enabledObj (new DynamicObject());
+            Array<var> formatList;
+
+            for (const char* tok : kWebScanFormats)
+            {
+                const String web (tok);
+                const String jn (webFormatToJuceName (web));
+                if (jn.isEmpty() || ! context.plugins().isAudioPluginFormatSupported (jn))
+                    continue;
+
+                formatList.add (var (web));
+
+                const juce::FileSearchPath sp (lastScanPathFor (context, jn));
+                Array<var> dirs;
+                for (int i = 0; i < sp.getNumPaths(); ++i)
+                    dirs.add (var (sp[i].getFullPathName()));
+                pathsObj->setProperty (web, var (dirs));
+                enabledObj->setProperty (web, isPluginFormatEnabledIn (props, jn));
+            }
+
+            root->setProperty ("paths", var (pathsObj.get()));
+            root->setProperty ("enabled", var (enabledObj.get()));
+            root->setProperty ("formats", var (formatList));
+            postCompletion (completion, JSON::toString (var (root.get())));
+        });
+
+    // elementAddPluginPath(format, path)
+    //   Input:  args[0] = React format token, args[1] = absolute directory path.
+    //   Output: bool — true if the format is supported, the directory exists, and
+    //           the path was newly added (false if already present / invalid).
+    registerFn (
+        Identifier ("elementAddPluginPath"),
+        [this, postCompletion] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 2)
+            {
+                const String jn (webFormatToJuceName (args[0].toString()));
+                const String dir (args[1].toString().trim());
+                if (jn.isNotEmpty()
+                    && context.plugins().isAudioPluginFormatSupported (jn)
+                    && dir.isNotEmpty())
+                {
+                    const File f (dir);
+                    if (f.isDirectory())
+                    {
+                        juce::FileSearchPath sp (lastScanPathFor (context, jn));
+                        const int before = sp.getNumPaths();
+                        sp.addIfNotAlreadyThere (f);
+                        if (sp.getNumPaths() != before)
+                        {
+                            setLastScanPathFor (context, jn, sp);
+                            ok = true;
+                        }
+                    }
+                }
+            }
+            postCompletion (completion, ok);
+        });
+
+    // elementRemovePluginPath(format, path)
+    //   Input:  args[0] = React format token, args[1] = directory path to remove.
+    //   Output: bool — true if the path was present and removed.
+    registerFn (
+        Identifier ("elementRemovePluginPath"),
+        [this, postCompletion] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 2)
+            {
+                const String jn (webFormatToJuceName (args[0].toString()));
+                const String dir (args[1].toString().trim());
+                if (jn.isNotEmpty() && dir.isNotEmpty())
+                {
+                    const File target (dir);
+                    const juce::FileSearchPath oldSp (lastScanPathFor (context, jn));
+                    juce::FileSearchPath newSp;
+                    for (int i = 0; i < oldSp.getNumPaths(); ++i)
+                    {
+                        const File p (oldSp[i]);
+                        if (p == target)
+                            ok = true; // dropped
+                        else
+                            newSp.addIfNotAlreadyThere (p);
+                    }
+                    if (ok)
+                        setLastScanPathFor (context, jn, newSp);
+                }
+            }
+            postCompletion (completion, ok);
+        });
+
+    // elementGetPluginFormatsEnabled()
+    //   Output: { <webFormat>: bool } for every supported format.
+    registerFn (
+        Identifier ("elementGetPluginFormatsEnabled"),
+        [this, postCompletion] (const Array<var>&, auto completion) {
+            auto* props = context.settings().getUserSettings();
+            DynamicObject::Ptr root (new DynamicObject());
+            for (const char* tok : kWebScanFormats)
+            {
+                const String web (tok);
+                const String jn (webFormatToJuceName (web));
+                if (jn.isEmpty() || ! context.plugins().isAudioPluginFormatSupported (jn))
+                    continue;
+                root->setProperty (web, isPluginFormatEnabledIn (props, jn));
+            }
+            postCompletion (completion, JSON::toString (var (root.get())));
+        });
+
+    // elementSetPluginFormatEnabled(format, on)
+    //   Input:  args[0] = React format token, args[1] = bool.
+    //   Output: bool — true if the format is supported and the flag was written.
+    //   The flag gates which formats elementScanPlugins / elementRescanPlugins
+    //   actually scan, so disabling a format genuinely skips it next scan.
+    registerFn (
+        Identifier ("elementSetPluginFormatEnabled"),
+        [this, postCompletion] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 2)
+            {
+                const String jn (webFormatToJuceName (args[0].toString()));
+                if (jn.isNotEmpty() && context.plugins().isAudioPluginFormatSupported (jn))
+                {
+                    if (auto* props = context.settings().getUserSettings())
+                    {
+                        props->setValue (pluginFormatEnabledKey (jn), (bool) args[1]);
+                        props->saveIfNeeded();
+                        ok = true;
+                    }
+                }
+            }
+            postCompletion (completion, ok);
         });
 
     if (! skipBrowser)

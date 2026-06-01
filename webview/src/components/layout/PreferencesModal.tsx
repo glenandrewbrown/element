@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { useHostExtrasStore } from "../../stores/useHostExtrasStore";
 import { useAppStore } from "../../stores/useAppStore";
 import type { CableRouting } from "../../stores/useAppStore";
@@ -12,6 +13,8 @@ import {
   nativeWebDismissOverlay,
 } from "../../bridge/nativePrefs";
 import { nativeGraphSetCanvasOptions } from "../../bridge/nativeGraph";
+import { usePluginScanStore } from "../../stores/usePluginScanStore";
+import type { ScanPluginFormat } from "../../bridge/nativePluginScan";
 import { Icon } from "../neu/Icon";
 
 // ── Tab types ────────────────────────────────────────────────────────────────
@@ -208,6 +211,210 @@ function ToggleRow({
   );
 }
 
+/**
+ * Plugin scan section (Audio tab) — REAL, wired to usePluginScanStore.
+ * Scan/Rescan trigger the out-of-process PluginManager scanner; format toggles
+ * gate which formats scan; per-format scan paths are editable (type an absolute
+ * path — the host validates it exists; the webview has no native folder picker).
+ * Scan progress is honest-indeterminate (spinner + current plugin, NO fake %).
+ */
+const SCAN_FORMATS: ScanPluginFormat[] = ["VST3", "AU", "CLAP", "LV2"];
+
+function PluginScanSection() {
+  const scanning = usePluginScanStore((s) => s.scanning);
+  const currentPlugin = usePluginScanStore((s) => s.currentPlugin);
+  const pluginCount = usePluginScanStore((s) => s.pluginCount);
+  const paths = usePluginScanStore(useShallow((s) => s.paths));
+  const enabled = usePluginScanStore(useShallow((s) => s.enabled));
+  const supportedFormats = usePluginScanStore(useShallow((s) => s.formats));
+  const pathsLoaded = usePluginScanStore((s) => s.pathsLoaded);
+  const refreshPaths = usePluginScanStore((s) => s.refreshPaths);
+  const refreshStatus = usePluginScanStore((s) => s.refreshStatus);
+  const scan = usePluginScanStore((s) => s.scan);
+  const rescan = usePluginScanStore((s) => s.rescan);
+  const addPath = usePluginScanStore((s) => s.addPath);
+  const removePath = usePluginScanStore((s) => s.removePath);
+  const setFormatEnabled = usePluginScanStore((s) => s.setFormatEnabled);
+
+  const [addTarget, setAddTarget] = useState<ScanPluginFormat | null>(null);
+  const [addValue, setAddValue] = useState("");
+  const [addError, setAddError] = useState(false);
+
+  useEffect(() => {
+    if (!pathsLoaded) void refreshPaths();
+    void refreshStatus();
+  }, [pathsLoaded, refreshPaths, refreshStatus]);
+
+  const formats = supportedFormats.length > 0 ? supportedFormats : SCAN_FORMATS;
+
+  const submitAddPath = async () => {
+    if (addTarget == null) return;
+    const ok = await addPath(addTarget, addValue.trim());
+    if (ok) {
+      setAddValue("");
+      setAddTarget(null);
+      setAddError(false);
+    } else {
+      setAddError(true);
+    }
+  };
+
+  return (
+    <div>
+      <SectionHeading>Plugin scan</SectionHeading>
+      <div className="space-y-3">
+        {/* Scan / Rescan */}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            disabled={scanning}
+            onClick={() => void scan()}
+            className="flex-1 py-2 rounded text-[11px] font-bold uppercase tracking-wide bg-elevated neu-raised text-text-primary hover:bg-surface-elevated transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+            title="Scan all enabled plugin formats (elementScanPlugins)"
+          >
+            Scan
+          </button>
+          <button
+            type="button"
+            disabled={scanning}
+            onClick={() => void rescan()}
+            className="flex-1 py-2 rounded text-[11px] font-bold uppercase tracking-wide bg-pressed neu-inset text-text-secondary hover:text-text-primary transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+            title="Rescan all enabled plugin formats (elementRescanPlugins)"
+          >
+            Rescan
+          </button>
+        </div>
+
+        {/* Honest indeterminate scan status */}
+        {scanning ? (
+          <div className="flex items-center gap-2 text-[10px] text-accent-blue">
+            <Icon name="RefreshCw" size={12} aria-hidden className="animate-spin" />
+            <span className="truncate" title={currentPlugin}>
+              Scanning{currentPlugin ? `: ${currentPlugin}` : "…"}
+            </span>
+          </div>
+        ) : (
+          <p className="text-[9px] text-text-dim">
+            {pluginCount > 0
+              ? `${pluginCount} plugins known. Disabled formats are skipped.`
+              : "No plugins scanned yet."}
+          </p>
+        )}
+
+        {/* Format enable toggles */}
+        <div>
+          <span className="block text-[9px] font-bold uppercase tracking-widest text-text-secondary mb-2">
+            Formats
+          </span>
+          <div className="space-y-2">
+            {formats.map((f) => (
+              <ToggleRow
+                key={f}
+                label={f}
+                checked={enabled[f] ?? true}
+                disabled={scanning}
+                onChange={(v) => void setFormatEnabled(f, v)}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* Per-format scan paths */}
+        <div className="space-y-3">
+          {formats.map((f) => {
+            const dirs = paths[f] ?? [];
+            return (
+              <div key={f}>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[9px] font-bold uppercase tracking-widest text-text-secondary">
+                    {f} search paths
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAddTarget(addTarget === f ? null : f);
+                      setAddValue("");
+                      setAddError(false);
+                    }}
+                    className="text-[9px] font-bold uppercase tracking-wider text-accent-blue hover:text-accent-teal transition-colors flex items-center gap-0.5 cursor-pointer"
+                    title={`Add a scan directory for ${f} (elementAddPluginPath)`}
+                  >
+                    <Icon name="Plus" size={10} aria-hidden />
+                    Add
+                  </button>
+                </div>
+
+                {dirs.length === 0 ? (
+                  <div className="text-[10px] text-text-dim bg-pressed rounded px-2 py-1">
+                    Default locations.
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    {dirs.map((dir) => (
+                      <div
+                        key={dir}
+                        className="group flex items-center gap-2 text-[10px] text-text-secondary bg-pressed rounded px-2 py-1"
+                        title={dir}
+                      >
+                        <span className="truncate flex-1">{dir}</span>
+                        <button
+                          type="button"
+                          onClick={() => void removePath(f, dir)}
+                          className="shrink-0 text-text-dim hover:text-error transition-colors cursor-pointer"
+                          aria-label={`Remove ${dir}`}
+                          title="Remove this scan path (elementRemovePluginPath)"
+                        >
+                          <Icon name="X" size={11} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {addTarget === f ? (
+                  <div className="flex gap-1 mt-1">
+                    <input
+                      type="text"
+                      autoFocus
+                      value={addValue}
+                      onChange={(e) => {
+                        setAddValue(e.target.value);
+                        setAddError(false);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") void submitAddPath();
+                        if (e.key === "Escape") setAddTarget(null);
+                      }}
+                      placeholder="/absolute/path/to/folder"
+                      className={`flex-1 bg-pressed neu-inset rounded px-2 py-1 text-[10px] text-text-primary border focus:outline-none transition-colors ${
+                        addError
+                          ? "border-error/60"
+                          : "border-white/5 focus:border-accent-blue/40"
+                      }`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void submitAddPath()}
+                      className="px-2.5 py-1 rounded text-[9px] font-bold uppercase tracking-wider bg-elevated neu-raised text-text-primary hover:bg-surface-elevated transition-colors cursor-pointer"
+                    >
+                      Add
+                    </button>
+                  </div>
+                ) : null}
+                {addTarget === f && addError ? (
+                  <div className="text-[9px] text-error mt-0.5">
+                    Not a directory on this system.
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Tab panels ───────────────────────────────────────────────────────────────
 
 function AudioTab() {
@@ -292,37 +499,8 @@ function AudioTab() {
         </div>
       </div>
 
-      {/* Plugin scan — honest-disabled (Pillar-2 gap) */}
-      <div>
-        <SectionHeading>Plugin scan</SectionHeading>
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] text-text-primary">Scan for plugins</span>
-            <DisabledBadge bridge="elementScanPlugins" />
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] text-text-primary">Rescan (incremental)</span>
-            <DisabledBadge bridge="elementRescanPlugins" />
-          </div>
-          <div className="space-y-1">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[9px] font-bold uppercase tracking-widest text-text-secondary">
-                Plugin search paths
-              </span>
-              <DisabledBadge bridge="elementGetPluginPaths" />
-            </div>
-            {["/Library/Audio/Plug-Ins/VST3", "/Library/Audio/Plug-Ins/Components"].map((p) => (
-              <div
-                key={p}
-                className="text-[10px] text-text-dim bg-pressed rounded px-2 py-1 truncate opacity-40"
-                title="Paths not editable until elementGetPluginPaths / elementAddPluginPath bridge is exposed"
-              >
-                {p}
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
+      {/* Plugin scan — REAL (Pillar-2 bridge) */}
+      <PluginScanSection />
 
       {/* OSC host */}
       <div>
