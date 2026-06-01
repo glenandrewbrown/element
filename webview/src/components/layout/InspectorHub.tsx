@@ -1,13 +1,17 @@
 import {
+  createContext,
   useCallback,
+  useContext,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
 import {
   useGraphStore,
   selectSelectedNode,
+  selectSelectedEdge,
   selectNodes,
   selectEdges,
 } from "../../stores/useGraphStore";
@@ -26,7 +30,12 @@ import {
   selectHasHostData,
 } from "../../stores/useEngineSnapshotStore";
 import { NeuButton, NeuDisplay } from "../neu";
-import type { BlockCategory, BlockData } from "../../data/types";
+import type {
+  BlockCategory,
+  BlockData,
+  CableData,
+  SignalType,
+} from "../../data/types";
 import {
   nativeGetNodeParameters,
   nativeGraphSetNodeNote,
@@ -41,13 +50,18 @@ import {
 import { useHostExtrasStore } from "../../stores/useHostExtrasStore";
 import { useCableMeterStore } from "../../stores/useCableMeterStore";
 import {
+  deriveBuses,
+  selectCableBusMap,
+  useBusStore,
+  type BusEntry,
+} from "../../stores/useBusStore";
+import {
   nativePluginEditorClose,
   nativePluginEditorFloat,
   nativePluginEditorOpen,
   nativePluginEditorSetBounds,
 } from "../../bridge/nativePluginEditor";
 
-import { ConnectionEditor } from "./ConnectionEditor";
 import { ScriptEditor } from "../canvas/ScriptEditor";
 import { BusInspector } from "./BusInspector";
 import { LiveHealth } from "./LiveHealth";
@@ -63,10 +77,18 @@ import { getFunctionMeta } from "../../data/functionGroup";
 
 // Verdict #6 — the docked tabbed shell: Block / Bus / Cable / Health. The
 // per-block detail (params, A/B, plugin embed, notes, script) lives under Block;
-// the wireless-bus auditor under Bus; routing + cable meters under Cable; engine
-// vitals + meters + log under Health. Every previously-wired surface is re-homed
-// here — nothing is dropped (three-UI rule).
+// the live BUS activity + auditor under Bus; the live CABLE signal monitor under
+// Cable; engine vitals + meters + log under Health. Wizard R1: Cable is now a
+// real-time monitor (level/peak/signal-type from useCableMeterStore), NOT a
+// routing editor; Bus gains live activity meters + sidechain + open-editor.
+// Every previously-wired surface is re-homed here — nothing is dropped.
 type Tab = "block" | "bus" | "cable" | "health";
+
+// Lets nested tab bodies request a tab switch — e.g. the Bus tab's "Open editor"
+// affordance dives a bus's destination block and jumps to the Block tab so its
+// effects (a reverb on the bus, say) surface for editing. Provided by
+// InspectorHub; consumers no-op if unprovided (e.g. a body rendered in isolation).
+const InspectorTabContext = createContext<((tab: Tab) => void) | null>(null);
 
 // Category accent (raw HSL triplet so we can alpha-compose for the gradient
 // header + glow, exactly as Block.tsx resolves its accent). Frozen W0 tokens.
@@ -83,6 +105,120 @@ const catLabel: Record<BlockCategory, string> = {
   midifx: "MIDI Effect",
   modulator: "Modulator / Utility",
 };
+
+// ── Signal-type vocabulary (Cable + Bus monitors) ──
+// The SEPARATE signal-type system (W0-TOKENS §3): cables/ports are coloured by
+// what flows through them, not by block category. Audio = blue, MIDI = teal,
+// Value/CV = amber — the SAME palette `Cable.tsx` strokes with.
+const sigAccent: Record<SignalType, string> = {
+  audio: "var(--sig-audio)",
+  midi: "var(--sig-midi)",
+  value: "var(--sig-value)",
+};
+
+const sigLabel: Record<SignalType, string> = {
+  audio: "Audio",
+  midi: "MIDI",
+  value: "Value / CV",
+};
+
+// What the live 0–1 reading from `useCableMeterStore` actually MEANS per signal
+// type — honesty: it is a true RMS amplitude for audio, but for MIDI/value the
+// host packs note/CV ACTIVITY into the same field, so we label it as such
+// rather than implying a calibrated dB meter on a non-audio wire.
+const sigMeterKind: Record<SignalType, string> = {
+  audio: "RMS LEVEL",
+  midi: "MIDI ACTIVITY",
+  value: "CV ACTIVITY",
+};
+
+// Channel-count → human label (mono / stereo / 5.1). CableData.channelCount is
+// the locked 1 | 2 | 6 union.
+const channelLabel: Record<number, string> = {
+  1: "Mono",
+  2: "Stereo",
+  6: "5.1",
+};
+
+// Convert a 0–1 linear amplitude to a dBFS string. Honest: a true silent wire
+// reads −∞; we floor the display at −60 dB (below audibility) like a hardware
+// meter scale. Only meaningful for AUDIO; callers gate it by signal type.
+function toDbfs(amp: number): string {
+  if (amp <= 0.0009) return "−∞";
+  const db = 20 * Math.log10(amp);
+  return `${db <= -60 ? "−60" : (db < 0 ? "−" : "+") + Math.abs(db).toFixed(1)}`;
+}
+
+/**
+ * Faithful digital-VU LED ladder — the SAME ramp language as `Block.tsx`'s
+ * `RmsMeter` (green floor → amber shoulder (last ~5) → red ceiling (last ~2)),
+ * scaled up here for the Inspector's monitoring surface. The ramp is by
+ * POSITION (universal VU language); `level` is the real 0–1 reading and the
+ * lit-cell count is the only thing it drives — never fabricated motion.
+ *
+ * `vertical` renders a tall column (per-channel L/R stack on the Cable tab);
+ * the default is a wide horizontal strip (bus rows, overview rows).
+ */
+function VuLadder({
+  level,
+  active,
+  segments = 24,
+  vertical = false,
+  height = 8,
+}: {
+  level: number;
+  active: boolean;
+  segments?: number;
+  vertical?: boolean;
+  height?: number;
+}) {
+  const amp = Math.min(1, Math.max(0, level));
+  const lit = Math.round(amp * segments);
+  const cells = Array.from({ length: segments }).map((_, i) => {
+    // Position on the ramp. For vertical, index 0 is the BOTTOM cell (green),
+    // so the column fills upward into amber/red like a real meter bridge.
+    const pos = vertical ? segments - 1 - i : i;
+    const isClipSeg = pos >= segments - 2;
+    const isWarnSeg = pos >= segments - 5;
+    const litThis = pos < lit;
+    const segColor = isClipSeg
+      ? "hsl(var(--status-clip))"
+      : isWarnSeg
+        ? "hsl(var(--status-warn))"
+        : "hsl(var(--status-ok))";
+    return (
+      <div
+        key={i}
+        className={vertical ? "w-full rounded-[1px]" : "flex-1 rounded-[1px]"}
+        style={{
+          flex: vertical ? "1 1 0" : undefined,
+          background: segColor,
+          opacity: litThis ? (active ? 1 : 0.4) : 0.14,
+          boxShadow: litThis
+            ? `0 0 2px ${segColor}, inset 0 0.5px 0 rgba(255,255,255,0.3)`
+            : "inset 0 0.5px 1px rgba(0,0,0,0.6)",
+        }}
+      />
+    );
+  });
+  return (
+    <div
+      className={vertical ? "flex flex-col gap-[2px]" : "flex gap-[2px] items-stretch"}
+      style={{
+        padding: 2,
+        borderRadius: 3,
+        ...(vertical ? { width: 9, height: "100%" } : { height }),
+        // Recessed near-black well so the cells sit INSIDE the chassis (mockup
+        // VU bridge), shadow recipe from W0-TOKENS port-well family.
+        background: "hsl(240 12% 6%)",
+        boxShadow:
+          "inset 1.5px 1.5px 2.5px rgba(0,0,0,0.85), inset -0.5px -0.5px 1px rgba(255,255,255,0.04)",
+      }}
+    >
+      {cells}
+    </div>
+  );
+}
 
 // Function-type icon — the MEANINGFUL line glyph (reverb arcs, EQ curve, synth
 // wave, drum…) inferred from the Block's name + category. This mirrors
@@ -660,6 +796,633 @@ function MetersPanel() {
   );
 }
 
+// ════════════════════════════════════════════════════════════════════════
+//  CABLE TAB (P1 rework) — live signal monitor for the selected cable(s).
+//
+//  This is NOT a routing editor (that moved off this tab per Wizard R1: it
+//  was "wrong on both Element AND mockup"). It is a rich, real-time read of
+//  the signal flowing through the selected Cable, sourced from the SAME
+//  `useCableMeterStore` 60Hz feed that drives `Cable.tsx`'s stroke and the
+//  Block VU. Nothing here is fabricated: the meter's lit-cell count and every
+//  numeric is the engine's real per-edge level, and anything with no bridge
+//  yet (spectrum, phase correlation) shows an explicit "not wired" state.
+// ════════════════════════════════════════════════════════════════════════
+
+/**
+ * Live per-edge level subscription — the canonical Cable-tab data source.
+ * Returns the real 0–1 reading keyed by edge id (RMS for audio, packed
+ * activity for MIDI/value), exactly as `Cable.tsx` reads it. Selector returns
+ * a primitive number → `Object.is` short-circuits re-renders on a steady wire
+ * (re-render-safe; mirrors the store's epsilon-diff contract).
+ */
+function useCableLevel(edgeId: string | undefined): number {
+  return useCableMeterStore((s) => (edgeId ? (s.levels[edgeId] ?? 0) : 0));
+}
+
+/**
+ * Honest peak-hold: tracks the MAX observed level since selection and decays
+ * it slowly back toward the live level (classic meter ballistics). This is a
+ * DERIVED real statistic — it only ever holds a value the engine actually
+ * pushed, never a fabricated one. Re-render-safe: the rAF loop writes a ref
+ * and only `setState`s when the displayed peak actually moves.
+ */
+function usePeakHold(level: number, resetKey: string | undefined): number {
+  const [peak, setPeak] = useState(0);
+  const peakRef = useRef(0);
+  const levelRef = useRef(level);
+  levelRef.current = level;
+
+  // Reset the hold when the monitored cable changes.
+  useEffect(() => {
+    peakRef.current = 0;
+    setPeak(0);
+  }, [resetKey]);
+
+  useEffect(() => {
+    let raf = 0;
+    const tick = () => {
+      const live = levelRef.current;
+      let next = peakRef.current;
+      if (live >= next) {
+        next = live; // instant attack to a new peak
+      } else {
+        next = Math.max(live, next - 0.004); // ~slow release
+      }
+      if (Math.abs(next - peakRef.current) > 0.001) {
+        peakRef.current = next;
+        setPeak(next);
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
+  return peak;
+}
+
+// Small signal-coloured icon used in the Cable/Bus monitor headers — the
+// MEANINGFUL signal glyph (audio waveform / MIDI note / CV step), not an
+// abstract shape. Lucide paths inlined to keep this disjoint from Icon.tsx.
+function SignalGlyph({ type, size = 13, color }: { type: SignalType; size?: number; color: string }) {
+  const path =
+    type === "audio"
+      ? // AudioWaveform
+        "M2 13a2 2 0 0 0 2-2V7a2 2 0 0 1 4 0v13a2 2 0 0 0 4 0V4a2 2 0 0 1 4 0v13a2 2 0 0 0 4 0v-4a2 2 0 0 1 2-2"
+      : type === "midi"
+        ? // Music note
+          "M9 18V5l12-2v13M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm12-2a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"
+        : // CV / value — stepped activity
+          "M3 12h4l2-7 4 14 2-7h6";
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="shrink-0"
+    >
+      <path d={path} />
+    </svg>
+  );
+}
+
+// A labelled numeric read-out cell — recessed well, value in white, caption in
+// secondary. Used across the Cable monitor stat grid.
+function StatCell({
+  label,
+  value,
+  valueColor,
+  mono = true,
+}: {
+  label: string;
+  value: string;
+  valueColor?: string;
+  mono?: boolean;
+}) {
+  return (
+    <div className="px-2 py-1.5 rounded-md bg-pressed shadow-[inset_2px_2px_5px_rgba(0,0,0,0.45),inset_-1px_-1px_3px_rgba(255,255,255,0.04)]">
+      <div className="text-[8px] font-bold uppercase tracking-widest text-text-secondary leading-none">
+        {label}
+      </div>
+      <div
+        className={[
+          "mt-1 text-[13px] font-bold leading-none tabular-nums",
+          mono ? "font-mono" : "",
+          valueColor ? "" : "text-text-primary",
+        ].join(" ")}
+        style={valueColor ? { color: valueColor } : undefined}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
+// An honest "no bridge yet" tile — explicitly NOT data. Used for monitors the
+// engine does not expose a feed for (spectrum, phase correlation). Glen's hard
+// rule: never fake data; show the gap instead.
+function NotWiredTile({ label, detail }: { label: string; detail: string }) {
+  return (
+    <div className="px-2.5 py-2 rounded-md bg-pressed/60 border border-dashed border-white/10 shadow-[inset_2px_2px_5px_rgba(0,0,0,0.35)]">
+      <div className="flex items-center gap-1.5">
+        <span className="text-[8px] font-bold uppercase tracking-widest text-text-dim leading-none">
+          {label}
+        </span>
+        <span className="text-[7px] font-bold uppercase tracking-wider text-text-dim/80 px-1 py-0.5 rounded bg-white/5 leading-none">
+          not wired
+        </span>
+      </div>
+      <div className="mt-1.5 text-[9px] text-text-dim leading-snug">{detail}</div>
+    </div>
+  );
+}
+
+/** Resolve a cable's source/target block + port labels for the route line. */
+function useCableRoute(cable: CableData | undefined) {
+  const nodes = useGraphStore(selectNodes);
+  return useMemo(() => {
+    if (!cable) return null;
+    const src = nodes.find((n) => n.id === cable.source);
+    const tgt = nodes.find((n) => n.id === cable.target);
+    const portLabel = (b: BlockData | undefined, portId: string) =>
+      b?.ports.find((p) => p.id === portId)?.label ?? portId;
+    return {
+      sourceName: src?.name ?? cable.source,
+      sourceCat: src?.category ?? ("audiofx" as BlockCategory),
+      sourcePort: portLabel(src, cable.sourcePort),
+      targetName: tgt?.name ?? cable.target,
+      targetCat: tgt?.category ?? ("audiofx" as BlockCategory),
+      targetPort: portLabel(tgt, cable.targetPort),
+    };
+  }, [cable, nodes]);
+}
+
+/** The full monitor for ONE selected cable. */
+function CableMonitor({ cable }: { cable: CableData }) {
+  const sig = (cable.signalType ?? "audio") as SignalType;
+  const accent = `hsl(${sigAccent[sig]})`;
+  const level = useCableLevel(cable.id);
+  const peak = usePeakHold(level, cable.id);
+  const route = useCableRoute(cable);
+  const amp = Math.min(1, Math.max(0, level));
+  const active = amp > 0.01;
+  const isAudio = sig === "audio";
+  const channels = cable.channelCount ?? 2;
+
+  return (
+    <div className="space-y-3">
+      {/* Signal-typed header bar — gradient in the cable's signal colour, the
+          MEANINGFUL signal glyph, the live route, and an ACTIVE/IDLE state. */}
+      <div
+        className="rounded-lg overflow-hidden neu-raised"
+        style={{ background: "hsl(var(--surface))" }}
+      >
+        <div
+          className="flex items-center gap-2 px-2.5"
+          style={{
+            height: 30,
+            background: `linear-gradient(180deg, ${accent} 0%, hsl(${sigAccent[sig]} / 0.72) 100%)`,
+            color: "#15151A",
+            boxShadow:
+              "inset 0 1px 0 rgba(255,255,255,0.18), inset 0 -1px 0 rgba(0,0,0,0.3)",
+          }}
+        >
+          <SignalGlyph type={sig} size={14} color="#15151A" />
+          <span className="text-[12px] font-bold truncate flex-1 leading-none tracking-wide">
+            {sigLabel[sig]} Cable
+          </span>
+          {cable.isSidechain && (
+            <span
+              className="text-[8px] font-mono font-bold px-1 rounded leading-none shrink-0"
+              style={{ background: "rgba(0,0,0,0.32)", color: "rgba(255,255,255,0.92)" }}
+            >
+              SIDECHAIN
+            </span>
+          )}
+          <span
+            className="text-[8px] font-mono font-bold px-1 rounded leading-none shrink-0"
+            style={{ background: "rgba(0,0,0,0.32)", color: "rgba(255,255,255,0.9)" }}
+          >
+            {channelLabel[channels] ?? `${channels}ch`}
+          </span>
+        </div>
+        {/* Route sub-row: source · port → target · port */}
+        <div className="flex items-center gap-1.5 px-2.5 py-1.5 text-[10px]">
+          <span className="text-text-primary font-bold truncate max-w-[40%]">
+            {route?.sourceName}
+          </span>
+          <span className="text-text-dim truncate">{route?.sourcePort}</span>
+          <span className="shrink-0" style={{ color: accent }}>
+            →
+          </span>
+          <span className="text-text-primary font-bold truncate max-w-[40%]">
+            {route?.targetName}
+          </span>
+          <span className="text-text-dim truncate">{route?.targetPort}</span>
+        </div>
+      </div>
+
+      {/* Live program meter — tall VU ladder + numeric readouts beside it.
+          The ladder is the real per-edge reading; the dB scale labels frame
+          the column like a hardware meter bridge. */}
+      <div className="flex gap-3 p-3 rounded-lg bg-surface neu-raised">
+        {/* Scale ticks — dBFS for audio, % for MIDI/CV (honest: a non-audio
+            wire has no dB scale, so its activity reads 0–100, not dBFS). */}
+        <div className="flex flex-col justify-between text-[7px] font-mono text-text-dim tabular-nums py-0.5 leading-none">
+          {(isAudio
+            ? ["0", "-6", "-18", "-∞"]
+            : ["100", "66", "33", "0"]
+          ).map((tick) => (
+            <span key={tick}>{tick}</span>
+          ))}
+        </div>
+        {/* The meter column (~120px tall) */}
+        <div style={{ height: 120 }}>
+          <VuLadder level={amp} active={active} segments={28} vertical />
+        </div>
+        {/* Peak-hold ghost column — a second thin ladder driven by the held
+            peak so the user sees recent maxima next to the live level. */}
+        <div style={{ height: 120 }}>
+          <VuLadder level={peak} active={peak > 0.01} segments={28} vertical />
+        </div>
+
+        {/* Numerics */}
+        <div className="flex-1 flex flex-col justify-between min-w-0">
+          <div className="space-y-1.5">
+            <div className="text-[8px] font-bold uppercase tracking-widest text-text-secondary leading-none">
+              {sigMeterKind[sig]}
+            </div>
+            <div
+              className="text-[26px] font-bold font-mono leading-none tabular-nums"
+              style={{ color: active ? accent : "hsl(var(--muted-foreground))" }}
+            >
+              {isAudio ? `${toDbfs(amp)}` : `${Math.round(amp * 100)}`}
+              <span className="text-[11px] text-text-dim ml-1">
+                {isAudio ? "dB" : "%"}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span
+                className="inline-block w-1.5 h-1.5 rounded-full"
+                style={{
+                  background: active ? "hsl(var(--status-ok))" : "hsl(var(--muted-foreground))",
+                  boxShadow: active ? "0 0 5px hsl(var(--status-ok))" : "none",
+                }}
+              />
+              <span className="text-[9px] font-bold uppercase tracking-wider text-text-secondary">
+                {active ? "Signal present" : "Idle"}
+              </span>
+            </div>
+          </div>
+          <div className="text-[8px] text-text-dim leading-snug">
+            Peak hold{" "}
+            <span className="font-mono font-bold text-text-secondary">
+              {isAudio ? `${toDbfs(peak)} dB` : `${Math.round(peak * 100)}%`}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Stat grid — signal type, channels, peak, sidechain. Real metadata
+          off the CableData model + the live store. */}
+      <div className="grid grid-cols-2 gap-2">
+        <StatCell label="Signal" value={sigLabel[sig]} valueColor={accent} mono={false} />
+        <StatCell
+          label="Channels"
+          value={`${channelLabel[channels] ?? channels} · ${channels}ch`}
+          mono={false}
+        />
+        <StatCell
+          label={isAudio ? "Peak (dBFS)" : "Peak"}
+          value={isAudio ? `${toDbfs(peak)} dB` : `${Math.round(peak * 100)}%`}
+        />
+        <StatCell
+          label="Sidechain"
+          value={cable.isSidechain ? "Yes" : "No"}
+          valueColor={cable.isSidechain ? "hsl(var(--cat-audiofx))" : undefined}
+          mono={false}
+        />
+      </div>
+
+      {/* Honest gaps — monitors with no engine bridge yet. */}
+      <div className="space-y-2">
+        <NotWiredTile
+          label="Spectrum"
+          detail={
+            isAudio
+              ? "Per-cable FFT bins are not exposed by the engine bridge yet — only summed RMS is. Pillar-2."
+              : "Spectral analysis applies to audio cables only."
+          }
+        />
+        {isAudio && channels >= 2 && (
+          <NotWiredTile
+            label="Phase / correlation"
+            detail="Stereo correlation metering needs a per-channel L/R feed; the bridge currently sends one summed RMS per cable. Pillar-2."
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** One row in the no-selection cable overview — a live mini-meter per cable. */
+function CableOverviewRow({
+  cable,
+  blockNames,
+  onSelect,
+}: {
+  cable: CableData;
+  blockNames: Map<string, string>;
+  onSelect: () => void;
+}) {
+  const sig = (cable.signalType ?? "audio") as SignalType;
+  const accent = `hsl(${sigAccent[sig]})`;
+  const level = useCableLevel(cable.id);
+  const amp = Math.min(1, Math.max(0, level));
+  const active = amp > 0.01;
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md bg-surface text-left t-precision shadow-[-1px_-1px_4px_rgba(255,255,255,0.03),1px_1px_4px_rgba(0,0,0,0.3)] hover:bg-elevated hover:shadow-[0_0_0_1px_var(--row-accent),-1px_-1px_4px_rgba(255,255,255,0.04),1px_1px_5px_rgba(0,0,0,0.4)]"
+      style={{ ["--row-accent" as string]: `hsl(${sigAccent[sig]} / 0.5)` }}
+    >
+      <SignalGlyph type={sig} size={12} color={accent} />
+      <span className="text-[10px] font-bold text-text-primary truncate shrink min-w-0">
+        {blockNames.get(cable.source) ?? cable.source}
+      </span>
+      <span className="shrink-0 text-[9px]" style={{ color: accent }}>
+        →
+      </span>
+      <span className="text-[10px] font-bold text-text-primary truncate shrink min-w-0 flex-1">
+        {blockNames.get(cable.target) ?? cable.target}
+      </span>
+      <div className="w-16 shrink-0">
+        <VuLadder level={amp} active={active} segments={12} height={7} />
+      </div>
+    </button>
+  );
+}
+
+/** No-selection resting state for the Cable tab — a live board-wide monitor. */
+function CableOverview() {
+  const edges = useGraphStore(selectEdges) as CableData[];
+  const nodes = useGraphStore(selectNodes);
+  const selectEdgeOnGraph = useGraphStore((s) => s.selectEdge);
+  const blockNames = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const n of nodes) m.set(n.id, n.name);
+    return m;
+  }, [nodes]);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] font-bold text-text-secondary uppercase tracking-widest">
+          Cable Monitor
+        </span>
+        <span className="text-[10px] text-text-dim tabular-nums">
+          {edges.length} cable{edges.length === 1 ? "" : "s"}
+        </span>
+      </div>
+      {edges.length === 0 ? (
+        <div className="text-[10px] text-text-dim leading-relaxed py-4 text-center">
+          No cables on this Board. Select a cable on the canvas to monitor its
+          live level, peak and signal type here.
+        </div>
+      ) : (
+        <>
+          <div className="text-[9px] text-text-dim leading-snug">
+            Live level per cable (real engine RMS / activity). Select one for the
+            full monitor.
+          </div>
+          <div className="space-y-1.5">
+            {edges.map((cable) => (
+              <CableOverviewRow
+                key={cable.id}
+                cable={cable}
+                blockNames={blockNames}
+                onSelect={() => selectEdgeOnGraph(cable.id)}
+              />
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Cable tab dispatcher — selected cable → full monitor, else overview. */
+function CableTabBody() {
+  const selectedCable = useGraphStore(selectSelectedEdge) as
+    | CableData
+    | undefined;
+  if (!selectedCable) return <CableOverview />;
+  return <CableMonitor cable={selectedCable} />;
+}
+
+// ════════════════════════════════════════════════════════════════════════
+//  BUS TAB (P2 depth) — keep the praised BusInspector UI, ADD a live
+//  activity panel above it: per-bus level meters, volume read-out, sidechain
+//  state, and a direct "open bus editor" affordance (dives the bus endpoint
+//  block so its effects — e.g. a reverb — surface in the Block tab).
+//
+//  DECISION (Wizard R1 #4): buses are IO send/receive blocks, NOT wireless
+//  cables. This panel is framed as monitoring/opening EXISTING buses, never as
+//  creating wireless ones. The broader send/receive-block model is a separate
+//  queued task — this panel just must not contradict the decision.
+// ════════════════════════════════════════════════════════════════════════
+
+/** Live max level over a bus's cables (real per-edge RMS, primitive result). */
+function useBusLevel(cableIds: string[]): number {
+  return useCableMeterStore((s) => {
+    let max = 0;
+    for (const id of cableIds) {
+      const lvl = s.levels[id] ?? 0;
+      if (lvl > max) max = lvl;
+    }
+    return max;
+  });
+}
+
+function BusActivityRow({
+  bus,
+  cables,
+  blockNames,
+  onOpenEditor,
+  onSelect,
+}: {
+  bus: BusEntry;
+  cables: CableData[];
+  blockNames: Map<string, string>;
+  onOpenEditor: (blockId: string) => void;
+  onSelect: () => void;
+}) {
+  const accent = `hsl(${sigAccent[bus.signalType]})`;
+  const level = useBusLevel(bus.cableIds);
+  const amp = Math.min(1, Math.max(0, level));
+  const active = amp > 0.01;
+  // Sidechain state: real — derived from whether ANY cable on the bus is a
+  // sidechain feed.
+  const hasSidechain = bus.cableIds.some(
+    (id) => cables.find((c) => c.id === id)?.isSidechain,
+  );
+  // The "open the bus" target = the first DESTINATION block the bus feeds
+  // (e.g. the reverb a Reverb Send bus lands on). Opening it surfaces that
+  // block's controls in the Block tab.
+  const destEndpoint = bus.endpoints.find((e) => e.direction === "target");
+  const destName = destEndpoint
+    ? (blockNames.get(destEndpoint.blockId) ?? destEndpoint.blockId)
+    : undefined;
+
+  return (
+    <div
+      className="rounded-md bg-surface p-2.5 space-y-2 t-precision shadow-[-1px_-1px_4px_rgba(255,255,255,0.03),1px_1px_5px_rgba(0,0,0,0.32)] hover:shadow-[0_0_0_1px_var(--bus-accent),-1px_-1px_4px_rgba(255,255,255,0.04),1px_1px_6px_rgba(0,0,0,0.4)]"
+      style={{ ["--bus-accent" as string]: `hsl(${sigAccent[bus.signalType]} / 0.5)` }}
+    >
+      {/* Row 1: name + signal swatch + sidechain badge + level numeric */}
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onSelect}
+          className="flex items-center gap-2 min-w-0 flex-1 text-left"
+          title="Select bus cable"
+        >
+          <span
+            className="inline-block w-2 h-2 rounded-full shrink-0"
+            style={{ background: accent, boxShadow: `0 0 5px ${accent}` }}
+          />
+          <span
+            className="text-[11px] font-bold uppercase tracking-tight truncate"
+            style={{ color: accent }}
+          >
+            {bus.name}
+          </span>
+          {hasSidechain && (
+            <span
+              className="text-[7px] font-bold uppercase tracking-wider px-1 py-0.5 rounded leading-none shrink-0"
+              style={{ background: "hsl(var(--cat-audiofx) / 0.18)", color: "hsl(var(--cat-audiofx))" }}
+            >
+              SC
+            </span>
+          )}
+        </button>
+        <span
+          className="text-[10px] font-mono font-bold tabular-nums shrink-0"
+          style={{ color: active ? accent : "hsl(var(--muted-foreground))" }}
+        >
+          {bus.signalType === "audio"
+            ? `${toDbfs(amp)} dB`
+            : `${Math.round(amp * 100)}%`}
+        </span>
+      </div>
+
+      {/* Row 2: live activity meter (real bus level) */}
+      <VuLadder level={amp} active={active} segments={20} height={7} />
+
+      {/* Row 3: routing summary + actions */}
+      <div className="flex items-center gap-2">
+        <span className="text-[9px] text-text-dim truncate flex-1">
+          {bus.cableIds.length} cable{bus.cableIds.length === 1 ? "" : "s"}
+          {destName ? ` → ${destName}` : ""}
+        </span>
+        {destEndpoint && (
+          <button
+            type="button"
+            onClick={() => onOpenEditor(destEndpoint.blockId)}
+            className="text-[9px] font-bold uppercase tracking-wider px-2 py-1 rounded-md bg-pressed text-text-secondary t-precision shadow-[inset_1px_1px_3px_rgba(0,0,0,0.5),inset_-1px_-1px_2px_rgba(255,255,255,0.04)] hover:text-text-primary hover:shadow-[0_0_0_1px_var(--bus-accent),inset_1px_1px_3px_rgba(0,0,0,0.5)]"
+            title={`Open ${destName ?? "destination"} — work on the bus's effects`}
+          >
+            Open editor
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Bus activity panel — the depth ADDED above the kept BusInspector. Shows live
+ * level + volume + sidechain per active bus, and an open-editor affordance.
+ */
+function BusActivityPanel({ onOpenBlock }: { onOpenBlock: (blockId: string) => void }) {
+  const edges = useGraphStore(selectEdges) as CableData[];
+  const nodes = useGraphStore(selectNodes);
+  const cableBus = useBusStore(selectCableBusMap);
+  const selectEdgeOnGraph = useGraphStore((s) => s.selectEdge);
+
+  const buses = useMemo(() => deriveBuses(edges, cableBus), [edges, cableBus]);
+  const blockNames = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const n of nodes) m.set(n.id, n.name);
+    return m;
+  }, [nodes]);
+
+  if (buses.length === 0) return null;
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] font-bold text-text-secondary uppercase tracking-widest">
+          Bus Activity
+        </span>
+        <span className="text-[10px] text-text-dim tabular-nums">
+          {buses.length}
+        </span>
+      </div>
+      <div className="space-y-1.5">
+        {buses.map((bus) => (
+          <BusActivityRow
+            key={bus.name}
+            bus={bus}
+            cables={edges}
+            blockNames={blockNames}
+            onOpenEditor={onOpenBlock}
+            onSelect={() => {
+              if (bus.cableIds.length > 0) selectEdgeOnGraph(bus.cableIds[0]);
+            }}
+          />
+        ))}
+      </div>
+      {/* Honest framing of the bus-volume datum: the level above is real
+          (max RMS over the bus's cables). A dedicated per-bus FADER value is
+          not yet bridged — when send/receive Bus blocks land (queued), their
+          fader will read here. */}
+      <div className="text-[8px] text-text-dim leading-snug pt-0.5">
+        Level is live (max RMS across the bus's cables). A dedicated bus-fader
+        value needs the send/receive Bus-block bridge — Pillar-2.
+      </div>
+    </div>
+  );
+}
+
+/** Bus tab body — activity panel (new) above the kept BusInspector. */
+function BusTabBody() {
+  const selectNodeOnGraph = useGraphStore((s) => s.selectNode);
+  const setActiveTabRef = useContext(InspectorTabContext);
+
+  // Open a bus's destination block in the Block tab: select it + switch tab.
+  const openBlock = useCallback(
+    (blockId: string) => {
+      selectNodeOnGraph(blockId);
+      setActiveTabRef?.("block");
+    },
+    [selectNodeOnGraph, setActiveTabRef],
+  );
+
+  return (
+    <div className="space-y-4">
+      <BusActivityPanel onOpenBlock={openBlock} />
+      <BusInspector />
+    </div>
+  );
+}
+
 function PluginEditorControls({ block }: { block: BlockData }) {
   const slotRef = useRef<HTMLDivElement>(null);
   const [embedded, setEmbedded] = useState(false);
@@ -860,8 +1623,13 @@ function BlockTabBody({
  *    parameter sliders, plugin-window embed, bypass/mute controls, metrics,
  *    notes, and the inline Script editor for Script Blocks. With nothing
  *    selected, the resting Project Overview.
- *  • **Bus**    — the wireless-bus auditor (BusInspector).
- *  • **Cable**  — routing editor (ConnectionEditor) + smart-cable meter count.
+ *  • **Bus**    — live per-bus activity (level/volume/sidechain) + an
+ *    open-editor affordance, above the bus auditor (BusInspector). Buses are
+ *    IO send/receive blocks, NOT wireless cables (Wizard R1 decision #4).
+ *  • **Cable**  — the live signal monitor for the selected cable(s): a faithful
+ *    digital-VU ladder, peak-hold, dBFS, signal type, channels and sidechain,
+ *    all from the real 60Hz `useCableMeterStore` feed. With nothing selected, a
+ *    board-wide live overview. NOT a routing editor (Wizard R1 P1).
  *  • **Health** — engine vitals (LiveHealth), host meters, and the log tail.
  *
  * Mockup supplies the docked-shell layout + gradient header; the wiring,
@@ -921,17 +1689,13 @@ export function InspectorHub() {
         })}
       </div>
 
+      <InspectorTabContext.Provider value={setActiveTab}>
       <div className="flex-1 overflow-y-auto p-4 space-y-6">
         {activeTab === "block" && <BlockTabBody selectedBlock={selectedBlock} />}
 
-        {activeTab === "bus" && <BusInspector />}
+        {activeTab === "bus" && <BusTabBody />}
 
-        {activeTab === "cable" && (
-          <>
-            <ConnectionEditor />
-            <MetersPanel />
-          </>
-        )}
+        {activeTab === "cable" && <CableTabBody />}
 
         {activeTab === "health" && (
           <div className="space-y-3">
@@ -952,6 +1716,7 @@ export function InspectorHub() {
           </div>
         )}
       </div>
+      </InspectorTabContext.Provider>
     </div>
   );
 }

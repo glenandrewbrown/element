@@ -102,23 +102,49 @@ const selectedScript = {
   note: "Arpeggiator — quantise to scale",
 };
 
+// A richer cable set so the Cable monitor + overview have real variety:
+// a stereo audio main, a sidechain audio feed, and a MIDI cable (exercises the
+// honest "MIDI activity, not dB" labelling).
+const demoEdges = [
+  {
+    id: "e1",
+    source: "sel-2",
+    sourcePort: "out-l",
+    target: "sel-1",
+    targetPort: "in-l",
+    signalType: "audio" as const,
+    channelCount: 2 as const,
+    isSidechain: false,
+  },
+  {
+    id: "e-sc",
+    source: "sel-2",
+    sourcePort: "out-r",
+    target: "sel-1",
+    targetPort: "in-r",
+    signalType: "audio" as const,
+    channelCount: 1 as const,
+    isSidechain: true,
+  },
+  {
+    id: "e-midi",
+    source: "sel-2",
+    sourcePort: "midi-in",
+    target: "sel-script",
+    targetPort: "midi-in",
+    signalType: "midi" as const,
+    channelCount: 1 as const,
+    isSidechain: false,
+  },
+];
+
 function seedProjectOverview() {
   useGraphStore.setState((s) => ({
     ...s,
-    nodes: [selectedModifier, selectedGenerator],
-    edges: [
-      {
-        id: "e1",
-        source: "sel-2",
-        sourcePort: "out-l",
-        target: "sel-1",
-        targetPort: "in-l",
-        signalType: "audio" as const,
-        channelCount: 2 as const,
-        isSidechain: false,
-      },
-    ],
+    nodes: [selectedModifier, selectedGenerator, selectedScript],
+    edges: demoEdges,
     selectedNodeId: null,
+    selectedEdgeId: null,
   }));
   usePerformStore.setState((s) => ({
     sessionName: "Demo Session",
@@ -158,6 +184,21 @@ function seedNodeSelected(node: BlockData) {
   });
 }
 
+/**
+ * Select a cable and push REAL live levels into the meter store so the Cable
+ * monitor / overview show the faithful VU ladder lit at the given amplitudes —
+ * the same store the engine writes to at 60Hz. Levels are deterministic for
+ * reliable screenshots/tests.
+ */
+function seedCableSelected(
+  edgeId: string,
+  levels: Record<string, number> = { e1: 0.62, "e-sc": 0.31, "e-midi": 0.5 },
+) {
+  seedProjectOverview();
+  useGraphStore.setState((s) => ({ ...s, selectedNodeId: null, selectedEdgeId: edgeId }));
+  useCableMeterStore.setState((s) => ({ ...s, levels }));
+}
+
 const PANEL = { width: 300, height: 680 } as const;
 
 const meta = {
@@ -171,10 +212,13 @@ const meta = {
           "Docked tabbed inspector shell (bake-off verdict #6) — Block / Bus / Cable / Health. " +
           "BLOCK holds the per-Block detail: gradient header, A/B preset compare, parameter sliders, " +
           "plugin-window embed, bypass/mute controls, metrics, notes, and the inline Script editor for " +
-          "Script Blocks (with nothing selected it shows the Project Overview). BUS is the wireless-bus " +
-          "auditor. CABLE is the routing editor + smart-cable meter count. HEALTH consolidates engine " +
-          "vitals, host meters, and the log. The docked shell + gradient header come from the mockup; " +
-          "the wiring, stores, and bridge calls are Element's.",
+          "Script Blocks (with nothing selected it shows the Project Overview). BUS shows live per-bus " +
+          "activity (level/volume/sidechain) + an open-editor affordance above the bus auditor — buses " +
+          "are IO send/receive blocks, not wireless cables (Wizard R1). CABLE is the live signal monitor " +
+          "for the selected cable — a faithful digital-VU ladder, peak-hold, dBFS, signal type, channels " +
+          "and sidechain from the real 60Hz useCableMeterStore feed (NOT a routing editor; Wizard R1 P1). " +
+          "HEALTH consolidates engine vitals, host meters, and the log. The docked shell + gradient header " +
+          "come from the mockup; the wiring, stores, and bridge calls are Element's.",
       },
     },
   },
@@ -326,13 +370,21 @@ export const BlockTab_Script: Story = {
   },
 };
 
-// ── BUS tab — wireless bus auditor ──
+// ── BUS tab — live bus activity + auditor ──
 export const BusTab: Story = {
   decorators: [
     (Story) => {
-      seedNodeSelected(selectedModifier);
-      // Flag the one cable as a wireless bus so the auditor shows a row.
-      useBusStore.setState({ cableBus: { e1: "Reverb Send A" } });
+      seedProjectOverview();
+      // Two named buses: a stereo reverb send (lit) + a sidechain send (so the
+      // SC badge + sidechain detection show). Push real levels so the activity
+      // meters light from the same store the engine feeds.
+      useBusStore.setState({
+        cableBus: { e1: "Reverb Send A", "e-sc": "Sidechain Bus" },
+      });
+      useCableMeterStore.setState((s) => ({
+        ...s,
+        levels: { e1: 0.55, "e-sc": 0.42 },
+      }));
       return (
         <div style={PANEL} className="bg-panel">
           <Story />
@@ -344,9 +396,11 @@ export const BusTab: Story = {
     docs: {
       description: {
         story:
-          "BUS tab — the wireless-bus auditor (BusInspector). Lists every named bus on the board, its " +
-          "signal-type colour, cable count and endpoints. Reachable as a first-class tab now, not just " +
-          "the empty-state.",
+          "BUS tab — live per-bus activity (Wizard R1 P2 depth) above the kept bus auditor. Each bus shows " +
+          "a live VU meter + dBFS read-out (real max RMS across its cables), a sidechain badge where any " +
+          "feed is a sidechain, and an 'Open editor' affordance that dives the bus's destination block so " +
+          "its effects (e.g. a reverb) open in the Block tab. Buses are IO send/receive blocks, not " +
+          "wireless cables (decision #4).",
       },
     },
   },
@@ -356,14 +410,21 @@ export const BusTab: Story = {
       "aria-selected",
       "true",
     );
+    // The new live-activity surface + open-editor affordance are present.
+    await expect(canvas.getByText("Bus Activity")).toBeInTheDocument();
+    await expect(
+      canvas.getAllByRole("button", { name: "Open editor" }).length,
+    ).toBeGreaterThan(0);
   },
 };
 
-// ── CABLE tab — routing editor + smart-cable meters ──
+// ── CABLE tab — live signal monitor, audio cable selected ──
 export const CableTab: Story = {
   decorators: [
     (Story) => {
-      seedNodeSelected(selectedModifier);
+      // Select the stereo audio main cable + push a real live level so the
+      // faithful VU ladder lights and the dBFS/peak read-outs populate.
+      seedCableSelected("e1");
       return (
         <div style={PANEL} className="bg-panel">
           <Story />
@@ -375,8 +436,10 @@ export const CableTab: Story = {
     docs: {
       description: {
         story:
-          "CABLE tab — the ConnectionEditor (connection list, signal-type filters, Add Cable) plus the " +
-          "smart-cable meter count from the engine.",
+          "CABLE tab with a stereo Audio cable selected — the live signal monitor (Wizard R1 P1 rework). " +
+          "A faithful digital-VU ladder + peak-hold column, the dBFS read-out, signal type, channels and " +
+          "sidechain — all from the real 60Hz useCableMeterStore feed. Spectrum/phase show honest 'not " +
+          "wired' tiles (no engine bridge yet). This is a monitor, NOT a routing editor.",
       },
     },
   },
@@ -386,8 +449,73 @@ export const CableTab: Story = {
       "aria-selected",
       "true",
     );
-    // The Add Cable affordance from ConnectionEditor is present.
-    await expect(canvas.getByText(/Add Cable/)).toBeInTheDocument();
+    // The monitor header identifies the signal type, and the honest gap tile
+    // for spectrum is present (proves the no-fake-data rule is surfaced).
+    await expect(canvas.getByText("Audio Cable")).toBeInTheDocument();
+    await expect(canvas.getByText(/Spectrum/)).toBeInTheDocument();
+    await expect(canvas.getByText("Signal present")).toBeInTheDocument();
+  },
+};
+
+// ── CABLE tab — MIDI cable (honest non-audio labelling) ──
+export const CableTab_Midi: Story = {
+  decorators: [
+    (Story) => {
+      seedCableSelected("e-midi");
+      return (
+        <div style={PANEL} className="bg-panel">
+          <Story />
+        </div>
+      );
+    },
+  ],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "CABLE tab with a MIDI cable selected — the monitor honestly labels the reading as MIDI " +
+          "ACTIVITY (%) rather than a calibrated dB meter, since the engine packs note activity into the " +
+          "same per-edge field. Spectrum is correctly marked audio-only.",
+      },
+    },
+  },
+  play: async ({ canvas }) => {
+    await userEvent.click(canvas.getByRole("tab", { name: "CABLE" }));
+    await expect(canvas.getByText("MIDI Cable")).toBeInTheDocument();
+    await expect(canvas.getByText("MIDI ACTIVITY")).toBeInTheDocument();
+  },
+};
+
+// ── CABLE tab — no selection (board-wide live overview) ──
+export const CableTab_Overview: Story = {
+  decorators: [
+    (Story) => {
+      seedProjectOverview();
+      useCableMeterStore.setState((s) => ({
+        ...s,
+        levels: { e1: 0.62, "e-sc": 0.28, "e-midi": 0.4 },
+      }));
+      return (
+        <div style={PANEL} className="bg-panel">
+          <Story />
+        </div>
+      );
+    },
+  ],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "CABLE tab with nothing selected — the board-wide live overview: every cable as a row with its " +
+          "signal glyph, route and a live mini VU meter. Click a row to open the full monitor.",
+      },
+    },
+  },
+  play: async ({ canvas }) => {
+    await userEvent.click(canvas.getByRole("tab", { name: "CABLE" }));
+    await expect(canvas.getByText("Cable Monitor")).toBeInTheDocument();
+    // Three demo cables → three rows.
+    await expect(canvas.getByText(/3 cables/)).toBeInTheDocument();
   },
 };
 
