@@ -7,11 +7,13 @@ import { useSessionStore } from "../../stores/useSessionStore";
 import { useEngineSnapshotStore } from "../../stores/useEngineSnapshotStore";
 
 // ── Store seeding ──
-// Toolbar reads from useAppStore (mode, cableRouting, activeScene),
-// useGraphStore (breadcrumbs), usePerformStore (bpm, scenes, liveHealth),
-// useEngineSnapshotStore (engineRunning, transportPlaying, transportRecording, timeSig),
-// and useSessionStore (filePath, dirty, graphs).
-// Native bridge calls no-op without a JUCE backend — only seed store state.
+// The Edit-only Toolbar reads from useAppStore (cableRouting), useGraphStore
+// (breadcrumbs), usePerformStore (bpm), useEngineSnapshotStore (transport +
+// sampleRate / bufferSize / device latency / timeSig — these drive the
+// SAMPLE / BUFFER / LATENCY / SIG metric fields directly), and useSessionStore
+// (filePath, dirty, graphs). Native bridge calls no-op without a JUCE backend —
+// only seed store state. Perform mode is shelved (D3): the toolbar has no mode
+// branch, so there is no Perform story.
 
 const defaultHealth = {
   cpu: 12.3,
@@ -34,44 +36,26 @@ function seedEdit() {
   });
   useGraphStore.setState({ breadcrumbStack: ["Main Project"] });
   usePerformStore.setState((s) => ({
-    scenes: [
-      { id: "s1", name: "Intro", index: 0, active: true, hasCapture: true },
-      { id: "s2", name: "Verse", index: 1, active: false, hasCapture: false },
-    ],
     liveHealth: { ...s.liveHealth, ...defaultHealth },
   }));
+  // Engine-snapshot fields now own the metric readouts (SAMPLE = sampleRate,
+  // BUFFER = bufferSize, LATENCY = input+output device latency, SIG = timeSig).
   useEngineSnapshotStore.setState({
     engineRunning: true,
     transportPlaying: false,
     transportRecording: false,
     tempoBpm: 120,
     timeSig: [4, 4] as [number, number],
+    sampleRate: 44100,
+    bufferSize: 256,
+    deviceLatencyInputMs: 2.1,
+    deviceLatencyOutputMs: 2.1,
   });
   useSessionStore.setState({
     filePath: "/Users/glen/Music/Demo.els",
     dirty: false,
-    graphs: [
-      { id: "g1", name: "Main Board", index: 0, active: true },
-    ],
+    graphs: [{ id: "g1", name: "Main Board", index: 0, active: true }],
   });
-}
-
-function seedPerform() {
-  useAppStore.setState({ mode: "perform", activeScene: 0 });
-  usePerformStore.setState((s) => ({
-    scenes: [
-      { id: "s1", name: "Intro", index: 0, active: true, hasCapture: true },
-    ],
-    liveHealth: { ...s.liveHealth, ...defaultHealth },
-  }));
-  useEngineSnapshotStore.setState({
-    engineRunning: true,
-    transportPlaying: true,
-    transportRecording: false,
-    tempoBpm: 128,
-    timeSig: [4, 4] as [number, number],
-  });
-  useSessionStore.setState({ filePath: "", dirty: false, graphs: [] });
 }
 
 const meta = {
@@ -82,7 +66,7 @@ const meta = {
     docs: {
       description: {
         component:
-          "Top application toolbar / command centre: session file actions, undo/redo, transport (play/stop/record/rewind), tempo + tap-tempo, time signature, Edit/Perform mode switch, cable routing, and Scene add/capture. Reads useAppStore, useGraphStore, usePerformStore, useEngineSnapshotStore, and useSessionStore — seed all five per story; native bridge calls no-op without a JUCE backend.",
+          "Edit-mode top application toolbar / command centre: ELEMENT wordmark, session file actions (New/Open/Save/As), depth-hued breadcrumb pills, a Board switcher (multi-Board only), undo/redo, transport (rewind/play/stop/record), tempo with tap-tempo, time signature + sample-rate / buffer / latency metrics, a ⌘K command-palette affordance, cable-routing style, About/Preferences, and the always-visible red PANIC. Perform mode is shelved (D3) so there is no mode toggle. Reads useAppStore, useGraphStore, usePerformStore, useEngineSnapshotStore, and useSessionStore — seed all five per story; native bridge calls no-op without a JUCE backend.",
       },
     },
   },
@@ -98,7 +82,7 @@ export const EditMode: Story = {
     docs: {
       description: {
         story:
-          "The workshop view: Edit mode with a saved Project, one Board, scenes present, and the engine running — the toolbar's default working state.",
+          "The default working state: a saved Project, one Board, engine running at 44.1k / 256 — the toolbar's everyday view.",
       },
     },
   },
@@ -106,7 +90,7 @@ export const EditMode: Story = {
     (Story) => {
       seedEdit();
       return (
-        <div style={{ width: 1100, height: 48 }} className="bg-panel flex items-center px-4">
+        <div style={{ width: 1440, height: 40 }} className="bg-panel flex items-center px-2">
           <Story />
         </div>
       );
@@ -114,13 +98,13 @@ export const EditMode: Story = {
   ],
 };
 
-// ── Edit mode, multiple boards ──
+// ── Edit mode, multiple boards + deeper breadcrumb ──
 export const EditModeMultiBoard: Story = {
   parameters: {
     docs: {
       description: {
         story:
-          "Multi-Board Project with a deeper breadcrumb (Main Project › Synth Layer) and a dirty file dot — shows board-switching and nested-navigation context.",
+          "Multi-Board Project with a deeper, depth-hued breadcrumb (Main Project › Synth Layer › Reverb Send) and a dirty file dot — shows the Board switcher and the per-level depth pill colours.",
       },
     },
   },
@@ -136,9 +120,16 @@ export const EditModeMultiBoard: Story = {
           { id: "g3", name: "Drums", index: 2, active: false },
         ],
       });
-      useGraphStore.setState({ breadcrumbStack: ["Main Project", "Synth Layer"] });
+      useGraphStore.setState({
+        breadcrumbStack: ["Main Project", "Synth Layer", "Reverb Send"],
+      });
+      // Wider container (1680) — the dense multi-Board + 3-deep-nest case is
+      // the toolbar's widest state; at a realistic desktop width the full
+      // depth-hue trail shows. (Below ~1600 the breadcrumb is the flex
+      // shrink-victim and the intermediate crumbs ellipsize — controls stay
+      // intact; the active/deepest pill is always preserved.)
       return (
-        <div style={{ width: 1100, height: 48 }} className="bg-panel flex items-center px-4">
+        <div style={{ width: 1680, height: 40 }} className="bg-panel flex items-center px-2">
           <Story />
         </div>
       );
@@ -146,67 +137,27 @@ export const EditModeMultiBoard: Story = {
   ],
 };
 
-// ── Edit mode narrow — tests responsive flex-wrap collapse ──
-export const EditModeNarrow: Story = {
-  tags: ["!manifest"],
+// ── Edit mode, recording + playing (transport active states) ──
+export const EditModeRecording: Story = {
   parameters: {
     docs: {
       description: {
         story:
-          "Visual-only: same Edit state rendered at 640px to verify the responsive flex-wrap collapse of optional controls. Excluded from the agent manifest — it is a layout breakpoint test, not a distinct usage pattern.",
+          "Transport live: playing + armed for record — the play icon flips to Pause and the record dot pulses red. Verifies the engine-snapshot-driven transport buttons.",
       },
     },
   },
   decorators: [
     (Story) => {
       seedEdit();
+      useEngineSnapshotStore.setState({
+        transportPlaying: true,
+        transportRecording: true,
+        sampleRate: 48000,
+        bufferSize: 128,
+      });
       return (
-        <div style={{ width: 640, height: 48 }} className="bg-panel flex items-center px-4">
-          <Story />
-        </div>
-      );
-    },
-  ],
-};
-
-// ── Perform mode with engine live ──
-export const PerformMode: Story = {
-  parameters: {
-    docs: {
-      description: {
-        story:
-          "The stage view: Perform mode with transport playing at 128 BPM and the engine LIVE — shows the structural shift from the Edit toolbar.",
-      },
-    },
-  },
-  decorators: [
-    (Story) => {
-      seedPerform();
-      return (
-        <div style={{ width: 1100, height: 48 }} className="bg-panel flex items-center px-4">
-          <Story />
-        </div>
-      );
-    },
-  ],
-};
-
-// ── Perform mode, engine idle (IDLE badge) ──
-export const PerformModeIdle: Story = {
-  parameters: {
-    docs: {
-      description: {
-        story:
-          "Perform mode with the engine stopped: the LIVE badge drops to IDLE and the play icon resets — the pre-performance standby state.",
-      },
-    },
-  },
-  decorators: [
-    (Story) => {
-      seedPerform();
-      useEngineSnapshotStore.setState({ engineRunning: false, transportPlaying: false });
-      return (
-        <div style={{ width: 1100, height: 48 }} className="bg-panel flex items-center px-4">
+        <div style={{ width: 1440, height: 40 }} className="bg-panel flex items-center px-2">
           <Story />
         </div>
       );
@@ -220,20 +171,43 @@ export const EditModeUntitled: Story = {
     docs: {
       description: {
         story:
-          "A brand-new unsaved Project: no file path, dirty=true, and no scenes — verifies the 'Untitled •' display name and the empty-session toolbar.",
+          "A brand-new unsaved Project: no file path, dirty=true, single Board — verifies the 'Untitled •' display name and the empty-session toolbar.",
       },
     },
   },
   decorators: [
     (Story) => {
       seedEdit();
-      useSessionStore.setState({ filePath: "", dirty: true, graphs: [] });
-      usePerformStore.setState((s) => ({
-        scenes: [],
-        liveHealth: { ...s.liveHealth, ...defaultHealth },
-      }));
+      useSessionStore.setState({
+        filePath: "",
+        dirty: true,
+        graphs: [{ id: "g1", name: "Main Board", index: 0, active: true }],
+      });
       return (
-        <div style={{ width: 1100, height: 48 }} className="bg-panel flex items-center px-4">
+        <div style={{ width: 1440, height: 40 }} className="bg-panel flex items-center px-2">
+          <Story />
+        </div>
+      );
+    },
+  ],
+};
+
+// ── Edit mode narrow — tests responsive collapse ──
+export const EditModeNarrow: Story = {
+  tags: ["!manifest"],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Visual-only: the same Edit state rendered at 720px to verify the responsive behaviour of the flex layout (breadcrumb well flexes, fixed clusters keep their footprint). Excluded from the agent manifest — it is a layout breakpoint test, not a distinct usage pattern.",
+      },
+    },
+  },
+  decorators: [
+    (Story) => {
+      seedEdit();
+      return (
+        <div style={{ width: 720, height: 40 }} className="bg-panel flex items-center px-2">
           <Story />
         </div>
       );
