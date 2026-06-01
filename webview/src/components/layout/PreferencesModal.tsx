@@ -1,5 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useHostExtrasStore } from "../../stores/useHostExtrasStore";
+import { useAppStore } from "../../stores/useAppStore";
+import type { CableRouting } from "../../stores/useAppStore";
 import {
   nativeAudioApplySetup,
   nativeMappingRemoveMap,
@@ -10,37 +12,216 @@ import {
   nativeWebDismissOverlay,
 } from "../../bridge/nativePrefs";
 import { nativeGraphSetCanvasOptions } from "../../bridge/nativeGraph";
+import { Icon } from "../neu/Icon";
 
-interface PreferencesModalProps {
-  /**
-   * Invoked when the user dismisses the modal (Close button). The parent owns
-   * open/closed state — this component never unmounts itself.
-   */
-  onClose: () => void;
+// ── Tab types ────────────────────────────────────────────────────────────────
+
+type TabId = "audio" | "midi" | "appearance" | "shortcuts";
+
+interface Tab {
+  id: TabId;
+  label: string;
+  icon: string;
 }
 
-/**
- * Full-screen modal for host-wide preferences: audio device + driver, OSC host,
- * Board canvas snap grid, and MIDI controller mapping/learn. Reach for it when
- * the user needs to change the audio interface, scan for OSC, or inspect/clear
- * the MIDI maps that drive Block parameters from a hardware controller. Settings
- * are staged locally and pushed to the C++ host only on each section's Apply
- * button, so opening it is non-destructive.
- */
-export function PreferencesModal({ onClose }: PreferencesModalProps) {
-  const audio = useHostExtrasStore((s) => s.audioSetup);
-  const osc = useHostExtrasStore((s) => s.oscHost);
-  const canvas = useHostExtrasStore((s) => s.canvas);
-  const midiMapping = useHostExtrasStore((s) => s.midiMapping);
+const TABS: Tab[] = [
+  { id: "audio",      label: "Audio",      icon: "AudioWaveform" },
+  { id: "midi",       label: "MIDI",        icon: "Music"         },
+  { id: "appearance", label: "Appearance",  icon: "SlidersHorizontal" },
+  { id: "shortcuts",  label: "Shortcuts",   icon: "Command"       },
+];
 
-  const [outDev, setOutDev] = useState("");
-  const [inDev, setInDev] = useState("");
-  const [driver, setDriver] = useState("");
-  const [sr, setSr] = useState(0);
-  const [buf, setBuf] = useState(0);
-  const [oscEn, setOscEn] = useState(false);
-  const [oscPort, setOscPort] = useState(9001);
-  const learning = midiMapping.learning;
+// ── Keyboard shortcut definitions (read from useKeyboard source of truth) ────
+// This is a READ-ONLY representation of the live key-command registry.
+// A full editable keymap editor is tracked as U9 (follow-up task).
+
+interface ShortcutEntry {
+  keys: string[];
+  description: string;
+  section: string;
+}
+
+const SHORTCUTS: ShortcutEntry[] = [
+  // Navigation
+  { section: "Navigation", keys: ["Cmd", "K"],       description: "Command palette" },
+  { section: "Navigation", keys: ["Cmd", "1"],        description: "Toggle left panel" },
+  { section: "Navigation", keys: ["Cmd", "2"],        description: "Toggle right panel" },
+  { section: "Navigation", keys: ["Cmd", "3"],        description: "Toggle bottom panel" },
+  { section: "Navigation", keys: ["Cmd", "F"],        description: "Focus block search" },
+  { section: "Navigation", keys: ["Escape"],          description: "Deselect / back out one level" },
+  { section: "Navigation", keys: ["Tab"],             description: "Jump to next block in signal chain" },
+  { section: "Navigation", keys: ["Shift", "Tab"],    description: "Jump to previous block" },
+  // View
+  { section: "View", keys: ["Cmd", "0"],              description: "Fit graph to view" },
+  { section: "View", keys: ["Cmd", "="],              description: "Zoom in" },
+  { section: "View", keys: ["Cmd", "-"],              description: "Zoom out" },
+  { section: "View", keys: ["Shift", "M"],            description: "Toggle minimap" },
+  // Blocks
+  { section: "Blocks", keys: ["Cmd", "D"],            description: "Duplicate selected block" },
+  { section: "Blocks", keys: ["Cmd", "R"],            description: "Rename selected block" },
+  { section: "Blocks", keys: ["Cmd", "C"],            description: "Copy selected block" },
+  { section: "Blocks", keys: ["Cmd", "V"],            description: "Paste" },
+  { section: "Blocks", keys: ["Delete"],              description: "Delete selected block / cable" },
+  { section: "Blocks", keys: ["Shift", "C"],          description: "Add comment box at center" },
+  // Cables
+  { section: "Cables", keys: ["W"],                   description: "Toggle wireless on selected cable" },
+  // Alignment (multi-select)
+  { section: "Alignment", keys: ["Cmd", "Shift", "L"], description: "Align left" },
+  { section: "Alignment", keys: ["Cmd", "Shift", "R"], description: "Align right" },
+  { section: "Alignment", keys: ["Cmd", "Shift", "T"], description: "Align top" },
+  { section: "Alignment", keys: ["Cmd", "Shift", "B"], description: "Align bottom" },
+  { section: "Alignment", keys: ["Cmd", "Shift", "H"], description: "Distribute horizontal" },
+  { section: "Alignment", keys: ["Cmd", "Shift", "V"], description: "Distribute vertical" },
+  // Bookmarks
+  { section: "Bookmarks", keys: ["Ctrl", "0–9"],      description: "Save spatial bookmark" },
+  { section: "Bookmarks", keys: ["Shift", "0–9"],     description: "Recall spatial bookmark" },
+  // Session
+  { section: "Session", keys: ["Cmd", "S"],           description: "Save project" },
+  { section: "Session", keys: ["Cmd", "Shift", "S"],  description: "Save project as…" },
+  { section: "Session", keys: ["Cmd", "Z"],           description: "Undo" },
+  { section: "Session", keys: ["Cmd", "Shift", "Z"],  description: "Redo" },
+  // UI
+  { section: "UI", keys: ["Shift", "K"],              description: "Toggle virtual keyboard" },
+];
+
+// ── Sub-components ───────────────────────────────────────────────────────────
+
+/** Neumorphic select — pressed-inset styled. */
+function NeuSelect({
+  label,
+  value,
+  onChange,
+  children,
+  className,
+}: {
+  label: string;
+  value: string | number;
+  onChange: (v: string) => void;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <label className={`block${className ? ` ${className}` : ""}`}>
+      <span className="block text-[9px] font-bold uppercase tracking-widest text-text-secondary mb-1">
+        {label}
+      </span>
+      <select
+        className="w-full bg-pressed neu-inset rounded px-2 py-1.5 text-[11px] text-text-primary border border-white/5 cursor-pointer focus:outline-none focus:border-accent-blue/40 transition-colors"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        {children}
+      </select>
+    </label>
+  );
+}
+
+/** Section heading with optional divider. */
+function SectionHeading({ children, divider = true }: { children: React.ReactNode; divider?: boolean }) {
+  return (
+    <div className={divider ? "pt-4 border-t border-white/8 first:border-t-0 first:pt-0" : ""}>
+      <h3 className="text-[9px] font-bold uppercase tracking-widest text-text-dim mb-3">
+        {children}
+      </h3>
+    </div>
+  );
+}
+
+/** Honest-disabled control with tooltip naming the missing bridge. */
+function DisabledBadge({ bridge }: { bridge: string }) {
+  return (
+    <span
+      className="text-[8px] font-bold uppercase tracking-wider text-text-dim bg-pressed neu-inset rounded px-1.5 py-0.5 cursor-help"
+      title={`Not wired: ${bridge} bridge not yet exposed (Pillar-2 backlog)`}
+    >
+      Pending bridge
+    </span>
+  );
+}
+
+/** Apply button — neumorphic raised, full width. */
+function ApplyButton({
+  onClick,
+  label,
+  active,
+}: {
+  onClick: () => void;
+  label: string;
+  active?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      className={`w-full py-2 rounded text-[11px] font-bold uppercase tracking-wide transition-colors cursor-pointer ${
+        active
+          ? "bg-accent-orange text-canvas"
+          : "bg-elevated neu-raised text-text-primary hover:bg-surface-elevated"
+      }`}
+      onClick={onClick}
+    >
+      {label}
+    </button>
+  );
+}
+
+/** Inline toggle row — checkbox with label. */
+function ToggleRow({
+  label,
+  checked,
+  onChange,
+  disabled,
+  disabledBridge,
+}: {
+  label: string;
+  checked: boolean;
+  onChange?: (v: boolean) => void;
+  disabled?: boolean;
+  disabledBridge?: string;
+}) {
+  return (
+    <label
+      className={`flex items-center justify-between gap-2 group ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+      title={disabled && disabledBridge ? `Not wired: ${disabledBridge} (Pillar-2 backlog)` : undefined}
+    >
+      <span className="text-[11px] text-text-primary">{label}</span>
+      {disabled && disabledBridge ? (
+        <DisabledBadge bridge={disabledBridge} />
+      ) : (
+        <button
+          type="button"
+          role="switch"
+          aria-checked={checked}
+          disabled={disabled}
+          onClick={() => onChange?.(!checked)}
+          className={`relative w-8 h-4 rounded-full transition-colors cursor-pointer focus:outline-none focus:ring-1 focus:ring-accent-blue/40 disabled:cursor-not-allowed ${
+            checked ? "bg-accent-blue" : "bg-pressed neu-inset"
+          }`}
+        >
+          <span
+            className={`absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-text-primary shadow-[0_1px_3px_rgba(0,0,0,0.5)] transition-transform ${
+              checked ? "translate-x-4" : "translate-x-0"
+            }`}
+          />
+        </button>
+      )}
+    </label>
+  );
+}
+
+// ── Tab panels ───────────────────────────────────────────────────────────────
+
+function AudioTab() {
+  const audio = useHostExtrasStore((s) => s.audioSetup);
+  const osc   = useHostExtrasStore((s) => s.oscHost);
+  const canvas = useHostExtrasStore((s) => s.canvas);
+
+  const [outDev,   setOutDev]   = useState("");
+  const [inDev,    setInDev]    = useState("");
+  const [driver,   setDriver]   = useState("");
+  const [sr,       setSr]       = useState(0);
+  const [buf,      setBuf]      = useState(0);
+  const [oscEn,    setOscEn]    = useState(false);
+  const [oscPort,  setOscPort]  = useState(9001);
   const [snapGrid, setSnapGrid] = useState(false);
   const [gridSize, setGridSize] = useState(8);
 
@@ -55,10 +236,7 @@ export function PreferencesModal({ onClose }: PreferencesModalProps) {
   }, [audio]);
 
   useEffect(() => {
-    if (osc) {
-      setOscEn(osc.enabled);
-      setOscPort(osc.port);
-    }
+    if (osc) { setOscEn(osc.enabled); setOscPort(osc.port); }
   }, [osc]);
 
   useEffect(() => {
@@ -67,282 +245,514 @@ export function PreferencesModal({ onClose }: PreferencesModalProps) {
   }, [canvas.snapToGrid, canvas.gridSize]);
 
   return (
+    <div className="space-y-5">
+      {/* Audio device */}
+      <div>
+        <SectionHeading divider={false}>Audio device</SectionHeading>
+        <div className="space-y-2.5">
+          <NeuSelect label="Driver type" value={driver} onChange={setDriver}>
+            {(audio?.deviceTypes?.length ? audio.deviceTypes : [driver || "Default"]).map((d) => (
+              <option key={d || "default"} value={d}>{d || "Default"}</option>
+            ))}
+          </NeuSelect>
+          <NeuSelect label="Output" value={outDev} onChange={setOutDev}>
+            {(audio?.outputDevices ?? [outDev]).map((d) => (
+              <option key={d} value={d}>{d || "—"}</option>
+            ))}
+          </NeuSelect>
+          <NeuSelect label="Input" value={inDev} onChange={setInDev}>
+            {(audio?.inputDevices ?? [inDev]).map((d) => (
+              <option key={d} value={d}>{d || "—"}</option>
+            ))}
+          </NeuSelect>
+          <div className="grid grid-cols-2 gap-2">
+            <NeuSelect label="Sample rate" value={sr} onChange={(v) => setSr(Number(v))}>
+              {(audio?.sampleRates ?? [sr]).map((r) => (
+                <option key={r} value={r}>{r} Hz</option>
+              ))}
+            </NeuSelect>
+            <NeuSelect label="Buffer" value={buf} onChange={(v) => setBuf(Number(v))}>
+              {(audio?.bufferSizes ?? [buf]).map((b) => (
+                <option key={b} value={b}>{b} samples</option>
+              ))}
+            </NeuSelect>
+          </div>
+          <ApplyButton
+            label="Apply audio"
+            onClick={() =>
+              void nativeAudioApplySetup({
+                outputDeviceName: outDev,
+                inputDeviceName: inDev,
+                audioDeviceType: driver,
+                sampleRate: sr,
+                bufferSize: buf,
+              })
+            }
+          />
+        </div>
+      </div>
+
+      {/* Plugin scan — honest-disabled (Pillar-2 gap) */}
+      <div>
+        <SectionHeading>Plugin scan</SectionHeading>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] text-text-primary">Scan for plugins</span>
+            <DisabledBadge bridge="elementScanPlugins" />
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] text-text-primary">Rescan (incremental)</span>
+            <DisabledBadge bridge="elementRescanPlugins" />
+          </div>
+          <div className="space-y-1">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[9px] font-bold uppercase tracking-widest text-text-secondary">
+                Plugin search paths
+              </span>
+              <DisabledBadge bridge="elementGetPluginPaths" />
+            </div>
+            {["/Library/Audio/Plug-Ins/VST3", "/Library/Audio/Plug-Ins/Components"].map((p) => (
+              <div
+                key={p}
+                className="text-[10px] text-text-dim bg-pressed rounded px-2 py-1 truncate opacity-40"
+                title="Paths not editable until elementGetPluginPaths / elementAddPluginPath bridge is exposed"
+              >
+                {p}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* OSC host */}
+      <div>
+        <SectionHeading>OSC host</SectionHeading>
+        <div className="space-y-2.5">
+          <ToggleRow label="Enable OSC" checked={oscEn} onChange={setOscEn} />
+          <label className="block">
+            <span className="block text-[9px] font-bold uppercase tracking-widest text-text-secondary mb-1">
+              Port
+            </span>
+            <input
+              type="number"
+              className="w-full bg-pressed neu-inset rounded px-2 py-1.5 text-[11px] text-text-primary border border-white/5 focus:outline-none focus:border-accent-blue/40 transition-colors"
+              value={oscPort}
+              onChange={(e) => setOscPort(Number(e.target.value))}
+            />
+          </label>
+          <ApplyButton
+            label="Apply OSC"
+            onClick={() => void nativeOscApplyHost({ enabled: oscEn, port: oscPort })}
+          />
+        </div>
+      </div>
+
+      {/* Board canvas */}
+      <div>
+        <SectionHeading>Board canvas</SectionHeading>
+        <div className="space-y-2.5">
+          <ToggleRow label="Snap to grid" checked={snapGrid} onChange={setSnapGrid} />
+          <label className="block">
+            <span className="block text-[9px] font-bold uppercase tracking-widest text-text-secondary mb-1">
+              Grid size (px)
+            </span>
+            <input
+              type="number"
+              min={4}
+              max={128}
+              className="w-full bg-pressed neu-inset rounded px-2 py-1.5 text-[11px] text-text-primary border border-white/5 focus:outline-none focus:border-accent-blue/40 transition-colors"
+              value={gridSize}
+              onChange={(e) => setGridSize(Number(e.target.value))}
+            />
+          </label>
+          <ApplyButton
+            label="Apply canvas"
+            onClick={() => void nativeGraphSetCanvasOptions(snapGrid, gridSize)}
+          />
+        </div>
+      </div>
+
+      {/* Developer tools */}
+      <div>
+        <SectionHeading>Developer tools</SectionHeading>
+        <div className="space-y-2">
+          <button
+            type="button"
+            className="w-full py-1.5 rounded bg-pressed neu-inset text-text-primary text-[11px] uppercase tracking-wide hover:text-text-primary transition-colors cursor-pointer"
+            onClick={() => void nativeOpenLuaConsole()}
+          >
+            Lua console
+          </button>
+          <button
+            type="button"
+            className="w-full py-1.5 rounded bg-pressed neu-inset text-text-primary text-[11px] uppercase tracking-wide hover:text-text-primary transition-colors cursor-pointer"
+            onClick={() => void nativeOpenGraphMixer()}
+          >
+            Graph mixer
+          </button>
+          <button
+            type="button"
+            className="w-full py-1.5 rounded bg-pressed neu-inset text-text-secondary text-[11px] uppercase tracking-wide hover:text-text-primary transition-colors cursor-pointer"
+            onClick={() => void nativeWebDismissOverlay()}
+          >
+            Dismiss overlay
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MidiTab() {
+  const midiMapping = useHostExtrasStore((s) => s.midiMapping);
+  const learning = midiMapping.learning;
+
+  return (
+    <div className="space-y-5">
+      {/* MIDI mapping */}
+      <div>
+        <SectionHeading divider={false}>MIDI mapping</SectionHeading>
+        <div className="space-y-2.5">
+          <ApplyButton
+            label={learning ? "Stop MIDI learn" : "MIDI learn"}
+            active={learning}
+            onClick={() => void nativeMappingSetLearning(!learning)}
+          />
+          {learning && (
+            <p className="text-[10px] text-accent-orange leading-relaxed">
+              Armed — wiggle a hardware control to bind it to the last touched Block parameter.
+            </p>
+          )}
+
+          {midiMapping.maps.length > 0 ? (
+            <div className="rounded border border-white/8 bg-pressed neu-inset overflow-hidden">
+              <table className="w-full text-left border-collapse text-[10px]">
+                <thead className="text-text-dim text-[9px] uppercase tracking-wider sticky top-0 bg-pressed">
+                  <tr>
+                    <th className="p-1.5 font-bold">Device</th>
+                    <th className="p-1.5 font-bold">Control</th>
+                    <th className="p-1.5 font-bold">Block</th>
+                    <th className="p-1.5 font-bold w-10"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {midiMapping.maps.map((row) => (
+                    <tr
+                      key={`${row.index}-${row.nodeId}-${row.parameterIndex}`}
+                      className={
+                        row.valid
+                          ? "border-t border-white/5"
+                          : "border-t border-accent-orange/30 opacity-60"
+                      }
+                    >
+                      <td className="p-1.5 truncate max-w-[90px]">{row.deviceName || "—"}</td>
+                      <td className="p-1.5 truncate max-w-[70px]">{row.controlName || "—"}</td>
+                      <td className="p-1.5 truncate max-w-[90px]">
+                        {row.nodeName || row.nodeId || "—"}
+                        <span className="block text-text-dim tabular">p{row.parameterIndex}</span>
+                      </td>
+                      <td className="p-1.5">
+                        <button
+                          type="button"
+                          className="text-error hover:text-text-primary transition-colors cursor-pointer"
+                          aria-label={`Remove map for ${row.controlName}`}
+                          onClick={() => void nativeMappingRemoveMap(row.index)}
+                        >
+                          <Icon name="X" size={12} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-[10px] text-text-dim">
+              No controller maps in the session snapshot yet. Enable MIDI learn and wiggle a control.
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* MIDI devices — honest-disabled (no bridge yet) */}
+      <div>
+        <SectionHeading>MIDI devices</SectionHeading>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] text-text-primary">MIDI inputs</span>
+            <DisabledBadge bridge="elementGetMidiInputs" />
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] text-text-primary">MIDI outputs</span>
+            <DisabledBadge bridge="elementGetMidiOutputs" />
+          </div>
+          <p className="text-[9px] text-text-dim leading-relaxed">
+            Per-device enable/disable will be available once elementGetMidiInputs /
+            elementGetMidiOutputs are exposed in nativePrefs (Pillar-2 backlog).
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AppearanceTab() {
+  const cableRouting = useAppStore((s) => s.cableRouting);
+  const toggleCableRouting = useAppStore((s) => s.toggleCableRouting);
+
+  return (
+    <div className="space-y-5">
+      {/* Cable routing — REAL (wired to useAppStore + persisted) */}
+      <div>
+        <SectionHeading divider={false}>Board</SectionHeading>
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <span className="block text-[11px] text-text-primary">Cable routing</span>
+              <span className="block text-[9px] text-text-dim mt-0.5">
+                Manhattan = right-angle; Bezier = smooth curves
+              </span>
+            </div>
+            <div
+              className="flex rounded overflow-hidden border border-white/8 text-[9px] font-bold uppercase tracking-wider"
+              role="group"
+              aria-label="Cable routing style"
+            >
+              {(["manhattan", "bezier"] as CableRouting[]).map((opt) => (
+                <button
+                  key={opt}
+                  type="button"
+                  onClick={() => { if (cableRouting !== opt) toggleCableRouting(); }}
+                  className={`px-2.5 py-1 transition-colors cursor-pointer focus:outline-none ${
+                    cableRouting === opt
+                      ? "bg-elevated neu-raised text-text-primary"
+                      : "bg-pressed text-text-secondary hover:text-text-primary"
+                  }`}
+                  aria-pressed={cableRouting === opt}
+                >
+                  {opt}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Theme — honest-disabled */}
+      <div>
+        <SectionHeading>Theme</SectionHeading>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <div>
+              <span className="block text-[11px] text-text-primary">Colour scheme</span>
+              <span className="block text-[9px] text-text-dim mt-0.5">Single dark chassis — the Instrument Paradigm</span>
+            </div>
+            <span
+              className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-elevated neu-raised text-text-secondary cursor-default"
+              title="Element uses one unified dark palette. Theme switching is not planned for V3."
+            >
+              Dark only
+            </span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] text-text-primary">UI density</span>
+            <DisabledBadge bridge="elementSetUIDensity" />
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] text-text-primary">Font size scale</span>
+            <DisabledBadge bridge="elementSetFontScale" />
+          </div>
+        </div>
+      </div>
+
+      {/* Animations */}
+      <div>
+        <SectionHeading>Animations</SectionHeading>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] text-text-primary">Reduce motion</span>
+            <DisabledBadge bridge="elementSetReduceMotion" />
+          </div>
+          <p className="text-[9px] text-text-dim leading-relaxed">
+            Respects the OS-level prefers-reduced-motion media query automatically.
+            Per-user override available once elementSetReduceMotion is bridged.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ShortcutsTab() {
+  // Group shortcuts by section
+  const sections = Array.from(new Set(SHORTCUTS.map((s) => s.section)));
+
+  return (
+    <div className="space-y-5">
+      <p className="text-[9px] text-text-dim leading-relaxed">
+        Read-only key-command reference derived from{" "}
+        <span className="text-text-secondary font-mono">useKeyboard.ts</span>.
+        Full rebinding editor is tracked as U9.
+      </p>
+
+      {sections.map((section) => (
+        <div key={section}>
+          <SectionHeading divider={section !== sections[0]}>{section}</SectionHeading>
+          <div className="space-y-1">
+            {SHORTCUTS.filter((s) => s.section === section).map((entry, i) => (
+              <div
+                key={i}
+                className="flex items-center justify-between gap-2 py-1 border-b border-white/4 last:border-0"
+              >
+                <span className="text-[11px] text-text-primary">{entry.description}</span>
+                <div className="flex items-center gap-0.5 shrink-0">
+                  {entry.keys.map((k, ki) => (
+                    <span key={ki} className="inline-flex items-center">
+                      <kbd
+                        className="text-[9px] font-bold font-mono px-1.5 py-0.5 rounded bg-elevated neu-raised text-text-secondary min-w-[22px] text-center leading-none"
+                      >
+                        {k}
+                      </kbd>
+                      {ki < entry.keys.length - 1 && (
+                        <span className="text-text-dim text-[9px] mx-0.5">+</span>
+                      )}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Main modal ───────────────────────────────────────────────────────────────
+
+export interface PreferencesModalProps {
+  /**
+   * Invoked when the user dismisses the modal (Close button or Escape key).
+   * The parent owns open/closed state — this component never unmounts itself.
+   */
+  onClose: () => void;
+}
+
+/**
+ * Tabbed Preferences modal — Appearance / Audio / MIDI / Shortcuts.
+ *
+ * Audio: device enumeration + sample-rate/buffer + OSC + canvas (all bridged).
+ * Plugin scan/paths/format-toggles are honest-disabled: the bridge calls
+ * (elementScanPlugins / elementGetPluginPaths / elementSetPluginFormatEnabled)
+ * are not yet exposed (Pillar-2 backlog). A tooltip on each disabled control
+ * names the target bridge call.
+ *
+ * MIDI: mapping table + MIDI-learn (bridged). Per-device enable is
+ * honest-disabled pending elementGetMidiInputs / elementGetMidiOutputs.
+ *
+ * Appearance: cable routing toggle (wired, persisted in useAppStore).
+ * Theme/density/font-scale controls are honest-disabled.
+ *
+ * Shortcuts: read-only key-command list derived from useKeyboard.ts.
+ * Full rebinding editor tracked as U9.
+ *
+ * Settings are staged locally; pushed to C++ host only on each section's
+ * Apply button — opening is non-destructive.
+ */
+export function PreferencesModal({ onClose }: PreferencesModalProps) {
+  const [activeTab, setActiveTab] = useState<TabId>("audio");
+
+  // ESC dismisses (a11y parity with AboutModal / NeuPromptModal)
+  const onKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    },
+    [onClose],
+  );
+
+  useEffect(() => {
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [onKeyDown]);
+
+  return (
     <div
       className="fixed inset-0 z-[200] flex items-center justify-center bg-black/55"
       role="dialog"
       aria-modal="true"
       aria-label="Preferences"
     >
-      <div className="w-[min(520px,92vw)] max-h-[min(640px,85vh)] overflow-hidden flex flex-col rounded-lg bg-surface shadow-[8px_8px_24px_rgba(0,0,0,0.5)] border border-white/5">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
-          <span className="text-xs font-bold tracking-widest uppercase text-text-primary">
-            Preferences
-          </span>
+      <div
+        className="w-[min(560px,95vw)] max-h-[min(680px,88vh)] flex flex-col rounded-xl bg-surface border border-white/5"
+        style={{ boxShadow: "8px 8px 32px rgba(0,0,0,0.6), -2px -2px 8px rgba(255,255,255,0.03)" }}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-white/8 shrink-0">
+          <div className="flex items-center gap-2">
+            <Icon name="Settings" size={14} className="text-text-secondary" />
+            <span className="text-[11px] font-bold tracking-widest uppercase text-text-primary">
+              Preferences
+            </span>
+          </div>
           <button
             type="button"
-            className="text-text-secondary hover:text-text-primary text-sm px-2"
+            className="w-6 h-6 flex items-center justify-center rounded bg-pressed neu-inset text-text-secondary hover:text-text-primary transition-colors cursor-pointer focus:outline-none focus:ring-1 focus:ring-accent-blue/40"
             onClick={onClose}
+            aria-label="Close preferences"
           >
-            Close
+            <Icon name="X" size={12} />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-6 text-[12px]">
-          <section className="space-y-2">
-            <h3 className="text-[10px] uppercase tracking-wider text-text-secondary">
-              Audio device
-            </h3>
-            <label className="block text-text-secondary text-[10px] uppercase">
-              Driver type
-              <select
-                className="mt-1 w-full bg-pressed rounded px-2 py-1.5 text-text-primary border border-white/5"
-                value={driver}
-                onChange={(e) => setDriver(e.target.value)}
+        {/* Tab bar */}
+        <div
+          className="flex shrink-0 border-b border-white/8 bg-panel px-2 gap-0.5 pt-2"
+          role="tablist"
+          aria-label="Preferences sections"
+        >
+          {TABS.map((tab) => {
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                aria-controls={`pref-panel-${tab.id}`}
+                id={`pref-tab-${tab.id}`}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center gap-1.5 px-3 py-2 text-[10px] font-bold uppercase tracking-wider rounded-t transition-colors cursor-pointer focus:outline-none relative ${
+                  isActive
+                    ? "text-text-primary bg-surface"
+                    : "text-text-secondary hover:text-text-primary hover:bg-elevated"
+                }`}
               >
-                {(audio?.deviceTypes?.length
-                  ? audio.deviceTypes
-                  : [driver]
-                ).map((d) => (
-                  <option key={d || "default"} value={d}>
-                    {d || "Default"}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="block text-text-secondary text-[10px] uppercase">
-              Output
-              <select
-                className="mt-1 w-full bg-pressed rounded px-2 py-1.5 text-text-primary border border-white/5"
-                value={outDev}
-                onChange={(e) => setOutDev(e.target.value)}
-              >
-                {(audio?.outputDevices ?? []).map((d) => (
-                  <option key={d} value={d}>
-                    {d}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="block text-text-secondary text-[10px] uppercase">
-              Input
-              <select
-                className="mt-1 w-full bg-pressed rounded px-2 py-1.5 text-text-primary border border-white/5"
-                value={inDev}
-                onChange={(e) => setInDev(e.target.value)}
-              >
-                {(audio?.inputDevices ?? []).map((d) => (
-                  <option key={d} value={d}>
-                    {d}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              <label className="block text-text-secondary text-[10px] uppercase">
-                Sample rate
-                <select
-                  className="mt-1 w-full bg-pressed rounded px-2 py-1.5 text-text-primary border border-white/5"
-                  value={sr}
-                  onChange={(e) => setSr(Number(e.target.value))}
-                >
-                  {(audio?.sampleRates ?? []).map((r) => (
-                    <option key={r} value={r}>
-                      {r}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="block text-text-secondary text-[10px] uppercase">
-                Buffer
-                <select
-                  className="mt-1 w-full bg-pressed rounded px-2 py-1.5 text-text-primary border border-white/5"
-                  value={buf}
-                  onChange={(e) => setBuf(Number(e.target.value))}
-                >
-                  {(audio?.bufferSizes ?? []).map((b) => (
-                    <option key={b} value={b}>
-                      {b}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <button
-              type="button"
-              className="w-full py-2 rounded bg-elevated shadow-neu-raised text-text-primary text-[11px] font-bold uppercase tracking-wide"
-              onClick={() =>
-                void nativeAudioApplySetup({
-                  outputDeviceName: outDev,
-                  inputDeviceName: inDev,
-                  audioDeviceType: driver,
-                  sampleRate: sr,
-                  bufferSize: buf,
-                })
-              }
-            >
-              Apply audio
-            </button>
-          </section>
+                <Icon name={tab.icon} size={12} />
+                {tab.label}
+                {/* Active indicator bar */}
+                {isActive && (
+                  <span
+                    className="absolute bottom-0 left-0 right-0 h-px bg-accent-blue"
+                    aria-hidden
+                  />
+                )}
+              </button>
+            );
+          })}
+        </div>
 
-          <section className="space-y-2 border-t border-white/10 pt-4">
-            <h3 className="text-[10px] uppercase tracking-wider text-text-secondary">
-              OSC host
-            </h3>
-            <label className="flex items-center gap-2 text-text-primary">
-              <input
-                type="checkbox"
-                checked={oscEn}
-                onChange={(e) => setOscEn(e.target.checked)}
-              />
-              Enabled
-            </label>
-            <label className="block text-text-secondary text-[10px] uppercase">
-              Port
-              <input
-                type="number"
-                className="mt-1 w-full bg-pressed rounded px-2 py-1.5 text-text-primary border border-white/5"
-                value={oscPort}
-                onChange={(e) => setOscPort(Number(e.target.value))}
-              />
-            </label>
-            <button
-              type="button"
-              className="w-full py-2 rounded bg-elevated shadow-neu-raised text-text-primary text-[11px] font-bold uppercase tracking-wide"
-              onClick={() =>
-                void nativeOscApplyHost({ enabled: oscEn, port: oscPort })
-              }
-            >
-              Apply OSC
-            </button>
-          </section>
-
-          <section className="space-y-2 border-t border-white/10 pt-4">
-            <h3 className="text-[10px] uppercase tracking-wider text-text-secondary">
-              Board canvas
-            </h3>
-            <label className="flex items-center gap-2 text-text-primary">
-              <input
-                type="checkbox"
-                checked={snapGrid}
-                onChange={(e) => setSnapGrid(e.target.checked)}
-              />
-              Snap to grid (Web board)
-            </label>
-            <label className="block text-text-secondary text-[10px] uppercase">
-              Grid size (px)
-              <input
-                type="number"
-                min={4}
-                max={128}
-                className="mt-1 w-full bg-pressed rounded px-2 py-1.5 text-text-primary border border-white/5"
-                value={gridSize}
-                onChange={(e) => setGridSize(Number(e.target.value))}
-              />
-            </label>
-            <button
-              type="button"
-              className="w-full py-2 rounded bg-elevated shadow-neu-raised text-text-primary text-[11px] font-bold uppercase tracking-wide"
-              onClick={() =>
-                void nativeGraphSetCanvasOptions(snapGrid, gridSize)
-              }
-            >
-              Apply canvas
-            </button>
-          </section>
-
-          <section className="space-y-2 border-t border-white/10 pt-4">
-            <h3 className="text-[10px] uppercase tracking-wider text-text-secondary">
-              MIDI mapping & tools
-            </h3>
-            <button
-              type="button"
-              className={`w-full py-2 rounded text-[11px] font-bold uppercase tracking-wide ${
-                learning
-                  ? "bg-accent-orange text-canvas"
-                  : "bg-elevated shadow-neu-raised text-text-primary"
-              }`}
-              onClick={() => {
-                void nativeMappingSetLearning(!learning);
-              }}
-            >
-              {learning ? "Stop MIDI learn" : "MIDI learn"}
-            </button>
-            {midiMapping.maps.length > 0 ? (
-              <div className="max-h-48 overflow-y-auto rounded border border-white/10 bg-pressed text-[10px]">
-                <table className="w-full text-left border-collapse">
-                  <thead className="text-text-dim uppercase tracking-wider sticky top-0 bg-pressed">
-                    <tr>
-                      <th className="p-1.5 font-normal">Device</th>
-                      <th className="p-1.5 font-normal">Control</th>
-                      <th className="p-1.5 font-normal">Block</th>
-                      <th className="p-1.5 font-normal w-14"> </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {midiMapping.maps.map((row) => (
-                      <tr
-                        key={`${row.index}-${row.nodeId}-${row.parameterIndex}`}
-                        className={
-                          row.valid
-                            ? "border-t border-white/5"
-                            : "border-t border-accent-orange/30 opacity-70"
-                        }
-                      >
-                        <td className="p-1.5 align-top truncate max-w-[100px]">
-                          {row.deviceName || "—"}
-                        </td>
-                        <td className="p-1.5 align-top truncate max-w-[80px]">
-                          {row.controlName || "—"}
-                        </td>
-                        <td className="p-1.5 align-top truncate max-w-[100px]">
-                          {row.nodeName || row.nodeId || "—"}
-                          <span className="block text-text-dim tabular">
-                            param {row.parameterIndex}
-                          </span>
-                        </td>
-                        <td className="p-1.5 align-top">
-                          <button
-                            type="button"
-                            className="text-error hover:underline uppercase"
-                            onClick={() =>
-                              void nativeMappingRemoveMap(row.index)
-                            }
-                          >
-                            ×
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <p className="text-[10px] text-text-dim">
-                No controller maps in the session snapshot yet.
-              </p>
-            )}
-            <button
-              type="button"
-              className="w-full py-2 rounded bg-pressed text-text-primary text-[11px] uppercase"
-              onClick={() => void nativeOpenLuaConsole()}
-            >
-              Lua console (overlay)
-            </button>
-            <button
-              type="button"
-              className="w-full py-2 rounded bg-pressed text-text-primary text-[11px] uppercase"
-              onClick={() => void nativeOpenGraphMixer()}
-            >
-              Graph mixer (overlay)
-            </button>
-            <button
-              type="button"
-              className="w-full py-2 rounded bg-pressed text-text-secondary text-[11px] uppercase"
-              onClick={() => void nativeWebDismissOverlay()}
-            >
-              Dismiss overlay
-            </button>
-          </section>
+        {/* Tab content */}
+        <div className="flex-1 overflow-y-auto px-4 py-4">
+          <div
+            id={`pref-panel-${activeTab}`}
+            role="tabpanel"
+            aria-labelledby={`pref-tab-${activeTab}`}
+          >
+            {activeTab === "audio"      && <AudioTab />}
+            {activeTab === "midi"       && <MidiTab />}
+            {activeTab === "appearance" && <AppearanceTab />}
+            {activeTab === "shortcuts"  && <ShortcutsTab />}
+          </div>
         </div>
       </div>
     </div>
