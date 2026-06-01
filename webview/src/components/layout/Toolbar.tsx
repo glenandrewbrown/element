@@ -3,7 +3,6 @@ import { useGraphStore, selectBreadcrumbs } from "../../stores/useGraphStore";
 import {
   usePerformStore,
   selectBpm,
-  selectScenes,
   selectActiveScene,
   selectLiveHealth,
 } from "../../stores/usePerformStore";
@@ -35,10 +34,10 @@ import { useSessionStore } from "../../stores/useSessionStore";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { PreferencesModal } from "./PreferencesModal";
 import { AboutModal } from "./AboutModal";
-import {
-  nativePerformAddScene,
-  nativePerformCaptureScene,
-} from "../../bridge/nativePerform";
+// SHELVED (D3, hide-UI keep-code) — see FINISH-APP-PLAN. nativePerformAddScene
+// / nativePerformCaptureScene (../../bridge/nativePerform) are no longer
+// imported here because the Scene controls are unwired from the toolbar. The
+// bridge module remains on disk; re-import when restoring the Scene UI.
 import { EV_OPEN_PREFERENCES } from "../../events";
 import { Icon } from "../neu";
 
@@ -64,7 +63,6 @@ function sessionDisplayName(filePath: string, dirty: boolean): string {
 export function Toolbar() {
   const [prefsOpen, setPrefsOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
-  const [captureBusy, setCaptureBusy] = useState(false);
   const [editingBpm, setEditingBpm] = useState(false);
   const [bpmInput, setBpmInput] = useState("");
   /**
@@ -148,14 +146,13 @@ export function Toolbar() {
     };
   }, []);
   const mode = useAppStore((s) => s.mode);
-  const toggleMode = useAppStore((s) => s.toggleMode);
-  const activeSceneIdx = useAppStore((s) => s.activeScene);
-  const setScene = useAppStore((s) => s.setScene);
+  // SHELVED (D3, hide-UI keep-code) — see FINISH-APP-PLAN. toggleMode, setScene
+  // and the active-scene index are no longer read here (Perform-mode toggle +
+  // Scene controls unwired). usePerformStore/useAppStore keep these on the API.
   const breadcrumbs = useGraphStore(selectBreadcrumbs);
   const bpm = usePerformStore(selectBpm);
   const live = usePerformStore(selectLiveHealth);
   // isPlaying now sourced from useEngineSnapshotStore at the top of the component.
-  const scenes = usePerformStore(selectScenes);
   const activeSceneData = usePerformStore(selectActiveScene);
   const filePath = useSessionStore((s) => s.filePath);
   const dirty = useSessionStore((s) => s.dirty);
@@ -165,8 +162,6 @@ export function Toolbar() {
   const setCableRouting = useAppStore((s) => s.setCableRouting);
 
   const isEdit = mode === "edit";
-  const sceneCount = Math.max(1, scenes.length);
-  const sceneLabel = `SCENE ${activeSceneIdx + 1}/${sceneCount}`;
 
   return (
     <>
@@ -430,17 +425,10 @@ export function Toolbar() {
               </div>
             </div>
 
-            {/* Mode toggle */}
-            <button
-              onClick={toggleMode}
-              className="flex items-center gap-1.5 bg-pressed px-3 py-1 rounded-full shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] border border-white/5 transition-all hover:border-white/10"
-            >
-              <span className="text-[9px] text-accent-blue font-black tracking-widest">EDIT</span>
-              <div className="w-6 h-3 bg-accent-blue rounded-full relative">
-                <div className="absolute right-0.5 top-0.5 w-2 h-2 bg-text-primary rounded-full shadow-sm" />
-              </div>
-              <span className="text-[9px] text-text-secondary font-black tracking-widest">PERFORM</span>
-            </button>
+            {/* SHELVED (D3, hide-UI keep-code) — see FINISH-APP-PLAN.
+                The EDIT/PERFORM mode-toggle button is removed: Perform mode is
+                shelved and the app is locked to Edit. Restore by re-adding a
+                button wired to `toggleMode`. */}
           </div>
         )}
 
@@ -469,62 +457,13 @@ export function Toolbar() {
                 </button>
               </div>
 
-              {/* Scene selector */}
-              <div className="flex items-center gap-2 bg-pressed px-2 py-0.5 rounded shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] text-text-secondary border border-white/5">
-                <Icon name="Layers" size={16} aria-hidden />
-                <button
-                  className="hover:text-text-primary transition-colors"
-                  onClick={() =>
-                    setScene((activeSceneIdx - 1 + sceneCount) % sceneCount)
-                  }
-                  aria-label="Previous scene"
-                >
-                  <Icon name="ChevronLeft" size={14} aria-hidden />
-                </button>
-                <span className="inline-flex items-center gap-1 tabular-nums font-bold">
-                  {sceneLabel}
-                  {activeSceneData?.hasCapture ? (
-                    <span
-                      className="w-1.5 h-1.5 rounded-full bg-accent-orange shadow-[0_0_6px_rgba(232,168,56,0.5)]"
-                      title="This scene has a stored parameter capture"
-                      aria-hidden
-                    />
-                  ) : null}
-                </span>
-                <button
-                  className="hover:text-text-primary transition-colors"
-                  onClick={() => setScene((activeSceneIdx + 1) % sceneCount)}
-                  aria-label="Next scene"
-                >
-                  <Icon name="ChevronRight" size={14} aria-hidden />
-                </button>
-                <div className="flex items-center gap-1 border-l border-white/10 ml-1 pl-1">
-                  <button
-                    type="button"
-                    className="px-1.5 py-0.5 rounded bg-surface text-[10px] text-accent-blue font-bold hover:bg-elevated"
-                    title="Add perform scene (session)"
-                    onClick={() =>
-                      void nativePerformAddScene(`Scene ${sceneCount + 1}`)
-                    }
-                  >
-                    +
-                  </button>
-                  <button
-                    type="button"
-                    disabled={captureBusy}
-                    className="px-1.5 py-0.5 rounded bg-surface text-[9px] text-accent-orange font-bold hover:bg-elevated disabled:opacity-40"
-                    title="Capture current graph parameters into the active scene"
-                    onClick={() => {
-                      setCaptureBusy(true);
-                      void nativePerformCaptureScene().finally(() =>
-                        setCaptureBusy(false),
-                      );
-                    }}
-                  >
-                    CAP
-                  </button>
-                </div>
-              </div>
+              {/* SHELVED (D3, hide-UI keep-code) — see FINISH-APP-PLAN.
+                  The Scene selector + add/capture controls are removed: the
+                  Scene/SceneLauncher system is shelved. The perform store
+                  (usePerformStore) and nativePerformAddScene/CaptureScene
+                  bridge calls remain on disk; this UI block is just unwired.
+                  Restore by re-adding the scene selector wired to setScene /
+                  nativePerformAddScene / nativePerformCaptureScene. */}
 
               {/* Settings + Panic — Section 7.8 */}
               <div className="flex items-center gap-3 ml-2">

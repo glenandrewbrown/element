@@ -80,11 +80,12 @@ export const useAppStore = create<AppStore>()(
   requestGraphStateRefresh: () =>
     set((s) => ({ refreshNonce: s.refreshNonce + 1 })),
 
-  toggleMode: () =>
-    set((s) => {
-      const next = s.mode === "edit" ? "perform" : "edit";
-      return { mode: next, refreshNonce: s.refreshNonce + 1 };
-    }),
+  // SHELVED (D3, hide-UI keep-code) — see FINISH-APP-PLAN. Perform mode is
+  // removed from the MVP UI; the app is locked to "edit". toggleMode is kept
+  // as a no-op (rather than deleted) so the action stays on the store API and
+  // any residual caller can't flip the UI into the now-unmounted Perform tree.
+  // To restore Perform mode, revert this to the edit/perform swap.
+  toggleMode: () => {},
 
   togglePanel: (panel) =>
     set((s) => {
@@ -134,18 +135,22 @@ export const useAppStore = create<AppStore>()(
   setCableRouting: (routing) => set({ cableRouting: routing }),
     }),
     {
-      // G-19: persist the Edit/Perform mode so it survives reload instead of
-      // snapping back to "edit". Narrow partialize — only `mode` is stored;
-      // panel/scene/bookmark state stays session-local.
-      //
-      // NOTE: in the embedded JUCE WKWebView, localStorage MAY be cleared on
-      // a full plugin reload depending on the data-store config — if Glen's
-      // "flips back" symptom persists at runtime, the durable fix is to back
-      // this with the C++ ValueTree via the bridge (tracked follow-up). This
-      // fixes Storybook/dev-build and standalone immediately.
+      // SHELVED (D3, hide-UI keep-code) — see FINISH-APP-PLAN. Perform mode is
+      // removed from the MVP UI, so there is no longer any Edit/Perform state
+      // worth persisting (G-19 persisted `mode` to survive reload). Partialize
+      // now persists nothing, and `merge` coerces any legacy persisted
+      // `mode: "perform"` back to "edit" so a previously-saved Perform layout
+      // can't resurrect the now-unmounted perform panels. To restore Perform
+      // mode, re-add `partialize: (s) => ({ mode: s.mode })` and drop the merge
+      // coercion.
       name: "element-app-ui",
       storage: createJSONStorage(() => localStorage),
-      partialize: (s) => ({ mode: s.mode }),
+      partialize: () => ({}),
+      merge: (persisted, current) => ({
+        ...current,
+        ...(persisted as Partial<AppStore>),
+        mode: "edit",
+      }),
     },
   ),
 );

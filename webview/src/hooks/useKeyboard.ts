@@ -227,15 +227,10 @@ export function useKeyboard({ onToggleCommandPalette }: UseKeyboardOptions) {
             return;
           }
 
-          case "m":
-          case "M": {
-            if (shift) {
-              e.preventDefault();
-              useAppStore.getState().toggleMode();
-              return;
-            }
-            break;
-          }
+          // SHELVED (D3, hide-UI keep-code) — see FINISH-APP-PLAN. The
+          // Cmd/Ctrl+Shift+M "toggle Edit/Perform mode" shortcut is removed:
+          // Perform mode is shelved and the app is locked to Edit. Restore by
+          // re-adding a `case "m"/"M"` that calls useAppStore...toggleMode().
         }
       }
 

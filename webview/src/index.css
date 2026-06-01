@@ -75,6 +75,52 @@
   --motion-hover: 200ms cubic-bezier(0.4, 0, 0.2, 1);
   --motion-modal: 250ms cubic-bezier(0.32, 0.72, 0, 1);
   --motion-page: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* ──────────────────────────────────────────────────────────────────
+     FROZEN GLOBAL HSL TOKEN LAYER — W0-TOKENS (spec: .omo/design/W0-TOKENS.md)
+     The shared neumorphic vocabulary in HSL form, available to EVERY
+     component (not just the .nodeblock-v3 subtree). Wave-1 reskins
+     (Breadcrumb/Cable/Inspector/QuickAdd/ports) reference THESE via
+     `hsl(var(--…))`; NO ad-hoc shadow/colour values anywhere.
+
+     HSL ↔ hex parity: these HSLs round-trip to the locked @theme hexes
+     above (210 65% 57% = #4A90D9, 180 65% 47% = #2BC4C4,
+     38 80% 56% = #E8A838, 266 64% 69% = #A87FE0, 240 11% 91% = #E5E5EA,
+     240 3% 56% = #8E8E93). The @theme HEX set remains the canonical
+     palette + drives Tailwind utilities; this is the HSL mirror for
+     `hsl(var() / alpha)` usage. Element's surface tones stay HEX-only
+     (locked: canvas #1E1E22 … pressed #1A1A1E) — intentionally NOT the
+     mockup's darker surface HSLs.
+     ────────────────────────────────────────────────────────────────── */
+
+  /* Block-category accents (4-category taxonomy) */
+  --cat-instrument: 210 65% 57%; /* Virtual Instruments — ● */
+  --cat-midifx: 180 65% 47%;     /* MIDI Effects — ▲ */
+  --cat-audiofx: 38 80% 56%;     /* Audio Effects — ◆ */
+  --cat-modulator: 266 64% 69%;  /* Modulators / Utilities — ⬡ */
+
+  /* Signal-type accents (cables, signal pills, port pips) */
+  --sig-audio: 210 65% 57%;
+  --sig-midi: 180 65% 47%;
+  --sig-value: 38 80% 56%; /* canonical name */
+  --sig-cv: var(--sig-value); /* alias — mockup/shadcn layer uses --sig-cv */
+
+  /* Status (meters, LEDs, alerts) */
+  --status-ok: 142 69% 58%;
+  --status-warn: 38 80% 56%;
+  --status-clip: 358 75% 59%;
+
+  /* Foreground / muted (HSL mirror of --color-text-* for hsl()/alpha use) */
+  --foreground: 240 11% 91%;
+  --muted-foreground: 240 3% 56%;
+
+  /* Depth-nav tint per breadcrumb level (U2 nested chrome:
+     .nested-canvas-frame / .depth-ribbon / .depth-banner). L0→L4. */
+  --depth-0: 210 65% 57%; /* blue */
+  --depth-1: 180 65% 47%; /* teal */
+  --depth-2: 266 64% 69%; /* purple */
+  --depth-3: 38 80% 56%;  /* amber */
+  --depth-4: 320 65% 60%; /* magenta */
 }
 
 /* ── Global Reset ── */
@@ -300,6 +346,11 @@ body {
    ============================================================ */
 
 .nodeblock-v3 {
+  /* NOTE (W0-TOKENS): these mirror the FROZEN GLOBAL layer in :root above
+     with IDENTICAL values — kept as a self-contained re-declaration so the
+     verbatim mockup port stays drop-in. The global :root defs make the same
+     tokens resolvable OUTSIDE this subtree (Breadcrumb/Cable/Inspector). Do
+     NOT diverge these from the global values. */
   /* Category accents (block category) — HSL form, mockup parity */
   --cat-instrument: 210 65% 57%;
   --cat-midifx: 180 65% 47%;

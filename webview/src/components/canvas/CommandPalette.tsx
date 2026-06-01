@@ -10,7 +10,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import { NeuInput } from "../neu";
 import { useGraphStore } from "../../stores/useGraphStore";
 import { useAppStore } from "../../stores/useAppStore";
-import { usePerformStore, selectScenes } from "../../stores/usePerformStore";
+// SHELVED (D3, hide-UI keep-code) — see FINISH-APP-PLAN. usePerformStore /
+// selectScenes no longer imported here (Scene results + mode toggle unwired).
+// The store remains on disk; re-import to restore the Scene command results.
 import { usePluginBrowserStore } from "../../stores/usePluginBrowserStore";
 import { useHostExtrasStore } from "../../stores/useHostExtrasStore";
 import {
@@ -108,9 +110,9 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
   const selectNode = useGraphStore((s) => s.selectNode);
   const toggleMinimap = useGraphStore((s) => s.toggleMinimap);
   const openBlockTab = useAppStore((s) => s.openBlockTab);
-  const toggleMode = useAppStore((s) => s.toggleMode);
-  const setScene = useAppStore((s) => s.setScene);
-  const scenes = usePerformStore(selectScenes);
+  // SHELVED (D3, hide-UI keep-code) — see FINISH-APP-PLAN. toggleMode, setScene
+  // and the usePerformStore scenes list are no longer read here: the
+  // Edit/Perform toggle command and Scene results are removed from the palette.
   const nativePlugins = usePluginBrowserStore((s) => s.plugins);
   const favoriteIdentifiers = usePluginBrowserStore((s) => s.favoriteIdentifiers);
   const recentIdentifiers = usePluginBrowserStore((s) => s.recentIdentifiers);
@@ -210,15 +212,9 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
           window.dispatchEvent(new CustomEvent(EV_FIT_BOARD));
         }),
       },
-      {
-        id: "act-toggle-mode",
-        label: "Toggle Edit / Perform",
-        category: "action",
-        hint: "Mode switch",
-        onSelect: runAndClose(() => {
-          toggleMode();
-        }),
-      },
+      // SHELVED (D3, hide-UI keep-code) — see FINISH-APP-PLAN. The
+      // "Toggle Edit / Perform" command is removed (Perform mode shelved).
+      // Restore by re-adding an action wired to `toggleMode`.
       {
         id: "act-minimap",
         label: "Toggle Minimap",
@@ -288,15 +284,10 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
       onSelect: runAndClose(() => nativeGraphAddPlugin(plugin.identifier)),
     }));
 
-    const sceneResults: PaletteResult[] = scenes.map((scene) => ({
-      id: `scene-${scene.id}`,
-      label: `Scene: ${scene.name}`,
-      category: "scene",
-      hint: scene.active ? "Active" : `Slot ${scene.index + 1}`,
-      onSelect: runAndClose(() => {
-        setScene(scene.index);
-      }),
-    }));
+    // SHELVED (D3, hide-UI keep-code) — see FINISH-APP-PLAN. Scene results are
+    // removed from the command palette (Scene/SceneLauncher system shelved).
+    // usePerformStore + setScene remain on disk; re-add a sceneResults block
+    // (mapped from `scenes`, wired to `setScene`) to restore.
 
     const settingResults: PaletteResult[] = [
       {
@@ -335,7 +326,6 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
       ...actionResults,
       ...blockResults,
       ...pluginResults,
-      ...sceneResults,
       ...settingResults,
     ];
   }, [
@@ -343,11 +333,8 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
     openBlockTab,
     orderedPlugins,
     runAndClose,
-    scenes,
     selectNode,
-    setScene,
     toggleMinimap,
-    toggleMode,
     mappingLearning,
   ]);
 
