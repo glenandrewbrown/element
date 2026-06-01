@@ -16,11 +16,15 @@ const mockGetSource = vi.fn();
 const mockGetRuntimeState = vi.fn();
 const mockSetSource = vi.fn();
 
-vi.mock("../../../bridge/nativeGraph", () => ({
-  nativeScriptGetSource: (...a: unknown[]) => mockGetSource(...a),
-  nativeScriptGetRuntimeState: (...a: unknown[]) => mockGetRuntimeState(...a),
-  nativeScriptSetSource: (...a: unknown[]) => mockSetSource(...a),
-}));
+vi.mock("../../../bridge/nativeGraph", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../bridge/nativeGraph")>();
+  return {
+    ...actual,
+    nativeScriptGetSource: (...a: unknown[]) => mockGetSource(...a),
+    nativeScriptGetRuntimeState: (...a: unknown[]) => mockGetRuntimeState(...a),
+    nativeScriptSetSource: (...a: unknown[]) => mockSetSource(...a),
+  };
+});
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -33,11 +37,13 @@ function defaultBridgeSetup(source = 'print("hello")', vars: unknown[] = []) {
 
 describe("ScriptEditor", () => {
   beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     defaultBridgeSetup();
   });
 
   afterEach(() => {
     vi.clearAllMocks();
+    vi.useRealTimers();
   });
 
   it("shows loading state before source resolves", () => {

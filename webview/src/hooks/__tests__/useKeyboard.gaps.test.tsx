@@ -51,17 +51,20 @@ const mockDuplicateNodes = vi.fn(async () => 1);
 const mockUndo = vi.fn(async () => undefined);
 const mockRedo = vi.fn(async () => undefined);
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const spread = (fn: (...a: any[]) => any) => (...a: any[]) => fn(...a);
+
 vi.mock("../../bridge/nativeGraph", () => ({
-  nativeGraphCommentAdd: (...a: unknown[]) => mockCommentAdd(...a),
-  nativeGraphCommentDelete: (...a: unknown[]) => mockCommentDelete(...a),
-  nativeGraphCopyNodes: (...a: unknown[]) => mockCopyNodes(...a),
-  nativeGraphDuplicateNode: (...a: unknown[]) => mockDuplicateNode(...a),
-  nativeGraphDuplicateNodes: (...a: unknown[]) => mockDuplicateNodes(...a),
-  nativeGraphPasteNodes: (...a: unknown[]) => mockPasteNodes(...a),
-  nativeGraphRemoveNode: (...a: unknown[]) => mockRemoveNode(...a),
-  nativeGraphSetCableBus: (...a: unknown[]) => mockSetCableBus(...a),
-  nativeRedo: (...a: unknown[]) => mockRedo(...a),
-  nativeUndo: (...a: unknown[]) => mockUndo(...a),
+  nativeGraphCommentAdd: spread(mockCommentAdd),
+  nativeGraphCommentDelete: spread(mockCommentDelete),
+  nativeGraphCopyNodes: spread(mockCopyNodes),
+  nativeGraphDuplicateNode: spread(mockDuplicateNode),
+  nativeGraphDuplicateNodes: spread(mockDuplicateNodes),
+  nativeGraphPasteNodes: spread(mockPasteNodes),
+  nativeGraphRemoveNode: spread(mockRemoveNode),
+  nativeGraphSetCableBus: spread(mockSetCableBus),
+  nativeRedo: spread(mockRedo),
+  nativeUndo: spread(mockUndo),
 }));
 
 vi.mock("../../bridge/nativeSession", () => ({
@@ -95,7 +98,7 @@ function resetStores() {
     commentBoxes: [],
     selectedNodeId: null,
     selectedEdgeId: null,
-    breadcrumbStack: [{ boardId: "root", label: "Root" }],
+    breadcrumbStack: ["Root"],
     minimapVisible: false,
   });
   useBusStore.setState({ cableBus: {} });
@@ -195,7 +198,7 @@ describe("useKeyboard — Cmd+Shift alignment", () => {
 
   it("no-ops when fewer than 2 blocks selected", () => {
     useGraphStore.setState({
-      nodes: [{ id: "n1", position: { x: 0, y: 0 }, data: {} }],
+      nodes: [{ id: "n1", position: { x: 0, y: 0 } }] as unknown as import("../../data/types").BlockData[],
     });
     mockGetNodes.mockReturnValue([{ id: "n1", selected: true, type: "block" }]);
     mountHook();
@@ -213,9 +216,9 @@ describe("useKeyboard — Cmd+Shift alignment", () => {
     useGraphStore.setState({
       alignSelectedNodes: alignSpy,
       nodes: [
-        { id: "n1", position: { x: 0, y: 0 }, data: {} },
-        { id: "n2", position: { x: 100, y: 0 }, data: {} },
-      ],
+        { id: "n1", position: { x: 0, y: 0 } },
+        { id: "n2", position: { x: 100, y: 0 } },
+      ] as unknown as import("../../data/types").BlockData[],
     });
     mountHook();
     act(() => { fire("l", { metaKey: true, shiftKey: true }, "KeyL"); });
@@ -231,9 +234,9 @@ describe("useKeyboard — Cmd+Shift alignment", () => {
     useGraphStore.setState({
       distributeSelectedNodes: distributeSpy,
       nodes: [
-        { id: "n1", position: { x: 0, y: 0 }, data: {} },
-        { id: "n2", position: { x: 100, y: 0 }, data: {} },
-      ],
+        { id: "n1", position: { x: 0, y: 0 } },
+        { id: "n2", position: { x: 100, y: 0 } },
+      ] as unknown as import("../../data/types").BlockData[],
     });
     mountHook();
     act(() => { fire("h", { metaKey: true, shiftKey: true }, "KeyH"); });
@@ -287,10 +290,7 @@ describe("useKeyboard — Escape", () => {
     useGraphStore.setState({
       selectedNodeId: null,
       selectedEdgeId: null,
-      breadcrumbStack: [
-        { boardId: "root", label: "Root" },
-        { boardId: "child", label: "Child" },
-      ],
+      breadcrumbStack: ["Root", "Child"],
       popBreadcrumb: popSpy,
     });
     mountHook();
@@ -313,9 +313,9 @@ describe("useKeyboard — Tab traversal", () => {
     const selectSpy = vi.fn();
     useGraphStore.setState({
       nodes: [
-        { id: "n1", position: { x: 0, y: 0 }, data: {} },
-        { id: "n2", position: { x: 200, y: 0 }, data: {} },
-      ],
+        { id: "n1", position: { x: 0, y: 0 } },
+        { id: "n2", position: { x: 200, y: 0 } },
+      ] as unknown as import("../../data/types").BlockData[],
       edges: [],
       selectedNodeId: null,
       selectNode: selectSpy,
@@ -329,9 +329,9 @@ describe("useKeyboard — Tab traversal", () => {
     const selectSpy = vi.fn();
     useGraphStore.setState({
       nodes: [
-        { id: "n1", position: { x: 0, y: 0 }, data: {} },
-        { id: "n2", position: { x: 100, y: 0 }, data: {} },
-      ],
+        { id: "n1", position: { x: 0, y: 0 } },
+        { id: "n2", position: { x: 100, y: 0 } },
+      ] as unknown as import("../../data/types").BlockData[],
       edges: [],
       selectedNodeId: "n1",
       selectNode: selectSpy,
@@ -356,7 +356,7 @@ describe("useKeyboard — Delete/Backspace", () => {
   it("deletes a block node", async () => {
     useGraphStore.setState({
       selectedNodeId: "n1",
-      nodes: [{ id: "n1", position: { x: 0, y: 0 }, data: {} }],
+      nodes: [{ id: "n1", position: { x: 0, y: 0 } }] as unknown as import("../../data/types").BlockData[],
       commentBoxes: [],
     });
     mountHook();
@@ -368,7 +368,7 @@ describe("useKeyboard — Delete/Backspace", () => {
     useGraphStore.setState({
       selectedNodeId: "c1",
       nodes: [],
-      commentBoxes: [{ id: "c1", position: { x: 0, y: 0 }, size: { width: 100, height: 80 }, label: "group" }],
+      commentBoxes: [{ id: "c1", position: { x: 0, y: 0 }, size: { width: 100, height: 80 }, label: "group", color: "#808080" }],
     });
     mountHook();
     await act(async () => { fire("Backspace", {}); });
@@ -413,7 +413,7 @@ describe("useKeyboard — w/W wireless cable toggle", () => {
   it("assigns a bus name when cable is not wireless", async () => {
     useGraphStore.setState({
       selectedEdgeId: "e1",
-      edges: [{ id: "e1", source: "n1", target: "n2", sourceHandle: "o0", targetHandle: "i0" }],
+      edges: [{ id: "e1", source: "n1", target: "n2", sourcePort: "o0", targetPort: "i0", signalType: "audio", channelCount: 2, isSidechain: false }] as import("../../data/types").CableData[],
     });
     useBusStore.setState({ cableBus: {} });
     mountHook();
@@ -424,7 +424,7 @@ describe("useKeyboard — w/W wireless cable toggle", () => {
   it("clears bus when cable is already wireless", async () => {
     useGraphStore.setState({
       selectedEdgeId: "e1",
-      edges: [{ id: "e1", source: "n1", target: "n2", sourceHandle: "o0", targetHandle: "i0" }],
+      edges: [{ id: "e1", source: "n1", target: "n2", sourcePort: "o0", targetPort: "i0", signalType: "audio", channelCount: 2, isSidechain: false }] as import("../../data/types").CableData[],
     });
     useBusStore.setState({ cableBus: { e1: "Bus 1" } });
     mountHook();

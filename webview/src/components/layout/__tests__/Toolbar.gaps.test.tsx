@@ -37,28 +37,31 @@ const mockPerformAddScene = vi.fn(async () => undefined);
 const mockPerformCaptureScene = vi.fn(async () => undefined);
 const mockSessionSetActiveGraph = vi.fn(async () => undefined);
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const spread = (fn: (...a: any[]) => any) => (...a: any[]) => fn(...a);
+
 vi.mock("../../../bridge/nativeGraph", () => ({
-  nativeTransportPanic: (...a: unknown[]) => mockTransportPanic(...a),
-  nativeTransportTogglePlay: (...a: unknown[]) => mockTransportPlay(...a),
-  nativeTransportStop: (...a: unknown[]) => mockTransportStop(...a),
-  nativeTransportRewind: (...a: unknown[]) => mockTransportRewind(...a),
-  nativeTransportSetTempo: (...a: unknown[]) => mockTransportSetTempo(...a),
-  nativeTransportSetRecording: (...a: unknown[]) => mockTransportSetRecording(...a),
-  nativeUndo: (...a: unknown[]) => mockUndo(...a),
-  nativeRedo: (...a: unknown[]) => mockRedo(...a),
+  nativeTransportPanic: spread(mockTransportPanic),
+  nativeTransportTogglePlay: spread(mockTransportPlay),
+  nativeTransportStop: spread(mockTransportStop),
+  nativeTransportRewind: spread(mockTransportRewind),
+  nativeTransportSetTempo: spread(mockTransportSetTempo),
+  nativeTransportSetRecording: spread(mockTransportSetRecording),
+  nativeUndo: spread(mockUndo),
+  nativeRedo: spread(mockRedo),
 }));
 
 vi.mock("../../../bridge/nativeSession", () => ({
-  nativeSessionNew: (...a: unknown[]) => mockSessionNew(...a),
-  nativeSessionOpen: (...a: unknown[]) => mockSessionOpen(...a),
-  nativeSessionSave: (...a: unknown[]) => mockSessionSave(...a),
-  nativeSessionSaveAs: (...a: unknown[]) => mockSessionSaveAs(...a),
-  nativeSessionSetActiveGraph: (...a: unknown[]) => mockSessionSetActiveGraph(...a),
+  nativeSessionNew: spread(mockSessionNew),
+  nativeSessionOpen: spread(mockSessionOpen),
+  nativeSessionSave: spread(mockSessionSave),
+  nativeSessionSaveAs: spread(mockSessionSaveAs),
+  nativeSessionSetActiveGraph: spread(mockSessionSetActiveGraph),
 }));
 
 vi.mock("../../../bridge/nativePerform", () => ({
-  nativePerformAddScene: (...a: unknown[]) => mockPerformAddScene(...a),
-  nativePerformCaptureScene: (...a: unknown[]) => mockPerformCaptureScene(...a),
+  nativePerformAddScene: spread(mockPerformAddScene),
+  nativePerformCaptureScene: spread(mockPerformCaptureScene),
 }));
 
 // ── Store reset ───────────────────────────────────────────────────────────────
@@ -100,12 +103,12 @@ function resetStores() {
     edges: [],
     selectedNodeId: null,
     selectedEdgeId: null,
-    breadcrumbStack: [{ boardId: "root", label: "Root" }],
+    breadcrumbStack: ["Root"],
   });
-  usePerformStore.setState((s) => ({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  usePerformStore.setState((s: any) => ({
     scenes: [],
-    liveHealth: { ...s.liveHealth, cpu: 0, outputPeak: 0 },
-    bpm: 120,
+    liveHealth: { ...s.liveHealth, bpm: 120, cpu: 0, outputPeak: 0 },
   }));
   useSessionStore.setState({ filePath: "", dirty: false, graphs: [] });
 }
@@ -202,16 +205,16 @@ describe("Toolbar — transport controls", () => {
 
   it("renders play/stop, record, and rewind buttons", () => {
     render(<Toolbar />);
-    // Play/Stop toggled button (aria-label changes based on isPlaying)
-    expect(
-      screen.getByRole("button", { name: /play|stop/i }),
-    ).toBeInTheDocument();
+    // Multiple transport buttons may share Play/Stop labels — assert at least one
+    const playStopBtns = screen.getAllByRole("button", { name: /play|stop/i });
+    expect(playStopBtns.length).toBeGreaterThanOrEqual(1);
   });
 
   it("calls nativeTransportTogglePlay when play button clicked", async () => {
     render(<Toolbar />);
+    const playStopBtns = screen.getAllByRole("button", { name: /play|stop/i });
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: /play|stop/i }));
+      fireEvent.click(playStopBtns[0]);
     });
     expect(mockTransportPlay).toHaveBeenCalled();
   });
@@ -250,21 +253,24 @@ describe("Toolbar — BPM display and editing", () => {
   });
 
   it("shows current BPM from engine snapshot", () => {
-    useEngineSnapshotStore.setState({ tempoBpm: 130 });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    usePerformStore.setState((s: any) => ({
+      liveHealth: { ...s.liveHealth, bpm: 130 },
+    }));
     render(<Toolbar />);
-    expect(screen.getByText("130.0")).toBeInTheDocument();
+    expect(screen.getByText("130.00")).toBeInTheDocument();
   });
 
   it("switches BPM to input mode on click", () => {
     render(<Toolbar />);
-    fireEvent.click(screen.getByText("120.0"));
-    expect(screen.getByDisplayValue("120.0")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("120.00"));
+    expect(screen.getByDisplayValue("120.00")).toBeInTheDocument();
   });
 
   it("submits new BPM on Enter and calls nativeTransportSetTempo", async () => {
     render(<Toolbar />);
-    fireEvent.click(screen.getByText("120.0"));
-    const input = screen.getByDisplayValue("120.0");
+    fireEvent.click(screen.getByText("120.00"));
+    const input = screen.getByDisplayValue("120.00");
     fireEvent.change(input, { target: { value: "140" } });
     await act(async () => {
       fireEvent.keyDown(input, { key: "Enter" });
@@ -274,17 +280,17 @@ describe("Toolbar — BPM display and editing", () => {
 
   it("cancels BPM edit on Escape", () => {
     render(<Toolbar />);
-    fireEvent.click(screen.getByText("120.0"));
-    const input = screen.getByDisplayValue("120.0");
+    fireEvent.click(screen.getByText("120.00"));
+    const input = screen.getByDisplayValue("120.00");
     fireEvent.keyDown(input, { key: "Escape" });
-    expect(screen.queryByDisplayValue("120.0")).not.toBeInTheDocument();
-    expect(screen.getByText("120.0")).toBeInTheDocument();
+    expect(screen.queryByDisplayValue("120.00")).not.toBeInTheDocument();
+    expect(screen.getByText("120.00")).toBeInTheDocument();
   });
 
   it("ignores non-numeric BPM input on Enter", async () => {
     render(<Toolbar />);
-    fireEvent.click(screen.getByText("120.0"));
-    const input = screen.getByDisplayValue("120.0");
+    fireEvent.click(screen.getByText("120.00"));
+    const input = screen.getByDisplayValue("120.00");
     fireEvent.change(input, { target: { value: "abc" } });
     await act(async () => {
       fireEvent.keyDown(input, { key: "Enter" });
@@ -353,7 +359,7 @@ describe("Toolbar — tap tempo", () => {
   let bridge: JuceBridgeMock;
 
   beforeEach(() => {
-    vi.useFakeTimers();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     bridge = installJuceBridgeMock();
     bridge.mock.mockResolvedValue(undefined);
     resetStores();
