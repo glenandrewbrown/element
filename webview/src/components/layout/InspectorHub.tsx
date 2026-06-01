@@ -26,7 +26,7 @@ import {
   selectHasHostData,
 } from "../../stores/useEngineSnapshotStore";
 import { NeuButton, NeuDisplay } from "../neu";
-import type { BlockData } from "../../data/types";
+import type { BlockCategory, BlockData } from "../../data/types";
 import {
   nativeGetNodeParameters,
   nativeGraphSetNodeNote,
@@ -50,9 +50,74 @@ import {
 import { ConnectionEditor } from "./ConnectionEditor";
 import { ScriptEditor } from "../canvas/ScriptEditor";
 import { BusInspector } from "./BusInspector";
+import { LiveHealth } from "./LiveHealth";
 import { NeuPromptModal } from "./NeuPromptModal";
+// The BlockHeader glyph must be the SAME function-inferred line icon the Block
+// draws in its gradient header (verdict #6), not the old generic radio SVG.
+// Block.tsx's FunctionIcon is module-local (not exported) and the disjoint-file
+// rule forbids editing Block.tsx to export it, so we reconstruct the IDENTICAL
+// icon here from the shared, already-exported `getFunctionMeta` source — same
+// iconPath, same SVG attributes → pixel-identical output, single source of the
+// path data, zero edit to Block.tsx.
+import { getFunctionMeta } from "../../data/functionGroup";
 
-type Tab = "inspector" | "script" | "log" | "meters" | "connections";
+// Verdict #6 — the docked tabbed shell: Block / Bus / Cable / Health. The
+// per-block detail (params, A/B, plugin embed, notes, script) lives under Block;
+// the wireless-bus auditor under Bus; routing + cable meters under Cable; engine
+// vitals + meters + log under Health. Every previously-wired surface is re-homed
+// here — nothing is dropped (three-UI rule).
+type Tab = "block" | "bus" | "cable" | "health";
+
+// Category accent (raw HSL triplet so we can alpha-compose for the gradient
+// header + glow, exactly as Block.tsx resolves its accent). Frozen W0 tokens.
+const catAccent: Record<BlockCategory, string> = {
+  instrument: "var(--cat-instrument)",
+  audiofx: "var(--cat-audiofx)",
+  midifx: "var(--cat-midifx)",
+  modulator: "var(--cat-modulator)",
+};
+
+const catLabel: Record<BlockCategory, string> = {
+  instrument: "Virtual Instrument",
+  audiofx: "Audio Effect",
+  midifx: "MIDI Effect",
+  modulator: "Modulator / Utility",
+};
+
+// Function-type icon — the MEANINGFUL line glyph (reverb arcs, EQ curve, synth
+// wave, drum…) inferred from the Block's name + category. This mirrors
+// Block.tsx's FunctionIcon byte-for-byte (same `getFunctionMeta(...).iconPath`,
+// same SVG attributes); reconstructed locally because Block's copy is not
+// exported and Block.tsx is out of scope to edit. Glen: the abstract geometric
+// category shape "means nothing"; the function icon is the useful cue.
+function FunctionIcon({
+  name,
+  category,
+  color = "#15151A",
+  size = 13,
+}: {
+  name: string;
+  category: BlockCategory;
+  color?: string;
+  size?: number;
+}) {
+  const { iconPath } = getFunctionMeta(name, category);
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="shrink-0"
+    >
+      <path d={iconPath} />
+    </svg>
+  );
+}
 
 function isScriptNode(block: BlockData): boolean {
   return (
@@ -193,31 +258,74 @@ function PresetStrip({ nodeId }: { nodeId: string }) {
   );
 }
 
+// ── BlockHeader — the mockup's docked gradient header (verdict #6) ──
+//
+// Full-width category-gradient bar (the same language as Block.tsx's chassis
+// header), the function-inferred FunctionIcon (NOT the old generic radio SVG),
+// the block name, category label + format pill, and a live state read
+// (ACTIVE / BYPASS / MUTED) lifted from the mockup's InspectorPanel header.
 function BlockHeader({ block }: { block: BlockData }) {
   const { name, category, format } = block;
-  const colorClass: Record<import("../../data/types").BlockCategory, string> = {
-    instrument: "bg-instrument/20 border-instrument/30 text-instrument",
-    audiofx: "bg-audiofx/20 border-audiofx/30 text-audiofx",
-    midifx: "bg-midifx/20 border-midifx/30 text-midifx",
-    modulator: "bg-modulator/20 border-modulator/30 text-modulator",
-  };
+  const accent = `hsl(${catAccent[category]})`;
 
   const portSummary = `${block.ports.filter((p) => p.direction === "input").length} in · ${block.ports.filter((p) => p.direction === "output").length} out`;
 
+  const stateLabel = block.muted
+    ? "MUTED"
+    : block.bypassed
+      ? "BYPASS"
+      : "ACTIVE";
+  const stateColor = block.muted
+    ? "hsl(var(--status-clip))"
+    : block.bypassed
+      ? "hsl(var(--muted-foreground))"
+      : "hsl(var(--status-ok))";
+  const stateGlyph = block.muted ? "✕" : block.bypassed ? "○" : "●";
+
   return (
-    <div className="flex items-center gap-3 p-2 bg-surface rounded shadow-[-2px_-2px_8px_rgba(255,255,255,0.04),2px_2px_8px_rgba(0,0,0,0.35)]">
+    <div
+      className="rounded-lg overflow-hidden neu-raised"
+      style={{ background: "hsl(var(--surface))" }}
+    >
+      {/* Full-width gradient category bar — mockup language (matches Block.tsx
+          chassis header). Dark glyph + dark title on the bright accent. */}
       <div
-        className={`w-8 h-8 rounded-full flex items-center justify-center border ${colorClass[category]}`}
+        className="flex items-center gap-2 px-2.5"
+        style={{
+          height: 30,
+          background: `linear-gradient(180deg, ${accent} 0%, hsl(${catAccent[category]} / 0.72) 100%)`,
+          color: "#15151A",
+          boxShadow:
+            "inset 0 1px 0 rgba(255,255,255,0.18), inset 0 -1px 0 rgba(0,0,0,0.3)",
+        }}
       >
-        <svg width={18} height={18} viewBox="0 0 24 24" fill="currentColor">
-          <path d="M20 6H8l-4 4h16l-4-4zm2 6H2v8h20v-8zM4 16h2v2H4v-2z" />
-        </svg>
+        <FunctionIcon name={name} category={category} size={14} />
+        <span className="text-[12px] font-bold truncate flex-1 leading-none tracking-wide">
+          {name}
+        </span>
+        <span
+          className="text-[8px] font-mono font-bold px-1 rounded leading-none shrink-0"
+          style={{ background: "rgba(0,0,0,0.32)", color: "rgba(255,255,255,0.9)" }}
+        >
+          {format}
+        </span>
       </div>
-      <div>
-        <div className="text-[11px] font-bold text-text-primary">{name}</div>
-        <div className="text-[10px] text-text-secondary uppercase">
-          {category} · {format} · {portSummary}
-        </div>
+      {/* Sub-row — category label · port summary · live state */}
+      <div className="flex items-center gap-1.5 px-2.5 py-1.5">
+        <span className="text-[10px] text-text-secondary">
+          {catLabel[category]}
+        </span>
+        <span className="text-[10px] text-text-dim">·</span>
+        <span className="text-[10px] text-text-dim uppercase tabular-nums">
+          {portSummary}
+        </span>
+        <div className="flex-1" />
+        <span
+          className="text-[9px] font-mono font-bold tabular-nums shrink-0"
+          style={{ color: stateColor }}
+        >
+          {stateGlyph} {stateLabel}
+        </span>
       </div>
     </div>
   );
@@ -504,7 +612,7 @@ function LogPanel() {
   const lines = useHostExtrasStore((s) => s.logLines);
   const tail = lines.slice(-300);
   return (
-    <div className="tabular text-[9px] text-text-secondary max-h-[min(480px,60vh)] overflow-y-auto space-y-0.5 pr-1">
+    <div className="tabular text-[9px] text-text-secondary max-h-[min(320px,42vh)] overflow-y-auto space-y-0.5 pr-1">
       {tail.length === 0 ? (
         <div className="text-text-dim uppercase tracking-widest text-center pt-6">
           No log lines yet (hosted in Element)
@@ -635,118 +743,214 @@ function PluginEditorControls({ block }: { block: BlockData }) {
 }
 
 /**
- * Tabbed right-hand inspector for the selected Block. Use it as the primary
- * detail surface in Edit mode: the INSPECTOR tab shows the Block header,
- * A/B preset compare, parameter sliders, plugin-window embed, bypass/mute
- * controls and notes; CABLES, LOG and METERS tabs cover routing and
- * diagnostics, and a SCRIPT tab appears for Script Blocks. With no Block
- * selected it falls back to a Project Overview plus the wireless Bus inspector.
+ * Collapsible section used to stack the Health tab's panels (engine vitals,
+ * host meters, log) into one scrollable column without three competing
+ * full-height headers fighting for space.
  */
-export function InspectorHub() {
-  const [activeTab, setActiveTab] = useState<Tab>("inspector");
-  const selectedBlock = useGraphStore(selectSelectedNode);
+function HealthSection({
+  title,
+  defaultOpen = true,
+  children,
+}: {
+  title: string;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="rounded-lg bg-surface border border-white/5 overflow-hidden shadow-[-2px_-2px_8px_rgba(255,255,255,0.03),2px_2px_8px_rgba(0,0,0,0.35)]">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="w-full flex items-center justify-between px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-text-secondary hover:text-text-primary transition-colors"
+      >
+        <span>{title}</span>
+        <span
+          className="text-[9px] text-text-dim transition-transform"
+          style={{ transform: open ? "rotate(90deg)" : "rotate(0deg)" }}
+        >
+          ▶
+        </span>
+      </button>
+      {open && <div className="px-3 pb-3">{children}</div>}
+    </div>
+  );
+}
+
+/**
+ * The Block tab body — the full per-Block detail surface. Block selected:
+ * gradient header, A/B preset compare, parameter sliders, plugin-window embed,
+ * bypass/mute controls, metrics, notes, and (for Script Blocks) the inline
+ * Script editor. No Block selected: the Project Overview resting state.
+ */
+function BlockTabBody({
+  selectedBlock,
+}: {
+  selectedBlock: BlockData | null | undefined;
+}) {
   const toggleBypass = useGraphStore((s) => s.toggleBypass);
   const toggleMute = useGraphStore((s) => s.toggleMute);
   const toggleMuteInput = useGraphStore((s) => s.toggleMuteInput);
 
-  const showScriptTab = selectedBlock != null && isScriptNode(selectedBlock);
-
-  const tabs: { id: Tab; label: string }[] = [
-    { id: "inspector", label: "INSPECTOR" },
-    ...(showScriptTab ? [{ id: "script" as Tab, label: "SCRIPT" }] : []),
-    { id: "connections", label: "CABLES" },
-    { id: "log", label: "LOG" },
-    { id: "meters", label: "METERS" },
-  ];
-
-  // If the script tab is active but the selected block is no longer a script node, reset
-  const effectiveTab: Tab =
-    activeTab === "script" && !showScriptTab ? "inspector" : activeTab;
+  if (!selectedBlock) {
+    return <ProjectOverview />;
+  }
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex border-b border-white/5 text-[10px] font-bold tracking-tight text-text-secondary">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={[
-              "flex-1 py-3 text-center transition-colors",
-              effectiveTab === tab.id
-                ? "border-b-2 border-accent-blue text-text-primary bg-surface"
-                : "hover:bg-white/5 cursor-pointer",
-            ].join(" ")}
-          >
-            {tab.label}
-          </button>
-        ))}
+    <>
+      <BlockHeader block={selectedBlock} />
+      <PresetStrip nodeId={selectedBlock.id} />
+
+      <div className="p-3 bg-pressed rounded-lg shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] space-y-3">
+        <BlockParameterList nodeId={selectedBlock.id} />
+      </div>
+
+      <PluginEditorControls key={selectedBlock.id} block={selectedBlock} />
+
+      <div className="grid grid-cols-1 gap-2">
+        <NeuButton
+          variant={selectedBlock.bypassed ? "active" : "default"}
+          size="sm"
+          onClick={() => toggleBypass(selectedBlock.id)}
+        >
+          {selectedBlock.bypassed ? "BYPASSED" : "BYPASS"}
+        </NeuButton>
+        <NeuButton
+          variant={selectedBlock.muted ? "active" : "default"}
+          size="sm"
+          onClick={() => toggleMute(selectedBlock.id)}
+        >
+          {selectedBlock.muted ? "MUTED" : "MUTE"}
+        </NeuButton>
+        <NeuButton
+          variant={selectedBlock.muteInput ? "active" : "default"}
+          size="sm"
+          onClick={() => toggleMuteInput(selectedBlock.id)}
+        >
+          {selectedBlock.muteInput ? "IN MUTED" : "MUTE INPUTS"}
+        </NeuButton>
+      </div>
+
+      <BlockMetrics block={selectedBlock} />
+
+      <BlockNoteEditor block={selectedBlock} />
+
+      {/* Script Blocks fold their editor INTO the Block tab (verdict #6 — the
+          Script tab is retired; per-block editing belongs to the block). */}
+      {isScriptNode(selectedBlock) && (
+        <div className="space-y-1">
+          <div className="text-[10px] font-bold text-text-secondary uppercase tracking-widest">
+            Script
+          </div>
+          <div className="min-h-[360px] rounded-lg overflow-hidden border border-white/5">
+            <ScriptEditor nodeId={selectedBlock.id} />
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+/**
+ * Docked tabbed inspector shell (bake-off verdict #6). Four tabs —
+ * **Block / Bus / Cable / Health** — house every previously-wired surface:
+ *
+ *  • **Block**  — per-Block detail: gradient header, A/B preset compare,
+ *    parameter sliders, plugin-window embed, bypass/mute controls, metrics,
+ *    notes, and the inline Script editor for Script Blocks. With nothing
+ *    selected, the resting Project Overview.
+ *  • **Bus**    — the wireless-bus auditor (BusInspector).
+ *  • **Cable**  — routing editor (ConnectionEditor) + smart-cable meter count.
+ *  • **Health** — engine vitals (LiveHealth), host meters, and the log tail.
+ *
+ * Mockup supplies the docked-shell layout + gradient header; the wiring,
+ * stores, and bridge calls are Element's. Nothing from the prior tab set
+ * (Inspector / Script / Cables / Log / Meters) is dropped.
+ */
+export function InspectorHub() {
+  const [activeTab, setActiveTab] = useState<Tab>("block");
+  const selectedBlock = useGraphStore(selectSelectedNode);
+
+  const tabs: { id: Tab; label: string }[] = [
+    { id: "block", label: "BLOCK" },
+    { id: "bus", label: "BUS" },
+    { id: "cable", label: "CABLE" },
+    { id: "health", label: "HEALTH" },
+  ];
+
+  return (
+    <div
+      className="flex flex-col h-full"
+      style={{ background: "hsl(var(--panel))" }}
+    >
+      <div
+        className="flex border-b border-panel-border text-[10px] font-bold tracking-tight text-text-secondary shrink-0"
+        role="tablist"
+        aria-label="Inspector sections"
+      >
+        {tabs.map((tab) => {
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              role="tab"
+              aria-selected={isActive}
+              onClick={() => setActiveTab(tab.id)}
+              className={[
+                "flex-1 py-3 text-center t-precision relative",
+                isActive
+                  ? "text-text-primary bg-surface"
+                  : "hover:bg-white/5 hover:text-text-primary cursor-pointer",
+              ].join(" ")}
+            >
+              {tab.label}
+              {/* Active underline — a thin accent rail, neumorphic docked-shell
+                  cue (mockup) rather than a hard border-box. */}
+              {isActive && (
+                <span
+                  className="absolute left-0 right-0 bottom-0 h-[2px]"
+                  style={{
+                    background: "hsl(var(--cat-instrument))",
+                    boxShadow: "0 0 6px hsl(var(--cat-instrument) / 0.55)",
+                  }}
+                />
+              )}
+            </button>
+          );
+        })}
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-6">
-        {effectiveTab === "script" && selectedBlock && (
-          <div className="h-full min-h-[400px]">
-            <ScriptEditor nodeId={selectedBlock.id} />
-          </div>
-        )}
+        {activeTab === "block" && <BlockTabBody selectedBlock={selectedBlock} />}
 
-        {effectiveTab === "inspector" && (
+        {activeTab === "bus" && <BusInspector />}
+
+        {activeTab === "cable" && (
           <>
-            {selectedBlock ? (
-              <>
-                <BlockHeader block={selectedBlock} />
-                <PresetStrip nodeId={selectedBlock.id} />
-
-                <div className="p-3 bg-pressed rounded-lg shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] space-y-3">
-                  <BlockParameterList nodeId={selectedBlock.id} />
-                </div>
-
-                <PluginEditorControls
-                  key={selectedBlock.id}
-                  block={selectedBlock}
-                />
-
-                <div className="grid grid-cols-1 gap-2">
-                  <NeuButton
-                    variant={selectedBlock.bypassed ? "active" : "default"}
-                    size="sm"
-                    onClick={() => toggleBypass(selectedBlock.id)}
-                  >
-                    {selectedBlock.bypassed ? "BYPASSED" : "BYPASS"}
-                  </NeuButton>
-                  <NeuButton
-                    variant={selectedBlock.muted ? "active" : "default"}
-                    size="sm"
-                    onClick={() => toggleMute(selectedBlock.id)}
-                  >
-                    {selectedBlock.muted ? "MUTED" : "MUTE"}
-                  </NeuButton>
-                  <NeuButton
-                    variant={selectedBlock.muteInput ? "active" : "default"}
-                    size="sm"
-                    onClick={() => toggleMuteInput(selectedBlock.id)}
-                  >
-                    {selectedBlock.muteInput ? "IN MUTED" : "MUTE INPUTS"}
-                  </NeuButton>
-                </div>
-
-                <BlockMetrics block={selectedBlock} />
-
-                <BlockNoteEditor block={selectedBlock} />
-              </>
-            ) : (
-              <div className="space-y-6">
-                <ProjectOverview />
-                <BusInspector />
-              </div>
-            )}
+            <ConnectionEditor />
+            <MetersPanel />
           </>
         )}
 
-        {effectiveTab === "connections" && <ConnectionEditor />}
-
-        {effectiveTab === "log" && <LogPanel />}
-
-        {effectiveTab === "meters" && <MetersPanel />}
+        {activeTab === "health" && (
+          <div className="space-y-3">
+            <HealthSection title="Engine vitals">
+              {/* LiveHealth carries its own header + scroller; constrain it so
+                  it composes inside the collapsible without a competing
+                  full-height frame. */}
+              <div className="rounded-md overflow-hidden bg-pressed shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)]">
+                <LiveHealth />
+              </div>
+            </HealthSection>
+            <HealthSection title="Host meters">
+              <MetersPanel />
+            </HealthSection>
+            <HealthSection title="Engine log" defaultOpen={false}>
+              <LogPanel />
+            </HealthSection>
+          </div>
+        )}
       </div>
     </div>
   );

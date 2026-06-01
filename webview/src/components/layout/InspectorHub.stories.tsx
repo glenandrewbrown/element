@@ -1,10 +1,12 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { expect, userEvent, within } from "storybook/test";
 import { InspectorHub } from "./InspectorHub";
 import { useGraphStore } from "../../stores/useGraphStore";
 import { usePerformStore } from "../../stores/usePerformStore";
 import { useEngineSnapshotStore } from "../../stores/useEngineSnapshotStore";
 import { useHostExtrasStore } from "../../stores/useHostExtrasStore";
 import { useBusStore } from "../../stores/useBusStore";
+import { useCableMeterStore } from "../../stores/useCableMeterStore";
 import type { BlockData } from "../../data/types";
 
 // ── Store seeding ──
@@ -14,9 +16,11 @@ import type { BlockData } from "../../data/types";
 // useHostExtrasStore (logLines), useCableMeterStore (levels), and
 // useBusStore (cableBus).
 //
-// Node-selected path mounts BlockParameterList → nativeGetNodeParameters
+// The docked tabbed shell is Block / Bus / Cable / Health (verdict #6).
+// Block-selected path mounts BlockParameterList → nativeGetNodeParameters
 // (returns { parameters: [] } when bridgeless — safe) and PresetStrip →
-// nativePresetList (returns { ok: false, presets: [] } — safe).
+// nativePresetList (returns { ok: false, presets: [] } — safe). The Health
+// tab mounts LiveHealth + MetersPanel + LogPanel, all read-only store reads.
 // Neither calls console.error; logBridgeError uses console.warn only.
 
 const defaultHealth = {
@@ -77,6 +81,27 @@ const selectedGenerator = {
   note: "",
 };
 
+/** A Script Block — exercises the Block tab's inline Script editor fold-in. */
+const selectedScript = {
+  id: "sel-script",
+  name: "Script",
+  category: "modulator" as const,
+  format: "INT" as const,
+  position: { x: 300, y: 200 },
+  ports: [
+    { id: "midi-in", type: "midi" as const, direction: "input" as const, label: "MIDI In", connected: true },
+    { id: "midi-out", type: "midi" as const, direction: "output" as const, label: "MIDI Out", connected: false },
+  ],
+  cpuLoad: 0.4,
+  latencyMs: 0,
+  bypassed: false,
+  muted: false,
+  muteInput: false,
+  error: false,
+  isMacroTagged: false,
+  note: "Arpeggiator — quantise to scale",
+};
+
 function seedProjectOverview() {
   useGraphStore.setState((s) => ({
     ...s,
@@ -118,12 +143,22 @@ function seedProjectOverview() {
   });
   useHostExtrasStore.setState((s) => ({ ...s, logLines: [] }));
   useBusStore.setState({ cableBus: {} });
+  useCableMeterStore.setState((s) => ({ ...s, levels: {} }));
 }
 
 function seedNodeSelected(node: BlockData) {
   seedProjectOverview();
-  useGraphStore.setState((s) => ({ ...s, selectedNodeId: node.id }));
+  // selectSelectedNode resolves the node by id from the `nodes` array, so the
+  // selected node must actually be IN it. Push it (de-duped) before selecting.
+  useGraphStore.setState((s) => {
+    const nodes = s.nodes.some((n) => n.id === node.id)
+      ? s.nodes
+      : [...s.nodes, node];
+    return { ...s, nodes, selectedNodeId: node.id };
+  });
 }
+
+const PANEL = { width: 300, height: 680 } as const;
 
 const meta = {
   title: "Layout/InspectorHub",
@@ -133,7 +168,13 @@ const meta = {
     docs: {
       description: {
         component:
-          "Tabbed right-hand inspector for the selected Block. The INSPECTOR tab shows the Block header, A/B preset compare, parameter sliders, plugin-window embed, bypass/mute controls and notes; CABLES, LOG and METERS cover routing and diagnostics, and a SCRIPT tab appears for Script Blocks. With no Block selected it falls back to a Project Overview plus the wireless Bus inspector.",
+          "Docked tabbed inspector shell (bake-off verdict #6) — Block / Bus / Cable / Health. " +
+          "BLOCK holds the per-Block detail: gradient header, A/B preset compare, parameter sliders, " +
+          "plugin-window embed, bypass/mute controls, metrics, notes, and the inline Script editor for " +
+          "Script Blocks (with nothing selected it shows the Project Overview). BUS is the wireless-bus " +
+          "auditor. CABLE is the routing editor + smart-cable meter count. HEALTH consolidates engine " +
+          "vitals, host meters, and the log. The docked shell + gradient header come from the mockup; " +
+          "the wiring, stores, and bridge calls are Element's.",
       },
     },
   },
@@ -143,13 +184,13 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-// ── No block selected: Project Overview + Wireless Buses ──
+// ── BLOCK tab — nothing selected (Project Overview resting state) ──
 export const NothingSelected: Story = {
   decorators: [
     (Story) => {
       seedProjectOverview();
       return (
-        <div style={{ width: 280, height: 640 }} className="bg-panel">
+        <div style={PANEL} className="bg-panel">
           <Story />
         </div>
       );
@@ -159,19 +200,20 @@ export const NothingSelected: Story = {
     docs: {
       description: {
         story:
-          "No Block selected — the inspector falls back to the Project Overview (Blocks/Cables count, engine CPU, sample rate, device) plus the wireless Bus inspector. The default resting state.",
+          "No Block selected — the BLOCK tab falls back to the Project Overview (Blocks/Cables count, " +
+          "engine CPU, sample rate, device). The default resting state.",
       },
     },
   },
 };
 
-// ── AudioFx plugin selected ──
-export const AudioFxSelected: Story = {
+// ── BLOCK tab — AudioFx plugin selected (the primary single-Block view) ──
+export const BlockTab_AudioFx: Story = {
   decorators: [
     (Story) => {
       seedNodeSelected(selectedModifier);
       return (
-        <div style={{ width: 280, height: 640 }} className="bg-panel">
+        <div style={PANEL} className="bg-panel">
           <Story />
         </div>
       );
@@ -181,19 +223,29 @@ export const AudioFxSelected: Story = {
     docs: {
       description: {
         story:
-          "A modifier Block (EQ) selected — the full INSPECTOR tab: header, preset A/B strip, parameter list, plugin-window embed, bypass/mute controls and notes. The primary single-Block editing view.",
+          "BLOCK tab with an Audio-Effect Block (EQ) selected — the full per-Block detail: the gradient " +
+          "header with the function-inferred icon, preset A/B strip, parameter list, plugin-window embed, " +
+          "bypass/mute controls and notes.",
       },
     },
   },
+  play: async ({ canvas }) => {
+    // The BLOCK tab is default-active and selected.
+    const blockTab = canvas.getByRole("tab", { name: "BLOCK" });
+    await expect(blockTab).toHaveAttribute("aria-selected", "true");
+    // Header reflects the selected block + its live ACTIVE state.
+    await expect(canvas.getByText("Pro-Q 3")).toBeInTheDocument();
+    await expect(canvas.getByText(/ACTIVE/)).toBeInTheDocument();
+  },
 };
 
-// ── Instrument selected ──
-export const InstrumentSelected: Story = {
+// ── BLOCK tab — instrument selected ──
+export const BlockTab_Instrument: Story = {
   decorators: [
     (Story) => {
       seedNodeSelected(selectedGenerator);
       return (
-        <div style={{ width: 280, height: 640 }} className="bg-panel">
+        <div style={PANEL} className="bg-panel">
           <Story />
         </div>
       );
@@ -203,26 +255,25 @@ export const InstrumentSelected: Story = {
     docs: {
       description: {
         story:
-          "A generator Block (instrument) selected — confirms the generator category styling and a MIDI-in port summary in the header.",
+          "BLOCK tab with an instrument Block selected — confirms the instrument category gradient and " +
+          "a MIDI-in port summary in the header.",
       },
     },
   },
 };
 
-// ── Bypassed block selected ──
-export const BypassedBlockSelected: Story = {
+// ── BLOCK tab — bypassed block ──
+export const BlockTab_Bypassed: Story = {
   decorators: [
     (Story) => {
       seedProjectOverview();
       useGraphStore.setState((s) => ({
         ...s,
-        nodes: [
-          { ...selectedModifier, id: "sel-byp", bypassed: true },
-        ],
+        nodes: [{ ...selectedModifier, id: "sel-byp", bypassed: true }],
         selectedNodeId: "sel-byp",
       }));
       return (
-        <div style={{ width: 280, height: 640 }} className="bg-panel">
+        <div style={PANEL} className="bg-panel">
           <Story />
         </div>
       );
@@ -232,20 +283,162 @@ export const BypassedBlockSelected: Story = {
     docs: {
       description: {
         story:
-          "Selected Block is bypassed — the BYPASS control reads its active 'BYPASSED' state, confirming the toggle reflects engine truth.",
+          "BLOCK tab, selected Block bypassed — the header state reads BYPASS and the BYPASS control reads " +
+          "its active 'BYPASSED' state, confirming the toggle reflects engine truth.",
       },
     },
   },
+  play: async ({ canvas }) => {
+    // The BYPASS control button reflects its active "BYPASSED" state (the
+    // header also shows a "BYPASS" badge, so target the button specifically).
+    await expect(
+      canvas.getByRole("button", { name: "BYPASSED" }),
+    ).toBeInTheDocument();
+  },
 };
 
-// ── Empty graph (no nodes) ──
+// ── BLOCK tab — Script Block (inline Script editor folds in) ──
+export const BlockTab_Script: Story = {
+  decorators: [
+    (Story) => {
+      seedNodeSelected(selectedScript);
+      return (
+        <div style={PANEL} className="bg-panel">
+          <Story />
+        </div>
+      );
+    },
+  ],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "BLOCK tab with a Script Block selected — the inline Lua Script editor folds into the bottom of " +
+          "the Block tab (the standalone Script tab is retired; per-block editing lives with the block).",
+      },
+    },
+  },
+  play: async ({ canvas }) => {
+    // The inline Script editor mounted inside the Block tab — assert on its
+    // unique "Save & Compile" action (the block is itself named "Script", so
+    // that text alone would be ambiguous).
+    await expect(canvas.getByText("Save & Compile")).toBeInTheDocument();
+  },
+};
+
+// ── BUS tab — wireless bus auditor ──
+export const BusTab: Story = {
+  decorators: [
+    (Story) => {
+      seedNodeSelected(selectedModifier);
+      // Flag the one cable as a wireless bus so the auditor shows a row.
+      useBusStore.setState({ cableBus: { e1: "Reverb Send A" } });
+      return (
+        <div style={PANEL} className="bg-panel">
+          <Story />
+        </div>
+      );
+    },
+  ],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "BUS tab — the wireless-bus auditor (BusInspector). Lists every named bus on the board, its " +
+          "signal-type colour, cable count and endpoints. Reachable as a first-class tab now, not just " +
+          "the empty-state.",
+      },
+    },
+  },
+  play: async ({ canvas }) => {
+    await userEvent.click(canvas.getByRole("tab", { name: "BUS" }));
+    await expect(canvas.getByRole("tab", { name: "BUS" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+  },
+};
+
+// ── CABLE tab — routing editor + smart-cable meters ──
+export const CableTab: Story = {
+  decorators: [
+    (Story) => {
+      seedNodeSelected(selectedModifier);
+      return (
+        <div style={PANEL} className="bg-panel">
+          <Story />
+        </div>
+      );
+    },
+  ],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "CABLE tab — the ConnectionEditor (connection list, signal-type filters, Add Cable) plus the " +
+          "smart-cable meter count from the engine.",
+      },
+    },
+  },
+  play: async ({ canvas }) => {
+    await userEvent.click(canvas.getByRole("tab", { name: "CABLE" }));
+    await expect(canvas.getByRole("tab", { name: "CABLE" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    // The Add Cable affordance from ConnectionEditor is present.
+    await expect(canvas.getByText(/Add Cable/)).toBeInTheDocument();
+  },
+};
+
+// ── HEALTH tab — engine vitals + meters + log ──
+export const HealthTab: Story = {
+  decorators: [
+    (Story) => {
+      seedProjectOverview();
+      useHostExtrasStore.setState((s) => ({
+        ...s,
+        logLines: [
+          "[engine] audio device opened: Built-in Output @ 44.1 kHz",
+          "[graph] rebuilt: 2 blocks, 1 cable",
+        ],
+      }));
+      return (
+        <div style={PANEL} className="bg-panel">
+          <Story />
+        </div>
+      );
+    },
+  ],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "HEALTH tab — consolidates the engine vitals (LiveHealth: CPU, I/O ladders, buffer, latency, " +
+          "alerts), the host meters, and the engine log into one scrollable column of collapsible " +
+          "sections. The Log + Meters tabs from the old shell live here.",
+      },
+    },
+  },
+  play: async ({ canvas }) => {
+    await userEvent.click(canvas.getByRole("tab", { name: "HEALTH" }));
+    await expect(canvas.getByRole("tab", { name: "HEALTH" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    // The Engine vitals section header is present.
+    await expect(canvas.getByText(/Engine vitals/i)).toBeInTheDocument();
+  },
+};
+
+// ── Empty graph (no nodes) — BLOCK tab resting + tab nav still works ──
 export const EmptyGraph: Story = {
   decorators: [
     (Story) => {
       seedProjectOverview();
       useGraphStore.setState((s) => ({ ...s, nodes: [], edges: [], selectedNodeId: null }));
       return (
-        <div style={{ width: 280, height: 640 }} className="bg-panel">
+        <div style={PANEL} className="bg-panel">
           <Story />
         </div>
       );
@@ -255,8 +448,21 @@ export const EmptyGraph: Story = {
     docs: {
       description: {
         story:
-          "Empty Project (no Blocks): the Project Overview shows zero Blocks/Cables and the Bus inspector its tip — the inspector on a brand-new Board.",
+          "Empty Project (no Blocks): the BLOCK tab shows zero Blocks/Cables in the Project Overview and " +
+          "every tab still mounts cleanly — the inspector on a brand-new Board.",
       },
     },
+  },
+  play: async ({ canvas, canvasElement }) => {
+    // Walk all four tabs to prove each mounts without throwing on an empty graph.
+    for (const name of ["BUS", "CABLE", "HEALTH", "BLOCK"]) {
+      await userEvent.click(canvas.getByRole("tab", { name }));
+      await expect(canvas.getByRole("tab", { name })).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+    }
+    const tablist = within(canvasElement).getByRole("tablist");
+    await expect(tablist).toBeInTheDocument();
   },
 };
