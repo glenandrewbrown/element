@@ -6,12 +6,13 @@ import type { CableData } from "../../data/types";
 
 // ── Store seeding ──
 // EdgeContextMenu returns null unless useGraphStore.edges contains the edgeId.
-// Whether it shows "Make Wireless…" vs "Rename Bus / Make Wired" depends on
-// useBusStore.cableBus[edgeId]. Native disconnect/bus bridges are no-ops.
+// Whether it shows "Route through Bus…" vs "Rename Bus / Remove from Bus"
+// depends on useBusStore.cableBus[edgeId]. Native disconnect/bus bridges are
+// no-ops in Storybook.
 
 const EDGE_ID = "cab-1";
 
-const demoEdge: CableData = {
+const audioCable: CableData = {
   id: EDGE_ID,
   source: "n1",
   sourcePort: "out",
@@ -22,8 +23,15 @@ const demoEdge: CableData = {
   isSidechain: false,
 };
 
-function seed(busName?: string) {
-  useGraphStore.setState({ edges: [demoEdge] });
+const midiCable: CableData = {
+  ...audioCable,
+  id: EDGE_ID,
+  signalType: "midi",
+  channelCount: 1,
+};
+
+function seed(cable: CableData = audioCable, busName?: string) {
+  useGraphStore.setState({ edges: [cable] });
   useBusStore.setState({ cableBus: busName ? { [EDGE_ID]: busName } : {} });
 }
 
@@ -34,8 +42,24 @@ const meta = {
     layout: "fullscreen",
     docs: {
       description: {
-        component:
-          "EdgeContextMenu — the right-click menu for a Cable, surfacing the wireless-patching operations: Make Wireless (move to a named bus), Rename Bus, Make Wired (restore the drawn curve), and Delete Cable. Which items appear depends on whether the Cable is already on a bus (useBusStore). Mount it transiently from GraphCanvas at the click position; stories seed useGraphStore.edges + useBusStore so the menu has a Cable to act on.",
+        component: [
+          "EdgeContextMenu — right-click menu for Cables on the Board.",
+          "",
+          "**#29 fix:** \"Make Wireless\" / \"wireless patching\" language is REPLACED with",
+          "the correct Bus Send / Bus Receive model framing. A cable assigned to a",
+          "named bus is described as \"Route through Bus…\" — this makes the intent clear",
+          "while the underlying BusStore mechanism (hide drawn cable, show named badge",
+          "at each port) remains intact.",
+          "",
+          "**Wired actions:** Route through Bus… / Rename Bus / Remove from Bus / Delete Cable.",
+          "",
+          "**Honest-disabled (Pillar-2 backlog):** \"Insert Bus Blocks…\" requires",
+          "el.BusSend + el.BusReceive C++ node types in NodeFactory, plus a",
+          "nativeGraphInsertBusSendReceive bridge call — shown disabled with tooltip.",
+          "",
+          "Signal-type accent colour (blue=audio, teal=MIDI, orange=CV) is applied",
+          "to the header icon and bus-chip hover glow.",
+        ].join("\n"),
       },
     },
   },
@@ -44,48 +68,70 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-// Wired cable — offers "Make Wireless…".
-export const Wired: Story = {
-  args: { edgeId: EDGE_ID, position: { x: 80, y: 60 }, onClose: () => {} },
+const wrap = (Story: React.ComponentType) => (
+  <div className="bg-canvas" style={{ height: 320 }}>
+    <Story />
+  </div>
+);
+
+// ── Wired audio cable — offers "Route through Bus…" ──────────────────────────
+export const WiredAudio: Story = {
+  args: { edgeId: EDGE_ID, position: { x: 24, y: 40 }, onClose: () => {} },
   parameters: {
     docs: {
       description: {
         story:
-          "Wired Cable (no bus) — the menu offers \"Make Wireless…\" + \"Delete Cable\". The entry point into wireless patching.",
+          "Wired audio cable (blue accent). Offers \"Route through Bus…\" + " +
+          "the honest-disabled \"Insert Bus Blocks…\" + \"Delete Cable\". " +
+          "Entry point into bus-IO routing.",
       },
     },
   },
   decorators: [
     (Story) => {
-      seed();
-      return (
-        <div className="bg-canvas" style={{ height: 360 }}>
-          <Story />
-        </div>
-      );
+      seed(audioCable);
+      return wrap(Story);
     },
   ],
 };
 
-// Wireless cable — offers "Rename Bus" + "Make Wired".
-export const Wireless: Story = {
-  args: { edgeId: EDGE_ID, position: { x: 80, y: 60 }, onClose: () => {} },
+// ── Wired MIDI cable — teal accent ────────────────────────────────────────────
+export const WiredMidi: Story = {
+  args: { edgeId: EDGE_ID, position: { x: 24, y: 40 }, onClose: () => {} },
   parameters: {
     docs: {
       description: {
         story:
-          "Wireless Cable (on bus \"Reverb Send A\") — the menu swaps to \"Rename Bus\" + \"Make Wired\", reflecting the alternate state of the same component.",
+          "Wired MIDI cable (teal accent). Confirms signal-type accent colour " +
+          "propagates to the header icon and hover glow independently of audio.",
       },
     },
   },
   decorators: [
     (Story) => {
-      seed("Reverb Send A");
-      return (
-        <div className="bg-canvas" style={{ height: 360 }}>
-          <Story />
-        </div>
-      );
+      seed(midiCable);
+      return wrap(Story);
+    },
+  ],
+};
+
+// ── Cable on a bus — offers "Rename Bus" + "Remove from Bus" ─────────────────
+export const OnBus: Story = {
+  args: { edgeId: EDGE_ID, position: { x: 24, y: 40 }, onClose: () => {} },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Audio cable already assigned to bus \"Reverb Send A\". The menu swaps " +
+          "to \"Rename Bus…\" + \"Remove from Bus\", reflecting the routed state. " +
+          "The header shows \"Bus · Reverb Send A\" instead of \"Audio Cable\".",
+      },
+    },
+  },
+  decorators: [
+    (Story) => {
+      seed(audioCable, "Reverb Send A");
+      return wrap(Story);
     },
   ],
 };

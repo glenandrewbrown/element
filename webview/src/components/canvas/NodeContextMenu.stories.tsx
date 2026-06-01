@@ -8,8 +8,7 @@ import type { BlockData } from "../../data/types";
 // NodeContextMenu returns null unless useGraphStore.nodes contains the nodeId,
 // and it calls useReactFlow() — which throws outside a provider — so it must
 // be wrapped in <ReactFlowProvider>. Bypass/mute toggles + native bridges
-// no-op. The single-selection menu is the representative state (the
-// align/distribute branch requires real selected nodes inside <ReactFlow>).
+// no-op in Storybook. The single-selection menu is the primary state.
 
 const NODE_ID = "n1";
 
@@ -41,8 +40,19 @@ const meta = {
     layout: "fullscreen",
     docs: {
       description: {
-        component:
-          "NodeContextMenu — the right-click action menu for a Block: rename, bypass/enable, mute/unmute (output and input), duplicate, delete (each with its shortcut). With 2+ Blocks selected it also surfaces align tools, and at 3+ distribute tools. Mount it transiently from GraphCanvas at the click position. Stories seed useGraphStore.nodes and wrap it in ReactFlowProvider (it calls useReactFlow); the single-selection menu is the representative state.",
+        component: [
+          "NodeContextMenu — the right-click action menu for a Block on the Board.",
+          "",
+          "**Wired actions (real store/bridge):** Rename, Enable/Bypass, Mute Output,",
+          "Mute Input, Copy, Duplicate, Delete, multi-select Align + Distribute.",
+          "",
+          "**Honest-disabled (Pillar-2 backlog):** Disconnect ports, Color, Oversample,",
+          "Replace, Presets — each labelled \"soon\" and shows a tooltip naming the",
+          "missing bridge/follow-up work. Nothing is a silent no-op.",
+          "",
+          "**Design:** category-hue dopamine hover-glow (no resize), tight neumorphic",
+          "shadow, category icon + format badge in the header.",
+        ].join("\n"),
       },
     },
   },
@@ -53,20 +63,22 @@ type Story = StoryObj<typeof meta>;
 
 const framed = (Story: React.ComponentType) => (
   <ReactFlowProvider>
-    <div className="bg-canvas" style={{ height: 360 }}>
+    <div className="bg-canvas" style={{ height: 520 }}>
       <Story />
     </div>
   </ReactFlowProvider>
 );
 
-// Default block menu — Rename / Bypass / Mute / Mute Input / Duplicate / Delete.
+// ── Default: instrument block ─────────────────────────────────────────────────
 export const Default: Story = {
-  args: { nodeId: NODE_ID, position: { x: 80, y: 40 }, onClose: () => {} },
+  args: { nodeId: NODE_ID, position: { x: 24, y: 16 }, onClose: () => {} },
   parameters: {
     docs: {
       description: {
         story:
-          "Single-selection menu on an active Block — the full per-Block action set with default (not-yet-toggled) labels. The primary in-use state.",
+          "Single-selection instrument block (Serum / VST3). The full extended " +
+          "menu with native-parity sections: primary actions, signal state, " +
+          "disconnect (honest-disabled), options (honest-disabled), clipboard, delete.",
       },
     },
   },
@@ -78,20 +90,85 @@ export const Default: Story = {
   ],
 };
 
-// Bypassed + muted block — toggle items show their active "Enable" / "Unmute" labels.
+// ── Bypassed + muted block ────────────────────────────────────────────────────
 export const BypassedAndMuted: Story = {
-  args: { nodeId: NODE_ID, position: { x: 80, y: 40 }, onClose: () => {} },
+  args: { nodeId: NODE_ID, position: { x: 24, y: 16 }, onClose: () => {} },
   parameters: {
     docs: {
       description: {
         story:
-          "Bypassed + muted Block — confirms the toggle items flip to their active \"Enable\" / \"Unmute\" labels (orange accent) so the current engine state is legible from the menu.",
+          "Bypassed + muted audio-FX block (Valhalla Reverb). Confirms the toggle " +
+          "items flip to \"Enable\" / \"Unmute Output\" with the orange active accent " +
+          "so the current engine state is legible from the menu.",
       },
     },
   },
   decorators: [
     (Story) => {
-      seed(makeNode({ name: "Valhalla Reverb", category: "audiofx", bypassed: true, muted: true }));
+      seed(
+        makeNode({
+          name: "Valhalla Reverb",
+          category: "audiofx",
+          bypassed: true,
+          muted: true,
+        }),
+      );
+      return framed(Story);
+    },
+  ],
+};
+
+// ── MIDI FX block ─────────────────────────────────────────────────────────────
+export const MidiFxBlock: Story = {
+  args: { nodeId: NODE_ID, position: { x: 24, y: 16 }, onClose: () => {} },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "MIDI FX block (Teal accent). Confirms the category icon and header " +
+          "accent colour update to match the 4-category taxonomy.",
+      },
+    },
+  },
+  decorators: [
+    (Story) => {
+      seed(
+        makeNode({
+          name: "MIDI Router",
+          category: "midifx",
+          format: "INT",
+          cpuLoad: 0,
+          latencyMs: 0,
+        }),
+      );
+      return framed(Story);
+    },
+  ],
+};
+
+// ── Modulator block ───────────────────────────────────────────────────────────
+export const ModulatorBlock: Story = {
+  args: { nodeId: NODE_ID, position: { x: 24, y: 16 }, onClose: () => {} },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Modulator/Utility block (Purple accent). The Waves icon in the header " +
+          "confirms the category icon system round-trips through iconForCategory.",
+      },
+    },
+  },
+  decorators: [
+    (Story) => {
+      seed(
+        makeNode({
+          name: "LFO Script",
+          category: "modulator",
+          format: "INT",
+          cpuLoad: 2,
+          latencyMs: 0,
+        }),
+      );
       return framed(Story);
     },
   ],
