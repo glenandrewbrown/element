@@ -74,21 +74,54 @@ const SIGNAL_ALIASES: Record<SignalType, string[]> = {
   value: ["cv", "value", "modulator", "lfo", "envelope", "utility"],
 };
 
+// ── Separator normaliser ──────────────────────────────────────────────────────
+// Collapses hyphens, underscores, dots, and multiple spaces so that
+// "Pro-Q 4", "Pro Q 4", "Pro_Q4", "pro.q4" all normalise to "pro q 4".
+// Applied to BOTH the query and each field before matching so Glen's natural
+// typing ("pro q", "Pro-q", "pro q4") hits "Pro-Q 4".
+function normaliseSeps(s: string): string {
+  return s.toLowerCase().replace(/[-_.]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+// ── Edit-distance (Levenshtein) ───────────────────────────────────────────────
+// Used for short queries (≤6 chars) as a typo-tolerance fallback when no
+// substring / subsequence match exists. Capped at 1 edit to avoid false
+// positives on longer strings.
+function levenshtein(a: string, b: string): number {
+  if (a.length > b.length) return levenshtein(b, a);
+  const row = Array.from({ length: a.length + 1 }, (_, i) => i);
+  for (let j = 1; j <= b.length; j++) {
+    let prev = row[0]!;
+    row[0] = j;
+    for (let i = 1; i <= a.length; i++) {
+      const tmp = row[i]!;
+      row[i] = a[i - 1] === b[j - 1]
+        ? prev
+        : 1 + Math.min(prev, row[i - 1]!, row[i]!);
+      prev = tmp;
+    }
+  }
+  return row[a.length]!;
+}
+
 // ── Metadata fuzzy search ────────────────────────────────────────────────────
 
 /**
  * Scores a single text field against the query string.
  * Returns null when there is no meaningful match.
  *
- * Scoring tiers:
- *   1. Exact substring   → 100 + prefix bonus (highest)
- *   2. All-chars ordered → 20 + consecutive bonus (subsequence)
- *   3. Acronym match     → 10 (initials)
+ * Scoring tiers (applied to sep-normalised strings):
+ *   1. Exact substring       → 100 + prefix bonus  (highest)
+ *   2. All-chars ordered     → 20 + consecutive bonus  (subsequence)
+ *   3. Acronym match         → 10  (initials)
+ *   4. Levenshtein ≤1 edit   → 5   (typo tolerance, short queries only)
  */
 function fuzzyScoreField(field: string, query: string): number | null {
   if (!query || !field) return null;
-  const f = field.toLowerCase();
-  const q = query.toLowerCase();
+
+  // Apply separator normalisation to both sides so "Pro-Q 4" and "pro q" align.
+  const f = normaliseSeps(field);
+  const q = normaliseSeps(query);
 
   // 1. Exact substring match
   const idx = f.indexOf(q);
@@ -112,9 +145,19 @@ function fuzzyScoreField(field: string, query: string): number | null {
   }
 
   // 3. Acronym match — initials of words match query chars
-  const words = f.split(/[\s\-_.]+/);
+  const words = f.split(/\s+/);
   const initials = words.map((w) => w[0] ?? "").join("");
   if (initials.includes(q)) return 10;
+
+  // 4. Typo tolerance: Levenshtein ≤1 on short queries against each word
+  //    of the field. Only triggers for queries 2–6 chars to avoid false hits.
+  if (q.length >= 2 && q.length <= 6) {
+    for (const word of words) {
+      if (word.length >= q.length - 1 && word.length <= q.length + 2) {
+        if (levenshtein(q, word) <= 1) return 5;
+      }
+    }
+  }
 
   return null;
 }
@@ -124,7 +167,7 @@ interface PluginEntry {
   name:         string;
   category:     BlockCategory;
   format:       string;
-  /** Raw C++-scanned category string (e.g. "EQ", "Reverb", "Synth"). Used for metadata fuzzy search. */
+  /** Raw C++-scanned category string (e.g. "EQ", "Reverb", "Synth"). Displayed in the row. */
   rawCategory:  string;
   /** Plugin manufacturer name (e.g. "FabFilter", "Valhalla DSP"). Used for metadata fuzzy search. */
   manufacturer: string;
@@ -192,12 +235,34 @@ function CategoryIcon({ category, name }: { category: BlockCategory; name: strin
   );
 }
 
-/** Small format pill badge */
-function FormatBadge({ format }: { format: string }) {
-  if (!format || format === "INT") return null;
+/**
+ * Raw category label badge — replaces the format/architecture badge (VST3/AU/CLAP).
+ * Shows the plugin's functional category (EQ, Reverb, Compressor…) which is
+ * more useful for discovery than the plugin format.
+ */
+function CategoryLabel({
+  category,
+  rawCategory,
+}: {
+  category: BlockCategory;
+  rawCategory: string;
+}) {
+  if (!rawCategory || rawCategory === "Uncategorised" || rawCategory === "MIDI") return null;
+  // Colour-coded by block category (Glen) + fixed-width so the badges align
+  // into a clean right-hand column instead of ragged truncation. Opaque tint
+  // (no transparency) — category hue mixed into the canvas-dark base.
+  const color = CAT_COLOR[category] ?? CAT_COLOR.audiofx;
   return (
-    <span className="shrink-0 text-[8px] px-1 py-0.5 rounded bg-white/10 text-text-dim uppercase font-bold leading-none tracking-wider">
-      {format}
+    <span
+      className="shrink-0 text-[8px] px-1 py-0.5 rounded uppercase font-bold leading-none tracking-wider truncate text-center"
+      style={{
+        color,
+        backgroundColor: `color-mix(in srgb, ${color} 15%, #1E1E22)`,
+        width: 60,
+      }}
+      title={rawCategory}
+    >
+      {rawCategory}
     </span>
   );
 }
@@ -219,6 +284,7 @@ function PluginRow({ plugin, isActive, onSelect, onHover }: PluginRowProps) {
       className={[
         "w-full text-left px-2.5 py-1.5 text-[11px] rounded flex items-center gap-2",
         "transition-all duration-100 cursor-pointer",
+        "border-b border-white/[0.04] last:border-b-0",
         isActive
           ? "bg-elevated text-text-primary"
           : "text-text-secondary hover:text-text-primary",
@@ -234,11 +300,11 @@ function PluginRow({ plugin, isActive, onSelect, onHover }: PluginRowProps) {
       <CategoryIcon category={plugin.category} name={plugin.name} />
       <span className="truncate flex-1 min-w-0">{plugin.name}</span>
       {plugin.manufacturer && (
-        <span className="shrink-0 text-[9px] text-text-dim truncate max-w-[64px] hidden sm:inline">
+        <span className="shrink-0 w-[60px] text-[9px] text-text-dim truncate text-right hidden sm:inline">
           {plugin.manufacturer}
         </span>
       )}
-      <FormatBadge format={plugin.format} />
+      <CategoryLabel category={plugin.category} rawCategory={plugin.rawCategory} />
     </button>
   );
 }
@@ -257,6 +323,20 @@ function SectionDivider() {
   return <div className="mx-2 my-1 border-t border-white/5" />;
 }
 
+/**
+ * Overflow affordance — shown as a sticky footer inside the scroll area when
+ * the list is taller than the visible window. Shows how many items are not
+ * currently in view so the user knows to scroll.
+ */
+function MoreCount({ count }: { count: number }) {
+  if (count <= 0) return null;
+  return (
+    <div className="px-2.5 py-1 text-[9px] text-text-dim text-center tracking-wider border-t border-white/5 sticky bottom-0 bg-panel">
+      ··· {count} more
+    </div>
+  );
+}
+
 // ── Props + main component ────────────────────────────────────────────────────
 
 export interface QuickAddPopupProps {
@@ -270,6 +350,9 @@ export interface QuickAddPopupProps {
    * signal type and the header reads "ADD BLOCK ACCEPTING <TYPE>". When
    * omitted (right-click on empty canvas), the full plugin list is shown with
    * favourites pinned — the generic QuickAdd.
+   *
+   * ITEM 1: port-type mode now ALSO shows Favorites + Recents sections, just
+   * like generic mode — they are filtered by portType like everything else.
    */
   portType?: SignalType;
   /** Called to dismiss the popup (backdrop click, Escape, or after a Block is inserted). */
@@ -281,7 +364,7 @@ export interface QuickAddPopupProps {
  *
  * A small, keyboard-first search popup anchored at the cursor.
  *
- * Browse mode (empty search):
+ * Browse mode (empty search) — BOTH generic and port-type-aware:
  *   1. Favorites   — starred plugins, port-filtered, preserving store order
  *   2. Recents     — recently-used, port-filtered, excluding favorites
  *   3. Others      — remaining plugins, port-filtered, excluding fav+recent
@@ -289,22 +372,31 @@ export interface QuickAddPopupProps {
  * Fuzzy search mode (user has typed):
  *   Full list scored across ALL metadata fields (name, manufacturer, raw
  *   category, blockCategory, signal-type aliases). "valhalla" finds
- *   ValhallaVintageVerb; "reverb" finds all reverb plugins; "audio fx" finds
- *   all instrument + audiofx blocks. Port-type filter still applies.
+ *   ValhallaVintageVerb; "reverb" finds all reverb plugins; "Pro q"/"Pro-q"/
+ *   "pro q4" all find "Pro-Q 4" via sep-normalisation + Levenshtein fallback.
+ *   Results are ranked by fuzzy score THEN by most-used (recency+favorite
+ *   weighting) so the user's common picks float to the top on ties.
+ *   Port-type filter still applies.
  *
- * Category icons use iconForCategory() — the V3 bake-off icon verdict — so
- * every surface that renders category glyphs (Block, ToolPalette, QuickAdd,
- * Inspector) stays in sync automatically.
+ *   Category labels (EQ, Reverb, Compressor…) are shown in each result row;
+ *   the format/architecture badge (VST3/AU/CLAP) has been removed — the
+ *   category is more useful for discovery.
+ *
+ * Overflow: when results exceed the visible scroll area height an inline
+ *   "··· N more" count appears at the bottom of the scroll container.
  *
  * Two modes:
  *  - Generic (no portType)    — right-click empty canvas, full list.
  *  - Port-type-aware (portType) — dragged off a port, filtered + tinted header.
+ *    Both modes show Favorites → Recents → Others in browse, and both use
+ *    the same fuzzy search in search mode.
  */
 export function QuickAddPopup({ x, y, portType, onClose }: QuickAddPopupProps) {
-  const [search, setSearch]         = useState("");
+  const [search, setSearch]           = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const listRef  = useRef<HTMLDivElement>(null);
+  const [overflowCount, setOverflowCount] = useState(0);
+  const inputRef  = useRef<HTMLInputElement>(null);
+  const listRef   = useRef<HTMLDivElement>(null);
 
   const nativePlugins        = usePluginBrowserStore((s) => s.plugins);
   const favoriteIdentifiers  = usePluginBrowserStore((s) => s.favoriteIdentifiers);
@@ -335,6 +427,33 @@ export function QuickAddPopup({ x, y, portType, onClose }: QuickAddPopupProps) {
   }, [plugins]);
 
   /**
+   * Most-used weight for a plugin — approximated from recency + favorite status.
+   *
+   * NOTE on missing usage-count bridge: the store holds `recentIdentifiers`
+   * (an ordered list, most-recent first) and `favoriteIdentifiers` (a Set).
+   * The C++ bridge does NOT send a per-plugin usage-frequency count — only a
+   * recency list. We approximate "frequency" as:
+   *   - favorite     → +60 bonus (user explicitly starred it)
+   *   - recent rank  → +30 for the most-recent, tapering by index
+   * This is honest-idle: we do our best with the real data we have and note
+   * the bridge gap here. A proper `usageCount` field on BrowserPlugin would
+   * allow exact frequency ordering.
+   */
+  const mostUsedWeight = useCallback(
+    (id: string): number => {
+      let w = 0;
+      if (favoriteIdentifiers.has(id)) w += 60;
+      const recIdx = recentIdentifiers.indexOf(id);
+      if (recIdx !== -1) {
+        // Decay: position 0 (most recent) → 30, position 9 → ~3
+        w += Math.max(30 - recIdx * 3, 0);
+      }
+      return w;
+    },
+    [favoriteIdentifiers, recentIdentifiers],
+  );
+
+  /**
    * Port-type predicate — keeps only Blocks whose derived signal type matches
    * the dragged port when portType is set.
    */
@@ -349,34 +468,38 @@ export function QuickAddPopup({ x, y, portType, onClose }: QuickAddPopupProps) {
   /**
    * Display list. Two modes:
    *
-   * EMPTY SEARCH (browse mode):
-   *   Favorites → Recents → Others (port-filtered throughout)
+   * EMPTY SEARCH (browse mode) — applies to BOTH generic and port-type:
+   *   Favorites → Recents → Others (port-filtered throughout).
+   *   Port-type-aware mode gets the same Favorites + Recents sections,
+   *   just pre-filtered to the compatible signal type.
    *
    * TYPED SEARCH (fuzzy metadata mode):
    *   All plugins scored across name + manufacturer + rawCategory +
-   *   blockCategory + signal-type aliases. Port-filter still applies.
-   *   Section headers collapse to a flat scored list.
+   *   blockCategory + signal-type aliases + sep-normalisation + Levenshtein
+   *   fallback for short typos. Results ranked by fuzzy score, then by
+   *   most-used weight (recency + favorite) so common picks surface first.
+   *   Port-filter still applies. Section headers collapse to a flat scored list.
    */
   const { favorites, recents, others, fuzzyResults, isSearching } =
     useMemo(() => {
       const isSearching = search.trim().length > 0;
 
       if (!isSearching) {
-        // ── Browse mode: recents-first layout ────────────────────────────────
-        const favSet   = favoriteIdentifiers;
+        // ── Browse mode: Favorites → Recents → Others ─────────────────────────
+        const favSet    = favoriteIdentifiers;
         const recentSet = new Set(recentIdentifiers);
 
         const favs: PluginEntry[]  = [];
         const recs: PluginEntry[]  = [];
         const rest: PluginEntry[]  = [];
 
-        // Favorites: preserve stable plugin order, just filter to starred
+        // Favorites: preserve stable plugin order, filter to starred
         for (const p of plugins) {
           if (!passesPortFilter(p)) continue;
           if (favSet.has(p.id)) favs.push(p);
         }
 
-        // Recents: ordered by recentIdentifiers array (most recent first),
+        // Recents: ordered by recentIdentifiers (most recent first),
         // skip favorites (they already appear above)
         for (const id of recentIdentifiers) {
           const p = pluginById.get(id);
@@ -401,13 +524,18 @@ export function QuickAddPopup({ x, y, portType, onClose }: QuickAddPopupProps) {
       }
 
       // ── Fuzzy-search mode: score across all metadata fields ───────────────
-      const scored: Array<{ plugin: PluginEntry; score: number }> = [];
+      const scored: Array<{ plugin: PluginEntry; score: number; usedWeight: number }> = [];
       for (const p of plugins) {
         if (!passesPortFilter(p)) continue;
         const score = fuzzyScoreEntry(p, search);
-        if (score !== null) scored.push({ plugin: p, score });
+        if (score !== null) {
+          scored.push({ plugin: p, score, usedWeight: mostUsedWeight(p.id) });
+        }
       }
-      scored.sort((a, b) => b.score - a.score);
+      // Primary sort: fuzzy score DESC; secondary: most-used weight DESC
+      scored.sort((a, b) =>
+        b.score !== a.score ? b.score - a.score : b.usedWeight - a.usedWeight
+      );
 
       return {
         favorites:    [] as PluginEntry[],
@@ -423,6 +551,7 @@ export function QuickAddPopup({ x, y, portType, onClose }: QuickAddPopupProps) {
       favoriteIdentifiers,
       recentIdentifiers,
       passesPortFilter,
+      mostUsedWeight,
     ]);
 
   /** Flat ordered list used for keyboard navigation. */
@@ -445,6 +574,32 @@ export function QuickAddPopup({ x, y, portType, onClose }: QuickAddPopupProps) {
     const item = list.children[activeIndex] as HTMLElement | undefined;
     item?.scrollIntoView({ block: "nearest" });
   }, [activeIndex]);
+
+  // ── Overflow count: count rows below the visible fold ────────────────────
+  // Recalculates whenever the flat list length changes.
+  useEffect(() => {
+    const list = listRef.current;
+    if (!list) {
+      setOverflowCount(0);
+      return;
+    }
+    function measure() {
+      if (!list) return;
+      const containerBottom = list.scrollTop + list.clientHeight;
+      let hidden = 0;
+      // list.children includes section labels + dividers; we only count button rows
+      for (const child of Array.from(list.children)) {
+        const el = child as HTMLElement;
+        if (el.tagName === "BUTTON" && el.offsetTop + el.offsetHeight > containerBottom) {
+          hidden++;
+        }
+      }
+      setOverflowCount(hidden);
+    }
+    measure();
+    list.addEventListener("scroll", measure, { passive: true });
+    return () => list.removeEventListener("scroll", measure);
+  }, [flatList]);
 
   const handleSelect = useCallback(
     (id: string) => {
@@ -567,13 +722,15 @@ export function QuickAddPopup({ x, y, portType, onClose }: QuickAddPopupProps) {
               </div>
             ) : null}
 
-            {/* ── BROWSE MODE (no search typed) ──────────────────────────── */}
+            {/* ── BROWSE MODE (no search typed) — generic AND port-type ───── */}
+            {/* Both modes now show Favorites → Recents → Others.             */}
+            {/* In port-type mode the sections are pre-filtered by portType.  */}
             {!isSearching && (
               <>
                 {favorites.length > 0 && (
                   <>
                     <SectionLabel>Favorites</SectionLabel>
-                    <div className="space-y-px">
+                    <div>
                       {favorites.map((plugin, i) => (
                         <PluginRow
                           key={plugin.id}
@@ -591,7 +748,7 @@ export function QuickAddPopup({ x, y, portType, onClose }: QuickAddPopupProps) {
                   <>
                     {favorites.length > 0 && <SectionDivider />}
                     <SectionLabel>Recents</SectionLabel>
-                    <div className="space-y-px">
+                    <div>
                       {recents.map((plugin, i) => {
                         const flatIndex = favorites.length + i;
                         return (
@@ -613,12 +770,10 @@ export function QuickAddPopup({ x, y, portType, onClose }: QuickAddPopupProps) {
                     {(favorites.length > 0 || recents.length > 0) && (
                       <SectionDivider />
                     )}
-                    {/* "All" label only appears when there are also recents/favs,
-                        so the unlabelled rest-of-list is clearly distinct. */}
                     {(favorites.length > 0 || recents.length > 0) && (
                       <SectionLabel>All</SectionLabel>
                     )}
-                    <div className="space-y-px">
+                    <div>
                       {others.map((plugin, i) => {
                         const flatIndex =
                           favorites.length + recents.length + i;
@@ -640,7 +795,7 @@ export function QuickAddPopup({ x, y, portType, onClose }: QuickAddPopupProps) {
 
             {/* ── FUZZY SEARCH MODE (user has typed) ─────────────────────── */}
             {isSearching && fuzzyResults.length > 0 && (
-              <div className="space-y-px">
+              <div>
                 {fuzzyResults.map((plugin, i) => (
                   <PluginRow
                     key={plugin.id}
@@ -653,6 +808,9 @@ export function QuickAddPopup({ x, y, portType, onClose }: QuickAddPopupProps) {
               </div>
             )}
           </div>
+
+          {/* ── Overflow count — sticky footer inside scroll area ─────────── */}
+          <MoreCount count={overflowCount} />
         </div>
       </div>
     </>
