@@ -34,21 +34,13 @@ const CAT_GLOW_VAR: Record<BlockCategory, string> = {
 
 // ── Signal-type metadata ─────────────────────────────────────────────────────
 
-/**
- * Signal type a Block emits / passes, derived from its category. Used to
- * port-type-filter the list when QuickAdd is opened from a cable-drag.
- *
- * NOTE: the design mockup hand-tags `acceptsType` per block and can split
- * modulators between audio and CV; we cannot reproduce that split from
- * category alone (see the task report — a per-plugin signal-output field on
- * `BrowserPlugin` would be needed for full parity).
- */
-const CATEGORY_SIGNAL: Record<BlockCategory, SignalType> = {
-  instrument: "audio",
-  audiofx:    "audio",
-  midifx:     "midi",
-  modulator:  "value",
-};
+// ── Signal-type metadata ─────────────────────────────────────────────────────
+//
+// G3c item 2: port-type filtering + the signal-alias search now key off the
+// REAL per-plugin signal output (BrowserPlugin.signalOut, derived in C++ from
+// juce::PluginDescription isInstrument/numOutputChannels/category). The old
+// category-only CATEGORY_SIGNAL map was removed — a modulator that actually
+// outputs audio is no longer mis-filtered to CV.
 
 /** Frozen signal-type accent tokens (HSL) — W0-TOKENS. */
 const SIGNAL_HSL: Record<SignalType, string> = {
@@ -171,6 +163,10 @@ interface PluginEntry {
   rawCategory:  string;
   /** Plugin manufacturer name (e.g. "FabFilter", "Valhalla DSP"). Used for metadata fuzzy search. */
   manufacturer: string;
+  /** Real per-plugin signal output (from juce::PluginDescription). Drives port-type filtering. */
+  signalOut:    SignalType;
+  /** Real persisted use-count (PluginUsageTracker). Drives most-used ranking. */
+  usageCount:   number;
 }
 
 /**
@@ -192,8 +188,8 @@ function fuzzyScoreEntry(entry: PluginEntry, query: string): number | null {
   // fuzzy logic (so "reverb" → audiofx, "midi" → midifx, "cv" → modulator).
   for (const [sig, aliases] of Object.entries(SIGNAL_ALIASES) as [SignalType, string[]][]) {
     if (aliases.some((alias) => alias.includes(q) || q.includes(alias))) {
-      const entrySignal = CATEGORY_SIGNAL[entry.category];
-      if (entrySignal === sig) return 55; // signal-alias match — lower than substring
+      // Real per-plugin signal output (G3c item 2), not a category guess.
+      if (entry.signalOut === sig) return 55; // signal-alias match — lower than substring
     }
   }
 
@@ -374,8 +370,9 @@ export interface QuickAddPopupProps {
  *   category, blockCategory, signal-type aliases). "valhalla" finds
  *   ValhallaVintageVerb; "reverb" finds all reverb plugins; "Pro q"/"Pro-q"/
  *   "pro q4" all find "Pro-Q 4" via sep-normalisation + Levenshtein fallback.
- *   Results are ranked by fuzzy score THEN by most-used (recency+favorite
- *   weighting) so the user's common picks float to the top on ties.
+ *   Results are ranked by fuzzy score THEN by most-used — the REAL persisted
+ *   usage frequency (favorite + recency are tie-breakers) — so the user's
+ *   common picks float to the top on ties.
  *   Port-type filter still applies.
  *
  *   Category labels (EQ, Reverb, Compressor…) are shown in each result row;
@@ -416,6 +413,8 @@ export function QuickAddPopup({ x, y, portType, onClose }: QuickAddPopupProps) {
       format:       p.format,
       rawCategory:  p.category,       // e.g. "EQ", "Reverb", "Synth"
       manufacturer: p.manufacturer,   // e.g. "FabFilter", "Valhalla DSP"
+      signalOut:    p.signalOut,      // real per-plugin signal (G3c item 2)
+      usageCount:   p.usageCount,     // real persisted use-count (G3c item 3)
     }));
   }, [nativePlugins]);
 
@@ -427,21 +426,18 @@ export function QuickAddPopup({ x, y, portType, onClose }: QuickAddPopupProps) {
   }, [plugins]);
 
   /**
-   * Most-used weight for a plugin — approximated from recency + favorite status.
-   *
-   * NOTE on missing usage-count bridge: the store holds `recentIdentifiers`
-   * (an ordered list, most-recent first) and `favoriteIdentifiers` (a Set).
-   * The C++ bridge does NOT send a per-plugin usage-frequency count — only a
-   * recency list. We approximate "frequency" as:
-   *   - favorite     → +60 bonus (user explicitly starred it)
-   *   - recent rank  → +30 for the most-recent, tapering by index
-   * This is honest-idle: we do our best with the real data we have and note
-   * the bridge gap here. A proper `usageCount` field on BrowserPlugin would
-   * allow exact frequency ordering.
+   * Most-used weight for a plugin — driven by the REAL persisted use-count
+   * (G3c item 3: PluginUsageTracker.useCount, surfaced on BrowserPlugin as
+   * `usageCount`). Frequency is now the dominant term; favorite + recency are
+   * tie-breakers so a starred-but-never-added plugin still ranks above an
+   * unstarred one on an equal fuzzy score:
+   *   - usageCount   → ×4 (real frequency, the primary signal)
+   *   - favorite     → +60 (user explicitly starred it)
+   *   - recent rank  → up to +30 for the most-recent, tapering by index
    */
   const mostUsedWeight = useCallback(
     (id: string): number => {
-      let w = 0;
+      let w = (pluginById.get(id)?.usageCount ?? 0) * 4;
       if (favoriteIdentifiers.has(id)) w += 60;
       const recIdx = recentIdentifiers.indexOf(id);
       if (recIdx !== -1) {
@@ -450,17 +446,20 @@ export function QuickAddPopup({ x, y, portType, onClose }: QuickAddPopupProps) {
       }
       return w;
     },
-    [favoriteIdentifiers, recentIdentifiers],
+    [pluginById, favoriteIdentifiers, recentIdentifiers],
   );
 
   /**
-   * Port-type predicate — keeps only Blocks whose derived signal type matches
-   * the dragged port when portType is set.
+   * Port-type predicate — keeps only Blocks whose REAL signal output matches
+   * the dragged port when portType is set (G3c item 2). This is the real
+   * per-plugin signalOut, so e.g. a modulator that actually outputs audio now
+   * correctly appears under an audio port rather than being forced to CV by a
+   * category-only guess.
    */
   const passesPortFilter = useCallback(
     (p: PluginEntry) => {
       if (!portType) return true;
-      return CATEGORY_SIGNAL[p.category] === portType;
+      return p.signalOut === portType;
     },
     [portType],
   );
@@ -477,7 +476,8 @@ export function QuickAddPopup({ x, y, portType, onClose }: QuickAddPopupProps) {
    *   All plugins scored across name + manufacturer + rawCategory +
    *   blockCategory + signal-type aliases + sep-normalisation + Levenshtein
    *   fallback for short typos. Results ranked by fuzzy score, then by
-   *   most-used weight (recency + favorite) so common picks surface first.
+   *   most-used weight (real usage count, with favorite + recency as
+   *   tie-breakers) so common picks surface first.
    *   Port-filter still applies. Section headers collapse to a flat scored list.
    */
   const { favorites, recents, others, fuzzyResults, isSearching } =

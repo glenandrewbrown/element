@@ -189,4 +189,98 @@ describe("usePluginBrowserStore.refresh", () => {
       expect(usePluginBrowserStore.getState().plugins[0].blockCategory).toBe(expected);
     },
   );
+
+  // ── G3c item 2: real signalOut + item 3: real usageCount ────────────────────
+
+  it("carries the real per-plugin signalOut + usageCount from C++", async () => {
+    bridge.mock.mockResolvedValueOnce({
+      plugins: [
+        {
+          identifier: "vst3.Synth",
+          name: "Synth",
+          category: "Synth",
+          signalOut: "audio",
+          isInstrument: true,
+          numInputChannels: 0,
+          numOutputChannels: 2,
+          usageCount: 12,
+        },
+      ],
+      favoriteIdentifiers: [],
+      recentIdentifiers: [],
+    });
+    await usePluginBrowserStore.getState().refresh();
+    const p = usePluginBrowserStore.getState().plugins[0];
+    expect(p.signalOut).toBe("audio");
+    expect(p.usageCount).toBe(12);
+  });
+
+  it("honours signalOut even when it contradicts the inferred category", async () => {
+    // category "Modulator" would infer blockCategory "modulator" → CV by the
+    // old logic; the REAL signalOut "audio" must win.
+    bridge.mock.mockResolvedValueOnce({
+      plugins: [
+        {
+          identifier: "vst3.ShaperBox",
+          category: "Modulator",
+          signalOut: "audio",
+        },
+      ],
+      favoriteIdentifiers: [],
+      recentIdentifiers: [],
+    });
+    await usePluginBrowserStore.getState().refresh();
+    const p = usePluginBrowserStore.getState().plugins[0];
+    expect(p.blockCategory).toBe("modulator");
+    expect(p.signalOut).toBe("audio"); // real field, not category-derived
+  });
+
+  it("ignores a malformed signalOut and falls back to category-derived signal", async () => {
+    bridge.mock.mockResolvedValueOnce({
+      plugins: [
+        { identifier: "vst3.Midi", category: "MIDI", signalOut: "bogus" },
+      ],
+      favoriteIdentifiers: [],
+      recentIdentifiers: [],
+    });
+    await usePluginBrowserStore.getState().refresh();
+    // "MIDI" → blockCategory "midifx" → fallback signal "midi".
+    expect(usePluginBrowserStore.getState().plugins[0].signalOut).toBe("midi");
+  });
+
+  it("falls back when C++ omits signalOut/usageCount (older host build)", async () => {
+    bridge.mock.mockResolvedValueOnce({
+      plugins: [{ identifier: "vst3.Reverb", category: "Reverb" }],
+      favoriteIdentifiers: [],
+      recentIdentifiers: [],
+    });
+    await usePluginBrowserStore.getState().refresh();
+    const p = usePluginBrowserStore.getState().plugins[0];
+    // "Reverb" → audiofx → audio (graceful, labelled fallback).
+    expect(p.signalOut).toBe("audio");
+    // usageCount absent → 0, never undefined/NaN.
+    expect(p.usageCount).toBe(0);
+  });
+
+  const signalFallbackTests: Array<[string, "audio" | "midi" | "value"]> = [
+    ["Instrument", "audio"],
+    ["Reverb", "audio"],
+    ["MIDI", "midi"],
+    ["Sequencer", "midi"],
+    ["Utility", "value"],
+    ["Uncategorised", "audio"],
+  ];
+
+  it.each(signalFallbackTests)(
+    "category '%s' (no signalOut) -> fallback signal '%s'",
+    async (rawCategory, expected) => {
+      bridge.mock.mockResolvedValueOnce({
+        plugins: [{ identifier: "test.id", category: rawCategory }],
+        favoriteIdentifiers: [],
+        recentIdentifiers: [],
+      });
+      await usePluginBrowserStore.getState().refresh();
+      expect(usePluginBrowserStore.getState().plugins[0].signalOut).toBe(expected);
+    },
+  );
 });

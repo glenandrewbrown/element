@@ -7,6 +7,7 @@ import {
   nativeAudioApplySetup,
   nativeMappingRemoveMap,
   nativeMappingSetLearning,
+  nativeMidiApplySetup,
   nativeOpenGraphMixer,
   nativeOpenKeymapEditor,
   nativeOpenLuaConsole,
@@ -585,6 +586,11 @@ function AudioTab() {
 function MidiTab() {
   const midiMapping = useHostExtrasStore((s) => s.midiMapping);
   const learning = midiMapping.learning;
+  const midi = useHostExtrasStore((s) => s.midiSetup);
+
+  const inputs = midi?.inputs ?? [];
+  const outputs = midi?.outputs ?? [];
+  const hasDevices = inputs.length > 0 || outputs.length > 0;
 
   return (
     <div className="space-y-5">
@@ -653,23 +659,66 @@ function MidiTab() {
         </div>
       </div>
 
-      {/* MIDI devices — honest-disabled (no bridge yet) */}
+      {/* MIDI devices — REAL (wired to MidiEngine via the snapshot + elementMidiApplySetup) */}
       <div>
         <SectionHeading>MIDI devices</SectionHeading>
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] text-text-primary">MIDI inputs</span>
-            <DisabledBadge bridge="elementGetMidiInputs" />
+        {!hasDevices ? (
+          <p className="text-[10px] text-text-dim">No MIDI devices detected</p>
+        ) : (
+          <div className="space-y-4">
+            {/* MIDI inputs — per-device enable toggles */}
+            <div>
+              <span className="block text-[9px] font-bold uppercase tracking-widest text-text-secondary mb-2">
+                Inputs
+              </span>
+              {inputs.length === 0 ? (
+                <p className="text-[10px] text-text-dim">No MIDI inputs detected</p>
+              ) : (
+                <div className="space-y-2">
+                  {inputs.map((d) => (
+                    <ToggleRow
+                      key={d.identifier}
+                      label={d.name || d.identifier}
+                      checked={d.enabled === true}
+                      onChange={(v) =>
+                        void nativeMidiApplySetup({
+                          inputEnables: [{ identifier: d.identifier, enabled: v }],
+                        })
+                      }
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* MIDI outputs — default output selector */}
+            <div>
+              {outputs.length === 0 ? (
+                <>
+                  <span className="block text-[9px] font-bold uppercase tracking-widest text-text-secondary mb-2">
+                    Output
+                  </span>
+                  <p className="text-[10px] text-text-dim">No MIDI outputs detected</p>
+                </>
+              ) : (
+                <NeuSelect
+                  label="Default output"
+                  value={midi?.defaultOutputId ?? ""}
+                  onChange={(v) =>
+                    void nativeMidiApplySetup({ defaultOutputId: v })
+                  }
+                >
+                  <option value="">None</option>
+                  {outputs.map((d) => (
+                    <option key={d.identifier} value={d.identifier}>
+                      {d.name || d.identifier}
+                    </option>
+                  ))}
+                </NeuSelect>
+              )}
+            </div>
           </div>
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] text-text-primary">MIDI outputs</span>
-            <DisabledBadge bridge="elementGetMidiOutputs" />
-          </div>
-          <p className="text-[9px] text-text-dim leading-relaxed">
-            Per-device enable/disable will be available once elementGetMidiInputs /
-            elementGetMidiOutputs are exposed in nativePrefs (Pillar-2 backlog).
-          </p>
-        </div>
+        )}
       </div>
     </div>
   );
@@ -835,8 +884,10 @@ export interface PreferencesModalProps {
  * are not yet exposed (Pillar-2 backlog). A tooltip on each disabled control
  * names the target bridge call.
  *
- * MIDI: mapping table + MIDI-learn (bridged). Per-device enable is
- * honest-disabled pending elementGetMidiInputs / elementGetMidiOutputs.
+ * MIDI: mapping table + MIDI-learn (bridged) + real device list — per-input
+ * enable toggles and a default-output selector, hydrated from the snapshot
+ * (midiSetup) and written via elementMidiApplySetup. Zero devices →
+ * "No MIDI devices detected" (honest, not a fake list).
  *
  * Appearance: cable routing toggle (wired, persisted in useAppStore).
  * Theme/density/font-scale controls are honest-disabled.

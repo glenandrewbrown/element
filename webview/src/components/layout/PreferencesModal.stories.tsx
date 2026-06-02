@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { expect, userEvent, within } from "storybook/test";
 import { PreferencesModal } from "./PreferencesModal";
 import { useHostExtrasStore } from "../../stores/useHostExtrasStore";
 import { useAppStore } from "../../stores/useAppStore";
@@ -19,7 +20,7 @@ const meta = {
           "Audio: device + driver + sample-rate/buffer + OSC + canvas (all bridged via nativePrefs). " +
           "Plugin-scan/paths/format-toggles are honest-disabled with tooltips naming the missing bridge calls " +
           "(elementScanPlugins / elementGetPluginPaths / elementSetPluginFormatEnabled — Pillar-2 backlog). " +
-          "MIDI: mapping table + MIDI-learn (bridged); per-device enable honest-disabled pending elementGetMidiInputs/Outputs. " +
+          "MIDI: mapping table + MIDI-learn (bridged) + REAL device list — per-input enable toggles and a default-output selector hydrated from the snapshot (midiSetup) and written via elementMidiApplySetup; zero devices shows 'No MIDI devices detected'. " +
           "Appearance: cable routing toggle (wired, persisted); theme/density/font-scale honest-disabled. " +
           "Shortcuts: read-only key-command list from useKeyboard.ts — full rebinding editor tracked as U9.",
       },
@@ -321,5 +322,102 @@ export const ShortcutsReference: Story = {
           "Full rebinding editor (U9) is a follow-up task. Navigate to the Shortcuts tab.",
       },
     },
+  },
+};
+
+// ── MIDI tab — real device list (G3c item 1) ──────────────────────────────────
+
+/** Seed only the MIDI-relevant slices; the rest fall back to safe defaults. */
+function seedMidiSetup(
+  midiSetup: {
+    inputs: Array<{ name: string; identifier: string; enabled: boolean }>;
+    outputs: Array<{ name: string; identifier: string; isDefault: boolean }>;
+    defaultOutputId: string;
+  } | null,
+) {
+  useHostExtrasStore.setState({
+    audioSetup: null,
+    midiSetup,
+    oscHost: { enabled: false, port: 9001 },
+    canvas: {
+      snapToGrid: false,
+      gridSize: 8,
+      viewport: { x: 0, y: 0, zoom: 1 },
+      graphBounds: { minX: 0, minY: 0, maxX: 0, maxY: 0 },
+    },
+    midiMapping: { learning: false, maps: [] },
+    molecules: [],
+    logLines: [],
+    activeGraphOutline: [],
+  });
+}
+
+export const MidiDevices: Story = {
+  name: "MIDI — Devices (real list)",
+  decorators: [
+    (Story) => {
+      seedMidiSetup({
+        inputs: [
+          { name: "Launchpad Pro", identifier: "in-launchpad", enabled: true },
+          { name: "APC Mini", identifier: "in-apc", enabled: false },
+        ],
+        outputs: [
+          { name: "IAC Driver Bus 1", identifier: "out-iac1", isDefault: true },
+          { name: "IAC Driver Bus 2", identifier: "out-iac2", isDefault: false },
+        ],
+        defaultOutputId: "out-iac1",
+      });
+      return <Story />;
+    },
+  ],
+  args: { onClose: () => {} },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "MIDI tab with a real device list (G3c item 1). Two inputs render as enable toggles " +
+          "(Launchpad on, APC off); two outputs populate the default-output selector " +
+          "(IAC Bus 1 default). Toggling/selecting calls elementMidiApplySetup (no-op in Storybook).",
+      },
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const body = within(canvasElement.ownerDocument.body);
+    // Navigate to the MIDI tab.
+    await userEvent.click(body.getByRole("tab", { name: /midi/i }));
+    // Real input device rows are present.
+    await expect(body.getByText("Launchpad Pro")).toBeVisible();
+    await expect(body.getByText("APC Mini")).toBeVisible();
+    // Default-output selector carries the real options.
+    await expect(body.getByText("Default output")).toBeVisible();
+    await expect(body.getByText("IAC Driver Bus 1")).toBeVisible();
+    // The honest empty-state text must NOT appear when devices exist.
+    await expect(body.queryByText("No MIDI devices detected")).toBeNull();
+  },
+};
+
+export const MidiNoDevices: Story = {
+  name: "MIDI — No devices (honest empty)",
+  decorators: [
+    (Story) => {
+      // No MIDI devices detected at all.
+      seedMidiSetup({ inputs: [], outputs: [], defaultOutputId: "" });
+      return <Story />;
+    },
+  ],
+  args: { onClose: () => {} },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "MIDI tab with zero devices — the honest-degraded state. Shows 'No MIDI devices detected' " +
+          "instead of a fabricated device list.",
+      },
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const body = within(canvasElement.ownerDocument.body);
+    await userEvent.click(body.getByRole("tab", { name: /midi/i }));
+    await expect(body.getByText("No MIDI devices detected")).toBeVisible();
   },
 };

@@ -30,6 +30,7 @@ vi.mock("../../../bridge/nativePrefs", () => ({
   nativeAudioApplySetup: vi.fn().mockResolvedValue(undefined),
   nativeMappingRemoveMap: vi.fn().mockResolvedValue(undefined),
   nativeMappingSetLearning: vi.fn().mockResolvedValue(undefined),
+  nativeMidiApplySetup: vi.fn().mockResolvedValue(true),
   nativeOpenGraphMixer: vi.fn().mockResolvedValue(undefined),
   nativeOpenKeymapEditor: vi.fn().mockResolvedValue(undefined),
   nativeOpenLuaConsole: vi.fn().mockResolvedValue(undefined),

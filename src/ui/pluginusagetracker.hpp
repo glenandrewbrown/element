@@ -6,6 +6,8 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_events/juce_events.h>
 
+#include <map>
+
 namespace element {
 
 /** Tracks plugin usage for favorites and recently used features.
@@ -41,6 +43,18 @@ public:
 
     /** Get recently used plugin identifiers (most recent first) */
     juce::StringArray getRecentlyUsedIdentifiers (int maxItems = 10) const;
+
+    /** Get the real, persisted use-count for a single plugin identifier.
+        Returns 0 if the plugin has never been used. This surfaces the
+        already-tracked UsageEntry::useCount (incremented in recordUsage,
+        persisted to plugin_usage.xml) — no fabricated data. */
+    int getUseCountForIdentifier (const juce::String& identifier) const;
+
+    /** Snapshot of every tracked plugin's identifier → real use-count.
+        Built in a single pass so callers iterating a large KnownPluginList
+        can look counts up in O(log n) instead of O(n) per plugin (avoids
+        O(n²) over the ~2000-plugin payload). */
+    std::map<juce::String, int> getUsageCounts() const;
 
     /** Check if a plugin was recently used */
     bool isRecentlyUsed (const juce::PluginDescription& desc) const;

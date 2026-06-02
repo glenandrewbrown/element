@@ -30,7 +30,9 @@ vi.mock("../../../bridge/nativePrefs", () => ({
   nativeAudioApplySetup:    vi.fn().mockResolvedValue(undefined),
   nativeMappingRemoveMap:   vi.fn().mockResolvedValue(undefined),
   nativeMappingSetLearning: vi.fn().mockResolvedValue(undefined),
+  nativeMidiApplySetup:     vi.fn().mockResolvedValue(true),
   nativeOpenGraphMixer:     vi.fn().mockResolvedValue(undefined),
+  nativeOpenKeymapEditor:   vi.fn().mockResolvedValue(undefined),
   nativeOpenLuaConsole:     vi.fn().mockResolvedValue(undefined),
   nativeOscApplyHost:       vi.fn().mockResolvedValue(undefined),
   nativeWebDismissOverlay:  vi.fn().mockResolvedValue(undefined),
@@ -43,6 +45,7 @@ vi.mock("../../../bridge/nativeGraph", () => ({
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 import { PreferencesModal } from "../PreferencesModal";
+import { nativeMidiApplySetup } from "../../../bridge/nativePrefs";
 
 const BLANK_AUDIO_SETUP = {
   outputDeviceName: "Speakers",
@@ -59,6 +62,7 @@ const BLANK_AUDIO_SETUP = {
 
 const BLANK_HOST_EXTRAS = {
   audioSetup:   BLANK_AUDIO_SETUP,
+  midiSetup:    null,
   oscHost:      { enabled: false, port: 9001 },
   canvas:       { snapToGrid: false, gridSize: 8, viewport: { x:0,y:0,zoom:1 }, graphBounds: { minX:0,minY:0,maxX:0,maxY:0 } },
   midiMapping:  { learning: false, maps: [] },
@@ -206,15 +210,53 @@ describe("PreferencesModal — MIDI tab", () => {
     expect(screen.getByText(/armed/i)).toBeInTheDocument();
   });
 
-  it("shows DisabledBadge for MIDI inputs", () => {
-    expect(screen.getByText(/midi inputs/i)).toBeInTheDocument();
-    // DisabledBadge renders "Pending bridge" for unimplemented items
-    const badges = screen.getAllByText(/pending bridge/i);
-    expect(badges.length).toBeGreaterThanOrEqual(2); // inputs + outputs
+  it("shows honest 'No MIDI devices detected' when the snapshot has none (G3c item 1)", () => {
+    // beforeEach renders with BLANK_HOST_EXTRAS (midiSetup = null) → honest empty.
+    expect(screen.getByText(/no midi devices detected/i)).toBeInTheDocument();
   });
 
-  it("shows DisabledBadge for MIDI outputs", () => {
-    expect(screen.getByText(/midi outputs/i)).toBeInTheDocument();
+  it("renders REAL MIDI input toggles + default-output selector when devices exist", () => {
+    useHostExtrasStore.setState({
+      ...BLANK_HOST_EXTRAS,
+      midiSetup: {
+        inputs: [
+          { name: "Launchpad", identifier: "in-1", enabled: true },
+          { name: "APC", identifier: "in-2", enabled: false },
+        ],
+        outputs: [
+          { name: "IAC Bus 1", identifier: "out-1", isDefault: true },
+        ],
+        defaultOutputId: "out-1",
+      },
+    } as Parameters<typeof useHostExtrasStore.setState>[0]);
+    render(<PreferencesModal onClose={ON_CLOSE} />);
+    fireEvent.click(screen.getAllByRole("tab", { name: /midi/i })[0]);
+    expect(screen.getByText("Launchpad")).toBeInTheDocument();
+    expect(screen.getByText("APC")).toBeInTheDocument();
+    expect(screen.getByText(/default output/i)).toBeInTheDocument();
+    expect(screen.getByText("IAC Bus 1")).toBeInTheDocument();
+    // No fake "Pending bridge" badge in the device section anymore.
+    expect(screen.queryByText(/no midi devices detected/i)).not.toBeInTheDocument();
+  });
+
+  it("toggling a MIDI input calls nativeMidiApplySetup with the device payload", () => {
+    useHostExtrasStore.setState({
+      ...BLANK_HOST_EXTRAS,
+      midiSetup: {
+        inputs: [{ name: "Launchpad", identifier: "in-1", enabled: false }],
+        outputs: [],
+        defaultOutputId: "",
+      },
+    } as Parameters<typeof useHostExtrasStore.setState>[0]);
+    render(<PreferencesModal onClose={ON_CLOSE} />);
+    // The beforeEach also rendered a modal; use the most-recently rendered one.
+    fireEvent.click(screen.getAllByRole("tab", { name: /midi/i }).at(-1)!);
+    // The input device's enable toggle (ToggleRow switch).
+    const toggles = screen.getAllByRole("switch");
+    fireEvent.click(toggles.at(-1)!);
+    expect(nativeMidiApplySetup).toHaveBeenCalledWith({
+      inputEnables: [{ identifier: "in-1", enabled: true }],
+    });
   });
 
   it("maps table renders when maps exist", () => {

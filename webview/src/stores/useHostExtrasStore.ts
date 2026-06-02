@@ -18,6 +18,22 @@ export type OscHostSnapshot = {
   port: number;
 };
 
+/** One MIDI device row from the host snapshot (real CoreMIDI/ALSA/Win-MIDI device). */
+export type MidiDeviceRow = {
+  name: string;
+  identifier: string;
+  /** Inputs only: whether the device is currently enabled in MidiEngine. */
+  enabled?: boolean;
+  /** Outputs only: whether this is the default MIDI output. */
+  isDefault?: boolean;
+};
+
+export type MidiSetupSnapshot = {
+  inputs: MidiDeviceRow[];
+  outputs: MidiDeviceRow[];
+  defaultOutputId: string;
+};
+
 export type MoleculeRow = { name: string; description: string };
 
 export type CanvasSnapshot = {
@@ -51,6 +67,7 @@ export type GraphOutlineNode = {
 
 interface HostExtrasState {
   audioSetup: AudioSetupSnapshot | null;
+  midiSetup: MidiSetupSnapshot | null;
   oscHost: OscHostSnapshot | null;
   molecules: MoleculeRow[];
   canvas: CanvasSnapshot;
@@ -59,6 +76,11 @@ interface HostExtrasState {
   logLines: string[];
   hydrateFromSnapshot: (data: {
     audioSetup?: Partial<AudioSetupSnapshot>;
+    midiSetup?: {
+      inputs?: Array<Partial<MidiDeviceRow> & { identifier?: string }>;
+      outputs?: Array<Partial<MidiDeviceRow> & { identifier?: string }>;
+      defaultOutputId?: string;
+    };
     oscHost?: Partial<OscHostSnapshot>;
     molecules?: Array<{ name?: string; description?: string }>;
     canvas?: {
@@ -90,6 +112,7 @@ const defaultCanvas: CanvasSnapshot = {
 
 export const useHostExtrasStore = create<HostExtrasState>()((set) => ({
   audioSetup: null,
+  midiSetup: null,
   oscHost: null,
   molecules: [],
   canvas: { ...defaultCanvas },
@@ -130,6 +153,38 @@ export const useHostExtrasStore = create<HostExtrasState>()((set) => ({
           sampleRates: Array.isArray(a.sampleRates)
             ? a.sampleRates.filter((x): x is number => typeof x === "number")
             : (prev?.sampleRates ?? []),
+        };
+      }
+      if (data.midiSetup != null) {
+        const m = data.midiSetup;
+        const prev = s.midiSetup;
+        const sanitizeRows = (
+          rows: Array<Partial<MidiDeviceRow> & { identifier?: string }> | undefined,
+          fallback: MidiDeviceRow[],
+        ): MidiDeviceRow[] =>
+          Array.isArray(rows)
+            ? rows
+                .filter(
+                  (r): r is Partial<MidiDeviceRow> & { identifier: string } =>
+                    typeof r?.identifier === "string",
+                )
+                .map((r) => ({
+                  name: String(r.name ?? ""),
+                  identifier: String(r.identifier),
+                  ...(typeof r.enabled === "boolean"
+                    ? { enabled: r.enabled }
+                    : {}),
+                  ...(typeof r.isDefault === "boolean"
+                    ? { isDefault: r.isDefault }
+                    : {}),
+                }))
+            : fallback;
+        next.midiSetup = {
+          inputs: sanitizeRows(m.inputs, prev?.inputs ?? []),
+          outputs: sanitizeRows(m.outputs, prev?.outputs ?? []),
+          defaultOutputId: String(
+            m.defaultOutputId ?? prev?.defaultOutputId ?? "",
+          ),
         };
       }
       if (data.oscHost != null) {

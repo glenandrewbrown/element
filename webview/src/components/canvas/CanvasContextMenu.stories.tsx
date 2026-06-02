@@ -71,9 +71,13 @@ const meta = {
           "(reactFlow), Snap to Grid (nativeGraphSetCanvasOptions), Minimap",
           "(useGraphStore.toggleMinimap).",
           "",
-          "**Honest-disabled:** Auto-Layout… — native has a layout engine, the webview",
-          "has no `elementGraphAutoLayout` bridge yet, so the item is disabled with a",
-          "tooltip naming the gap. Nothing is a silent no-op.",
+          "**Auto-Layout:** WIRED — computeAutoLayout() lays out the real",
+          "useGraphStore nodes+edges (deterministic layered/Sugiyama) and applies",
+          "them via `nativeGraphAutoLayout` (host batch-setPosition, single",
+          "snapshot push). There is NO native layout engine — JUCE only has a",
+          "horizontal/vertical direction toggle — so the layout is computed in",
+          "the webview. Honest-degraded: disabled with \"Board is empty\" when 0",
+          "blocks. Nothing is a silent no-op.",
           "",
           "**Design:** mirrors NodeContextMenu — same neumorphic shell, header, and",
           "MenuItem primitives, with the primary signal-blue dopamine hover-glow.",
@@ -111,8 +115,8 @@ export const Default: Story = {
         story:
           "Populated Board (3 blocks). The full contextual menu: Create (Add Block… / " +
           "Add Comment Box), Edit (Paste / Select All Blocks), View (Fit / Zoom), and " +
-          "Canvas toggles (Snap to Grid / Minimap / Auto-Layout honest-disabled). " +
-          "Select All + Fit to View are enabled because the Board has blocks.",
+          "Canvas toggles (Snap to Grid / Minimap / Auto-Layout). " +
+          "Select All + Fit to View + Auto-Layout are enabled because the Board has blocks.",
       },
     },
   },
@@ -140,12 +144,10 @@ export const Default: Story = {
     await expect(body.getByText("Zoom Out")).toBeVisible();
     await expect(body.getByText("Snap to Grid")).toBeVisible();
     await expect(body.getByText("Minimap")).toBeVisible();
-    // Honest-disabled Auto-Layout — present, disabled, "soon" badge, tooltip.
-    const autoLayout = body.getByText("Auto-Layout…").closest("button")!;
-    await expect(autoLayout).toBeDisabled();
-    await expect(autoLayout.getAttribute("title")).toContain(
-      "elementGraphAutoLayout",
-    );
+    // Auto-Layout is WIRED (real computeAutoLayout + nativeGraphAutoLayout):
+    // with blocks present it is enabled, not disabled.
+    const autoLayout = body.getByText("Auto-Layout").closest("button")!;
+    await expect(autoLayout).not.toBeDisabled();
   },
 };
 
@@ -156,9 +158,10 @@ export const EmptyBoard: Story = {
     docs: {
       description: {
         story:
-          "Empty Board (0 blocks). Select All Blocks and Fit to View are honest-disabled " +
-          "(nothing to select / fit) with tooltips, while Add Block… / Paste / Zoom / the " +
-          "Canvas toggles remain enabled. The header reads \"0 blocks\".",
+          "Empty Board (0 blocks). Select All Blocks, Fit to View, and Auto-Layout are " +
+          "honest-disabled (nothing to select / fit / arrange) with tooltips, while " +
+          "Add Block… / Paste / Zoom / the other Canvas toggles remain enabled. " +
+          "The header reads \"0 blocks\".",
       },
     },
   },
@@ -175,6 +178,10 @@ export const EmptyBoard: Story = {
     const fit = body.getByText("Fit to View").closest("button")!;
     await expect(selectAll).toBeDisabled();
     await expect(fit).toBeDisabled();
+    // Auto-Layout is honest-degraded on an empty Board (real state, not a bridge gap).
+    const autoLayout = body.getByText("Auto-Layout").closest("button")!;
+    await expect(autoLayout).toBeDisabled();
+    await expect(autoLayout.getAttribute("title")).toContain("Board is empty");
     // Add Block… stays enabled even on an empty board.
     const addBlock = body.getByText("Add Block…").closest("button")!;
     await expect(addBlock).not.toBeDisabled();
@@ -241,5 +248,60 @@ export const AddBlockHandoff: Story = {
     const body = within(canvasElement.ownerDocument.body);
     await userEvent.click(body.getByText("Add Block…"));
     await expect(args.onAddBlock).toHaveBeenCalledTimes(1);
+  },
+};
+
+// ── Auto-Layout fires the bridge + closes the menu (G3c item 4) ──────────────
+export const AutoLayoutWired: Story = {
+  args: { ...baseArgs, onClose: fn() },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "G3c item 4 — clicking Auto-Layout computes deterministic layered positions " +
+          "from the real useGraphStore graph and applies them via nativeGraphAutoLayout " +
+          "(a no-op in Storybook with no host). Verifies the enabled item runs without " +
+          "throwing and closes the menu.",
+      },
+    },
+  },
+  decorators: [
+    (Story) => {
+      // Seed a real 3-block / 2-edge graph so the layout has something to do.
+      seed({ nodes: [makeBlock("a"), makeBlock("b"), makeBlock("c")] });
+      useGraphStore.setState({
+        edges: [
+          {
+            id: "e1",
+            source: "a",
+            sourcePort: "out-0",
+            target: "b",
+            targetPort: "in-0",
+            signalType: "audio",
+            channelCount: 2,
+            isSidechain: false,
+          },
+          {
+            id: "e2",
+            source: "b",
+            sourcePort: "out-0",
+            target: "c",
+            targetPort: "in-0",
+            signalType: "audio",
+            channelCount: 2,
+            isSidechain: false,
+          },
+        ],
+      });
+      return framed(Story);
+    },
+  ],
+  play: async ({ args, canvasElement }) => {
+    const body = within(canvasElement.ownerDocument.body);
+    const autoLayout = body.getByText("Auto-Layout").closest("button")!;
+    await expect(autoLayout).not.toBeDisabled();
+    await userEvent.click(autoLayout);
+    // Menu closes after the action runs.
+    await expect(args.onClose).toHaveBeenCalled();
   },
 };

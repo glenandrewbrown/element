@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { invokeElementNative } from "../bridge/juceBackend";
 import { logBridgeError } from "../bridge/bridgeError";
-import type { BlockCategory } from "../data/types";
+import type { BlockCategory, SignalType } from "../data/types";
 
 export type BrowserPlugin = {
   identifier: string;
@@ -11,7 +11,34 @@ export type BrowserPlugin = {
   category: string;
   /** Inferred for UI chrome */
   blockCategory: BlockCategory;
+  /**
+   * Signal type the plugin emits, from the REAL juce::PluginDescription fields
+   * (isInstrument / numOutputChannels / category) sent by C++. When an older
+   * host build omits it, this is derived from blockCategory as an honest
+   * fallback (see categorySignalFallback).
+   */
+  signalOut: SignalType;
+  /** Real persisted use-count from PluginUsageTracker (0 if never used / absent). */
+  usageCount: number;
 };
+
+/**
+ * Honest fallback when the host build predates the per-plugin signalOut field:
+ * derive the signal type from the inferred block category. This is the same
+ * coarse mapping QuickAdd used before real data existed — labelled, not faked.
+ */
+function categorySignalFallback(c: BlockCategory): SignalType {
+  switch (c) {
+    case "midifx":
+      return "midi";
+    case "modulator":
+      return "value";
+    case "instrument":
+    case "audiofx":
+    default:
+      return "audio";
+  }
+}
 
 function inferBlockCategory(raw: string): BlockCategory {
   const u = raw.toLowerCase();
@@ -88,6 +115,11 @@ export const usePluginBrowserStore = create<PluginBrowserState>()((set) => ({
             manufacturer?: string;
             format?: string;
             category?: string;
+            signalOut?: string;
+            isInstrument?: boolean;
+            numInputChannels?: number;
+            numOutputChannels?: number;
+            usageCount?: number;
           }>
         | undefined;
       if (!Array.isArray(list)) return;
@@ -95,13 +127,24 @@ export const usePluginBrowserStore = create<PluginBrowserState>()((set) => ({
         .filter((p) => p.identifier)
         .map((p) => {
           const category = String(p.category ?? "Uncategorised");
+          const blockCategory = inferBlockCategory(category);
+          // Prefer the REAL per-plugin signal from C++; fall back to the
+          // category-derived signal only when the host build omits it.
+          const signalOut: SignalType =
+            p.signalOut === "audio" ||
+            p.signalOut === "midi" ||
+            p.signalOut === "value"
+              ? p.signalOut
+              : categorySignalFallback(blockCategory);
           return {
             identifier: String(p.identifier),
             name: String(p.descriptiveName || p.name || p.identifier),
             manufacturer: String(p.manufacturer ?? ""),
             format: String(p.format ?? ""),
             category,
-            blockCategory: inferBlockCategory(category),
+            blockCategory,
+            signalOut,
+            usageCount: typeof p.usageCount === "number" ? p.usageCount : 0,
           };
         });
       set({ plugins, favoriteIdentifiers: fav, recentIdentifiers: recent });

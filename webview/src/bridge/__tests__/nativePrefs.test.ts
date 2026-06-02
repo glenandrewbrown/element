@@ -18,6 +18,7 @@ import {
   nativeHostShowAllPluginWindows,
   nativeMappingRemoveMap,
   nativeMappingSetLearning,
+  nativeMidiApplySetup,
   nativeOpenGraphMixer,
   nativeOpenLuaConsole,
   nativeOscApplyHost,
@@ -77,6 +78,51 @@ describe("nativeOscApplyHost", () => {
     expect(
       await nativeOscApplyHost({ enabled: false, port: 0 }),
     ).toBe(false);
+  });
+});
+
+describe("nativeMidiApplySetup", () => {
+  let bridge: JuceBridgeMock;
+
+  beforeEach(() => {
+    bridge = installJuceBridgeMock();
+  });
+
+  afterEach(() => {
+    bridge.uninstall();
+  });
+
+  it("happy path: returns true and passes the setup payload to host", async () => {
+    const setup = {
+      inputEnables: [{ identifier: "midi-in-1", enabled: true }],
+      defaultOutputId: "midi-out-2",
+    };
+    bridge.mock.mockResolvedValueOnce(true);
+    expect(await nativeMidiApplySetup(setup)).toBe(true);
+    expect(bridge.mock).toHaveBeenCalledWith("elementMidiApplySetup", [setup]);
+  });
+
+  it("input-only payload: forwards just inputEnables", async () => {
+    const setup = {
+      inputEnables: [{ identifier: "midi-in-1", enabled: false }],
+    };
+    bridge.mock.mockResolvedValueOnce(true);
+    expect(await nativeMidiApplySetup(setup)).toBe(true);
+    expect(bridge.mock).toHaveBeenCalledWith("elementMidiApplySetup", [setup]);
+  });
+
+  it("default-output-only payload: forwards just defaultOutputId", async () => {
+    const setup = { defaultOutputId: "midi-out-2" };
+    bridge.mock.mockResolvedValueOnce(true);
+    expect(await nativeMidiApplySetup(setup)).toBe(true);
+    expect(bridge.mock).toHaveBeenCalledWith("elementMidiApplySetup", [setup]);
+  });
+
+  it("error path: returns false only when host does NOT return true", async () => {
+    bridge.mock.mockResolvedValueOnce(false);
+    expect(await nativeMidiApplySetup({ defaultOutputId: "x" })).toBe(false);
+    bridge.mock.mockResolvedValueOnce(undefined);
+    expect(await nativeMidiApplySetup({ defaultOutputId: "x" })).toBe(false);
   });
 });
 

@@ -43,6 +43,7 @@ import {
   nativeTransportSetTempo,
   nativeSetNodeParameter,
   nativeGraphMoveNodes,
+  nativeGraphAutoLayout,
   nativeMoleculeInsert,
   nativeGraphDuplicateNodes,
   nativeGraphCopyNodes,
@@ -433,6 +434,21 @@ const numberCases: NumCase[] = [
       [
         { id: "n1", x: 1, y: 2 },
         { id: "n2", x: 3, y: 4 },
+      ],
+    ],
+  },
+  {
+    name: "nativeGraphAutoLayout",
+    call: () =>
+      nativeGraphAutoLayout([
+        { id: "n1", x: 80, y: 80 },
+        { id: "n2", x: 360, y: 80 },
+      ]),
+    nativeName: "elementGraphAutoLayout",
+    args: [
+      [
+        { id: "n1", x: 80, y: 80 },
+        { id: "n2", x: 360, y: 80 },
       ],
     ],
   },

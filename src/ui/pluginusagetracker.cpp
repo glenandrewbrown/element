@@ -232,6 +232,20 @@ StringArray PluginUsageTracker::getRecentlyUsedIdentifiers (int maxItems) const
     return identifiers;
 }
 
+int PluginUsageTracker::getUseCountForIdentifier (const String& identifier) const
+{
+    const int idx = findEntry (identifier);
+    return idx >= 0 ? recentlyUsed[idx].useCount : 0;
+}
+
+std::map<String, int> PluginUsageTracker::getUsageCounts() const
+{
+    std::map<String, int> counts;
+    for (const auto& entry : recentlyUsed)
+        counts[entry.pluginIdentifier] = entry.useCount;
+    return counts;
+}
+
 bool PluginUsageTracker::isRecentlyUsed (const PluginDescription& desc) const
 {
     String identifier = desc.createIdentifierString();

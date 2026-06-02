@@ -98,6 +98,12 @@ type AudioSetupPayload = {
   sampleRates?: number[];
 };
 
+type MidiSetupPayload = {
+  inputs?: Array<{ name?: string; identifier?: string; enabled?: boolean }>;
+  outputs?: Array<{ name?: string; identifier?: string; isDefault?: boolean }>;
+  defaultOutputId?: string;
+};
+
 type OscHostPayload = {
   enabled?: boolean;
   port?: number;
@@ -153,6 +159,7 @@ type EngineSnapshot = {
   blocks?: EngineBlock[];
   cables?: EngineCable[];
   audioSetup?: AudioSetupPayload;
+  midiSetup?: MidiSetupPayload;
   oscHost?: OscHostPayload;
   molecules?: MoleculeRow[];
   canvas?: {
@@ -384,6 +391,7 @@ function applySnapshot(raw: unknown) {
 
   useHostExtrasStore.getState().hydrateFromSnapshot({
     audioSetup: s.audioSetup,
+    midiSetup: s.midiSetup,
     oscHost: s.oscHost,
     molecules: s.molecules,
     canvas: s.canvas,

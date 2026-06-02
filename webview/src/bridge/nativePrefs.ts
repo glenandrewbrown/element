@@ -21,6 +21,22 @@ export async function nativeOscApplyHost(
   return r === true;
 }
 
+/**
+ * G3c item 1: apply MIDI device changes (enable/disable inputs, set default
+ * output) to the host MidiEngine. Mirrors nativeAudioApplySetup — the host
+ * round-trips the snapshot so useHostExtrasStore.midiSetup reflects the result.
+ *
+ * C++ bridge: elementMidiApplySetup
+ * arg[0] = { inputEnables?: [{identifier, enabled}], defaultOutputId?: string }
+ */
+export async function nativeMidiApplySetup(setup: {
+  inputEnables?: Array<{ identifier: string; enabled: boolean }>;
+  defaultOutputId?: string;
+}): Promise<boolean> {
+  const r = await invokeElementNative("elementMidiApplySetup", [setup]);
+  return r === true;
+}
+
 export async function nativeMappingSetLearning(on: boolean): Promise<boolean> {
   const r = await invokeElementNative("elementMappingSetLearning", [on]);
   return r === true;

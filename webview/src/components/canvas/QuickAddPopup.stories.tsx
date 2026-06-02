@@ -13,6 +13,9 @@ import {
 // survives. nativeGraphAddPlugin is a no-op. Positioned at (x, y) viewport
 // coords.
 
+// signalOut + usageCount are REAL fields now sent by C++ (G3c items 2+3).
+// Demo values: Surge XT is the most-used instrument; Stepic emits MIDI;
+// LFOTool emits value/CV — exercising the real per-plugin signal filter.
 const demoPlugins: BrowserPlugin[] = [
   {
     identifier: "com.vendor.SurgeXT",
@@ -21,6 +24,8 @@ const demoPlugins: BrowserPlugin[] = [
     format: "VST3",
     category: "Synth",
     blockCategory: "instrument",
+    signalOut: "audio",
+    usageCount: 12,
   },
   {
     identifier: "com.vendor.ProQ4",
@@ -29,6 +34,8 @@ const demoPlugins: BrowserPlugin[] = [
     format: "AU",
     category: "EQ",
     blockCategory: "audiofx",
+    signalOut: "audio",
+    usageCount: 5,
   },
   {
     identifier: "com.vendor.Stepic",
@@ -37,6 +44,8 @@ const demoPlugins: BrowserPlugin[] = [
     format: "CLAP",
     category: "MIDI",
     blockCategory: "midifx",
+    signalOut: "midi",
+    usageCount: 3,
   },
   {
     identifier: "com.vendor.LFOTool",
@@ -45,6 +54,8 @@ const demoPlugins: BrowserPlugin[] = [
     format: "VST3",
     category: "Modulator",
     blockCategory: "modulator",
+    signalOut: "value",
+    usageCount: 2,
   },
   {
     identifier: "com.vendor.ValhallaVV",
@@ -53,6 +64,8 @@ const demoPlugins: BrowserPlugin[] = [
     format: "AU",
     category: "Reverb",
     blockCategory: "audiofx",
+    signalOut: "audio",
+    usageCount: 1,
   },
   {
     identifier: "com.vendor.ProC2",
@@ -61,6 +74,8 @@ const demoPlugins: BrowserPlugin[] = [
     format: "AU",
     category: "Compressor",
     blockCategory: "audiofx",
+    signalOut: "audio",
+    usageCount: 0,
   },
 ];
 
@@ -610,5 +625,131 @@ export const CategoryLabelVisible: Story = {
     await expect(body.queryByText("AU")).toBeNull();
     await expect(body.queryByText("VST3")).toBeNull();
     await expect(body.queryByText("CLAP")).toBeNull();
+  },
+};
+
+/**
+ * SignalOutOverridesCategory — G3c item 2 core test.
+ * Port-type filtering keys off the REAL per-plugin signalOut, not the inferred
+ * blockCategory. A plugin tagged blockCategory:"modulator" (which historically
+ * forced CV) but with signalOut:"audio" MUST appear under an AUDIO port; a
+ * MIDI-fx plugin whose real signalOut is "audio" likewise passes the audio
+ * filter. This proves the audio-vs-CV split now comes from real engine data.
+ */
+export const SignalOutOverridesCategory: Story = {
+  args: { x: 80, y: 60, portType: "audio", onClose: () => {} },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "G3c item 2 — port filtering uses real signalOut, not category. " +
+          'A "modulator"-category block whose real signalOut is "audio" appears under ' +
+          "an AUDIO port (category alone would have hidden it as CV). A modulator whose " +
+          'real signalOut stays "value" is correctly filtered out.',
+      },
+    },
+  },
+  decorators: [
+    (Story) => {
+      // Two modulator-category blocks with DIFFERENT real signal outputs.
+      const audioModulator: BrowserPlugin = {
+        identifier: "com.vendor.ShaperBox",
+        name: "ShaperBox",
+        manufacturer: "Cableguys",
+        format: "VST3",
+        category: "Modulator",
+        blockCategory: "modulator", // category → would be CV under old logic
+        signalOut: "audio", // real signal → audio (it processes audio)
+        usageCount: 0,
+      };
+      const cvModulator: BrowserPlugin = {
+        identifier: "com.vendor.LFOTool",
+        name: "LFOTool",
+        manufacturer: "Xfer",
+        format: "VST3",
+        category: "Modulator",
+        blockCategory: "modulator",
+        signalOut: "value", // real signal → value/CV
+        usageCount: 0,
+      };
+      seed([audioModulator, cvModulator]);
+      return (
+        <div className="bg-canvas" style={{ height: 480 }}>
+          <Story />
+        </div>
+      );
+    },
+  ],
+  play: async ({ canvasElement }) => {
+    const body = within(canvasElement.ownerDocument.body);
+    await expect(body.getByText("AUDIO")).toBeVisible();
+    // Real signalOut:"audio" modulator passes the audio filter (category=modulator).
+    await expect(body.getByText("ShaperBox")).toBeVisible();
+    // Real signalOut:"value" modulator is filtered out under the audio port.
+    await expect(body.queryByText("LFOTool")).toBeNull();
+  },
+};
+
+/**
+ * UsageCountRanking — G3c item 3 core test.
+ * When two results tie on fuzzy score, the one with the higher REAL usageCount
+ * sorts first. ProHigh (usageCount 20) must appear before ProLow (usageCount 0)
+ * even though neither is a favourite or recent.
+ */
+export const UsageCountRanking: Story = {
+  args: { x: 80, y: 60, onClose: () => {} },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "G3c item 3 — real usageCount drives most-used ranking. Two plugins with the same " +
+          'fuzzy score ("pro" prefix) but different real usage counts: the higher-count one ' +
+          "sorts first. No favourite/recent involved — pure frequency ordering from engine data.",
+      },
+    },
+  },
+  decorators: [
+    (Story) => {
+      const proHigh: BrowserPlugin = {
+        identifier: "com.vendor.ProHigh",
+        name: "Pro-High",
+        manufacturer: "Acme",
+        format: "AU",
+        category: "EQ",
+        blockCategory: "audiofx",
+        signalOut: "audio",
+        usageCount: 20,
+      };
+      const proLow: BrowserPlugin = {
+        identifier: "com.vendor.ProLow",
+        name: "Pro-Low",
+        manufacturer: "Acme",
+        format: "AU",
+        category: "EQ",
+        blockCategory: "audiofx",
+        signalOut: "audio",
+        usageCount: 0,
+      };
+      // No favourites, no recents — only usageCount differs.
+      seed([proLow, proHigh]);
+      return (
+        <div className="bg-canvas" style={{ height: 480 }}>
+          <Story />
+        </div>
+      );
+    },
+  ],
+  play: async ({ canvasElement }) => {
+    const body = within(canvasElement.ownerDocument.body);
+    const input = body.getByPlaceholderText("Add block...");
+    await userEvent.type(input, "pro");
+    const high = body.getByText("Pro-High");
+    const low = body.getByText("Pro-Low");
+    await expect(high).toBeVisible();
+    await expect(low).toBeVisible();
+    // Pro-High (usageCount 20) must precede Pro-Low (usageCount 0).
+    expect(
+      low.compareDocumentPosition(high) & Node.DOCUMENT_POSITION_PRECEDING,
+    ).toBeTruthy();
   },
 };

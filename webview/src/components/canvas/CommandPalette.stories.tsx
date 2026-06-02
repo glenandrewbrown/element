@@ -23,6 +23,8 @@ const demoPlugins: BrowserPlugin[] = [
     format: "VST3",
     category: "Synth",
     blockCategory: "instrument",
+    signalOut: "audio",
+    usageCount: 9,
   },
   {
     identifier: "com.vendor.ProQ4",
@@ -31,6 +33,8 @@ const demoPlugins: BrowserPlugin[] = [
     format: "AU",
     category: "EQ",
     blockCategory: "audiofx",
+    signalOut: "audio",
+    usageCount: 4,
   },
   {
     identifier: "com.vendor.Arp",
@@ -39,6 +43,8 @@ const demoPlugins: BrowserPlugin[] = [
     format: "CLAP",
     category: "MIDI",
     blockCategory: "midifx",
+    signalOut: "midi",
+    usageCount: 2,
   },
 ];
 

@@ -10,6 +10,7 @@ import { useHostExtrasStore } from "../useHostExtrasStore";
 function reset() {
   useHostExtrasStore.setState({
     audioSetup: null,
+    midiSetup: null,
     oscHost: null,
     molecules: [],
     canvas: {
@@ -265,6 +266,76 @@ describe("useHostExtrasStore.hydrateFromSnapshot — activeGraphOutline", () => 
     useHostExtrasStore.setState({ activeGraphOutline: outline } as never);
     useHostExtrasStore.getState().hydrateFromSnapshot({});
     expect(useHostExtrasStore.getState().activeGraphOutline).toEqual(outline);
+  });
+});
+
+describe("useHostExtrasStore.hydrateFromSnapshot — midiSetup (G3c item 1)", () => {
+  beforeEach(reset);
+
+  it("happy path: hydrates inputs, outputs, and defaultOutputId", () => {
+    useHostExtrasStore.getState().hydrateFromSnapshot({
+      midiSetup: {
+        inputs: [
+          { name: "Launchpad", identifier: "in-1", enabled: true },
+          { name: "APC", identifier: "in-2", enabled: false },
+        ],
+        outputs: [
+          { name: "IAC Bus 1", identifier: "out-1", isDefault: true },
+          { name: "IAC Bus 2", identifier: "out-2", isDefault: false },
+        ],
+        defaultOutputId: "out-1",
+      },
+    });
+    const { midiSetup } = useHostExtrasStore.getState();
+    expect(midiSetup?.inputs).toHaveLength(2);
+    expect(midiSetup?.inputs[0]).toEqual({
+      name: "Launchpad",
+      identifier: "in-1",
+      enabled: true,
+    });
+    expect(midiSetup?.outputs[0].isDefault).toBe(true);
+    expect(midiSetup?.defaultOutputId).toBe("out-1");
+  });
+
+  it("empty device arrays hydrate as empty (honest 'no devices' state)", () => {
+    useHostExtrasStore.getState().hydrateFromSnapshot({
+      midiSetup: { inputs: [], outputs: [], defaultOutputId: "" },
+    });
+    const { midiSetup } = useHostExtrasStore.getState();
+    expect(midiSetup).not.toBeNull();
+    expect(midiSetup?.inputs).toEqual([]);
+    expect(midiSetup?.outputs).toEqual([]);
+    expect(midiSetup?.defaultOutputId).toBe("");
+  });
+
+  it("drops device rows missing an identifier", () => {
+    useHostExtrasStore.getState().hydrateFromSnapshot({
+      midiSetup: {
+        inputs: [
+          { name: "Good", identifier: "in-1", enabled: true },
+          // bad row — no identifier; must be filtered out
+          { name: "Bad", enabled: true },
+        ],
+        outputs: [],
+        defaultOutputId: "",
+      },
+    });
+    const { midiSetup } = useHostExtrasStore.getState();
+    expect(midiSetup?.inputs).toHaveLength(1);
+    expect(midiSetup?.inputs[0].identifier).toBe("in-1");
+  });
+
+  it("null midiSetup does not overwrite the previous snapshot", () => {
+    useHostExtrasStore.getState().hydrateFromSnapshot({
+      midiSetup: {
+        inputs: [{ name: "Launchpad", identifier: "in-1", enabled: true }],
+        outputs: [],
+        defaultOutputId: "",
+      },
+    });
+    // A later snapshot with no midiSetup must preserve the prior one.
+    useHostExtrasStore.getState().hydrateFromSnapshot({});
+    expect(useHostExtrasStore.getState().midiSetup?.inputs).toHaveLength(1);
   });
 });
 

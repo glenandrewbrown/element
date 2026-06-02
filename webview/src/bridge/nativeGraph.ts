@@ -50,6 +50,21 @@ export async function nativeGraphMoveNodes(
   return typeof r === "number" ? r : 0;
 }
 
+/**
+ * G3c item 4: apply a batch of auto-layout positions in one host operation
+ * (single snapshot push). The positions are computed deterministically in the
+ * webview (lib/autoLayout.ts) from the real node/edge graph. Returns the count
+ * of nodes actually repositioned. Same arg shape as nativeGraphMoveNodes.
+ *
+ * C++ bridge: elementGraphAutoLayout
+ */
+export async function nativeGraphAutoLayout(
+  positions: Array<{ id: string; x: number; y: number }>,
+): Promise<number> {
+  const r = await invokeElementNative("elementGraphAutoLayout", [positions]);
+  return typeof r === "number" ? r : 0;
+}
+
 export async function nativeGraphSetBypass(
   nodeId: string,
   bypassed: boolean,

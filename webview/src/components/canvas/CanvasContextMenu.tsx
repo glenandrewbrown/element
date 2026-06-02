@@ -3,10 +3,12 @@ import { useReactFlow } from "@xyflow/react";
 import { useGraphStore } from "../../stores/useGraphStore";
 import { useHostExtrasStore } from "../../stores/useHostExtrasStore";
 import {
+  nativeGraphAutoLayout,
   nativeGraphCommentAdd,
   nativeGraphPasteNodes,
   nativeGraphSetCanvasOptions,
 } from "../../bridge/nativeGraph";
+import { computeAutoLayout } from "../../lib/autoLayout";
 import { Icon } from "../neu";
 
 export interface CanvasContextMenuProps {
@@ -49,13 +51,20 @@ const CANVAS_ACCENT = "#4A90D9";
  *     Zoom In / Out     → reactFlow.zoomIn / zoomOut (⌘= / ⌘-).
  *     Snap to Grid      → nativeGraphSetCanvasOptions (toggles host canvas flag).
  *     Minimap           → useGraphStore.toggleMinimap (⇧M).
+ *     Auto-Layout…      → computeAutoLayout() over the real useGraphStore
+ *                         nodes+edges, applied via nativeGraphAutoLayout (the
+ *                         host batch-setPosition bridge → single snapshot push,
+ *                         positions persist). NOTE: there is NO native layout
+ *                         engine — the JUCE graph editor only has a
+ *                         horizontal/vertical DIRECTION toggle
+ *                         (grapheditorcomponent verticalLayout), not an arrange
+ *                         algorithm; the layered layout is computed here in the
+ *                         webview.
  *
- *   HONEST-DISABLED (UI present, action not yet wired):
- *     Auto-Layout…      → no webview auto-layout bridge exists yet. Native has a
- *                         layout-direction toggle driven by the C++ layout
- *                         engine; the webview has no elementGraphAutoLayout
- *                         bridge, so the item is shown disabled with a tooltip
- *                         naming the gap.
+ *   HONEST-DEGRADED:
+ *     Auto-Layout…      → disabled with reason "Board is empty — add Blocks
+ *                         first" when the Board has zero Blocks (a real state,
+ *                         not a bridge gap).
  *
  * Design: mirrors NodeContextMenu — same neumorphic shell, header, MenuItem
  * primitives, and category-hue dopamine hover-glow (here the primary signal
@@ -153,6 +162,17 @@ export function CanvasContextMenu({
     toggleMinimap();
     onClose();
   }, [toggleMinimap, onClose]);
+
+  const handleAutoLayout = useCallback(() => {
+    // Read the live graph at click time so we never re-subscribe the menu to
+    // the full nodes/edges arrays. computeAutoLayout produces deterministic
+    // layered positions from the REAL graph; nativeGraphAutoLayout applies
+    // them via the host setPosition path (persists with the project).
+    const { nodes, edges } = useGraphStore.getState();
+    const positions = computeAutoLayout(nodes, edges);
+    if (positions.length > 0) void nativeGraphAutoLayout(positions);
+    onClose();
+  }, [onClose]);
 
   // Estimated height for bottom-edge clamping (8 rows + 3 dividers + headers).
   const estimatedHeight = 360;
@@ -274,11 +294,11 @@ export function CanvasContextMenu({
         />
         <MenuItem
           iconName="MoveHorizontal"
-          label="Auto-Layout…"
+          label="Auto-Layout"
           accent={CANVAS_ACCENT}
-          disabled
-          disabledReason="Requires elementGraphAutoLayout bridge — native has a layout engine, the webview has no auto-layout call yet (Pillar-2)"
-          onClick={() => {}}
+          disabled={blockCount === 0}
+          disabledReason="Board is empty — add Blocks first"
+          onClick={handleAutoLayout}
         />
       </div>
     </div>

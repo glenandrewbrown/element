@@ -42,10 +42,13 @@
 
 #include "verbose_log.hpp"
 
+#include "engine/midiengine.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <map>
 #include <vector>
 
 namespace element {
@@ -576,6 +579,51 @@ static void appendAudioSetupJson (Context& ctx, DynamicObject::Ptr root)
     audio->setProperty ("bufferSizes", var (bufSizes));
     audio->setProperty ("sampleRates", var (rates));
     root->setProperty ("audioSetup", var (audio.get()));
+}
+
+// G3c item 1: enumerate live CoreMIDI/ALSA/Win-MIDI devices + their real
+// enable/default state from MidiEngine. Mirrors appendAudioSetupJson and rides
+// the existing 60 Hz snapshot, so hot-plugged devices appear automatically.
+static void appendMidiSetupJson (Context& ctx, DynamicObject::Ptr root)
+{
+    auto& midi = ctx.midi();
+
+    DynamicObject::Ptr obj (new DynamicObject());
+
+    Array<var> inputs;
+    for (const auto& info : juce::MidiInput::getAvailableDevices())
+    {
+        DynamicObject::Ptr row (new DynamicObject());
+        row->setProperty ("name", info.name);
+        row->setProperty ("identifier", info.identifier);
+        row->setProperty ("enabled", midi.isMidiInputEnabled (info));
+        inputs.add (var (row.get()));
+    }
+
+    // NOTE: MidiEngine::getDefaultMidiOutputID() currently returns the device
+    // NAME (header aliases it to defaultMidiOutputName). The authoritative
+    // identifier is on the live output device, so prefer that; fall back to the
+    // name-based getter only when no device is open.
+    String defaultOutId;
+    if (auto* out = midi.getDefaultMidiOutput())
+        defaultOutId = out->getIdentifier();
+    if (defaultOutId.isEmpty())
+        defaultOutId = midi.getDefaultMidiOutputID();
+
+    Array<var> outputs;
+    for (const auto& info : juce::MidiOutput::getAvailableDevices())
+    {
+        DynamicObject::Ptr row (new DynamicObject());
+        row->setProperty ("name", info.name);
+        row->setProperty ("identifier", info.identifier);
+        row->setProperty ("isDefault", info.identifier == defaultOutId);
+        outputs.add (var (row.get()));
+    }
+
+    obj->setProperty ("inputs", var (inputs));
+    obj->setProperty ("outputs", var (outputs));
+    obj->setProperty ("defaultOutputId", defaultOutId);
+    root->setProperty ("midiSetup", var (obj.get()));
 }
 
 static void appendOscHostJson (Context& ctx, DynamicObject::Ptr root)
@@ -1581,6 +1629,44 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             postCompletion (completion, count);
         });
 
+    // G3c item 4 — auto-layout apply path. The layered/Sugiyama positions are
+    // computed deterministically in the webview (lib/autoLayout.ts) from the
+    // real node/edge graph; this batches the resulting setPosition() calls so
+    // the whole arrange is one snapshot push. arg[0] = [{id,x,y}] → count.
+    registerFn (
+        Identifier ("elementGraphAutoLayout"),
+        [this, postCompletion] (const Array<var>& args, auto completion) {
+            int count = 0;
+            if (args.size() >= 1 && args[0].isArray())
+            {
+                if (auto sess = context.session())
+                {
+                    const Graph G (sess->getCurrentGraph());
+                    if (G.isGraph())
+                    {
+                        for (const auto& item : *args[0].getArray())
+                        {
+                            if (auto* obj = item.getDynamicObject())
+                            {
+                                const String id = obj->getProperty ("id").toString();
+                                const double x = (double) obj->getProperty ("x");
+                                const double y = (double) obj->getProperty ("y");
+                                Node n = findNodeByUuidInGraph (G, id);
+                                if (n.isValid())
+                                {
+                                    n.setPosition (x, y);
+                                    ++count;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if (count > 0)
+                pushGraphSnapshot();
+            postCompletion (completion, count);
+        });
+
     registerFn (
         Identifier ("elementGraphSetBypass"),
         [this, postCompletion] (const Array<var>& args, auto completion) {
@@ -2202,6 +2288,71 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                         setup.bufferSize = (int) vBuf;
                     const String err (context.devices().setAudioDeviceSetup (setup, true));
                     ok = err.isEmpty();
+                }
+            if (ok)
+                pushGraphSnapshot();
+            postCompletion (completion, ok);
+        });
+
+    // G3c item 1 — MIDI write path. args[0] = { inputEnables?: [{identifier,
+    // enabled}], defaultOutputId?: string }. Resolves each identifier against
+    // the live device list and calls MidiEngine; round-trips the snapshot so
+    // the UI reflects the new enable/default state.
+    registerFn (
+        Identifier ("elementMidiApplySetup"),
+        [this, postCompletion] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 1)
+                if (auto* dyn = args[0].getDynamicObject())
+                {
+                    auto& midi = context.midi();
+
+                    const var vEnables (dyn->getProperty ("inputEnables"));
+                    if (vEnables.isArray())
+                    {
+                        const auto inDevices = juce::MidiInput::getAvailableDevices();
+                        for (const auto& e : *vEnables.getArray())
+                        {
+                            if (auto* eo = e.getDynamicObject())
+                            {
+                                const String id (eo->getProperty ("identifier").toString());
+                                const bool enabled = (bool) eo->getProperty ("enabled");
+                                for (const auto& info : inDevices)
+                                {
+                                    if (info.identifier == id)
+                                    {
+                                        midi.setMidiInputEnabled (info, enabled);
+                                        ok = true;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    const var vDefaultOut (dyn->getProperty ("defaultOutputId"));
+                    if (vDefaultOut.isString())
+                    {
+                        const String id (vDefaultOut.toString());
+                        // Empty id deselects the default output (valid action).
+                        if (id.isEmpty())
+                        {
+                            midi.setDefaultMidiOutput (juce::MidiDeviceInfo());
+                            ok = true;
+                        }
+                        else
+                        {
+                            for (const auto& info : juce::MidiOutput::getAvailableDevices())
+                            {
+                                if (info.identifier == id)
+                                {
+                                    midi.setDefaultMidiOutput (info);
+                                    ok = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
                 }
             if (ok)
                 pushGraphSnapshot();
@@ -4637,6 +4788,7 @@ String ElementWebViewHost::buildActiveGraphJson() const
     }
 
     appendAudioSetupJson (context, root);
+    appendMidiSetupJson (context, root);
     appendOscHostJson (context, root);
     appendMoleculesJson (root);
     appendPerformJson (*sess, root);
@@ -5012,6 +5164,11 @@ String ElementWebViewHost::buildPluginListJson() const
     DynamicObject::Ptr root (new DynamicObject());
     Array<var> plugins;
 
+    // G3c item 3: build the identifier→real-useCount table once so the loop
+    // below stays O(n log n) over the ~2000-plugin payload instead of O(n²).
+    auto& tracker = context.plugins().getUsageTracker();
+    const std::map<String, int> usageCounts (tracker.getUsageCounts());
+
     const auto& list = context.plugins().getKnownPlugins();
     for (const auto& desc : list.getTypes())
     {
@@ -5023,14 +5180,39 @@ String ElementWebViewHost::buildPluginListJson() const
         o->setProperty ("format", desc.pluginFormatName);
         const String category (desc.category.isNotEmpty() ? desc.category : String ("Uncategorised"));
         o->setProperty ("category", category);
-        o->setProperty ("identifier", desc.createIdentifierString());
+        const String identifier (desc.createIdentifierString());
+        o->setProperty ("identifier", identifier);
+
+        // G3c item 2: emit the REAL signal-output classification + the raw
+        // channel/instrument facts from juce::PluginDescription (captured at
+        // scan time). The webview no longer has to guess from the category
+        // string alone. Inference: instruments emit audio; anything with audio
+        // output channels emits audio; a pure-MIDI plugin (no audio out) whose
+        // category mentions MIDI emits MIDI; everything else is value/CV.
+        const bool isInstr = desc.isInstrument;
+        const bool hasAudioOut = desc.numOutputChannels != 0;
+        String signalOut;
+        if (isInstr || hasAudioOut)
+            signalOut = "audio";
+        else if (desc.category.containsIgnoreCase ("midi"))
+            signalOut = "midi";
+        else
+            signalOut = "value";
+        o->setProperty ("signalOut", signalOut);
+        o->setProperty ("isInstrument", isInstr);
+        o->setProperty ("numInputChannels", desc.numInputChannels);
+        o->setProperty ("numOutputChannels", desc.numOutputChannels);
+
+        // G3c item 3: real persisted usage count (0 if never used).
+        const auto it = usageCounts.find (identifier);
+        o->setProperty ("usageCount", it != usageCounts.end() ? it->second : 0);
+
         plugins.add (var (o.get()));
     }
 
     root->setProperty ("plugins", var (plugins));
 
     {
-        auto& tracker = context.plugins().getUsageTracker();
         Array<var> fav, recent;
         for (const auto& id : tracker.getFavoriteIdentifiers())
             fav.add (var (id));

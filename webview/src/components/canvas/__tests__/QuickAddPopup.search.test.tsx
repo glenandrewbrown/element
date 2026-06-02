@@ -37,7 +37,9 @@ vi.mock("../../../events", () => ({
   EV_OPEN_PREFERENCES: "el:open-preferences",
 }));
 
-// Rich plugin set covering all categories + metadata fields
+// Rich plugin set covering all categories + metadata fields.
+// signalOut + usageCount are REAL fields now sent by C++ (G3c items 2+3); the
+// port-type filter keys off signalOut, so each entry carries its real signal.
 const RICH_PLUGINS = [
   {
     identifier: "com.vendor.SurgeXT",
@@ -46,6 +48,8 @@ const RICH_PLUGINS = [
     format: "VST3",
     category: "Synth",
     manufacturer: "Surge Synth Team",
+    signalOut: "audio" as const,
+    usageCount: 0,
   },
   {
     identifier: "com.fabfilter.ProQ4",
@@ -54,6 +58,8 @@ const RICH_PLUGINS = [
     format: "VST3",
     category: "EQ",
     manufacturer: "FabFilter",
+    signalOut: "audio" as const,
+    usageCount: 0,
   },
   {
     identifier: "com.valhalla.VintageVerb",
@@ -62,6 +68,8 @@ const RICH_PLUGINS = [
     format: "AU",
     category: "Reverb",
     manufacturer: "Valhalla DSP",
+    signalOut: "audio" as const,
+    usageCount: 0,
   },
   {
     identifier: "com.vendor.Arpeggio",
@@ -70,6 +78,8 @@ const RICH_PLUGINS = [
     format: "VST3",
     category: "Arpeggiator",
     manufacturer: "MidiCorp",
+    signalOut: "midi" as const,
+    usageCount: 0,
   },
   {
     identifier: "com.vendor.LFOTool",
@@ -78,6 +88,8 @@ const RICH_PLUGINS = [
     format: "VST3",
     category: "Modulator",
     manufacturer: "Xfer Records",
+    signalOut: "value" as const,
+    usageCount: 0,
   },
   {
     identifier: "com.vendor.BasicSampler",
@@ -86,6 +98,8 @@ const RICH_PLUGINS = [
     format: "AU",
     category: "Sampler",
     manufacturer: "NativePlugins",
+    signalOut: "audio" as const,
+    usageCount: 0,
   },
 ];
 

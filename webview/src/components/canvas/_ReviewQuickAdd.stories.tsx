@@ -28,13 +28,13 @@ import type { SignalType } from "../../data/types";
 // ── Seed (cribbed from QuickAddPopup.stories.tsx — matches the component's
 //    real usePluginBrowserStore reads; nativeGraphAddPlugin no-ops) ──
 const demoPlugins: BrowserPlugin[] = [
-  { identifier: "com.vendor.SurgeXT",    name: "Surge XT",            manufacturer: "Surge Synth Team", format: "VST3", category: "Synth",      blockCategory: "instrument" },
-  { identifier: "com.vendor.ProQ4",      name: "Pro-Q 4",             manufacturer: "FabFilter",        format: "AU",   category: "EQ",          blockCategory: "audiofx" },
-  { identifier: "com.vendor.Stepic",     name: "Stepic",              manufacturer: "Audiomodern",      format: "CLAP", category: "MIDI",         blockCategory: "midifx" },
-  { identifier: "com.vendor.LFOTool",    name: "LFOTool",             manufacturer: "Xfer",             format: "VST3", category: "Modulator",   blockCategory: "modulator" },
-  { identifier: "com.vendor.Diva",       name: "Diva",                manufacturer: "u-he",             format: "VST3", category: "Synth",        blockCategory: "instrument" },
-  { identifier: "com.vendor.ValhallaVV", name: "ValhallaVintageVerb", manufacturer: "Valhalla DSP",     format: "AU",   category: "Reverb",       blockCategory: "audiofx" },
-  { identifier: "com.vendor.ProC2",      name: "Pro-C 2",             manufacturer: "FabFilter",        format: "AU",   category: "Compressor",   blockCategory: "audiofx" },
+  { identifier: "com.vendor.SurgeXT",    name: "Surge XT",            manufacturer: "Surge Synth Team", format: "VST3", category: "Synth",      blockCategory: "instrument", signalOut: "audio", usageCount: 9 },
+  { identifier: "com.vendor.ProQ4",      name: "Pro-Q 4",             manufacturer: "FabFilter",        format: "AU",   category: "EQ",          blockCategory: "audiofx",   signalOut: "audio", usageCount: 5 },
+  { identifier: "com.vendor.Stepic",     name: "Stepic",              manufacturer: "Audiomodern",      format: "CLAP", category: "MIDI",         blockCategory: "midifx",   signalOut: "midi",  usageCount: 3 },
+  { identifier: "com.vendor.LFOTool",    name: "LFOTool",             manufacturer: "Xfer",             format: "VST3", category: "Modulator",   blockCategory: "modulator", signalOut: "value", usageCount: 2 },
+  { identifier: "com.vendor.Diva",       name: "Diva",                manufacturer: "u-he",             format: "VST3", category: "Synth",        blockCategory: "instrument", signalOut: "audio", usageCount: 4 },
+  { identifier: "com.vendor.ValhallaVV", name: "ValhallaVintageVerb", manufacturer: "Valhalla DSP",     format: "AU",   category: "Reverb",       blockCategory: "audiofx",   signalOut: "audio", usageCount: 1 },
+  { identifier: "com.vendor.ProC2",      name: "Pro-C 2",             manufacturer: "FabFilter",        format: "AU",   category: "Compressor",   blockCategory: "audiofx",   signalOut: "audio", usageCount: 0 },
 ];
 
 function seed(plugins: BrowserPlugin[], favorites: string[] = [], recents: string[] = []) {

@@ -12,9 +12,11 @@ const mockZoomOut = vi.fn();
 const mockNativeCommentAdd = vi.fn();
 const mockNativePasteNodes = vi.fn();
 const mockNativeSetCanvasOptions = vi.fn();
+const mockNativeAutoLayout = vi.fn();
 
 let storeState = {
   nodes: [{ id: "n1" }, { id: "n2" }],
+  edges: [] as Array<{ source: string; target: string }>,
   minimapVisible: false,
   toggleMinimap: mockToggleMinimap,
   selectNode: mockSelectNode,
@@ -33,9 +35,13 @@ vi.mock("@xyflow/react", () => ({
   }),
 }));
 
-vi.mock("../../../stores/useGraphStore", () => ({
-  useGraphStore: vi.fn((sel: (s: unknown) => unknown) => sel(storeState)),
-}));
+vi.mock("../../../stores/useGraphStore", () => {
+  const useGraphStore = vi.fn((sel: (s: unknown) => unknown) => sel(storeState));
+  // handleAutoLayout reads the live graph via getState() at click time.
+  (useGraphStore as unknown as { getState: () => unknown }).getState = () =>
+    storeState;
+  return { useGraphStore };
+});
 
 vi.mock("../../../stores/useHostExtrasStore", () => ({
   useHostExtrasStore: vi.fn((sel: (s: unknown) => unknown) => sel(hostExtrasState)),
@@ -45,6 +51,7 @@ vi.mock("../../../bridge/nativeGraph", () => ({
   nativeGraphCommentAdd: (...a: unknown[]) => mockNativeCommentAdd(...a),
   nativeGraphPasteNodes: () => mockNativePasteNodes(),
   nativeGraphSetCanvasOptions: (...a: unknown[]) => mockNativeSetCanvasOptions(...a),
+  nativeGraphAutoLayout: (...a: unknown[]) => mockNativeAutoLayout(...a),
 }));
 
 vi.mock("../../neu", () => ({
@@ -64,6 +71,7 @@ describe("CanvasContextMenu — renders", () => {
   beforeEach(() => {
     storeState = {
       nodes: [{ id: "n1" }, { id: "n2" }],
+      edges: [],
       minimapVisible: false,
       toggleMinimap: mockToggleMinimap,
       selectNode: mockSelectNode,
@@ -100,7 +108,7 @@ describe("CanvasContextMenu — renders", () => {
     expect(screen.getByText("Zoom Out")).toBeInTheDocument();
     expect(screen.getByText("Snap to Grid")).toBeInTheDocument();
     expect(screen.getByText("Minimap")).toBeInTheDocument();
-    expect(screen.getByText("Auto-Layout…")).toBeInTheDocument();
+    expect(screen.getByText("Auto-Layout")).toBeInTheDocument();
   });
 
   it("has role=menu with aria-label", () => {
@@ -149,6 +157,7 @@ describe("CanvasContextMenu — Select All Blocks", () => {
   beforeEach(() => {
     storeState = {
       nodes: [{ id: "n1" }, { id: "n2" }],
+      edges: [],
       minimapVisible: false,
       toggleMinimap: mockToggleMinimap,
       selectNode: mockSelectNode,
@@ -183,6 +192,7 @@ describe("CanvasContextMenu — View actions", () => {
   beforeEach(() => {
     storeState = {
       nodes: [{ id: "n1" }],
+      edges: [],
       minimapVisible: false,
       toggleMinimap: mockToggleMinimap,
       selectNode: mockSelectNode,
@@ -226,6 +236,7 @@ describe("CanvasContextMenu — Canvas toggles", () => {
   beforeEach(() => {
     storeState = {
       nodes: [{ id: "n1" }],
+      edges: [],
       minimapVisible: false,
       toggleMinimap: mockToggleMinimap,
       selectNode: mockSelectNode,
@@ -258,10 +269,37 @@ describe("CanvasContextMenu — Canvas toggles", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it("Auto-Layout… is disabled", () => {
+  it("Auto-Layout is enabled when the Board has blocks", () => {
     render(<CanvasContextMenu {...defaultProps} />);
-    const btn = screen.getByText("Auto-Layout…").closest("button");
+    const btn = screen.getByText("Auto-Layout").closest("button");
+    expect(btn).not.toBeDisabled();
+  });
+
+  it("clicking Auto-Layout computes positions and calls nativeGraphAutoLayout", () => {
+    // Seed a real graph (n1 → n2) so computeAutoLayout produces 2 positions.
+    storeState = {
+      ...storeState,
+      nodes: [{ id: "n1" }, { id: "n2" }],
+      edges: [{ source: "n1", target: "n2" }],
+    };
+    const onClose = vi.fn();
+    render(<CanvasContextMenu {...defaultProps} onClose={onClose} />);
+    fireEvent.click(screen.getByText("Auto-Layout"));
+    expect(mockNativeAutoLayout).toHaveBeenCalledTimes(1);
+    // The bridge receives one {id,x,y} per node.
+    const positions = mockNativeAutoLayout.mock.calls[0][0] as Array<{
+      id: string;
+    }>;
+    expect(positions.map((p) => p.id).sort()).toEqual(["n1", "n2"]);
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("Auto-Layout is honest-disabled on an empty Board", () => {
+    storeState = { ...storeState, nodes: [], edges: [] };
+    render(<CanvasContextMenu {...defaultProps} />);
+    const btn = screen.getByText("Auto-Layout").closest("button");
     expect(btn).toBeDisabled();
+    expect(btn?.getAttribute("title")).toContain("Board is empty");
   });
 });
 
@@ -269,6 +307,7 @@ describe("CanvasContextMenu — keyboard + outside-click dismiss", () => {
   beforeEach(() => {
     storeState = {
       nodes: [],
+      edges: [],
       minimapVisible: false,
       toggleMinimap: mockToggleMinimap,
       selectNode: mockSelectNode,

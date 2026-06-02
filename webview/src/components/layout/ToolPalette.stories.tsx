@@ -26,6 +26,8 @@ const demoPlugins = [
     format: "VST3",
     category: "EQ",
     blockCategory: "audiofx" as const,
+    signalOut: "audio" as const,
+    usageCount: 8,
   },
   {
     identifier: "com.fabfilter.pro-c2.vst3",
@@ -34,6 +36,8 @@ const demoPlugins = [
     format: "VST3",
     category: "Compressor",
     blockCategory: "audiofx" as const,
+    signalOut: "audio" as const,
+    usageCount: 4,
   },
   {
     identifier: "com.arturia.minimoog-v.au",
@@ -42,6 +46,8 @@ const demoPlugins = [
     format: "AU",
     category: "Instrument",
     blockCategory: "instrument" as const,
+    signalOut: "audio" as const,
+    usageCount: 6,
   },
   {
     identifier: "com.soundtoys.echoboy.au",
@@ -50,6 +56,8 @@ const demoPlugins = [
     format: "AU",
     category: "Delay",
     blockCategory: "audiofx" as const,
+    signalOut: "audio" as const,
+    usageCount: 3,
   },
   {
     identifier: "com.native.kontakt7.vst3",
@@ -58,6 +66,8 @@ const demoPlugins = [
     format: "VST3",
     category: "Instrument",
     blockCategory: "instrument" as const,
+    signalOut: "audio" as const,
+    usageCount: 5,
   },
   {
     identifier: "com.xfer.serum.clap",
@@ -66,6 +76,8 @@ const demoPlugins = [
     format: "CLAP",
     category: "Synth",
     blockCategory: "instrument" as const,
+    signalOut: "audio" as const,
+    usageCount: 7,
   },
   {
     identifier: "el.MidiMonitor",
@@ -74,6 +86,8 @@ const demoPlugins = [
     format: "INT",
     category: "Utility",
     blockCategory: "midifx" as const,
+    signalOut: "midi" as const,
+    usageCount: 1,
   },
   {
     identifier: "el.LFO",
@@ -82,6 +96,8 @@ const demoPlugins = [
     format: "INT",
     category: "Modulator",
     blockCategory: "modulator" as const,
+    signalOut: "value" as const,
+    usageCount: 2,
   },
 ];
 
