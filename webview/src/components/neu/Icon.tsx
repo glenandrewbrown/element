@@ -71,10 +71,12 @@ import {
   Settings,
   SkipBack,
   SlidersHorizontal,
+  Sparkles,
   Square,
   Star,
   StickyNote,
   Trash2,
+  TriangleAlert,
   Undo2,
   Unplug,
   Volume2,
@@ -148,10 +150,12 @@ const ICON_MAP: Record<string, ComponentType<LucideProps>> = {
   Settings,
   SkipBack,
   SlidersHorizontal, // audiofx: horizontal faders = EQ/processing
+  Sparkles,      // performance FX (MacroDashboard)
   Square,
   Star,
   StickyNote,    // add comment box (canvas context menu)
   Trash2,
+  TriangleAlert, // warning glyph (LiveHealth status)
   Undo2,
   Unplug,        // disconnect ports (context menus)
   Volume2,
