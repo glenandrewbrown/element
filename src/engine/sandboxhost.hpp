@@ -723,6 +723,75 @@ inline void SandboxHost::timerCallback()
     }
 }
 
+namespace detail {
+
+// Reliability Layer-3 (.omo/RELIABILITY-LAYER3-DESIGN-2026-06-02.md): launch a
+// DEDICATED worker binary (element_sandbox_host, bundle id
+// net.kushview.Element.sandbox) rather than re-exec'ing Element.app. A distinct
+// bundle id stops macOS duplicate-instance enforcement from SIGKILLing the host
+// while the worker is alive. This resolves that helper binary from the host's
+// current executable, covering the dev-build and installed-.app layouts. Returns
+// a non-existent File if no helper is found (caller falls back to the host exe so
+// nothing breaks when the helper hasn't been built).
+inline juce::File resolveSandboxHelperExecutable()
+{
+    const auto hostExe = juce::File::getSpecialLocation (juce::File::currentExecutableFile);
+
+   #if JUCE_MAC
+    const juce::String helperBundle  = "Element Sandbox Host.app";
+    const juce::String helperBinRel  = "Contents/MacOS/Element Sandbox Host";
+
+    // hostExe = .../<X>.app/Contents/MacOS/Element
+    const auto macOsDir   = hostExe.getParentDirectory();                 // .../Contents/MacOS
+    const auto contentsDir = macOsDir.getParentDirectory();              // .../Contents
+    const auto hostAppDir  = contentsDir.getParentDirectory();          // .../Element.app
+    const auto appsDir     = hostAppDir.getParentDirectory();           // /Applications (installed)
+    const auto artefactsParent = appsDir.getParentDirectory();          // build-merged (dev)
+
+    juce::Array<juce::File> candidates;
+    // Installed / packaged: helper nested INSIDE Element.app (preferred ship layout).
+    candidates.add (contentsDir.getChildFile ("Helpers").getChildFile (helperBundle).getChildFile (helperBinRel));
+    candidates.add (macOsDir.getChildFile (helperBundle).getChildFile (helperBinRel));
+    // Installed: helper as a SIBLING bundle next to Element.app (e.g. /Applications).
+    candidates.add (appsDir.getChildFile (helperBundle).getChildFile (helperBinRel));
+    // Dev build: build-merged/element_sandbox_host_artefacts/Element Sandbox Host.app/...
+    candidates.add (artefactsParent.getChildFile ("element_sandbox_host_artefacts")
+                                   .getChildFile (helperBundle)
+                                   .getChildFile (helperBinRel));
+
+    for (const auto& c : candidates)
+        if (c.existsAsFile())
+            return c;
+   #elif JUCE_WINDOWS
+    // Sibling exe in the same directory as the host (install layout) or the dev
+    // artefacts dir.
+    const auto binDir = hostExe.getParentDirectory();
+    juce::Array<juce::File> candidates;
+    candidates.add (binDir.getChildFile ("Element Sandbox Host.exe"));
+    candidates.add (binDir.getParentDirectory()
+                          .getChildFile ("element_sandbox_host_artefacts")
+                          .getChildFile ("Element Sandbox Host.exe"));
+    for (const auto& c : candidates)
+        if (c.existsAsFile())
+            return c;
+   #else
+    // Linux: sibling binary or dev artefacts dir.
+    const auto binDir = hostExe.getParentDirectory();
+    juce::Array<juce::File> candidates;
+    candidates.add (binDir.getChildFile ("element_sandbox_host"));
+    candidates.add (binDir.getParentDirectory()
+                          .getChildFile ("element_sandbox_host_artefacts")
+                          .getChildFile ("element_sandbox_host"));
+    for (const auto& c : candidates)
+        if (c.existsAsFile())
+            return c;
+   #endif
+
+    return {}; // not found — caller falls back to the host executable
+}
+
+} // namespace detail
+
 inline bool SandboxHost::launchWorkerProcess()
 {
     auto exe = juce::File::getSpecialLocation (juce::File::currentExecutableFile);
@@ -731,6 +800,23 @@ inline bool SandboxHost::launchWorkerProcess()
     {
         juce::Logger::writeToLog ("Failed to find executable for sandbox worker");
         return false;
+    }
+
+    // Prefer the dedicated worker binary (distinct bundle id — see
+    // detail::resolveSandboxHelperExecutable). Fall back to the host executable if
+    // the helper has not been built/installed, so the sandbox still functions (it
+    // will then hit the same-bundle-id duplicate-instance risk, but never silently
+    // fails to launch a worker).
+    if (auto helper = detail::resolveSandboxHelperExecutable(); helper.existsAsFile())
+    {
+        exe = helper;
+        juce::Logger::writeToLog ("Using dedicated sandbox host helper: " + exe.getFullPathName());
+    }
+    else
+    {
+        juce::Logger::writeToLog (
+            "Dedicated sandbox host helper not found — falling back to host executable "
+            "(same-bundle-id; duplicate-instance risk).");
     }
 
     juce::Logger::writeToLog ("Launching sandbox worker: " + exe.getFullPathName());

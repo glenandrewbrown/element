@@ -34,6 +34,14 @@ APP="${1:-$REPO_ROOT/build-merged/element_app_artefacts/Element.app}"
 ENT="$REPO_ROOT/cmake/entitlements.plist"
 BIN="$APP/Contents/MacOS/Element"
 
+# Reliability Layer-3: the dedicated out-of-process worker (distinct bundle id
+# net.kushview.Element.sandbox). It loads 3rd-party plugin dylibs, so it needs the
+# SAME hardened-runtime + disable-library-validation entitlements as the host. Sign
+# it inside-out (Mach-O then bundle) BEFORE the host app. The dev artefacts dir is a
+# sibling of element_app_artefacts; the app/binary name is "Element Sandbox Host".
+HELPER_APP="$(cd "$APP/../.." 2>/dev/null && pwd)/element_sandbox_host_artefacts/Element Sandbox Host.app"
+HELPER_BIN="$HELPER_APP/Contents/MacOS/Element Sandbox Host"
+
 c_grn() { printf '\033[32m%s\033[0m\n' "$*"; }
 c_ylw() { printf '\033[33m%s\033[0m\n' "$*"; }
 c_red() { printf '\033[31m%s\033[0m\n' "$*"; }
@@ -45,6 +53,24 @@ c_red() { printf '\033[31m%s\033[0m\n' "$*"; }
 echo "App:          $APP"
 echo "Entitlements: $ENT"
 c_ylw "WARNING: do not sign while this Element build is running."
+
+# 0) sign the dedicated sandbox-host helper FIRST (inside-out: helper before host).
+#    Without this the helper would be unsigned/un-entitled and could not load real
+#    plugin dylibs under the hardened runtime — the whole point of Layer-3.
+if [ -d "$HELPER_APP" ] && [ -f "$HELPER_BIN" ]; then
+    echo "Helper:       $HELPER_APP"
+    codesign --remove-signature "$HELPER_APP" 2>/dev/null || true
+    rm -rf "$HELPER_APP/Contents/_CodeSignature" 2>/dev/null || true
+    echo ">>> signing helper Mach-O…"
+    codesign --force --options runtime --entitlements "$ENT" --sign - "$HELPER_BIN"
+    echo ">>> signing helper bundle…"
+    codesign --force --options runtime --entitlements "$ENT" --sign - "$HELPER_APP"
+    xattr -dr com.apple.quarantine "$HELPER_APP" 2>/dev/null || true
+else
+    c_ylw "Sandbox-host helper not found at: $HELPER_APP"
+    c_ylw "  (build target element_sandbox_host so the OOP worker has a distinct bundle id;"
+    c_ylw "   without it the host falls back to re-exec'ing Element.app = duplicate-instance risk.)"
+fi
 
 # 1) clean any prior signature so we don't stack/conflict
 codesign --remove-signature "$APP" 2>/dev/null || true
@@ -66,6 +92,11 @@ codesign --verify --verbose=2 "$APP"
 codesign -dvvv "$APP" 2>&1 | grep -iE "Identifier|flags|Signature=" | head -3
 echo ">>> embedded entitlements"
 codesign -d --entitlements - "$APP" 2>/dev/null | grep -iE "library-validation|jit|audio" || true
+if [ -d "$HELPER_APP" ]; then
+    echo ">>> verify helper"
+    codesign --verify --verbose=2 "$HELPER_APP"
+    codesign -dvvv "$HELPER_APP" 2>&1 | grep -iE "Identifier|flags|Signature=" | head -3
+fi
 
 echo ""
 c_grn "Signed (ad-hoc, hardened runtime, entitlements). Now launch on a CONNECTED display and run:"

@@ -149,6 +149,46 @@ else()
     install(TARGETS element_app DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
 
+#==============================================================================
+# element_sandbox_host — dedicated out-of-process plugin-host worker binary.
+#
+# Reliability Layer-3 (.omo/RELIABILITY-LAYER3-DESIGN-2026-06-02.md): the sandbox
+# worker must run under a DISTINCT bundle id (net.kushview.Element.sandbox) so macOS
+# duplicate-instance enforcement never SIGKILLs the host when the worker is alive.
+# SandboxHost::launchWorkerProcess() launches THIS binary instead of re-exec'ing
+# Element.app. All worker logic is reused from element::SandboxWorker (kv::element).
+# LSUIElement=1 keeps the helper out of the Dock / app switcher.
+set(ELEMENT_SANDBOX_HOST_PLIST_TO_MERGE
+    "<plist><dict><key>LSUIElement</key><true/></dict></plist>")
+
+juce_add_gui_app(element_sandbox_host
+    PRODUCT_NAME            "Element Sandbox Host"
+    BUILD_VERSION           "${PROJECT_VERSION}.${ELEMENT_BUILD_NUMBER}"
+    BUNDLE_ID               "net.kushview.Element.sandbox"
+    MICROPHONE_PERMISSION_ENABLED TRUE
+    PLIST_TO_MERGE          "${ELEMENT_SANDBOX_HOST_PLIST_TO_MERGE}"
+    NEEDS_WEB_BROWSER       TRUE
+    NEEDS_WEBVIEW2          TRUE
+)
+
+target_sources(element_sandbox_host PRIVATE src/sandbox_host_main.cc)
+target_link_libraries(element_sandbox_host PRIVATE kv::element)
+set_target_properties(element_sandbox_host PROPERTIES
+    CXX_VISIBILITY_PRESET hidden
+    C_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN ON
+)
+
+if(APPLE)
+    install(TARGETS element_sandbox_host
+        BUNDLE DESTINATION "Applications"
+        COMPONENT "Standalone")
+elseif(WIN32)
+    install(TARGETS element_sandbox_host DESTINATION ${CMAKE_INSTALL_BINDIR})
+else()
+    install(TARGETS element_sandbox_host DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
+
 if(ELEMENT_BUILD_PLUGINS)
     set(ELEMENT_PLUGIN_FORMATS "AU;LV2;VST3")
     if(ELEMENT_ENABLE_VST2)
