@@ -7,7 +7,9 @@
 
 #include <element/context.hpp>
 #include <element/devices.hpp>
+#include <element/services.hpp>
 #include <element/settings.hpp>
+#include <element/ui.hpp>
 
 #include "services/oscservice.hpp"
 
@@ -27,19 +29,39 @@ struct CommandOSCListener final : juce::OSCReceiver::ListenerWithOSCAddress<>
 
     void oscMessageReceived (const juce::OSCMessage& message) override
     {
-        const auto msg = message[0];
-        if (! msg.isString())
+        // A command may arrive two ways:
+        //   1. /element/command/<name>            (name carried in the address)
+        //   2. /element/command  "<name>"         (name as the first string arg)
+        // Callbacks are delivered on the message thread (MessageLoopCallback,
+        // the default for ListenerWithOSCAddress<>), so invoking the command
+        // manager directly here is thread-safe.
+        auto command = commandFromAddress (message.getAddressPattern());
+
+        if (command == Commands::invalid && message.size() > 0 && message[0].isString())
+            command = Commands::fromString (message[0].getString());
+
+        if (command == Commands::invalid)
             return;
 
-        const auto command = Commands::fromString (msg.getString());
-        if (command != Commands::invalid)
-        {
-            // noop
-        }
+        if (auto* gui = world.services().find<GuiService>())
+            gui->commands().invokeDirectly (command, true);
     }
 
 private:
-    [[maybe_unused]] Context& world;
+    /** Maps an incoming "/element/command/<name>" address to a CommandID.
+        Returns Commands::invalid for the bare "/element/command" address or
+        any unrecognised name.
+    */
+    static juce::CommandID commandFromAddress (const juce::OSCAddressPattern& pattern)
+    {
+        const juce::String prefix = juce::String (EL_OSC_ADDRESS_COMMAND) + "/";
+        const auto addr = pattern.toString();
+        if (! addr.startsWith (prefix))
+            return Commands::invalid;
+        return Commands::fromString (addr.substring (prefix.length()).trim());
+    }
+
+    Context& world;
 };
 
 //=============================================================================
@@ -212,6 +234,11 @@ public:
 
         application.reset (new CommandOSCListener (owner.context()));
         receiver.addListener (application.get(), EL_OSC_ADDRESS_COMMAND);
+
+        // Per-command addresses: /element/command/<name> for every command
+        // (e.g. /element/command/transportPlay).  One listener, many addresses.
+        for (const auto& addy : Commands::getOSCAddresses())
+            receiver.addListener (application.get(), juce::OSCAddress (addy));
 
         engine.reset (new EngineOSCListener (owner.context()));
         receiver.addListener (engine.get(), EL_OSC_ADDRESS_ENGINE);

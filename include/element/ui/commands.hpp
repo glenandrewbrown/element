@@ -133,6 +133,7 @@ public:
             toggleChannelStrip,
             showGraphMixer,
             showConsole,
+            toggleMeterBridge,
 
             sessionClose,
             sessionOpen,
@@ -287,6 +288,63 @@ public:
             case Commands::graphFitToView:
                 return "graphFitToView";
                 break;
+
+            case Commands::copy:
+                return "copy";
+            case Commands::paste:
+                return "paste";
+            case Commands::cut:
+                return "cut";
+            case Commands::selectAll:
+                return "selectAll";
+
+            case Commands::mediaNew:
+                return "mediaNew";
+            case Commands::mediaOpen:
+                return "mediaOpen";
+            case Commands::mediaClose:
+                return "mediaClose";
+            case Commands::mediaSave:
+                return "mediaSave";
+            case Commands::mediaSaveAs:
+                return "mediaSaveAs";
+
+            case Commands::sessionNew:
+                return "sessionNew";
+            case Commands::sessionOpen:
+                return "sessionOpen";
+            case Commands::sessionClose:
+                return "sessionClose";
+            case Commands::sessionSave:
+                return "sessionSave";
+            case Commands::sessionSaveAs:
+                return "sessionSaveAs";
+            case Commands::sessionAddGraph:
+                return "sessionAddGraph";
+
+            case Commands::exportGraph:
+                return "exportGraph";
+            case Commands::importGraph:
+                return "importGraph";
+            case Commands::importSession:
+                return "importSession";
+
+            case Commands::toggleMeterBridge:
+                return "toggleMeterBridge";
+
+            case Commands::transportRewind:
+                return "transportRewind";
+            case Commands::transportForward:
+                return "transportForward";
+            case Commands::transportPlay:
+                return "transportPlay";
+            case Commands::transportRecord:
+                return "transportRecord";
+            case Commands::transportSeekZero:
+                return "transportSeekZero";
+            case Commands::transportStop:
+                return "transportStop";
+
             default:
                 break;
         }
@@ -369,6 +427,66 @@ public:
             return Commands::graphZoomOut;
         if (str == "graphFitToView")
             return Commands::graphFitToView;
+
+        if (str == "undo")
+            return Commands::undo;
+        if (str == "redo")
+            return Commands::redo;
+        if (str == "copy")
+            return Commands::copy;
+        if (str == "paste")
+            return Commands::paste;
+        if (str == "cut")
+            return Commands::cut;
+        if (str == "selectAll")
+            return Commands::selectAll;
+
+        if (str == "mediaNew")
+            return Commands::mediaNew;
+        if (str == "mediaOpen")
+            return Commands::mediaOpen;
+        if (str == "mediaClose")
+            return Commands::mediaClose;
+        if (str == "mediaSave")
+            return Commands::mediaSave;
+        if (str == "mediaSaveAs")
+            return Commands::mediaSaveAs;
+
+        if (str == "sessionNew")
+            return Commands::sessionNew;
+        if (str == "sessionOpen")
+            return Commands::sessionOpen;
+        if (str == "sessionClose")
+            return Commands::sessionClose;
+        if (str == "sessionSave")
+            return Commands::sessionSave;
+        if (str == "sessionSaveAs")
+            return Commands::sessionSaveAs;
+        if (str == "sessionAddGraph")
+            return Commands::sessionAddGraph;
+
+        if (str == "exportGraph")
+            return Commands::exportGraph;
+        if (str == "importGraph")
+            return Commands::importGraph;
+        if (str == "importSession")
+            return Commands::importSession;
+
+        if (str == "toggleMeterBridge")
+            return Commands::toggleMeterBridge;
+
+        if (str == "transportRewind")
+            return Commands::transportRewind;
+        if (str == "transportForward")
+            return Commands::transportForward;
+        if (str == "transportPlay")
+            return Commands::transportPlay;
+        if (str == "transportRecord")
+            return Commands::transportRecord;
+        if (str == "transportSeekZero")
+            return Commands::transportSeekZero;
+        if (str == "transportStop")
+            return Commands::transportStop;
 
         return Commands::invalid;
     }
