@@ -407,6 +407,27 @@ python3 element_ax_map.py --depth 5
 
 Suites: `plugin-browser`, `session-browser`, `navigation`, `toolbar`
 
+### Headless control + QA/debug bridge (`cli-anything-element`)
+
+To LAUNCH and DRIVE Element from the terminal (instead of flaky GUI/computer-use)
+— so the AX suites above have a running instance, and for crash-isolation /
+behaviour QA — use the OSC bridge in `agent-harness/`:
+
+```bash
+cd agent-harness && pip install -e .          # provides `cli-anything-element`
+cli-anything-element --json app launch --fresh # launch a clean test instance (OSC on)
+cli-anything-element --json control transport play   # drive it over OSC
+cli-anything-element --json app status               # alive? crashed? (reads macOS .ips)
+cli-anything-element --json verify assert --alive --no-crash   # pass/fail QA verdict
+cli-anything-element --json app kill                 # deterministic teardown / SIGKILL
+```
+
+It drives Element's OSC command surface (`/element/command/<name>` — wired in
+`src/services/oscservice.cpp`), inspects `.els`/`.elg` projects, and infers
+crashes. `--json` everywhere. Single-instance: use `--fresh`. Graceful OSC `quit`
+can block on a save dialog → use `app kill` for teardown. Full docs:
+`agent-harness/ELEMENT.md` + `skills/cli-anything-element/SKILL.md`.
+
 ## Coding Guidelines
 
 ### Style
