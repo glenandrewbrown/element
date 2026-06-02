@@ -71,11 +71,13 @@ const {
   };
 });
 
-// ── ReactFlow mock ────────────────────────────────────────────────────────────
+// ── ReactFlow + bridge mocks — all hoisted so vi.mock() factories can use them
 
-const mockGetNodes = vi.fn((): unknown[] => []);
-const mockGetViewport = vi.fn(() => ({ x: 50, y: 60, zoom: 1.2 }));
-const mockSetViewport = vi.fn();
+const { mockGetNodes, mockGetViewport, mockSetViewport } = vi.hoisted(() => ({
+  mockGetNodes: vi.fn((): unknown[] => []),
+  mockGetViewport: vi.fn(() => ({ x: 50, y: 60, zoom: 1.2 })),
+  mockSetViewport: vi.fn(),
+}));
 
 vi.mock("@xyflow/react", () => ({
   useReactFlow: () => ({
@@ -89,23 +91,22 @@ vi.mock("@xyflow/react", () => ({
   }),
 }));
 
-// ── Bridge mocks ─────────────────────────────────────────────────────────────
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const spread = (fn: (...a: any[]) => any) => (...a: any[]) => fn(...a);
-
-vi.mock("../../bridge/nativeGraph", () => ({
-  nativeGraphRemoveNode: spread(mockRemoveNode),
-  nativeGraphCommentDelete: spread(mockCommentDelete),
-  nativeGraphCommentAdd: spread(mockCommentAdd),
-  nativeGraphSetCableBus: spread(mockSetCableBus),
-  nativeGraphCopyNodes: vi.fn(async () => undefined),
-  nativeGraphPasteNodes: vi.fn(async () => undefined),
-  nativeGraphDuplicateNode: vi.fn(async () => undefined),
-  nativeGraphDuplicateNodes: vi.fn(async () => 1),
-  nativeRedo: vi.fn(async () => undefined),
-  nativeUndo: vi.fn(async () => undefined),
-}));
+vi.mock("../../bridge/nativeGraph", () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sp = (fn: (...a: any[]) => any) => (...a: any[]) => fn(...a);
+  return {
+    nativeGraphRemoveNode: sp(mockRemoveNode),
+    nativeGraphCommentDelete: sp(mockCommentDelete),
+    nativeGraphCommentAdd: sp(mockCommentAdd),
+    nativeGraphSetCableBus: sp(mockSetCableBus),
+    nativeGraphCopyNodes: vi.fn(async () => undefined),
+    nativeGraphPasteNodes: vi.fn(async () => undefined),
+    nativeGraphDuplicateNode: vi.fn(async () => undefined),
+    nativeGraphDuplicateNodes: vi.fn(async () => 1),
+    nativeRedo: vi.fn(async () => undefined),
+    nativeUndo: vi.fn(async () => undefined),
+  };
+});
 
 vi.mock("../../bridge/nativeSession", () => ({
   nativeSessionSave: vi.fn(async () => undefined),

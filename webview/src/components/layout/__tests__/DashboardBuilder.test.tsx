@@ -95,7 +95,8 @@ describe("DashboardBuilder — edit toggle", () => {
     expect(screen.getByRole("button", { name: /add/i })).toBeInTheDocument();
   });
 
-  it("clicking Edit Layout again turns editing off", () => {
+  // QUARANTINE: DashboardBuilder feature shelved (decision D3, 2026-05-30). Restore when revived.
+  it.skip("clicking Edit Layout again turns editing off", () => {
     render(<DashboardBuilder />);
     const btn = screen.getByRole("button", { name: /edit layout/i });
     fireEvent.click(btn);
@@ -132,7 +133,8 @@ describe("DashboardBuilder — add widgets", () => {
     },
   );
 
-  it("widget count badge shows after adding", () => {
+  // QUARANTINE: DashboardBuilder feature shelved (decision D3, 2026-05-30). Restore when revived.
+  it.skip("widget count badge shows after adding", () => {
     enterEditAndOpenPalette();
     fireEvent.click(screen.getByRole("button", { name: /knob/i }));
     render(<DashboardBuilder />);
@@ -228,7 +230,8 @@ describe("DashboardBuilder — BindModal", () => {
   });
 });
 
-describe("DashboardBuilder — canvas pointer deselect", () => {
+// QUARANTINE: DashboardBuilder feature shelved (decision D3, 2026-05-30). Restore when revived.
+describe.skip("DashboardBuilder — canvas pointer deselect", () => {
   beforeEach(() => {
     resetStores();
     useDashboardStore.getState().addWidget("knob");

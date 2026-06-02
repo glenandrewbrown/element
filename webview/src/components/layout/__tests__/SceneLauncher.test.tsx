@@ -46,7 +46,9 @@ function resetStores(scenes: SceneData[] = SCENES) {
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
-describe("SceneLauncher — rendering", () => {
+// QUARANTINE: SceneLauncher is a shelved feature (decision D3, 2026-05-30).
+// Scene/Preset system removed from UI (hide-UI, keep-code). Restore when revived.
+describe.skip("SceneLauncher — rendering", () => {
   beforeEach(() => {
     resetStores();
     mockAddScene.mockResolvedValue(undefined);
@@ -77,7 +79,7 @@ describe("SceneLauncher — rendering", () => {
   });
 });
 
-describe("SceneLauncher — activate", () => {
+describe.skip("SceneLauncher — activate", () => {
   beforeEach(() => {
     resetStores();
     mockSetActiveScene.mockResolvedValue(undefined);
@@ -94,7 +96,7 @@ describe("SceneLauncher — activate", () => {
   });
 });
 
-describe("SceneLauncher — add scene", () => {
+describe.skip("SceneLauncher — add scene", () => {
   beforeEach(() => {
     resetStores();
     mockAddScene.mockResolvedValue(undefined);
@@ -111,7 +113,7 @@ describe("SceneLauncher — add scene", () => {
   });
 });
 
-describe("SceneLauncher — delete scene", () => {
+describe.skip("SceneLauncher — delete scene", () => {
   beforeEach(() => {
     resetStores();
     mockDeleteScene.mockResolvedValue(undefined);
@@ -136,7 +138,7 @@ describe("SceneLauncher — delete scene", () => {
   });
 });
 
-describe("SceneLauncher — rename flow", () => {
+describe.skip("SceneLauncher — rename flow", () => {
   beforeEach(() => {
     resetStores();
     mockRenameScene.mockResolvedValue(undefined);
@@ -182,7 +184,7 @@ describe("SceneLauncher — rename flow", () => {
   });
 });
 
-describe("SceneLauncher — capture scene", () => {
+describe.skip("SceneLauncher — capture scene", () => {
   beforeEach(() => {
     resetStores();
     mockSetActiveScene.mockResolvedValue(undefined);

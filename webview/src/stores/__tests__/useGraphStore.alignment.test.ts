@@ -18,17 +18,20 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const mockMoveNodes = vi.fn(async () => undefined);
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const spread = (fn: (...a: any[]) => any) => (...a: any[]) => fn(...a);
-
-vi.mock("../../bridge/nativeGraph", () => ({
-  nativeGraphMoveNodes: spread(mockMoveNodes),
-  nativeGraphSetBypass: vi.fn(async () => true),
-  nativeGraphSetMute: vi.fn(async () => true),
-  nativeGraphSetMuteInput: vi.fn(async () => true),
+const { mockMoveNodes } = vi.hoisted(() => ({
+  mockMoveNodes: vi.fn(async () => undefined),
 }));
+
+vi.mock("../../bridge/nativeGraph", () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sp = (fn: (...a: any[]) => any) => (...a: any[]) => fn(...a);
+  return {
+    nativeGraphMoveNodes: sp(mockMoveNodes),
+    nativeGraphSetBypass: vi.fn(async () => true),
+    nativeGraphSetMute: vi.fn(async () => true),
+    nativeGraphSetMuteInput: vi.fn(async () => true),
+  };
+});
 
 import type { BlockData, CableData, CommentBoxData } from "../../data/types";
 import {

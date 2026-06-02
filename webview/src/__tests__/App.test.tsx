@@ -192,7 +192,10 @@ describe("AppInner — PanicButton mode gating", () => {
     expect(screen.queryByTestId("panic-button")).not.toBeInTheDocument();
   });
 
-  it("renders PanicButton in perform mode", () => {
+  // QUARANTINE: Perform mode UI shelved (decision D3, 2026-05-30).
+  // PanicButton is not rendered in the current locked-edit build.
+  // Restore when Perform mode is revived.
+  it.skip("renders PanicButton in perform mode", () => {
     useAppStore.setState({ mode: "perform" });
     render(<App />);
     expect(screen.getByTestId("panic-button")).toBeInTheDocument();

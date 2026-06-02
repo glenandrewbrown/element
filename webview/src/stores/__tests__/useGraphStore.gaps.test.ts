@@ -21,20 +21,28 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // Default: bridge succeeds (returns true) so optimistic update is kept.
 // Individual rollback tests override with mockResolvedValueOnce(false)
 // or mockRejectedValueOnce(err).
-const mockSetBypass = vi.fn(async () => true as boolean | undefined);
-const mockSetMute = vi.fn(async () => true as boolean | undefined);
-const mockSetMuteInput = vi.fn(async () => true as boolean | undefined);
-const mockMoveNodes = vi.fn(async () => 0);
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const spread = (fn: (...a: any[]) => any) => (...a: any[]) => fn(...a);
-
-vi.mock("../../bridge/nativeGraph", () => ({
-  nativeGraphSetBypass: spread(mockSetBypass),
-  nativeGraphSetMute: spread(mockSetMute),
-  nativeGraphSetMuteInput: spread(mockSetMuteInput),
-  nativeGraphMoveNodes: spread(mockMoveNodes),
+const {
+  mockSetBypass,
+  mockSetMute,
+  mockSetMuteInput,
+  mockMoveNodes,
+} = vi.hoisted(() => ({
+  mockSetBypass: vi.fn(async () => true as boolean | undefined),
+  mockSetMute: vi.fn(async () => true as boolean | undefined),
+  mockSetMuteInput: vi.fn(async () => true as boolean | undefined),
+  mockMoveNodes: vi.fn(async () => 0),
 }));
+
+vi.mock("../../bridge/nativeGraph", () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sp = (fn: (...a: any[]) => any) => (...a: any[]) => fn(...a);
+  return {
+    nativeGraphSetBypass: sp(mockSetBypass),
+    nativeGraphSetMute: sp(mockSetMute),
+    nativeGraphSetMuteInput: sp(mockSetMuteInput),
+    nativeGraphMoveNodes: sp(mockMoveNodes),
+  };
+});
 
 import type { BlockData } from "../../data/types";
 import { useGraphStore } from "../useGraphStore";

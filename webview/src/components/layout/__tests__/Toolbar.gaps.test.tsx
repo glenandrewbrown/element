@@ -19,50 +19,77 @@ import { useGraphStore } from "../../../stores/useGraphStore";
 import { useSessionStore } from "../../../stores/useSessionStore";
 import { Toolbar } from "../Toolbar";
 
-// ── Bridge fn mocks (called by Toolbar buttons) ───────────────────────────────
+// ── Bridge fn mocks — hoisted so vi.mock() factories can reference them ──────
 
-const mockTransportPanic = vi.fn(async () => undefined);
-const mockTransportPlay = vi.fn(async () => undefined);
-const mockTransportStop = vi.fn(async () => undefined);
-const mockTransportRewind = vi.fn(async () => undefined);
-const mockTransportSetTempo = vi.fn(async () => undefined);
-const mockTransportSetRecording = vi.fn(async () => undefined);
-const mockSessionNew = vi.fn(async () => undefined);
-const mockSessionOpen = vi.fn(async () => undefined);
-const mockSessionSave = vi.fn(async () => undefined);
-const mockSessionSaveAs = vi.fn(async () => undefined);
-const mockUndo = vi.fn(async () => undefined);
-const mockRedo = vi.fn(async () => undefined);
-const mockPerformAddScene = vi.fn(async () => undefined);
-const mockPerformCaptureScene = vi.fn(async () => undefined);
-const mockSessionSetActiveGraph = vi.fn(async () => undefined);
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const spread = (fn: (...a: any[]) => any) => (...a: any[]) => fn(...a);
-
-vi.mock("../../../bridge/nativeGraph", () => ({
-  nativeTransportPanic: spread(mockTransportPanic),
-  nativeTransportTogglePlay: spread(mockTransportPlay),
-  nativeTransportStop: spread(mockTransportStop),
-  nativeTransportRewind: spread(mockTransportRewind),
-  nativeTransportSetTempo: spread(mockTransportSetTempo),
-  nativeTransportSetRecording: spread(mockTransportSetRecording),
-  nativeUndo: spread(mockUndo),
-  nativeRedo: spread(mockRedo),
+const {
+  mockTransportPanic,
+  mockTransportPlay,
+  mockTransportStop,
+  mockTransportRewind,
+  mockTransportSetTempo,
+  mockTransportSetRecording,
+  mockSessionNew,
+  mockSessionOpen,
+  mockSessionSave,
+  mockSessionSaveAs,
+  mockUndo,
+  mockRedo,
+  mockPerformAddScene,
+  mockPerformCaptureScene,
+  mockSessionSetActiveGraph,
+} = vi.hoisted(() => ({
+  mockTransportPanic: vi.fn(async () => undefined),
+  mockTransportPlay: vi.fn(async () => undefined),
+  mockTransportStop: vi.fn(async () => undefined),
+  mockTransportRewind: vi.fn(async () => undefined),
+  mockTransportSetTempo: vi.fn(async () => undefined),
+  mockTransportSetRecording: vi.fn(async () => undefined),
+  mockSessionNew: vi.fn(async () => undefined),
+  mockSessionOpen: vi.fn(async () => undefined),
+  mockSessionSave: vi.fn(async () => undefined),
+  mockSessionSaveAs: vi.fn(async () => undefined),
+  mockUndo: vi.fn(async () => undefined),
+  mockRedo: vi.fn(async () => undefined),
+  mockPerformAddScene: vi.fn(async () => undefined),
+  mockPerformCaptureScene: vi.fn(async () => undefined),
+  mockSessionSetActiveGraph: vi.fn(async () => undefined),
 }));
 
-vi.mock("../../../bridge/nativeSession", () => ({
-  nativeSessionNew: spread(mockSessionNew),
-  nativeSessionOpen: spread(mockSessionOpen),
-  nativeSessionSave: spread(mockSessionSave),
-  nativeSessionSaveAs: spread(mockSessionSaveAs),
-  nativeSessionSetActiveGraph: spread(mockSessionSetActiveGraph),
-}));
+vi.mock("../../../bridge/nativeGraph", () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sp = (fn: (...a: any[]) => any) => (...a: any[]) => fn(...a);
+  return {
+    nativeTransportPanic: sp(mockTransportPanic),
+    nativeTransportTogglePlay: sp(mockTransportPlay),
+    nativeTransportStop: sp(mockTransportStop),
+    nativeTransportRewind: sp(mockTransportRewind),
+    nativeTransportSetTempo: sp(mockTransportSetTempo),
+    nativeTransportSetRecording: sp(mockTransportSetRecording),
+    nativeUndo: sp(mockUndo),
+    nativeRedo: sp(mockRedo),
+  };
+});
 
-vi.mock("../../../bridge/nativePerform", () => ({
-  nativePerformAddScene: spread(mockPerformAddScene),
-  nativePerformCaptureScene: spread(mockPerformCaptureScene),
-}));
+vi.mock("../../../bridge/nativeSession", () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sp = (fn: (...a: any[]) => any) => (...a: any[]) => fn(...a);
+  return {
+    nativeSessionNew: sp(mockSessionNew),
+    nativeSessionOpen: sp(mockSessionOpen),
+    nativeSessionSave: sp(mockSessionSave),
+    nativeSessionSaveAs: sp(mockSessionSaveAs),
+    nativeSessionSetActiveGraph: sp(mockSessionSetActiveGraph),
+  };
+});
+
+vi.mock("../../../bridge/nativePerform", () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sp = (fn: (...a: any[]) => any) => (...a: any[]) => fn(...a);
+  return {
+    nativePerformAddScene: sp(mockPerformAddScene),
+    nativePerformCaptureScene: sp(mockPerformCaptureScene),
+  };
+});
 
 // ── Store reset ───────────────────────────────────────────────────────────────
 
@@ -219,7 +246,8 @@ describe("Toolbar — transport controls", () => {
     expect(mockTransportPlay).toHaveBeenCalled();
   });
 
-  it("shows LIVE badge in perform mode when engine is running", () => {
+  // QUARANTINE: LIVE/IDLE badge is in perform mode only; perform mode shelved (D3, 2026-05-30).
+  it.skip("shows LIVE badge in perform mode when engine is running", () => {
     act(() => {
       useEngineSnapshotStore.setState({ engineRunning: true });
       useAppStore.setState({ mode: "perform" });
@@ -228,7 +256,8 @@ describe("Toolbar — transport controls", () => {
     expect(screen.getByText("LIVE")).toBeInTheDocument();
   });
 
-  it("shows IDLE badge in perform mode when engine is not running", () => {
+  // QUARANTINE: same — perform mode shelved (D3, 2026-05-30).
+  it.skip("shows IDLE badge in perform mode when engine is not running", () => {
     act(() => {
       useEngineSnapshotStore.setState({ engineRunning: false });
       useAppStore.setState({ mode: "perform" });
@@ -299,7 +328,9 @@ describe("Toolbar — BPM display and editing", () => {
   });
 });
 
-describe("Toolbar — mode toggle", () => {
+// QUARANTINE: mode toggle UI (Edit/Perform label) is shelved (D3, 2026-05-30).
+// Toolbar is locked to edit mode; no mode toggle button rendered. Restore when revived.
+describe.skip("Toolbar — mode toggle", () => {
   let bridge: JuceBridgeMock;
 
   beforeEach(() => {

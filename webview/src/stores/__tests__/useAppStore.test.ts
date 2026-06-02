@@ -49,13 +49,15 @@ describe("useAppStore", () => {
   });
 
   // ── toggleMode ────────────────────────────────────────────────────────────
+  // QUARANTINE: toggleMode is a deliberate no-op (decision D3, 2026-05-30).
+  // Perform mode is shelved from MVP UI. Restore when Perform mode is revived.
 
-  it("toggleMode flips mode from edit to perform", () => {
+  it.skip("toggleMode flips mode from edit to perform", () => {
     useAppStore.getState().toggleMode();
     expect(useAppStore.getState().mode).toBe("perform");
   });
 
-  it("toggleMode increments refreshNonce", () => {
+  it.skip("toggleMode increments refreshNonce", () => {
     expect(useAppStore.getState().refreshNonce).toBe(0);
     useAppStore.getState().toggleMode();
     expect(useAppStore.getState().refreshNonce).toBe(1);
@@ -63,7 +65,7 @@ describe("useAppStore", () => {
     expect(useAppStore.getState().refreshNonce).toBe(2);
   });
 
-  it("toggleMode toggles back to edit on second call", () => {
+  it.skip("toggleMode toggles back to edit on second call", () => {
     useAppStore.getState().toggleMode();
     useAppStore.getState().toggleMode();
     expect(useAppStore.getState().mode).toBe("edit");
@@ -115,14 +117,16 @@ describe("useAppStore", () => {
   });
 
   // ── Selectors (observer-fired shape) ─────────────────────────────────────
+  // QUARANTINE: these selector tests exercise toggleMode which is a no-op (D3).
+  // Restore when Perform mode is revived.
 
-  it("selectMode returns current mode string", () => {
+  it.skip("selectMode returns current mode string", () => {
     expect(selectMode(useAppStore.getState())).toBe("edit");
     useAppStore.getState().toggleMode();
     expect(selectMode(useAppStore.getState())).toBe("perform");
   });
 
-  it("selectIsEditMode / selectIsPerformMode derive correctly", () => {
+  it.skip("selectIsEditMode / selectIsPerformMode derive correctly", () => {
     expect(selectIsEditMode(useAppStore.getState())).toBe(true);
     expect(selectIsPerformMode(useAppStore.getState())).toBe(false);
     useAppStore.getState().toggleMode();

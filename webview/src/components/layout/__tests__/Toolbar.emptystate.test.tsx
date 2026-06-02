@@ -81,7 +81,8 @@ describe("Toolbar — §3.6 honest empty state (LIVE/IDLE badge)", () => {
     useAppStore.setState({ mode: "edit" });
   });
 
-  it("(H-cov-5c) shows IDLE badge in perform mode when engineRunning is false", () => {
+  // QUARANTINE: LIVE/IDLE badge is in perform mode only; perform mode shelved (D3, 2026-05-30).
+  it.skip("(H-cov-5c) shows IDLE badge in perform mode when engineRunning is false", () => {
     act(() => {
       useEngineSnapshotStore.setState({ engineRunning: false });
       useAppStore.setState({ mode: "perform" });

@@ -38,34 +38,63 @@ vi.mock("@xyflow/react", () => ({
   }),
 }));
 
-// ── bridge mocks ──────────────────────────────────────────────────────────────
+// ── bridge mocks — hoisted so vi.mock() factories can reference them ──────────
 
-const mockCommentAdd = vi.fn(async () => undefined);
-const mockCommentDelete = vi.fn(async () => undefined);
-const mockRemoveNode = vi.fn(async () => undefined);
-const mockSetCableBus = vi.fn(async () => undefined);
-const mockCopyNodes = vi.fn(async () => undefined);
-const mockPasteNodes = vi.fn(async () => undefined);
-const mockDuplicateNode = vi.fn(async () => undefined);
-const mockDuplicateNodes = vi.fn(async () => 1);
-const mockUndo = vi.fn(async () => undefined);
-const mockRedo = vi.fn(async () => undefined);
+const {
+  mockCommentAdd,
+  mockCommentDelete,
+  mockRemoveNode,
+  mockSetCableBus,
+  mockCopyNodes,
+  mockPasteNodes,
+  mockDuplicateNode,
+  mockDuplicateNodes,
+  mockUndo,
+  mockRedo,
+} = vi.hoisted(() => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const spread = (fn: (...a: any[]) => any) => (...a: any[]) => fn(...a);
+  const mockCommentAdd = vi.fn(async () => undefined);
+  const mockCommentDelete = vi.fn(async () => undefined);
+  const mockRemoveNode = vi.fn(async () => undefined);
+  const mockSetCableBus = vi.fn(async () => undefined);
+  const mockCopyNodes = vi.fn(async () => undefined);
+  const mockPasteNodes = vi.fn(async () => undefined);
+  const mockDuplicateNode = vi.fn(async () => undefined);
+  const mockDuplicateNodes = vi.fn(async () => 1);
+  const mockUndo = vi.fn(async () => undefined);
+  const mockRedo = vi.fn(async () => undefined);
+  return {
+    mockCommentAdd,
+    mockCommentDelete,
+    mockRemoveNode,
+    mockSetCableBus,
+    mockCopyNodes,
+    mockPasteNodes,
+    mockDuplicateNode,
+    mockDuplicateNodes,
+    mockUndo,
+    mockRedo,
+    spread,
+  };
+});
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const spread = (fn: (...a: any[]) => any) => (...a: any[]) => fn(...a);
-
-vi.mock("../../bridge/nativeGraph", () => ({
-  nativeGraphCommentAdd: spread(mockCommentAdd),
-  nativeGraphCommentDelete: spread(mockCommentDelete),
-  nativeGraphCopyNodes: spread(mockCopyNodes),
-  nativeGraphDuplicateNode: spread(mockDuplicateNode),
-  nativeGraphDuplicateNodes: spread(mockDuplicateNodes),
-  nativeGraphPasteNodes: spread(mockPasteNodes),
-  nativeGraphRemoveNode: spread(mockRemoveNode),
-  nativeGraphSetCableBus: spread(mockSetCableBus),
-  nativeRedo: spread(mockRedo),
-  nativeUndo: spread(mockUndo),
-}));
+vi.mock("../../bridge/nativeGraph", () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sp = (fn: (...a: any[]) => any) => (...a: any[]) => fn(...a);
+  return {
+    nativeGraphCommentAdd: sp(mockCommentAdd),
+    nativeGraphCommentDelete: sp(mockCommentDelete),
+    nativeGraphCopyNodes: sp(mockCopyNodes),
+    nativeGraphDuplicateNode: sp(mockDuplicateNode),
+    nativeGraphDuplicateNodes: sp(mockDuplicateNodes),
+    nativeGraphPasteNodes: sp(mockPasteNodes),
+    nativeGraphRemoveNode: sp(mockRemoveNode),
+    nativeGraphSetCableBus: sp(mockSetCableBus),
+    nativeRedo: sp(mockRedo),
+    nativeUndo: sp(mockUndo),
+  };
+});
 
 vi.mock("../../bridge/nativeSession", () => ({
   nativeSessionSave: vi.fn(async () => undefined),

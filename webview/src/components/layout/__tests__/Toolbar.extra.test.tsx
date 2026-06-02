@@ -28,50 +28,77 @@ import { useSessionStore } from "../../../stores/useSessionStore";
 import { EV_OPEN_PREFERENCES } from "../../../events";
 import { Toolbar } from "../Toolbar";
 
-// ── Bridge fn mocks ───────────────────────────────────────────────────────────
+// ── Bridge fn mocks — hoisted so vi.mock() factories can reference them ──────
 
-const mockTransportPanic = vi.fn(async () => undefined);
-const mockTransportPlay = vi.fn(async () => undefined);
-const mockTransportStop = vi.fn(async () => undefined);
-const mockTransportRewind = vi.fn(async () => undefined);
-const mockTransportSetTempo = vi.fn(async () => undefined);
-const mockTransportSetRecording = vi.fn(async () => undefined);
-const mockSessionNew = vi.fn(async () => undefined);
-const mockSessionOpen = vi.fn(async () => undefined);
-const mockSessionSave = vi.fn(async () => undefined);
-const mockSessionSaveAs = vi.fn(async () => undefined);
-const mockUndo = vi.fn(async () => undefined);
-const mockRedo = vi.fn(async () => undefined);
-const mockPerformAddScene = vi.fn(async () => undefined);
-const mockPerformCaptureScene = vi.fn(async () => undefined);
-const mockSessionSetActiveGraph = vi.fn(async () => undefined);
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const spread = (fn: (...a: any[]) => any) => (...a: any[]) => fn(...a);
-
-vi.mock("../../../bridge/nativeGraph", () => ({
-  nativeTransportPanic: spread(mockTransportPanic),
-  nativeTransportTogglePlay: spread(mockTransportPlay),
-  nativeTransportStop: spread(mockTransportStop),
-  nativeTransportRewind: spread(mockTransportRewind),
-  nativeTransportSetTempo: spread(mockTransportSetTempo),
-  nativeTransportSetRecording: spread(mockTransportSetRecording),
-  nativeUndo: spread(mockUndo),
-  nativeRedo: spread(mockRedo),
+const {
+  mockTransportPanic,
+  mockTransportPlay,
+  mockTransportStop,
+  mockTransportRewind,
+  mockTransportSetTempo,
+  mockTransportSetRecording,
+  mockSessionNew,
+  mockSessionOpen,
+  mockSessionSave,
+  mockSessionSaveAs,
+  mockUndo,
+  mockRedo,
+  mockPerformAddScene,
+  mockPerformCaptureScene,
+  mockSessionSetActiveGraph,
+} = vi.hoisted(() => ({
+  mockTransportPanic: vi.fn(async () => undefined),
+  mockTransportPlay: vi.fn(async () => undefined),
+  mockTransportStop: vi.fn(async () => undefined),
+  mockTransportRewind: vi.fn(async () => undefined),
+  mockTransportSetTempo: vi.fn(async () => undefined),
+  mockTransportSetRecording: vi.fn(async () => undefined),
+  mockSessionNew: vi.fn(async () => undefined),
+  mockSessionOpen: vi.fn(async () => undefined),
+  mockSessionSave: vi.fn(async () => undefined),
+  mockSessionSaveAs: vi.fn(async () => undefined),
+  mockUndo: vi.fn(async () => undefined),
+  mockRedo: vi.fn(async () => undefined),
+  mockPerformAddScene: vi.fn(async () => undefined),
+  mockPerformCaptureScene: vi.fn(async () => undefined),
+  mockSessionSetActiveGraph: vi.fn(async () => undefined),
 }));
 
-vi.mock("../../../bridge/nativeSession", () => ({
-  nativeSessionNew: spread(mockSessionNew),
-  nativeSessionOpen: spread(mockSessionOpen),
-  nativeSessionSave: spread(mockSessionSave),
-  nativeSessionSaveAs: spread(mockSessionSaveAs),
-  nativeSessionSetActiveGraph: spread(mockSessionSetActiveGraph),
-}));
+vi.mock("../../../bridge/nativeGraph", () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sp = (fn: (...a: any[]) => any) => (...a: any[]) => fn(...a);
+  return {
+    nativeTransportPanic: sp(mockTransportPanic),
+    nativeTransportTogglePlay: sp(mockTransportPlay),
+    nativeTransportStop: sp(mockTransportStop),
+    nativeTransportRewind: sp(mockTransportRewind),
+    nativeTransportSetTempo: sp(mockTransportSetTempo),
+    nativeTransportSetRecording: sp(mockTransportSetRecording),
+    nativeUndo: sp(mockUndo),
+    nativeRedo: sp(mockRedo),
+  };
+});
 
-vi.mock("../../../bridge/nativePerform", () => ({
-  nativePerformAddScene: spread(mockPerformAddScene),
-  nativePerformCaptureScene: spread(mockPerformCaptureScene),
-}));
+vi.mock("../../../bridge/nativeSession", () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sp = (fn: (...a: any[]) => any) => (...a: any[]) => fn(...a);
+  return {
+    nativeSessionNew: sp(mockSessionNew),
+    nativeSessionOpen: sp(mockSessionOpen),
+    nativeSessionSave: sp(mockSessionSave),
+    nativeSessionSaveAs: sp(mockSessionSaveAs),
+    nativeSessionSetActiveGraph: sp(mockSessionSetActiveGraph),
+  };
+});
+
+vi.mock("../../../bridge/nativePerform", () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sp = (fn: (...a: any[]) => any) => (...a: any[]) => fn(...a);
+  return {
+    nativePerformAddScene: sp(mockPerformAddScene),
+    nativePerformCaptureScene: sp(mockPerformCaptureScene),
+  };
+});
 
 // ── Store reset ───────────────────────────────────────────────────────────────
 
@@ -247,7 +274,8 @@ describe("Toolbar — cable routing toggle", () => {
   });
 });
 
-describe("Toolbar — scene navigation", () => {
+// QUARANTINE: scene navigation UI shelved (D3, 2026-05-30). Restore when revived.
+describe.skip("Toolbar — scene navigation", () => {
   let bridge: JuceBridgeMock;
 
   beforeEach(() => {
@@ -320,7 +348,8 @@ describe("Toolbar — scene navigation", () => {
   });
 });
 
-describe("Toolbar — scene add and capture", () => {
+// QUARANTINE: scene add/capture UI shelved (D3, 2026-05-30). Restore when revived.
+describe.skip("Toolbar — scene add and capture", () => {
   let bridge: JuceBridgeMock;
 
   beforeEach(() => {
@@ -437,7 +466,8 @@ describe("Toolbar — EV_OPEN_PREFERENCES event", () => {
   });
 });
 
-describe("Toolbar — perform mode right panel", () => {
+// QUARANTINE: perform mode right panel shelved (D3, 2026-05-30). Restore when revived.
+describe.skip("Toolbar — perform mode right panel", () => {
   let bridge: JuceBridgeMock;
 
   beforeEach(() => {
