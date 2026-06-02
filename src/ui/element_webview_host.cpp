@@ -4342,6 +4342,21 @@ void ElementWebViewHost::timerCallback()
                        + cableJson + ");");
     }
 
+    {
+        // Pillar-2 D1: per-node output level so terminal/unconnected Blocks meter
+        // real signal (Q-VU-PER-BLOCK).
+        const String nodeJson (buildNodeMetersJson());
+        evalInBrowser ("window.__elementNative && window.__elementNative.onNodeLevels && window.__elementNative.onNodeLevels("
+                       + nodeJson + ");");
+    }
+
+    {
+        // Pillar-2 D2/D3: master output L/R + audio-input peak (Q-VU-LR / Q-VU-INPUT).
+        const String masterJson (buildMasterLevelsJson());
+        evalInBrowser ("window.__elementNative && window.__elementNative.onMasterLevels && window.__elementNative.onMasterLevels("
+                       + masterJson + ");");
+    }
+
     if (logPushPending && browser != nullptr)
     {
         const auto lines = context.logger().getHistory();
@@ -4879,6 +4894,101 @@ String ElementWebViewHost::buildCableLevelsJson() const
     }
 
     return JSON::toString (var (items));
+}
+
+/** Real per-node output level for the Block VU (Q-VU-PER-BLOCK / Pillar-2 D1).
+    Mirrors `cableSignalLevelForArc`'s calibration so a Block's meter and its
+    outgoing cables read identically, but sources the value from the node's OWN
+    atomic output RMS — so terminal / unconnected blocks (no outgoing cable)
+    light up too. Audio/CV nodes use the loudest output-channel RMS; MIDI-only
+    nodes fall back to MIDI output activity. Pure atomic reads — RT-safe (no
+    audio-thread interaction; the RMS is written lock-free in graphbuilder). */
+static float nodeOutputLevel (const Node& n)
+{
+    auto* proc = n.getObject();
+    if (proc == nullptr)
+        return 0.f;
+
+    const int numOutputs = proc->getNumAudioOutputs();
+    if (numOutputs > 0)
+    {
+        float maxRms = 0.f;
+        for (int i = 0; i < numOutputs; ++i)
+            maxRms = jmax (maxRms, proc->getOutputRMS (i));
+        if (maxRms > 0.f)
+            return jmin (1.0f, maxRms * 3.0f);
+    }
+
+    // No audio output level — surface MIDI output activity (router / MIDI fx /
+    // MIDI out nodes) so they are not falsely dark while passing events.
+    if (proc->hasMidiOutputActivity())
+        return 0.75f;
+
+    return 0.f;
+}
+
+String ElementWebViewHost::buildNodeMetersJson() const
+{
+    Array<var> items;
+    auto sess = context.session();
+    if (sess == nullptr)
+        return JSON::toString (var (items));
+
+    const Node gn (sess->getCurrentGraph());
+    if (! gn.isGraph())
+        return JSON::toString (var (items));
+
+    const Graph G (gn);
+    for (int i = 0; i < G.getNumNodes(); ++i)
+    {
+        const Node n (G.getNode (i));
+        const String uuid (n.getUuidString());
+        if (uuid.isEmpty())
+            continue;
+
+        DynamicObject::Ptr row (new DynamicObject());
+        row->setProperty ("id", uuid);
+        row->setProperty ("level", nodeOutputLevel (n));
+        items.add (var (row.get()));
+    }
+
+    return JSON::toString (var (items));
+}
+
+String ElementWebViewHost::buildMasterLevelsJson() const
+{
+    // Master L/R + input peak (Q-VU-LR / Q-VU-INPUT, Pillar-2 D2/D3). The
+    // engine maintains per-channel output AND input LevelMeters on the audio
+    // thread (audioengine.cpp updateLevel); we read their atomic `level()` on
+    // the message thread. No audio-thread mutation — read-only.
+    DynamicObject::Ptr root (new DynamicObject());
+
+    auto e = context.audio();
+    if (e == nullptr)
+        return JSON::toString (var (root.get()));
+
+    const int numOut = e->getNumChannels (false);
+    auto channelLevel = [&e] (int channel, bool input) -> double {
+        if (auto m = e->getLevelMeter (channel, input))
+            return jlimit (0.0, 1.0, m->level());
+        return 0.0;
+    };
+
+    // L = channel 0, R = channel 1 (mono → R mirrors L so the ladder is honest).
+    const double outL = numOut > 0 ? channelLevel (0, false) : 0.0;
+    const double outR = numOut > 1 ? channelLevel (1, false) : outL;
+    root->setProperty ("outL", outL);
+    root->setProperty ("outR", outR);
+
+    // Input peak = loudest live audio-input channel from the device input
+    // meters (real interface input, independent of graph routing).
+    const int numIn = e->getNumChannels (true);
+    double input = 0.0;
+    for (int c = 0; c < numIn; ++c)
+        input = jmax (input, channelLevel (c, true));
+    root->setProperty ("input", input);
+
+    return JSON::toString (var (root.get()));
 }
 
 String ElementWebViewHost::buildPluginListJson() const

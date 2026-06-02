@@ -93,6 +93,16 @@ private:
     juce::String buildActiveGraphJson() const;
     /** Per-cable levels for Web §2.4 (message thread; reads processor RMS / MIDI activity). */
     juce::String buildCableLevelsJson() const;
+    /** Per-NODE output levels (Q-VU-PER-BLOCK / Pillar-2 D1). Message thread;
+        reads each node's atomic per-channel output RMS (or MIDI activity) so a
+        Block's VU reflects REAL signal even with no outgoing cable (terminal /
+        unconnected). Keyed by the node UUID the React Block components use. */
+    juce::String buildNodeMetersJson() const;
+    /** Master output L/R + audio-input peak (Q-VU-LR / Q-VU-INPUT, Pillar-2
+        D2/D3). Message thread; reads the engine's already-maintained per-channel
+        output LevelMeters (atomic `_level`) for L/R and the audio-input node's
+        output RMS for the input peak. Returns `{}` when no engine/graph. */
+    juce::String buildMasterLevelsJson() const;
     juce::String buildPluginListJson() const;
     juce::String buildNodeParametersJson (const juce::String& nodeUuid) const;
     bool setNodeParameterValue (const juce::String& nodeUuid, int paramIndex, float value);

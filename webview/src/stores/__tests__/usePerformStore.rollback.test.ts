@@ -35,6 +35,9 @@ const defaultHealth = {
   alerts: [],
   ioActivity: "nominal" as const,
   outputPeak: 0,
+  outputPeakL: 0,
+  outputPeakR: 0,
+  inputPeak: 0,
 };
 
 function resetStore() {

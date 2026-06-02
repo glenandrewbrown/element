@@ -17,11 +17,24 @@ interface LiveHealth {
   ioActivity: "nominal" | "warning" | "critical";
   /**
    * Master output peak 0–1 from `window.__elementNative.onMetering`.
-   * Bridge currently emits a single aggregate peak; we surface it as the
-   * master output level. Input peak is not yet exposed by the C++ bridge —
-   * see Q-id Q-VU-INPUT (per-side L/R + input split).
+   * This is the single aggregate peak (max across output channels) — kept for
+   * consumers that want one number. For the L/R split use `outputPeakL/R`.
    */
   outputPeak: number;
+  /**
+   * Master output peak 0–1 for the LEFT output channel (Q-VU-LR, Pillar-2 D3).
+   * Real per-channel engine LevelMeter via `__elementNative.onMasterLevels`.
+   * Mono devices mirror L into R (honest, not a fabricated split).
+   */
+  outputPeakL: number;
+  /** Master output peak 0–1 for the RIGHT output channel (Q-VU-LR, D3). */
+  outputPeakR: number;
+  /**
+   * Audio INPUT peak 0–1 (Q-VU-INPUT, Pillar-2 D2). Loudest live audio-input
+   * channel from the engine's device input LevelMeters via
+   * `__elementNative.onMasterLevels`. 0 when no input device / silence.
+   */
+  inputPeak: number;
 }
 
 interface PerformState {
@@ -37,6 +50,18 @@ interface PerformState {
 
 interface PerformActions {
   updateMacro: (macroId: string, value: number) => void;
+  /**
+   * Write the master output L/R + audio-input peak from the host
+   * `onMasterLevels` push (Q-VU-LR / Q-VU-INPUT). Each value is clamped to
+   * 0–1; missing fields leave the prior value untouched. No-ops (returns the
+   * same `liveHealth` reference) when nothing moved past the epsilon so the
+   * 60Hz push does not re-render steady consumers.
+   */
+  setMasterLevels: (payload: {
+    outL?: number;
+    outR?: number;
+    input?: number;
+  }) => void;
   /**
    * Optimistically activate a scene then confirm with the host. If the
    * bridge call fails or returns false, the local active-scene flag is
@@ -86,6 +111,9 @@ const defaultHealth: LiveHealth = {
   alerts: [],
   ioActivity: "nominal",
   outputPeak: 0,
+  outputPeakL: 0,
+  outputPeakR: 0,
+  inputPeak: 0,
 };
 
 /** True while hydrating mapped parameters from host — prevents bridge re-fire. */
@@ -104,6 +132,32 @@ export const usePerformStore = create<PerformStore>()((set, get) => ({
     set((s) => ({
       macros: s.macros.map((m) => (m.id === macroId ? { ...m, value } : m)),
     })),
+
+  setMasterLevels: (payload) =>
+    set((s) => {
+      const clamp01 = (v: unknown, fallback: number): number =>
+        typeof v === "number" && Number.isFinite(v)
+          ? Math.max(0, Math.min(1, v))
+          : fallback;
+      const h = s.liveHealth;
+      const outputPeakL = clamp01(payload.outL, h.outputPeakL);
+      const outputPeakR = clamp01(payload.outR, h.outputPeakR);
+      const inputPeak = clamp01(payload.input, h.inputPeak);
+      // Epsilon-diff so the ~60Hz push does not churn the store on a steady
+      // signal (session-drift perf plan): return the SAME object if nothing
+      // visibly moved, so subscriber slices stay reference-identical.
+      const EPS = 0.001;
+      if (
+        Math.abs(outputPeakL - h.outputPeakL) < EPS &&
+        Math.abs(outputPeakR - h.outputPeakR) < EPS &&
+        Math.abs(inputPeak - h.inputPeak) < EPS
+      ) {
+        return s;
+      }
+      return {
+        liveHealth: { ...h, outputPeakL, outputPeakR, inputPeak },
+      };
+    }),
 
   activateScene: async (sceneIndex) => {
     const prevScenes = get().scenes;
@@ -260,6 +314,12 @@ export const selectTimecode = (s: PerformStore) => s.liveHealth.timecode;
 export const selectAlerts = (s: PerformStore) => s.liveHealth.alerts;
 export const selectIsPlaying = (s: PerformStore) => s.isPlaying;
 export const selectOutputPeak = (s: PerformStore) => s.liveHealth.outputPeak;
+/** Master output LEFT-channel peak 0–1 (Q-VU-LR / D3). */
+export const selectOutputPeakL = (s: PerformStore) => s.liveHealth.outputPeakL;
+/** Master output RIGHT-channel peak 0–1 (Q-VU-LR / D3). */
+export const selectOutputPeakR = (s: PerformStore) => s.liveHealth.outputPeakR;
+/** Audio INPUT peak 0–1 (Q-VU-INPUT / D2). */
+export const selectInputPeak = (s: PerformStore) => s.liveHealth.inputPeak;
 
 export const selectMacroById = (id: string) => (s: PerformStore) =>
   s.macros.find((m) => m.id === id);

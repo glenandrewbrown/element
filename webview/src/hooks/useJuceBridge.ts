@@ -16,6 +16,11 @@ import { usePerformStore } from "../stores/usePerformStore";
 import { usePluginBrowserStore } from "../stores/usePluginBrowserStore";
 import { useSessionStore } from "../stores/useSessionStore";
 import { useCableMeterStore } from "../stores/useCableMeterStore";
+import { useNodeMeterStore } from "../stores/useNodeMeterStore";
+import {
+  useSandboxCrashStore,
+  type SandboxEventPayload,
+} from "../stores/useSandboxCrashStore";
 import {
   useParameterStore,
   type ParameterDelta,
@@ -399,6 +404,18 @@ export type ElementNativeHooks = {
   onMetering?: (peak: number) => void;
   /** Per-cable levels from host (~60 Hz); id matches graph snapshot cable ids. */
   onCableLevels?: (items: Array<{ id: string; level: number }>) => void;
+  /** Per-NODE output levels from host (~60 Hz, Q-VU-PER-BLOCK); id = node UUID.
+   *  Covers terminal/unconnected blocks the cable-derived path leaves idle. */
+  onNodeLevels?: (items: Array<{ id: string; level: number }>) => void;
+  /** Master output L/R + audio-input peak (~60 Hz, Q-VU-LR / Q-VU-INPUT). */
+  onMasterLevels?: (payload: {
+    outL?: number;
+    outR?: number;
+    input?: number;
+  }) => void;
+  /** Sandboxed (out-of-process) plugin lifecycle event (Lane-A R3). Fires only
+   *  for sandboxed nodes; keyed by nodeUuid the React Block components use. */
+  onSandboxEvent?: (payload: SandboxEventPayload) => void;
   /** Main log history (from host Log::Listener). */
   onLogHistory?: (lines: string[]) => void;
   /** ~15 Hz delta channel of changed AudioProcessorParameter values. */
@@ -449,6 +466,39 @@ function cancelCableLevels(): void {
   pendingCableLevels = null;
 }
 
+// ── Per-node-level rAF coalescing (Q-VU-PER-BLOCK) ──
+//
+// Identical discipline to the cable-level coalescing above: the host pushes a
+// FULL snapshot of every node's output level ~60Hz on `onNodeLevels`; keep only
+// the LATEST snapshot and flush at most once per animation frame. The buffer is
+// REPLACED (not accumulated) — every push is a complete snapshot.
+let pendingNodeLevels: Array<{ id: string; level: number }> | null = null;
+let nodeLevelsRaf = 0;
+
+function flushNodeLevels(): void {
+  nodeLevelsRaf = 0;
+  const items = pendingNodeLevels;
+  pendingNodeLevels = null;
+  if (items) useNodeMeterStore.getState().setNodeLevels(items);
+}
+
+function scheduleNodeLevels(items: Array<{ id: string; level: number }>): void {
+  pendingNodeLevels = items;
+  if (nodeLevelsRaf !== 0) return;
+  if (typeof requestAnimationFrame === "function") {
+    nodeLevelsRaf = requestAnimationFrame(flushNodeLevels);
+  } else {
+    flushNodeLevels();
+  }
+}
+
+function cancelNodeLevels(): void {
+  if (nodeLevelsRaf !== 0 && typeof cancelAnimationFrame === "function")
+    cancelAnimationFrame(nodeLevelsRaf);
+  nodeLevelsRaf = 0;
+  pendingNodeLevels = null;
+}
+
 /**
  * Wires `window.__elementNative` callbacks from Element's WebView host into Zustand.
  * Safe in pure Vite dev (no `__JUCE__`): keeps demo graph unless native state is requested.
@@ -483,6 +533,24 @@ export function useJuceBridge() {
       onCableLevels: (items: Array<{ id: string; level: number }>) => {
         prev.onCableLevels?.(items);
         if (Array.isArray(items)) scheduleCableLevels(items);
+      },
+      onNodeLevels: (items: Array<{ id: string; level: number }>) => {
+        prev.onNodeLevels?.(items);
+        if (Array.isArray(items)) scheduleNodeLevels(items);
+      },
+      onMasterLevels: (payload: {
+        outL?: number;
+        outR?: number;
+        input?: number;
+      }) => {
+        prev.onMasterLevels?.(payload);
+        if (payload != null && typeof payload === "object")
+          usePerformStore.getState().setMasterLevels(payload);
+      },
+      onSandboxEvent: (payload: SandboxEventPayload) => {
+        prev.onSandboxEvent?.(payload);
+        if (payload != null && typeof payload === "object")
+          useSandboxCrashStore.getState().applyEvent(payload);
       },
       onLogHistory: (lines: string[]) => {
         prev.onLogHistory?.(lines);
@@ -570,6 +638,7 @@ export function useJuceBridge() {
       pluginPollTimers.forEach((id) => window.clearTimeout(id));
       sessionPollTimers.forEach((id) => window.clearTimeout(id));
       cancelCableLevels();
+      cancelNodeLevels();
     };
   }, []);
 

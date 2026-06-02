@@ -53,6 +53,7 @@ function resetStore() {
       cpu: 0, buffer: 0, latency: 0, clock: "—", bpm: 120,
       timecode: "—", sampleRateLabel: "—", alerts: [],
       ioActivity: "nominal", outputPeak: 0,
+      outputPeakL: 0, outputPeakR: 0, inputPeak: 0,
     },
     isPlaying: false,
     mapModeActive: false,
