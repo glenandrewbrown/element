@@ -4,6 +4,7 @@ import { useAppStore } from "../../stores/useAppStore";
 import { usePerformStore, selectMapMode } from "../../stores/usePerformStore";
 import { Breadcrumb } from "./Breadcrumb";
 import { BlockTabStrip } from "./BlockTabStrip";
+import { MirrorPanel } from "./MirrorPanel";
 
 // ── Shared transition config ──
 
@@ -280,6 +281,11 @@ export function AppShell({
       >
         {statusBar}
       </div>
+
+      {/* U11 — read-only Mirror of a peer Element instance. Self-hides when no
+          mirror target is selected (renders nothing), and floats as a fixed
+          right-side overlay so it never displaces the graph canvas. */}
+      <MirrorPanel />
     </div>
   );
 }

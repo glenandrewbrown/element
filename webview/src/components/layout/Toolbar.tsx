@@ -36,6 +36,7 @@ import { AboutModal } from "./AboutModal";
 // remain on disk (reversible backlog); they are simply not wired here.
 import { EV_OPEN_PREFERENCES } from "../../events";
 import { Icon } from "../neu";
+import { InstanceSwitcher } from "./InstanceSwitcher";
 
 // ── Depth-hue breadcrumb pills (W0-TOKENS §6) ──
 // Each nesting level paints its pill from a frozen --depth-N token so the
@@ -511,6 +512,11 @@ export function Toolbar() {
               BEZ
             </button>
           </div>
+
+          {/* U11 — Multi-instance switcher. Honest "1×" disabled pill in the
+              standalone app / single-instance host; a dropdown to mirror a peer
+              when 2+ Element instances share the host process. */}
+          <InstanceSwitcher />
 
           {/* About + Preferences — raised buttons. NOTE: the mockup uses an
               Info glyph for About, but `Info` is not in the Icon allowlist

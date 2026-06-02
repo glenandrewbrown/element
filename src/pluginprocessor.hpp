@@ -351,6 +351,36 @@ public:
     const String getName() const override;
     Variant getVariant() const { return variant; }
 
+    //==========================================================================
+    // U11 — Multi-instance registry (Branch-A, in-process). Every live
+    // PluginProcessor registers itself in a process-wide static list in the
+    // ctor and removes itself in the dtor, so the list is exactly the set of
+    // currently-alive Element plugin instances in this host OS process. All
+    // accessors are message-thread / metadata only — never touched on the
+    // audio thread.
+
+    /** Stable per-instance id, stamped in the ctor (monotonic, >0). */
+    int getInstanceId() const { return instanceId; }
+
+    /** Live display name for the instance switcher. Resolves the loaded
+        project/session name on demand if a Context exists; otherwise falls
+        back honestly (a scan-only ctor has no Context → "<name> (scanning)").
+        Never cached at ctor time (Context/session don't exist during a DAW
+        metadata scan) so it always reflects real state. */
+    juce::String getInstanceDisplayName() const;
+
+    /** True only when this instance has a real Context + session + active
+        graph. False for scan-only / uninitialised instances. */
+    bool hasActiveGraph() const;
+
+    /** Mirror-only accessor — the live Context, or nullptr for a scan-only
+        instance that never initialised one. Used by the read-only MirrorPanel
+        bridge to build a peer's graph snapshot. */
+    Context* getContextForMirror() const { return context.get(); }
+
+    /** Snapshot of the live-instance registry (copy taken under lock). */
+    static juce::Array<PluginProcessor*> snapshotRegistry();
+
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void processBlock (AudioSampleBuffer&, MidiBuffer&) override;
     void releaseResources() override;
@@ -416,6 +446,9 @@ private:
     };
 
     const Variant variant;
+
+    /** U11 — stable per-instance id, assigned in the ctor (see registry). */
+    int instanceId = 0;
 
     OwnedArray<PerfParamMenuItem> menuMap;
     std::unique_ptr<Context> context;

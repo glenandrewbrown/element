@@ -20,6 +20,7 @@
 
 #include "engine/midipanic.hpp"
 #include "nodes/sandboxedprocessor.hpp"
+#include "pluginprocessor.hpp" // U11 — multi-instance registry (snapshotRegistry)
 #include "log.hpp"
 #include "messages.hpp"
 #include <element/ui.hpp>
@@ -1335,6 +1336,100 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             root->setProperty ("timeSig", var (ts));
 
             postCompletion (completion, JSON::toString (var (root.get())));
+        });
+
+    // U11 — Multi-instance: list the live Element plugin instances in this host
+    // OS process (Branch-A in-process registry). NOTHING fake: the list is the
+    // literal set of currently-alive PluginProcessor objects (registered in
+    // ctor, erased in dtor). In the standalone app / single-instance plugin
+    // host the array is empty or just self — that honest "1 instance" state is
+    // NOT an error.
+    //   Output: { selfId:int, instances:[{id,name,variant,isSelf,hasGraph}] }
+    registerFn (
+        Identifier ("elementGetInstances"),
+        [this, postCompletion] (const Array<var>&, auto completion) {
+            DynamicObject::Ptr root (new DynamicObject());
+
+            const auto reg = PluginProcessor::snapshotRegistry();
+
+            // Self-resolution: the host owns `Context& context` but no
+            // back-pointer to its PluginProcessor. Match the registry entry
+            // whose Context IS this host's Context (pointer compare). Plugin
+            // instances: the editor's WebContent is built on the SAME Context
+            // the processor created. Standalone: no entry matches → selfId=-1
+            // and isSelf=false everywhere (honest).
+            int selfId = -1;
+            for (auto* p : reg)
+                if (p != nullptr && p->getContextForMirror() == &context)
+                {
+                    selfId = p->getInstanceId();
+                    break;
+                }
+
+            Array<var> arr;
+            for (auto* p : reg)
+            {
+                if (p == nullptr)
+                    continue;
+                DynamicObject::Ptr o (new DynamicObject());
+                o->setProperty ("id", p->getInstanceId());
+                o->setProperty ("name", p->getInstanceDisplayName());
+                o->setProperty ("variant", (int) p->getVariant());
+                o->setProperty ("isSelf", selfId >= 0 && p->getInstanceId() == selfId);
+                o->setProperty ("hasGraph", p->hasActiveGraph());
+                arr.add (var (o.get()));
+            }
+
+            root->setProperty ("selfId", selfId);
+            root->setProperty ("instances", var (arr));
+            postCompletion (completion, JSON::toString (var (root.get())));
+        });
+
+    // U11 — Multi-instance: read-only graph snapshot of a PEER instance, for
+    // the MirrorPanel. Reuses the SAME builder the live editor uses
+    // (buildActiveGraphJson) with zero duplication, by constructing a throwaway
+    // skipBrowser host on the peer's Context (the proven BridgeContractTest
+    // construct/destruct-per-call pattern — buildActiveGraphJson is const and
+    // reads only its Context). NOTHING fake: an unknown/dead/scan-only target
+    // (null Context) returns an honest `unavailable:true` empty graph, never a
+    // fabricated one. Strictly read-only — no mutation happens here.
+    //   Input:  args[0] = targetId:int
+    //   Output: structured graph snapshot (schema:2, session, graphs, nodes…)
+    //           OR { schema:2, schemaVersion:2, graphs:[], unavailable:true }
+    registerFn (
+        Identifier ("elementGetInstanceSnapshot"),
+        [this, postCompletion] (const Array<var>& args, auto completion) {
+            const int targetId = args.size() > 0 ? (int) args[0] : -1;
+
+            PluginProcessor* peer = nullptr;
+            const auto reg = PluginProcessor::snapshotRegistry();
+            for (auto* p : reg)
+                if (p != nullptr && p->getInstanceId() == targetId)
+                {
+                    peer = p;
+                    break;
+                }
+
+            Context* peerCtx = (peer != nullptr) ? peer->getContextForMirror() : nullptr;
+            if (peerCtx == nullptr)
+            {
+                // Honest-degraded: unknown / dead / scan-only peer. Match the
+                // graph-snapshot shape so the JS parser doesn't choke, but flag
+                // unavailable so the panel shows the honest empty state.
+                DynamicObject::Ptr unavailable (new DynamicObject());
+                unavailable->setProperty ("schema", 2);
+                unavailable->setProperty ("schemaVersion", 2);
+                unavailable->setProperty ("graphs", var (Array<var>()));
+                unavailable->setProperty ("unavailable", true);
+                postCompletion (completion, JSON::toString (var (unavailable.get())));
+                return;
+            }
+
+            // Build the peer's REAL snapshot via the shared const builder.
+            ElementWebViewHost peerHost (*peerCtx, /*skipBrowser=*/true);
+            // Return STRUCTURED var (JSON::parse) — matches elementGetGraphState
+            // and avoids the O(n²) quote-escape hazard. JS accepts object-or-string.
+            postCompletion (completion, JSON::parse (peerHost.buildActiveGraphJson()));
         });
 
     registerFn (

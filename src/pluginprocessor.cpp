@@ -15,6 +15,11 @@
 #include "plugineditor.hpp"
 #include "verbose_log.hpp"
 
+#include <algorithm>
+#include <atomic>
+#include <mutex>
+#include <vector>
+
 // PLUGIN_DBG is kept as a no-op for legacy call sites; new diagnostics go
 // through the EL_LOG* macros which write to element-verbose.log regardless
 // of debug/release builds. PLUGIN_DBG remains available for high-volume
@@ -25,6 +30,17 @@
 namespace element {
 
 using namespace juce;
+
+//=============================================================================
+// U11 — process-wide registry of live PluginProcessor instances (Branch-A,
+// in-process). Populated in the ctor, cleared in the dtor. Message-thread /
+// host-side only — guarded by a small mutex, never used on the audio thread.
+// Scan-safe: registration is just push_back(this) (no Context), so a DAW
+// metadata-scan ctor is cheap; the dtor's erase self-corrects scan-only
+// constructions.
+static std::mutex sInstanceRegistryMutex;
+static std::vector<PluginProcessor*> sInstanceRegistry;
+static std::atomic<uint64_t> sNextInstanceId { 1 };
 
 //=============================================================================
 static void setPluginMissingNodeProperties (const ValueTree& tree)
@@ -92,10 +108,26 @@ PluginProcessor::PluginProcessor (Variant instanceType, int numBuses)
     // bus layouts). Creating the entire Context (Lua VM, AudioEngine,
     // DeviceManager, PluginManager) is far too heavy and can crash the host.
     // Initialization is deferred to prepareToPlay() or setStateInformation().
+
+    // U11 — register this live instance (scan-safe: NO Context touched here).
+    instanceId = (int) sNextInstanceId.fetch_add (1);
+    {
+        std::lock_guard<std::mutex> lk (sInstanceRegistryMutex);
+        sInstanceRegistry.push_back (this);
+    }
 }
 
 PluginProcessor::~PluginProcessor()
 {
+    // U11 — unregister FIRST so no bridge call can observe a half-destructed
+    // instance (self-corrects scan-only ctors that never built a Context).
+    {
+        std::lock_guard<std::mutex> lk (sInstanceRegistryMutex);
+        auto it = std::find (sInstanceRegistry.begin(), sInstanceRegistry.end(), this);
+        if (it != sInstanceRegistry.end())
+            sInstanceRegistry.erase (it);
+    }
+
     EL_LOG_THREAD ("AU", "PluginProcessor dtor begin"
                           << " this=" << juce::String::toHexString ((juce::pointer_sized_int) this)
                           << " controllerActive=" << (int) controllerActive
@@ -147,6 +179,44 @@ const String PluginProcessor::getName() const
 
     jassertfalse;
     return "Element";
+}
+
+//=============================================================================
+// U11 — multi-instance registry accessors (message thread only).
+juce::Array<PluginProcessor*> PluginProcessor::snapshotRegistry()
+{
+    juce::Array<PluginProcessor*> out;
+    std::lock_guard<std::mutex> lk (sInstanceRegistryMutex);
+    out.ensureStorageAllocated ((int) sInstanceRegistry.size());
+    for (auto* p : sInstanceRegistry)
+        out.add (p);
+    return out;
+}
+
+juce::String PluginProcessor::getInstanceDisplayName() const
+{
+    // Resolve live so the name self-corrects: a scan-only ctor has no Context
+    // and falls back honestly rather than ever showing a stale/fake project.
+    if (context != nullptr)
+    {
+        if (auto session = context->session())
+        {
+            const auto n = session->getName();
+            if (n.isNotEmpty() && n != "Invalid Session")
+                return n;
+        }
+        return getName();
+    }
+    return getName() + " (scanning)";
+}
+
+bool PluginProcessor::hasActiveGraph() const
+{
+    if (context == nullptr)
+        return false;
+    if (auto session = context->session())
+        return session->getCurrentGraph().isGraph();
+    return false;
 }
 
 bool PluginProcessor::acceptsMidi() const { return true; }

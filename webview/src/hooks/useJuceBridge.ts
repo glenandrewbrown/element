@@ -32,6 +32,7 @@ import {
 } from "../stores/useHostExtrasStore";
 import { useAppStore } from "../stores/useAppStore";
 import { useEngineSnapshotStore } from "../stores/useEngineSnapshotStore";
+import { useInstancesStore } from "../stores/useInstancesStore";
 
 type EngineBlock = {
   id: string;
@@ -648,6 +649,10 @@ export function useJuceBridge() {
     // same interval are no-ops, so HMR / StrictMode double-mount is safe.
     useEngineSnapshotStore.getState().startPolling(250);
 
+    // U11: start polling the live instance registry at 2 Hz
+    // (`elementGetInstances`). Idempotent singleton like the engine poll above.
+    useInstancesStore.getState().startListPolling(500);
+
     // D-1: PluginManager scan is async — list may still be empty at first
     // mount. Re-poll on a back-off until either (a) plugins arrive or
     // (b) we hit the bounded retry budget. This intentionally avoids adding
@@ -695,6 +700,9 @@ export function useJuceBridge() {
       cancelCableLevels();
       cancelNodeLevels();
       cancelNodeChannelLevels();
+      // U11: stop the instance poll + close any open mirror on teardown.
+      useInstancesStore.getState().stopListPolling();
+      useInstancesStore.getState().setMirrorTarget(null);
     };
   }, []);
 
