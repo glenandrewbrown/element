@@ -2,6 +2,7 @@ import {
   usePerformStore,
   selectLiveHealth,
   selectAlerts,
+  selectInputPeak,
 } from "../../stores/usePerformStore";
 import { Icon } from "../neu";
 
@@ -56,6 +57,9 @@ function MeterBars({ heights, color }: { heights: number[]; color: string }) {
 export function LiveHealth() {
   const health = usePerformStore(selectLiveHealth);
   const alerts = usePerformStore(selectAlerts);
+  // Q-VU-INPUT: real device audio-input peak 0–1 from `__elementNative.onMasterLevels`.
+  // 0 when no input device is active or the input is silent — honest, never fabricated.
+  const inputPeak = usePerformStore(selectInputPeak);
 
   return (
     <div className="flex flex-col h-full">
@@ -92,17 +96,17 @@ export function LiveHealth() {
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div
-              className="bg-pressed p-2 rounded shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] opacity-40"
-              title="Input metering not yet exposed by host bridge (Q-VU-INPUT)"
+              className="bg-pressed p-2 rounded shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)]"
+              title="Audio input peak — device loudest input channel, 0 when silent"
             >
               <span className="text-[10px] text-text-secondary block mb-1">
-                INPUT <span className="text-text-dim">(n/a)</span>
+                INPUT
               </span>
-              {/* T-P1-5: Bridge does not yet emit an input peak. Render
-                  the ladder dimmed (opacity-40 + grey color + n/a label
-                  + tooltip) so it cannot be confused for an "active and
-                  silent" meter. Restore live colour once Q-VU-INPUT lands. */}
-              <MeterBars heights={levelToLadderHeights(0)} color="#4A4A4A" />
+              {/* Q-VU-INPUT: real device audio-input peak via selectInputPeak
+                  (liveHealth.inputPeak, fed by __elementNative.onMasterLevels).
+                  Audio signal colour #4A90D9 (Virtual Instruments / Audio blue).
+                  0 when no input device is active — silent meter is honest. */}
+              <MeterBars heights={levelToLadderHeights(inputPeak)} color="#4A90D9" />
             </div>
             <div className="bg-pressed p-2 rounded shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)]">
               <span className="text-[10px] text-text-secondary block mb-1">

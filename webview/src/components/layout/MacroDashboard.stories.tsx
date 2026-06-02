@@ -26,6 +26,9 @@ function seedHealth(outputPeak: number): void {
       alerts: [],
       ioActivity: "nominal",
       outputPeak,
+      outputPeakL: outputPeak,
+      outputPeakR: outputPeak,
+      inputPeak: 0,
     },
   });
 }

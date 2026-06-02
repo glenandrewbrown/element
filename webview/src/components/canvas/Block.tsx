@@ -8,7 +8,11 @@ import {
   selectEdges,
 } from "../../stores/useGraphStore";
 import { useBusStore } from "../../stores/useBusStore";
-import { useBlockOutputLevel } from "../../stores/useCableMeterStore";
+import { useBlockNodeLevel } from "../../stores/useNodeMeterStore";
+import {
+  useSandboxCrashStore,
+  selectSandboxNeedsAttention,
+} from "../../stores/useSandboxCrashStore";
 import { useParameterStore } from "../../stores/useParameterStore";
 import { nativeSetNodeParameter } from "../../bridge/nativeGraph";
 import { NeuKnob } from "../neu/NeuKnob";
@@ -369,6 +373,81 @@ function BypassedDim() {
   );
 }
 
+// ── CrashBadge — R3 sandbox worker crash overlay ──────────────────────────
+//
+// Shown ONLY when the host has pushed an `onSandboxEvent` with kind ∈
+// {crashed, loadFailed, error} for this block's nodeUuid (= d.id). Nothing
+// fabricated: the badge appears iff useSandboxCrashStore has a live entry, and
+// disappears immediately on a successful restart (store clears optimistically).
+//
+// Visual language: a dense red-tinted overlay band at the FOOT of the chassis
+// (above the load bar, below state overlays) with a reload affordance.  Sits at
+// z-50 so it is always readable regardless of bypass/mute overlays; the header
+// B/M cluster is also z-50 so they remain clickable side-by-side.
+
+interface CrashBadgeProps {
+  categoryHex: string;
+  onReload: (e: React.MouseEvent) => void;
+  reloading: boolean;
+}
+
+function CrashBadge({ categoryHex, onReload, reloading }: CrashBadgeProps) {
+  return (
+    <div
+      className="absolute left-0 right-0 flex items-center justify-between gap-1 px-2 pointer-events-auto z-50"
+      style={{
+        // Sits just above the 2px load bar — 22px band at the chassis foot.
+        bottom: 2,
+        height: 22,
+        // Dense red fill (no transparency — neumorphic dark system rule).
+        // A subtle left-border in the category hue so the block's identity
+        // reads through even when crashed (you know WHAT crashed).
+        background:
+          "linear-gradient(90deg, hsl(358 62% 16%) 0%, hsl(358 58% 13%) 100%)",
+        borderLeft: `2px solid ${categoryHex}88`,
+        borderTop: "1px solid hsl(358 50% 28% / 0.6)",
+        boxShadow:
+          "inset 0 1px 0 rgba(255,255,255,0.04), 0 -1px 4px rgba(0,0,0,0.5)",
+      }}
+    >
+      {/* Warning glyph + label */}
+      <span
+        className="text-[9px] font-mono font-bold tracking-[0.06em] uppercase leading-none truncate"
+        style={{
+          color: "hsl(358 90% 76%)",
+          textShadow: "0 1px 3px rgba(0,0,0,0.7)",
+        }}
+      >
+        <span style={{ marginRight: 4, fontSize: 10 }}>⚠</span>
+        plugin crashed
+      </span>
+
+      {/* Reload button — pressed INTO the surface (neumorphic inset) */}
+      <button
+        type="button"
+        disabled={reloading}
+        onClick={onReload}
+        className="shrink-0 flex items-center gap-0.5 px-1.5 rounded-[3px] text-[8px] font-mono font-bold uppercase tracking-wider leading-none"
+        style={{
+          height: 14,
+          color: reloading ? "hsl(240 6% 45%)" : "hsl(358 90% 80%)",
+          background: reloading
+            ? "hsl(240 8% 18%)"
+            : "linear-gradient(180deg, hsl(358 58% 22%) 0%, hsl(358 52% 16%) 100%)",
+          boxShadow: reloading
+            ? "inset 1.5px 1.5px 3px rgba(0,0,0,0.7), inset -0.5px -0.5px 1px rgba(255,255,255,0.03)"
+            : "inset 0 1px 0 rgba(255,255,255,0.12), 0 1px 2px rgba(0,0,0,0.6)",
+          cursor: reloading ? "not-allowed" : "pointer",
+          transition: "background 80ms ease, box-shadow 80ms ease",
+          border: "1px solid hsl(358 42% 28% / 0.7)",
+        }}
+      >
+        {reloading ? "…" : "↺ reload"}
+      </button>
+    </div>
+  );
+}
+
 /** JUCE `Colour::toString()` is often `#AARRGGBB`; CSS border wants opaque RGB. */
 function hostColourOutline(raw: string | undefined): string | undefined {
   if (!raw) return undefined;
@@ -661,13 +740,14 @@ function BlockComponent({ data, selected }: NodeProps) {
   const toggleBypass = useGraphStore((s) => s.toggleBypass);
   const toggleMute = useGraphStore((s) => s.toggleMute);
 
-  // ── VU level (Q-VU-PER-BLOCK fast path) — REAL signal, not fabricated ──
-  // Each RmsMeter is driven by the max live cable level over this Block's
-  // OUTGOING edges (derived from useCableMeterStore, which the host pushes
-  // ~60Hz). Called unconditionally (before any early return) so hook order is
-  // stable across zoom/container/portal branches. Blocks with no outgoing edges
-  // read 0 (idle) — see useBlockOutputLevel for the honesty caveat.
-  const meterLevel = useBlockOutputLevel(d.id);
+  // ── VU level (Q-VU-PER-BLOCK D1 — per-node output RMS) — REAL signal ──
+  // Reads the host's per-node output RMS directly from useNodeMeterStore, which
+  // the bridge populates ~60Hz from graphbuilder.cpp's atomic per-channel RMS.
+  // Supersedes the old cable-derived `useBlockOutputLevel` path: terminal /
+  // unconnected / output-only blocks now meter REAL signal (not idle 0).
+  // Called unconditionally (before any early return) so hook order is stable
+  // across zoom/container/portal branches.
+  const meterLevel = useBlockNodeLevel(d.id);
 
   // ── On-Block knobs (verdict 1) — live param values + real host write ──
   // Read the first N param values for this Block off the 15 Hz delta channel.
@@ -688,6 +768,21 @@ function BlockComponent({ data, selected }: NodeProps) {
   const knobParams = paramValues
     .map((v, i) => ({ i, v }))
     .filter((p) => Number.isFinite(p.v));
+
+  // ── R3 — sandbox crash state ──
+  // selectSandboxNeedsAttention returns true when the store has a live
+  // crashed/loadFailed/error entry for this block's UUID (= d.id). Nothing is
+  // fabricated: the selector returns false until the host pushes a real event.
+  const crashed = useSandboxCrashStore(selectSandboxNeedsAttention(d.id));
+  const sandboxRestart = useSandboxCrashStore((s) => s.restart);
+  const [reloading, setReloading] = useState(false);
+
+  const handleReload = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (reloading) return;
+    setReloading(true);
+    void sandboxRestart(d.id).finally(() => setReloading(false));
+  };
 
   // Block-level hover swaps the sculpt chassis to its lighter hover variant
   // (no size/layout change). Port labels are now always-on (mockup), so hover
@@ -1098,6 +1193,18 @@ function BlockComponent({ data, selected }: NodeProps) {
             : "none",
         }}
       />
+
+      {/* R3 — sandbox crash badge. Honest: only renders when the host has
+          pushed a real crashed/loadFailed/error event for this block's UUID.
+          z-50 sits above state overlays so it is always readable; the reload
+          button clears the badge on a successful host-side restart. */}
+      {crashed && (
+        <CrashBadge
+          categoryHex={cat.hex}
+          onReload={handleReload}
+          reloading={reloading}
+        />
+      )}
 
       {/* State overlays (last in DOM, highest z). Muted (red, hard block)
           outranks bypassed (dim, pass-through) when both set. */}

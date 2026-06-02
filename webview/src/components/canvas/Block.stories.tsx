@@ -4,9 +4,12 @@ import type { Node } from "@xyflow/react";
 import { MiniFlow } from "../../../.storybook/decorators";
 import { Block } from "./Block";
 import { useParameterStore } from "../../stores/useParameterStore";
-import { useGraphStore } from "../../stores/useGraphStore";
-import { useCableMeterStore } from "../../stores/useCableMeterStore";
-import type { BlockData, CableData } from "../../data/types";
+import { useNodeMeterStore } from "../../stores/useNodeMeterStore";
+import {
+  useSandboxCrashStore,
+  type SandboxEventKind,
+} from "../../stores/useSandboxCrashStore";
+import type { BlockData } from "../../data/types";
 
 // ── Helpers ──
 
@@ -208,34 +211,18 @@ export const Muted: Story = story(
   "Muted Block — header M lit red + body dimmed. Wired to the real `toggleMute` engine action (optimistic + host-confirmed).",
 );
 
-// Drives the Block VU off REAL cable data: seeds useGraphStore with this block
-// + an outgoing edge, then pushes a non-zero level for that edge into
-// useCableMeterStore (the same store the host fills ~60Hz). useBlockOutputLevel
-// derives the meter level = max over outgoing cables, so the VU lights — proving
-// the signal→meter path end to end, with NO fabricated motion. Stores are
-// restored on unmount so the story stays isolated.
+// Drives the Block VU off REAL per-node data: seeds useNodeMeterStore with the
+// block's id → level (D1 correctness path). This mirrors what the host pushes
+// ~60Hz via graphbuilder.cpp's atomic per-channel output RMS — terminal and
+// unconnected blocks now meter real signal. No outgoing edge required.
+// Store is restored on unmount so the story stays isolated.
 function VuFlow({ level }: { level: number }) {
   const data = makeBlock({ name: "Bass Synth", category: "instrument", format: "VST3" });
-  const edgeId = `${data.id}-out`;
   useEffect(() => {
-    const g = useGraphStore.getState();
-    const prevNodes = g.nodes;
-    const prevEdges = g.edges;
-    const edge: CableData = {
-      id: edgeId,
-      source: data.id,
-      sourcePort: "out",
-      target: "downstream",
-      targetPort: "in",
-      signalType: "audio",
-      channelCount: 2,
-      isSidechain: false,
-    };
-    useGraphStore.setState({ nodes: [data], edges: [edge] });
-    useCableMeterStore.setState({ levels: { [edgeId]: level } });
+    const prev = useNodeMeterStore.getState().levels;
+    useNodeMeterStore.setState({ levels: { [data.id]: level } });
     return () => {
-      useGraphStore.setState({ nodes: prevNodes, edges: prevEdges });
-      useCableMeterStore.setState({ levels: {} });
+      useNodeMeterStore.setState({ levels: prev });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [level]);
@@ -247,7 +234,7 @@ export const VuMeterLit: Story = {
     docs: {
       description: {
         story:
-          "VU lit by REAL signal (Q-VU-PER-BLOCK fast path). The Block's RMS strip is driven by the live level of its OUTGOING cable via `useBlockOutputLevel` (max over outgoing edges in `useCableMeterStore` — the store the host pushes ~60Hz). Here a level of 0.82 is fed for the outgoing cable, so the LED ladder lights into the amber shoulder. At a level of 0 the same meter stays dark — nothing is fabricated. The C++ feeds this store in the running app; a true per-channel L/R bridge is the later D1-full step.",
+          "VU lit by REAL per-node signal (D1 correctness path). The Block's RMS strip is driven directly by `useBlockNodeLevel(blockId)` from `useNodeMeterStore` — the store the host populates ~60Hz from graphbuilder.cpp's atomic per-channel output RMS. Terminal and unconnected blocks now meter real signal (not idle 0). Here a level of 0.82 is seeded, lighting the LED ladder into the amber shoulder. At 0 the meter stays dark — nothing fabricated.",
       },
     },
   },
@@ -296,6 +283,55 @@ export const LabeledPorts: Story = {
       />
     );
   },
+};
+
+// ── R3 — sandbox crash badge story ──────────────────────────────────────────
+// Seeds useSandboxCrashStore with a real crashed event for the block's id so
+// the CrashBadge renders. Nothing fabricated: the badge appears iff the store
+// has a live entry — this story mirrors what happens when the host pushes
+// onSandboxEvent({ nodeUuid: data.id, kind: "crashed", ... }). Cleaned up on
+// unmount so subsequent stories are unaffected.
+
+function CrashedFlow({ kind = "crashed" }: { kind?: SandboxEventKind }) {
+  const data = makeBlock({ name: "Vital", category: "instrument", format: "VST3" });
+  useEffect(() => {
+    useSandboxCrashStore.getState().applyEvent({
+      nodeId: 42,
+      nodeUuid: data.id,
+      kind,
+      reason: "Worker process exited with code 139 (SIGSEGV)",
+    });
+    return () => {
+      useSandboxCrashStore.getState().clear(data.id);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return <MiniFlow nodes={[flowNode(data)]} nodeTypes={nodeTypes} height={320} />;
+}
+
+export const SandboxCrashed: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "R3 — sandbox crash badge. Rendered only when `useSandboxCrashStore` has a live `crashed`/`loadFailed`/`error` entry for the block's UUID. This story seeds the store with a real `applyEvent` call (mirroring the host's `onSandboxEvent` push) — nothing is fabricated. The badge sits above the load bar with a ↺ reload button; clicking it calls `restart(uuid)` → `elementRestartSandbox` → clears the badge optimistically on success.",
+      },
+    },
+  },
+  render: () => <CrashedFlow />,
+};
+
+export const SandboxLoadFailed: Story = {
+  tags: ["!manifest"],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Honesty variant — `kind: loadFailed`. Same badge, different failure reason. Confirms `selectSandboxNeedsAttention` fires for all non-`restarted` kinds.",
+      },
+    },
+  },
+  render: () => <CrashedFlow kind="loadFailed" />,
 };
 
 export const CategoryRow: Story = {

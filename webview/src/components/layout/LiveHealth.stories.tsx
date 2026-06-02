@@ -5,17 +5,16 @@ import type { AlertData } from "../../data/types";
 
 // ── Store seeding ──
 // LiveHealth reads usePerformStore(selectLiveHealth) for cpu/buffer/latency/
-// outputPeak and usePerformStore(selectAlerts) for liveHealth.alerts. The
-// native bridge no-ops without a JUCE backend, so seeding state is enough.
+// outputPeak/inputPeak and usePerformStore(selectAlerts) for liveHealth.alerts.
+// The native bridge no-ops without a JUCE backend, so seeding state is enough.
 //
 // `liveHealth` must always be seeded COMPLETE: selectLiveHealth returns the
 // whole object and setState does a shallow merge, so a partial object would
-// strip fields other consumers (e.g. MacroDashboard's bpm.toFixed) rely on.
+// strip fields other consumers (e.g. bpm.toFixed) rely on.
 //
-// DEVIATION NOTE: `ioActivity` is part of the LiveHealth shape but LiveHealth.tsx
-// never renders it (the INPUT meter is hardcoded dimmed/"n/a" per Q-VU-INPUT).
-// We still seed it to match the documented health contract; visible variation
-// is driven by cpu / outputPeak / buffer / latency / alerts.
+// inputPeak (Q-VU-INPUT): now LIVE — fed by selectInputPeak from
+// liveHealth.inputPeak (real device audio-input peak from onMasterLevels).
+// Seed it non-zero to prove the INPUT ladder actually lights up in stories.
 
 interface HealthSeed {
   cpu: number;
@@ -23,6 +22,8 @@ interface HealthSeed {
   latency: number;
   bpm: number;
   outputPeak: number;
+  /** Audio-input peak 0–1 (Q-VU-INPUT). 0 = silent/no input device. */
+  inputPeak: number;
   ioActivity: "nominal" | "warning" | "critical";
   alerts: AlertData[];
 }
@@ -40,6 +41,9 @@ function seed(h: HealthSeed): void {
       alerts: h.alerts,
       ioActivity: h.ioActivity,
       outputPeak: h.outputPeak,
+      outputPeakL: h.outputPeak,
+      outputPeakR: h.outputPeak,
+      inputPeak: h.inputPeak,
     },
   });
 }
@@ -90,6 +94,7 @@ export const Nominal: Story = {
         latency: 5,
         bpm: 120,
         outputPeak: 0.45,
+        inputPeak: 0.31,
         ioActivity: "nominal",
         alerts: [],
       });
@@ -101,7 +106,7 @@ export const Nominal: Story = {
     docs: {
       description: {
         story:
-          "Healthy session: low CPU, mid-level output meter, no alerts — the all-clear state the user expects most of the time.",
+          "Healthy session: low CPU, mid-level output meter, modest input peak (real device mic/line input via Q-VU-INPUT), no alerts — the all-clear state the user expects most of the time.",
       },
     },
   },
@@ -116,6 +121,7 @@ export const Warning: Story = {
         latency: 9,
         bpm: 124,
         outputPeak: 0.72,
+        inputPeak: 0.58,
         ioActivity: "warning",
         alerts: [warningAlert],
       });
@@ -127,7 +133,7 @@ export const Warning: Story = {
     docs: {
       description: {
         story:
-          "Elevated CPU with one warning alert (heavy reverb) — shows the inline alert card so the user can act before it becomes a dropout.",
+          "Elevated CPU with one warning alert (heavy reverb) and a hot input signal — shows both meters active and the inline alert card so the user can act before dropout.",
       },
     },
   },
@@ -142,6 +148,7 @@ export const Critical: Story = {
         latency: 21,
         bpm: 140,
         outputPeak: 0.98,
+        inputPeak: 0.91,
         ioActivity: "critical",
         alerts: [criticalAlert, warningAlert],
       });
@@ -153,7 +160,7 @@ export const Critical: Story = {
     docs: {
       description: {
         story:
-          "Near-overload: CPU at 96%, output peaking, and multiple stacked alerts including a buffer underrun — the worst-case state the panel must surface clearly.",
+          "Near-overload: CPU at 96%, output peaking, input near-full, and multiple stacked alerts including a buffer underrun — the worst-case state the panel must surface clearly.",
       },
     },
   },
@@ -168,6 +175,7 @@ export const Empty: Story = {
         latency: 0,
         bpm: 120,
         outputPeak: 0,
+        inputPeak: 0,
         ioActivity: "nominal",
         alerts: [],
       });
@@ -179,7 +187,39 @@ export const Empty: Story = {
     docs: {
       description: {
         story:
-          "Engine idle / no data: zeroed CPU, buffer and latency and a flat output meter — how the panel reads before audio is running.",
+          "Engine idle / no data: zeroed CPU, flat input and output meters — how the panel reads before audio is running. Both meters are honest (0 = silence, not n/a).",
+      },
+    },
+  },
+};
+
+/**
+ * InputActive — proves the INPUT ladder lights up from the real selector.
+ * Simulates a live mic/line input with a quiet output (e.g. monitoring only).
+ * Input peak #4A90D9 (audio blue per design system); output nearly silent.
+ */
+export const InputActive: Story = {
+  decorators: [
+    (Story) => {
+      seed({
+        cpu: 12,
+        buffer: 256,
+        latency: 5,
+        bpm: 120,
+        outputPeak: 0.04,
+        inputPeak: 0.68,
+        ioActivity: "nominal",
+        alerts: [],
+      });
+      return <Story />;
+    },
+  ],
+  render: () => framed,
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Live input active (Q-VU-INPUT, selectInputPeak = 0.68) with near-silent output — proves the INPUT ladder lights up from the real selector in audio-signal blue (#4A90D9). Typical when monitoring a mic before a take.",
       },
     },
   },

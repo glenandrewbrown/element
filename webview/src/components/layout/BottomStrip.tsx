@@ -10,7 +10,12 @@ import {
   selectCpuPercent,
   selectTimeSig,
 } from "../../stores/useEngineSnapshotStore";
-import { usePerformStore, selectBpm } from "../../stores/usePerformStore";
+import {
+  usePerformStore,
+  selectBpm,
+  selectOutputPeakL,
+  selectOutputPeakR,
+} from "../../stores/usePerformStore";
 import { useGraphStore, selectNodes, selectEdges } from "../../stores/useGraphStore";
 import {
   nativeTransportTogglePlay,
@@ -393,55 +398,90 @@ function Stat({
 }
 
 /**
- * MASTER meter cluster — dB readout + dual segmented LED ladders.
+ * MASTER meter cluster — dB readouts + dual independent L/R segmented LED ladders.
  *
- * Re-render safety (60 Hz `onMetering` push, session-drift perf plan): the
- * store selector QUANTIZES the 0–1 peak to the meter's discrete lit-segment
+ * Re-render safety (60 Hz `onMasterLevels` push, session-drift perf plan): each
+ * channel selector QUANTIZES the 0–1 peak to the meter's discrete lit-segment
  * count and returns that integer. `useSyncExternalStore`'s `Object.is` check
  * then skips a re-render whenever the lit count is unchanged — so a steady or
- * sub-segment-jitter signal does NOT re-render the strip every frame. The peak
- * only re-renders the bar when it actually crosses a segment boundary. The
- * floating dB label subscribes separately (also quantized to 0.1 dB) so the
- * two reads don't widen each other's render scope.
+ * sub-segment-jitter signal does NOT re-render the strip every frame.
+ *
+ * Data source: `selectOutputPeakL` / `selectOutputPeakR` (Q-VU-LR / D3).
+ * Fed by `__elementNative.onMasterLevels` → `setMasterLevels` in the store.
+ * Mono devices: the host mirrors L into R honestly — both ladders will show
+ * the same level, which is correct and not a fabricated split.
  */
 const METER_SEGMENTS = 22;
 
+/** Quantize a 0–1 peak to a lit-segment count (integer). Selector-stable. */
+function quantizePeak(v: number): number {
+  const clamped = Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0;
+  return Math.round(clamped * METER_SEGMENTS);
+}
+
+/** Convert a 0–1 peak to a dB string quantized to 0.1 dB. */
+function peakToDb(v: number): string {
+  const clamped = Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0;
+  if (clamped <= 0) return "-∞"; // -∞
+  return (Math.round(20 * Math.log10(clamped) * 10) / 10).toFixed(1);
+}
+
 function MasterMeter() {
-  // Quantize to lit-segment count → integer-stable selector (no 60 Hz storm).
-  const lit = usePerformStore((s) => {
-    const v = s.liveHealth.outputPeak;
-    const clamped = Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0;
-    return Math.round(clamped * METER_SEGMENTS);
-  });
-  // dB label quantized to 0.1 dB so it only re-renders on a visible change.
-  const db = usePerformStore((s) => {
-    const v = s.liveHealth.outputPeak;
-    const clamped = Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0;
-    if (clamped <= 0) return -Infinity;
-    return Math.round(20 * Math.log10(clamped) * 10) / 10;
-  });
-  const dbLabel = db === -Infinity ? "-∞" : db.toFixed(1);
+  // Each channel subscribes independently — quantized to segment count so
+  // the 60 Hz push only triggers a re-render on visible segment crossings.
+  const litL = usePerformStore((s) => quantizePeak(selectOutputPeakL(s)));
+  const litR = usePerformStore((s) => quantizePeak(selectOutputPeakR(s)));
+
+  // dB labels quantized to 0.1 dB, subscribed independently to minimise scope.
+  const dbLabelL = usePerformStore((s) => peakToDb(selectOutputPeakL(s)));
+  const dbLabelR = usePerformStore((s) => peakToDb(selectOutputPeakR(s)));
+
+  // Peak of the two channels for the ARIA valuenow (single scalar summary).
+  const litMax = Math.max(litL, litR);
 
   return (
     <div
-      className="flex items-center gap-2.5 px-3.5 border-r border-white/5"
+      className="flex items-center gap-2 px-3.5 border-r border-white/5"
       role="meter"
       aria-label="Master output level"
       aria-valuemin={0}
       aria-valuemax={METER_SEGMENTS}
-      aria-valuenow={lit}
+      aria-valuenow={litMax}
     >
-      <div className="flex flex-col items-end leading-none gap-0.5">
-        <span className="text-[8px] opacity-40 font-bold uppercase tracking-tight">MASTER</span>
-        <span className="text-[11px] font-mono font-bold tabular-nums text-text-primary leading-none">
-          {dbLabel}
-        </span>
+      <span className="text-[8px] opacity-40 font-bold uppercase tracking-tight self-center">
+        MASTER
+      </span>
+
+      {/* L channel */}
+      <div className="flex flex-col items-center gap-[2px]">
+        <div className="flex items-center gap-[3px] w-full justify-between">
+          <span className="text-[7px] font-bold uppercase tracking-widest text-text-dim leading-none">
+            L
+          </span>
+          <span
+            className="text-[9px] font-mono font-bold tabular-nums text-text-primary leading-none"
+            aria-label={`Left channel ${dbLabelL} dB`}
+          >
+            {dbLabelL}
+          </span>
+        </div>
+        <LedLadder lit={litL} />
       </div>
-      <div className="flex flex-col gap-[2px] w-[112px]">
-        {/* Host emits ONE aggregate peak today; both rows reflect that same
-            output level (honest — not a fabricated stereo split). */}
-        <LedLadder lit={lit} />
-        <LedLadder lit={lit} />
+
+      {/* R channel */}
+      <div className="flex flex-col items-center gap-[2px]">
+        <div className="flex items-center gap-[3px] w-full justify-between">
+          <span className="text-[7px] font-bold uppercase tracking-widest text-text-dim leading-none">
+            R
+          </span>
+          <span
+            className="text-[9px] font-mono font-bold tabular-nums text-text-primary leading-none"
+            aria-label={`Right channel ${dbLabelR} dB`}
+          >
+            {dbLabelR}
+          </span>
+        </div>
+        <LedLadder lit={litR} />
       </div>
     </div>
   );

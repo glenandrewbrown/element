@@ -10,13 +10,17 @@ import type { BlockData, CableData } from "../../data/types";
  * BottomStrip reads from three real stores:
  *  • useEngineSnapshotStore — transport (play/record), engine running, SR,
  *    buffer, latency, CPU, time signature (the 4 Hz C++ snapshot).
- *  • usePerformStore        — bpm + liveHealth.outputPeak (the master meter).
+ *  • usePerformStore        — bpm + liveHealth.outputPeakL/R (Q-VU-LR, D3).
  *  • useGraphStore          — node/edge counts (BLOCKS / CABLES).
  *
  * Transport WRITE actions go through the `nativeTransport*` bridge; without a
  * JUCE backend those calls resolve to no-ops, so the click tests assert the
  * button is wired/operable rather than a state flip (the flip arrives via the
  * snapshot poll in the real host — the same contract the Toolbar relies on).
+ *
+ * Master meter data: `selectOutputPeakL` / `selectOutputPeakR` (Q-VU-LR).
+ * Mono devices mirror L into R honestly — seed `outputPeakL === outputPeakR`
+ * for that case. Stories that want a split provide distinct L/R values.
  */
 
 // Two demo blocks + one cable so BLOCKS/CABLES read non-zero in the catalog.
@@ -37,10 +41,19 @@ function seed(overrides: {
   cpu?: number; // fraction 0..1
   timeSig?: [number, number];
   bpm?: number;
-  outputPeak?: number; // 0..1
+  /** Master output LEFT channel peak 0–1 (Q-VU-LR / selectOutputPeakL). */
+  outputPeakL?: number;
+  /** Master output RIGHT channel peak 0–1 (Q-VU-LR / selectOutputPeakR).
+   *  Defaults to outputPeakL when omitted (honest mono-mirror behaviour). */
+  outputPeakR?: number;
   blocks?: BlockData[];
   cables?: CableData[];
 }) {
+  const peakL = overrides.outputPeakL ?? 0;
+  // Mono-mirror: if outputPeakR is not explicitly provided, mirror L into R
+  // (honest — matches what the host does for mono audio devices).
+  const peakR = overrides.outputPeakR ?? peakL;
+
   useEngineSnapshotStore.setState((s) => ({
     ...s,
     engineRunning: overrides.engineRunning ?? false,
@@ -59,7 +72,11 @@ function seed(overrides: {
     liveHealth: {
       ...s.liveHealth,
       bpm: overrides.bpm ?? 120,
-      outputPeak: overrides.outputPeak ?? 0,
+      // Keep legacy outputPeak consistent (max of L/R) for any remaining
+      // consumers that still read the aggregate scalar.
+      outputPeak: Math.max(peakL, peakR),
+      outputPeakL: peakL,
+      outputPeakR: peakR,
     },
   }));
   useGraphStore.setState({
@@ -76,7 +93,7 @@ const meta = {
     docs: {
       description: {
         component:
-          "Persistent footer status bar (bake-off verdict #22, MERGE 50/50): the mockup's transport cluster + dual master meter on Element's chassis, beside Element's slim status fields (ENGINE/SR/BUF/LAT/CPU/BLOCKS/CABLES). All data is REAL — transport via useEngineSnapshotStore + nativeTransport* bridge, master meter via usePerformStore.outputPeak (single aggregate host peak — both ladder rows reflect it, not a fake L/R split), device vitals from the snapshot, counts from useGraphStore. The collapsible minimap slot shows an honest n/a placeholder until AppShell integration wires a real viewport. Not yet mounted in AppShell.",
+          "Persistent footer status bar (bake-off verdict #22, MERGE 50/50): the mockup's transport cluster + dual independent L/R master meter on Element's chassis, beside Element's slim status fields (ENGINE/SR/BUF/LAT/CPU/BLOCKS/CABLES). All data is REAL — transport via useEngineSnapshotStore + nativeTransport* bridge, master meter via selectOutputPeakL/selectOutputPeakR (Q-VU-LR / D3, fed by __elementNative.onMasterLevels), device vitals from the snapshot, counts from useGraphStore. Mono devices mirror L into R honestly — both ladders show the same level, which is correct. The collapsible minimap slot shows an honest n/a placeholder until AppShell integration wires a real viewport. Not yet mounted in AppShell.",
       },
     },
   },
@@ -99,7 +116,7 @@ export const Running: Story = {
     docs: {
       description: {
         story:
-          "Healthy live state — engine OK, 48k/256, low latency, sub-50% CPU (green), tempo 124, signal lighting the master ladders into the amber band.",
+          "Healthy live state — engine OK, 48k/256, low latency, sub-50% CPU (green), tempo 124, signal lighting both L/R master ladders into the amber band (mono device: L==R honest mirror).",
       },
     },
   },
@@ -115,7 +132,8 @@ export const Running: Story = {
         cpu: 0.234,
         timeSig: [4, 4],
         bpm: 124,
-        outputPeak: 0.78,
+        outputPeakL: 0.78,
+        // outputPeakR omitted → honest mono-mirror (L==R)
         blocks: demoBlocks,
         cables: demoCables,
       });
@@ -134,10 +152,13 @@ export const Running: Story = {
     await expect(canvas.getByText("CABLES")).toBeInTheDocument();
     // Playing → the toggle is labelled Pause.
     await expect(canvas.getByLabelText("Pause")).toBeInTheDocument();
-    // Master meter exposes its live value via the meter role.
+    // Master meter exposes its live value via the meter role (aria-valuenow = max(L,R)).
     const meter = canvas.getByRole("meter", { name: "Master output level" });
     const now = Number(meter.getAttribute("aria-valuenow"));
     await expect(now).toBeGreaterThan(0);
+    // L and R channel labels are present.
+    await expect(canvas.getByLabelText(/Left channel/)).toBeInTheDocument();
+    await expect(canvas.getByLabelText(/Right channel/)).toBeInTheDocument();
   },
 };
 
@@ -147,23 +168,31 @@ export const StoppedIdle: Story = {
     docs: {
       description: {
         story:
-          "Engine off, transport stopped, no signal: master ladders fully dark (-∞), device fields show em-dash fallbacks, Play is the transport label. Proves the strip never invents motion.",
+          "Engine off, transport stopped, no signal: both L/R master ladders fully dark (-∞), device fields show em-dash fallbacks. Proves the strip never invents motion.",
       },
     },
   },
   decorators: [
     (Story) => {
-      seed({ engineRunning: false, outputPeak: 0, blocks: [], cables: [] });
+      seed({
+        engineRunning: false,
+        outputPeakL: 0,
+        outputPeakR: 0,
+        blocks: [],
+        cables: [],
+      });
       return <Story />;
     },
   ],
   play: async ({ canvas }) => {
     await expect(canvas.getByText("OFF")).toBeInTheDocument();
-    await expect(canvas.getByText("-∞")).toBeInTheDocument();
     await expect(canvas.getByLabelText("Play")).toBeInTheDocument();
-    // Meter idle → no lit segments.
+    // Meter idle → no lit segments (aria-valuenow = 0).
     const meter = canvas.getByRole("meter", { name: "Master output level" });
     await expect(meter.getAttribute("aria-valuenow")).toBe("0");
+    // Both channel dB labels read -∞.
+    const dbLabels = canvas.getAllByText("-∞");
+    await expect(dbLabels.length).toBeGreaterThanOrEqual(2);
   },
 };
 
@@ -173,7 +202,7 @@ export const RecordingHotCpu: Story = {
     docs: {
       description: {
         story:
-          "Armed and recording (record button active/red), CPU in the >80% danger band (error-red), signal peaking into the clip segments.",
+          "Armed and recording (record button active/red), CPU in the >80% danger band (error-red), signal peaking into the clip segments on both L/R ladders.",
       },
     },
   },
@@ -189,7 +218,8 @@ export const RecordingHotCpu: Story = {
         latencyOutMs: 1.3,
         cpu: 0.876,
         bpm: 90,
-        outputPeak: 0.97,
+        outputPeakL: 0.97,
+        // outputPeakR omitted → mono-mirror
         blocks: demoBlocks,
         cables: demoCables,
       });
@@ -201,6 +231,46 @@ export const RecordingHotCpu: Story = {
     await expect(canvas.getByText("88%")).toBeInTheDocument();
     // Record is active → its label is the "stop recording" affordance.
     await expect(canvas.getByLabelText("Stop recording")).toBeInTheDocument();
+  },
+};
+
+// ── Split L/R: stereo source with distinct L and R peaks ──
+export const SplitLR: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "True stereo output with distinct L and R peaks (selectOutputPeakL / selectOutputPeakR, Q-VU-LR / D3). L is hotter (0.82) — ladders visually differ. Proves the dual-channel wiring is independent and not a mirrored scalar.",
+      },
+    },
+  },
+  decorators: [
+    (Story) => {
+      seed({
+        engineRunning: true,
+        transportPlaying: true,
+        sampleRate: 48000,
+        bufferSize: 256,
+        latencyInMs: 2.6,
+        latencyOutMs: 2.7,
+        cpu: 0.31,
+        bpm: 128,
+        outputPeakL: 0.82,
+        outputPeakR: 0.47,
+        blocks: demoBlocks,
+        cables: demoCables,
+      });
+      return <Story />;
+    },
+  ],
+  play: async ({ canvas }) => {
+    // Both channel labels present.
+    await expect(canvas.getByLabelText(/Left channel/)).toBeInTheDocument();
+    await expect(canvas.getByLabelText(/Right channel/)).toBeInTheDocument();
+    // aria-valuenow = max(L, R) = quantize(0.82) > 0.
+    const meter = canvas.getByRole("meter", { name: "Master output level" });
+    const now = Number(meter.getAttribute("aria-valuenow"));
+    await expect(now).toBeGreaterThan(0);
   },
 };
 
@@ -225,7 +295,7 @@ export const TransportInteraction: Story = {
         latencyOutMs: 5,
         cpu: 0.4,
         bpm: 120,
-        outputPeak: 0.3,
+        outputPeakL: 0.3,
         blocks: demoBlocks,
         cables: demoCables,
       });
@@ -271,7 +341,7 @@ export const EditTempo: Story = {
         bufferSize: 256,
         cpu: 0.2,
         bpm: 120,
-        outputPeak: 0.1,
+        outputPeakL: 0.1,
         blocks: demoBlocks,
         cables: demoCables,
       });
@@ -308,7 +378,7 @@ export const MinimapToggle: Story = {
         sampleRate: 48000,
         bufferSize: 256,
         cpu: 0.15,
-        outputPeak: 0.5,
+        outputPeakL: 0.5,
         blocks: demoBlocks,
         cables: demoCables,
       });
