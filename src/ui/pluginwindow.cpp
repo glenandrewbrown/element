@@ -76,6 +76,18 @@ public:
     {
         powerButton.removeListener (this);
 
+        // CF1: Tear down this content's accessibility-peer subtree FIRST, on the
+        // message thread, while the content + the plugin editor + the host's
+        // native window peer are all still alive and intact.  setAccessible(false)
+        // destroys the AccessibilityHandler tree synchronously here (and on macOS
+        // posts NSAccessibilityUIElementDestroyedNotification), so the AX peers are
+        // released at a clean, controlled point and AppKit drops its cached refs.
+        // Without this, the child editor's AX peers were freed implicitly during
+        // the window-peer teardown, leaving a window where an in-flight Mach AX
+        // query (_AXXMIGCopyAttributeValue -> respondsToSelector:) could deref a
+        // freed NSAccessibilityElement on the host's main thread (EXC_BAD_ACCESS).
+        setAccessible (false);
+
         if (object && editor)
         {
             if (auto* proc = object->getAudioProcessor())
@@ -321,6 +333,18 @@ PluginWindow::~PluginWindow()
 {
     delayedNodeFocus.stopTimer();
     name.removeListener (this);
+
+    // CF1: Tear down this window's accessibility-peer subtree FIRST, on the
+    // message thread, while the window + its content + the native window peer
+    // are all still alive.  setAccessible(false) invalidates the Accessibility
+    // handler tree synchronously (releasing the macOS AX peers at a controlled
+    // point) BEFORE clearContentComponent() deletes the content/plugin editor
+    // and before the peer is destroyed.  Mirrors PluginEditor::~PluginEditor
+    // (plugineditor.cpp) and closes the use-after-free where an in-flight Mach
+    // AX query could deref a freed NSAccessibilityElement during child plugin
+    // window close (e.g. Logic with VoiceOver running).
+    setAccessible (false);
+
     clearContentComponent();
     setLookAndFeel (nullptr);
 }
