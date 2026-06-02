@@ -1,0 +1,18 @@
+# Transient OMC / harness session state (created when running commands here)
+.omc/
+
+# Python build/install artifacts
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+
+# Local test scratch (run outputs, pytest tmp)
+.pytmp/
+.pytesttmp/
+.live*.txt
+.unit.txt
+.diag.txt
+.testrun*.txt
+.e2e_out.txt
