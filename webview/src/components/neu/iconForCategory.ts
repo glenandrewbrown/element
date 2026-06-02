@@ -57,7 +57,7 @@ const FUNCTION_KEYWORDS: Array<{ test: (n: string) => boolean; icon: string }> =
   { test: (n) => /mic|voice|vocal/i.test(n),                            icon: "AudioWaveform" },
 
   // Audio FX
-  { test: (n) => /eq|equal|parametr/i.test(n),                          icon: "SlidersHorizontal" },
+  { test: (n) => /\beq\b|equaliz|parametr/i.test(n),                    icon: "SlidersHorizontal" },
   { test: (n) => /comp|limit|gate|expan|dyn/i.test(n),                  icon: "Activity" },
   { test: (n) => /reverb|verb|plate|hall|room|spring/i.test(n),         icon: "Waves" },
   { test: (n) => /delay|echo|tape|ping/i.test(n),                       icon: "Clock" },
