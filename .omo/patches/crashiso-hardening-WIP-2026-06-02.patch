@@ -1,0 +1,773 @@
+diff --git a/src/engine/sandboxeditorwindow.cpp b/src/engine/sandboxeditorwindow.cpp
+index 9325f73f..6abda45e 100644
+--- a/src/engine/sandboxeditorwindow.cpp
++++ b/src/engine/sandboxeditorwindow.cpp
+@@ -83,16 +83,21 @@ bool openEditorWindow (juce::AudioProcessor* proc, int x, int y, int& outW, int&
+     else
+         window->centreWithSize (window->getWidth(), window->getHeight());
+ 
++    // Set the worker's activation policy to Accessory BEFORE showing any window.
++    // The worker boots pinned to Prohibited (never a foreground duplicate of
++    // net.kushview.Element). Showing an NSWindow while still Prohibited and then
++    // flipping Prohibited->Accessory can momentarily register the worker as
++    // foreground, which risks re-tripping the macOS duplicate-instance SIGKILL
++    // that takes the host down. Promote to Accessory first so the policy is
++    // already correct before the window is composited. No-op off macOS.
++    sandboxWorkerActivateForEditor();
++
+     window->setVisible (true);
+     window->addToDesktop (window->getDesktopWindowStyleFlags());
+     window->toFront (true);
+ 
+     g_window = std::move (window);
+ 
+-    // Bring the dock-hidden worker process forward so the window is visible +
+-    // can take key focus (no-op off macOS).
+-    sandboxWorkerActivateForEditor();
+-
+     juce::Logger::writeToLog ("[sandbox-editor-window] editor window open, size "
+                               + juce::String (outW) + "x" + juce::String (outH));
+     return true;
+diff --git a/src/engine/sandboxhost.hpp b/src/engine/sandboxhost.hpp
+index 61ad92bc..40002b91 100644
+--- a/src/engine/sandboxhost.hpp
++++ b/src/engine/sandboxhost.hpp
+@@ -231,11 +231,16 @@ protected:
+         (handleConnectionLost flips connectionAlive to false and notifies). */
+     bool waitForResponse (SandboxMessageType expectedType, uint32_t timeoutMs = 250);
+ 
++    /** Spawn the worker subprocess. Returns true on success.
++        Marked protected + virtual (same rationale as sendMessage) so a test stub
++        can force a spawn FAILURE without a real subprocess, to exercise the
++        bounded spawn-failure give-up path. */
++    virtual bool launchWorkerProcess();
++
+ private:
+     //==========================================================================
+     void timerCallback() override;
+ 
+-    bool launchWorkerProcess();
+     void handleWorkerMessage (const SandboxMessageHeader& header, const void* payload);
+ 
+     void attemptRestart();
+@@ -249,6 +254,15 @@ private:
+     std::atomic<int> latencySamples { 0 };
+     std::atomic<bool> bypassed { false };
+ 
++    // RT reconfigure guard. prepareToPlay() tears down + rebuilds the shared
++    // memory (sharedMemory.close()/create() + audioBuffer re-attach) and re-opens
++    // the cross-process semaphores. That happens on the message thread on EVERY
++    // (re)load — including crash-recovery — with no lock. processBlock() (audio
++    // thread) must NOT touch the shm/sem while they are mid-rebuild, so it gates
++    // on this flag and outputs silence (clear-only, no shm/sem access) while set.
++    // RT-safe: the audio thread only reads this atomic + clears its own buffer.
++    std::atomic<bool> reconfiguring { false };
++
+     juce::PluginDescription loadedPlugin;
+     juce::MemoryBlock lastKnownState;
+ 
+@@ -281,7 +295,10 @@ private:
+     bool responseReceived { false };
+ 
+     SandboxHeartbeat heartbeat;
+-    int restartAttempts { 0 };
++    // Crash-recovery budget. Written on the message thread (launch/attemptRestart)
++    // AND on the IPC ConnectionThread (handleWorkerMessage::PluginLoaded resets it
++    // to 0). Atomic so those two threads never race a plain int (data race / UB).
++    std::atomic<int> restartAttempts { 0 };
+     static constexpr int maxRestartAttempts { 3 };
+ 
+     juce::WaitableEvent shutdownAcked;
+@@ -295,6 +312,16 @@ private:
+ 
+     std::atomic<bool> restartInProgress { false };
+ 
++    // Suppresses the connection-lost callback that our OWN explicit
++    // killWorkerProcess() calls fire (in attemptRestart() before relaunch, and in
++    // shutdown()). That self-induced callback must NOT be mistaken for a worker
++    // crash and arm another restart. We cannot key this off state==Crashed: a
++    // freshly relaunched worker that crashes during the launch handshake also
++    // fires the callback while state is momentarily still Crashed (the entry value,
++    // before attemptRestart sets Ready), and dropping THAT would silently abort
++    // crash recovery. So we gate the self-callback on this explicit flag instead.
++    std::atomic<bool> suppressConnectionLost { false };
++
+     // Async restart hand-off: handleConnectionLost() runs on the IPC connection's
+     // OWN background thread, so it must NOT kill/join that thread (self-join) nor
+     // block on a reload. It only flags this; the host's juce::Timer (message
+@@ -306,6 +333,17 @@ private:
+     // the attempt budget) rather than a first-time load.
+     std::atomic<bool> awaitingRestartLoad { false };
+ 
++    // Deferred recovery load. attemptRestart() relaunches the worker but must NOT
++    // send LoadPlugin synchronously: launchWorkerProcess() returns once the child
++    // is SPAWNED, before the IPC pipe handshake completes, so an immediate
++    // LoadPlugin write races the connection and can be DROPPED — the worker then
++    // boots, idles at Ready, heartbeats happily, and the host never sees the load
++    // crash it was probing for (the give-up never fires → a 14 s stall). Instead
++    // attemptRestart() sets this flag; the first Heartbeat after relaunch (proof
++    // the pipe is up) issues the load. Carries the restart's loadedPlugin via
++    // loadedPlugin (already retained).
++    std::atomic<bool> pendingRecoveryLoad { false };
++
+     // Separate-window editor bridge state
+     std::atomic<bool> editorOpen { false };
+ 
+@@ -344,6 +382,17 @@ inline bool SandboxHost::launch()
+ 
+     connectionAlive.store (true);
+ 
++    // launchWorkerProcess() calls killWorkerProcess() internally before spawning
++    // the child. That internal kill tears down the old connection thread, which
++    // fires handleConnectionLost() — but that callback now guards on
++    // state==Starting and returns early. Belt-and-braces: also clear any stale
++    // restartRequested flag here so a race between the IPC thread's early-return
++    // and this message-thread path can never leave a spurious restart armed.
++    restartRequested.store (false);
++    awaitingRestartLoad.store (false);
++    pendingRecoveryLoad.store (false);
++    restartAttempts = 0;
++
+     heartbeat.reset();
+     startTimer (EL_SANDBOX_HEARTBEAT_MS);
+ 
+@@ -355,6 +404,13 @@ inline void SandboxHost::shutdown()
+ {
+     stopTimer();
+ 
++    // Cancel any pending async restart before changing state — ensures a crash
++    // that fired restartRequested just before shutdown() is called cannot race
++    // the state=Idle write and re-launch a worker after we've shut down.
++    restartRequested.store (false);
++    awaitingRestartLoad.store (false);
++    pendingRecoveryLoad.store (false);
++
+     if (state.load() == State::Idle)
+         return;
+ 
+@@ -418,6 +474,17 @@ inline void SandboxHost::unloadPlugin()
+ inline void SandboxHost::prepareToPlay (double sampleRate, int maxBlockSize,
+                                          int inputChannels, int outputChannels)
+ {
++    // RT race guard: while we tear down + rebuild the shared memory and re-open
++    // the semaphores below, the audio thread must treat the sandbox as bypass and
++    // never read the half-built shm/sem. processBlock() honours this flag.
++    // Restored to false on every exit path (scope guard).
++    reconfiguring.store (true, std::memory_order_release);
++    struct ReconfigGuard
++    {
++        std::atomic<bool>& flag;
++        ~ReconfigGuard() { flag.store (false, std::memory_order_release); }
++    } reconfigGuard { reconfiguring };
++
+     currentSampleRate = sampleRate;
+     currentBlockSize = maxBlockSize;
+     numInputChannels = inputChannels;
+@@ -488,6 +555,19 @@ inline void SandboxHost::prepareToPlay (double sampleRate, int maxBlockSize,
+ inline void SandboxHost::processBlock (juce::AudioSampleBuffer& buffer,
+                                         juce::MidiBuffer& midi)
+ {
++    // Reconfigure guard FIRST (RT-safe): while prepareToPlay() rebuilds the shared
++    // memory + semaphores on the message thread, the shm/sem may be closed/half-
++    // built. Output silence and touch NOTHING shared — no audioBuffer, no
++    // triggerSemaphore/doneSemaphore. Clearing our own output buffer is the only
++    // RT work done here (no locks, no allocs). This fires on every (re)load,
++    // including crash-recovery, where pluginLoaded/state are momentarily Active.
++    if (reconfiguring.load (std::memory_order_acquire))
++    {
++        buffer.clear();
++        midi.clear();
++        return;
++    }
++
+     // Health/bypass checks
+     if (! isHealthy() || ! pluginLoaded.load() || bypassed.load())
+     {
+@@ -677,7 +757,32 @@ inline void SandboxHost::handleConnectionLost()
+     pluginReadyFailed.store (true);
+     pluginReadyEvent.signal();
+ 
+-    if (state.load() == State::Idle)
++    // Our OWN explicit killWorkerProcess() (in attemptRestart() before relaunch,
++    // and in shutdown()) tears down the connection and fires this callback. That
++    // is not a worker crash — swallow it. NOTE: do NOT key this off state==Crashed:
++    // a freshly relaunched worker that crashes during the launch handshake also
++    // fires here while state is momentarily still Crashed (the attemptRestart entry
++    // value, before it stores Ready), and dropping that would silently abort crash
++    // recovery (the host would never reach its give-up Error). The explicit flag
++    // distinguishes "we tore it down" from "the worker died".
++    if (suppressConnectionLost.load())
++        return;
++
++    const auto currentState = state.load();
++
++    // Do not treat these as unexpected crashes that should arm a new restart:
++    //   Idle     — we are shut down; the pipe close is from our own shutdown().
++    //   Starting — we are mid-launch(); JUCE's launchWorkerProcess() calls
++    //              killWorkerProcess() internally before spawning the child, which
++    //              tears down the previous connection and fires this callback.
++    //              Arming a restart here would cause an infinite launch loop.
++    //   Error    — terminal state; restart budget exhausted, do not restart.
++    // (Crashed is intentionally NOT excluded: a real worker crash that lands while
++    //  state is still Crashed must still be honoured — see the suppression flag
++    //  above for the self-induced-teardown case.)
++    if (currentState == State::Idle
++        || currentState == State::Starting
++        || currentState == State::Error)
+         return;
+ 
+     state.store (State::Crashed);
+@@ -762,6 +867,16 @@ inline void SandboxHost::handleWorkerMessage (const SandboxMessageHeader& header
+     {
+         case SandboxMessageType::Heartbeat:
+             heartbeat.beat();
++            // A Heartbeat proves the relaunched worker's IPC pipe is up. If a
++            // crash-recovery load was deferred (pendingRecoveryLoad), issue it now
++            // — sending earlier (in attemptRestart) races the connect and the
++            // LoadPlugin can be dropped. One-shot. loadPlugin() is a pipe send,
++            // safe on this IPC thread (never the audio thread).
++            if (pendingRecoveryLoad.exchange (false))
++            {
++                if (state.load() == State::Ready && loadedPlugin.name.isNotEmpty())
++                    loadPlugin (loadedPlugin);
++            }
+             break;
+ 
+         case SandboxMessageType::PluginLoaded:
+@@ -965,6 +1080,13 @@ inline void SandboxHost::attemptRestart()
+         ~ResetGuard() { flag.store (false); }
+     } guard { restartInProgress };
+ 
++    // Shutdown race: the heartbeat timer could fire a restart microseconds after
++    // shutdown() set state=Idle (and cleared restartRequested). Never relaunch a
++    // worker we have already torn down. shutdown() also stops the timer, but the
++    // currently-executing tick may already be past that point — bail here.
++    if (state.load() == State::Idle)
++        return;
++
+     // Budget check FIRST. Each entry here is one crash-recovery attempt; a worker
+     // that dies again before PluginLoaded simply re-enters via the crash path, so
+     // restartAttempts counts LOAD-CRASHES, not just clean restarts. The counter
+@@ -991,8 +1113,12 @@ inline void SandboxHost::attemptRestart()
+                                juce::String (maxRestartAttempts));
+ 
+     // Safe on the message thread: killWorkerProcess() -> stopThread() is NOT the
+-    // IPC thread here, so there is no self-join.
++    // IPC thread here, so there is no self-join. Suppress the connection-lost
++    // callback this teardown fires (it is our own kill, not a worker crash) so it
++    // cannot arm a duplicate restart. The relaunch below re-arms suppression off.
++    suppressConnectionLost.store (true);
+     killWorkerProcess();
++    suppressConnectionLost.store (false);
+ 
+     // Relaunch. NON-BLOCKING: we do NOT wait for PluginLoaded. The normal
+     // PluginLoaded / PluginLoadFailed / connection-lost callbacks drive the next
+@@ -1009,9 +1135,12 @@ inline void SandboxHost::attemptRestart()
+             pluginReadyEvent.reset();
+             pluginReadyFailed.store (false);
+             awaitingRestartLoad.store (true);   // tell PluginLoaded this is a recovery
+-            loadPlugin (loadedPlugin);
+-            // State restore + prepareToPlay are deferred to the PluginLoaded
++            // DEFER the load: do NOT send LoadPlugin now — the IPC pipe may not be
++            // up yet (see pendingRecoveryLoad). The first Heartbeat from the
++            // relaunched worker confirms the pipe and triggers the load there.
++            // State restore + prepareToPlay are then deferred to the PluginLoaded
+             // handler (success) — see handleWorkerMessage::PluginLoaded.
++            pendingRecoveryLoad.store (true);
+         }
+         else
+         {
+@@ -1024,12 +1153,32 @@ inline void SandboxHost::attemptRestart()
+     }
+     else
+     {
+-        // Relaunch itself failed (could not spawn). Leave restartRequested set so
+-        // the next timer tick retries until the budget is exhausted.
+-        juce::Logger::writeToLog ("[sandbox] relaunch failed to spawn worker — will retry");
++        // Relaunch itself failed (could not spawn the worker process). This counts
++        // against the SAME budget as a load-crash (restartAttempts was already
++        // incremented above), so a worker that can NEVER spawn terminates instead
++        // of re-arming restartRequested every heartbeat tick forever.
+         awaitingRestartLoad.store (false);
+-        state.store (State::Crashed);
+-        restartRequested.store (true);
++
++        if (restartAttempts >= maxRestartAttempts)
++        {
++            // Budget exhausted on spawn failure → permanent Error, same terminal
++            // contract as the load-crash give-up path above: publish the failure
++            // state (pluginLoaded=false) BEFORE the badge event so a listener that
++            // reads back isPluginLoaded()/getState() sees the final values. Do NOT
++            // re-arm restartRequested.
++            juce::Logger::writeToLog ("[sandbox] relaunch failed to spawn worker and restart "
++                                      "budget is exhausted — giving up; sandbox permanently in Error.");
++            pluginLoaded.store (false);
++            state.store (State::Error);
++            listeners.call (&Listener::sandboxCrashed, this);
++        }
++        else
++        {
++            // Attempts remain: re-arm so the next timer tick retries.
++            juce::Logger::writeToLog ("[sandbox] relaunch failed to spawn worker — will retry");
++            state.store (State::Crashed);
++            restartRequested.store (true);
++        }
+     }
+ }
+ 
+diff --git a/src/engine/sandboxworker.hpp b/src/engine/sandboxworker.hpp
+index fc6cf050..a40a61e0 100644
+--- a/src/engine/sandboxworker.hpp
++++ b/src/engine/sandboxworker.hpp
+@@ -175,7 +175,9 @@ inline void SandboxWorker::initializeWorker()
+    #if EL_SANDBOX_INCLUDE_TEST_FORMATS
+     formatManager.addFormat (std::make_unique<TestEchoPluginFormat>());
+     formatManager.addFormat (std::make_unique<CrashOnLoadPluginFormat>());
+-    juce::Logger::writeToLog ("[Sandbox] TestEchoPluginFormat + CrashOnLoadPluginFormat registered (test build)");
++    formatManager.addFormat (std::make_unique<CrashOnNthLoadPluginFormat>());
++    juce::Logger::writeToLog ("[Sandbox] TestEchoPluginFormat + CrashOnLoadPluginFormat "
++                               "+ CrashOnNthLoadPluginFormat registered (test build)");
+    #endif
+ 
+     juce::addDefaultFormatsToManager (formatManager);
+diff --git a/src/engine/test_crash_plugin.hpp b/src/engine/test_crash_plugin.hpp
+index a695c2f3..692c1c43 100644
+--- a/src/engine/test_crash_plugin.hpp
++++ b/src/engine/test_crash_plugin.hpp
+@@ -30,6 +30,8 @@
+ 
+ #include <element/juce.hpp>
+ 
++#include "test_echo_plugin.hpp"  // reuse TestEchoPluginInstance for the OK loads
++
+ #include <cstdlib>  // ::abort
+ 
+ namespace element {
+@@ -136,4 +138,156 @@ private:
+     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (CrashOnLoadPluginFormat)
+ };
+ 
++//==============================================================================
++// Crash-on-Nth-load: loads OK until the Nth instantiation, then ::abort()s.
++//
++// The CrashOnLoad format above crashes on EVERY load, so it can only prove the
++// give-up path. To prove RECOVERY-then-second-crash — a worker that loads OK
++// once (which RESETS the host's restart budget) and only crashes on a LATER
++// load — we need a counter that survives worker RELAUNCH (each relaunch is a
++// fresh process, so an in-process static would reset every time). We therefore
++// persist the instantiation count in a /tmp file keyed by the test, shared by
++// every worker process. The host-side test truncates it to 0 before the run and
++// sets the crash threshold via an env var the worker reads.
++
++/** Sentinel identifier for the crash-on-Nth-load format. */
++inline constexpr const char* kCrashOnNthLoadIdentifier = "ElementTestCrashOnNthLoad";
++
++/** Sentinel format-name string. Distinct from the other test formats. */
++inline constexpr const char* kCrashOnNthLoadFormatName = "TestCrashNth";
++
++/** Unique-id for the crash-on-Nth-load plugin. */
++inline constexpr int kCrashOnNthLoadUniqueId = 0xC7A50001;
++
++/** Path of the cross-process instantiation counter (shared by all workers). */
++inline constexpr const char* kCrashOnNthLoadCounterPath = "/tmp/element-test-crash-nth-counter";
++
++/** Env var (read by the worker) carrying the 1-based instantiation index that
++    must crash. e.g. "2" => the 2nd createPluginInstance across all workers
++    ::abort()s; all others load OK. */
++inline constexpr const char* kCrashOnNthLoadEnvVar = "EL_TEST_CRASH_ON_NTH_LOAD";
++
++//==============================================================================
++/** AudioPluginFormat that loads a working TestEcho instance until the Nth call to
++    createPluginInstance (across worker process relaunches, tracked via a /tmp
++    counter), then hard-crashes that one instantiation. Registered in
++    SandboxWorker::initializeWorker() only under EL_SANDBOX_INCLUDE_TEST_FORMATS. */
++class CrashOnNthLoadPluginFormat : public juce::AudioPluginFormat
++{
++public:
++    CrashOnNthLoadPluginFormat() = default;
++    ~CrashOnNthLoadPluginFormat() override = default;
++
++    //==========================================================================
++    juce::String getName() const override { return kCrashOnNthLoadFormatName; }
++
++    bool fileMightContainThisPluginType (const juce::String& fileOrIdentifier) override
++    {
++        return fileOrIdentifier == kCrashOnNthLoadIdentifier;
++    }
++
++    void findAllTypesForFile (juce::OwnedArray<juce::PluginDescription>& results,
++                               const juce::String& fileOrIdentifier) override
++    {
++        if (fileOrIdentifier != kCrashOnNthLoadIdentifier)
++            return;
++        results.add (new juce::PluginDescription (makeDescription()));
++    }
++
++    juce::String getNameOfPluginFromIdentifier (const juce::String& fileOrIdentifier) override
++    {
++        return fileOrIdentifier == kCrashOnNthLoadIdentifier
++                   ? juce::String (kCrashOnNthLoadIdentifier)
++                   : juce::String();
++    }
++
++    bool pluginNeedsRescanning (const juce::PluginDescription&) override { return false; }
++    bool doesPluginStillExist (const juce::PluginDescription&) override { return true; }
++    bool canScanForPlugins() const override { return false; }
++    bool isTrivialToScan() const override { return true; }
++
++    juce::StringArray searchPathsForPlugins (const juce::FileSearchPath&,
++                                              bool, bool) override { return {}; }
++
++    juce::FileSearchPath getDefaultLocationsToSearch() override { return {}; }
++
++    bool requiresUnblockedMessageThreadDuringCreation (const juce::PluginDescription&) const override
++    {
++        return false;
++    }
++
++protected:
++    //==========================================================================
++    void createPluginInstance (const juce::PluginDescription& desc,
++                                double initialSampleRate,
++                                int initialBufferSize,
++                                PluginCreationCallback callback) override
++    {
++        if (desc.fileOrIdentifier != kCrashOnNthLoadIdentifier)
++        {
++            callback (nullptr,
++                      "CrashOnNthLoadPluginFormat: identifier '"
++                          + desc.fileOrIdentifier + "' is not '"
++                          + kCrashOnNthLoadIdentifier + "'");
++            return;
++        }
++
++        const int crashOn = juce::SystemStats::getEnvironmentVariable (kCrashOnNthLoadEnvVar, "0")
++                                .getIntValue();
++        const int count = bumpInstantiationCounter();
++        juce::Logger::writeToLog ("[CrashOnNthLoad] instantiation #" + juce::String (count)
++                                   + " crashOn=" + juce::String (crashOn));
++
++        if (crashOn > 0 && count == crashOn)
++        {
++            // This is the designated crashing load: die before returning, exactly
++            // like a plugin that segfaults in its factory on a later open.
++            std::fflush (nullptr);
++            ::abort();
++        }
++
++        // Otherwise load a real, working instance so the host sees PluginLoaded.
++        auto instance = std::make_unique<TestEchoPluginInstance> (initialSampleRate,
++                                                                  initialBufferSize);
++        callback (std::move (instance), juce::String());
++    }
++
++private:
++    //==========================================================================
++    static juce::PluginDescription makeDescription()
++    {
++        juce::PluginDescription desc;
++        desc.name              = kCrashOnNthLoadIdentifier;
++        desc.descriptiveName   = "Element Test Crash-On-Nth-Load";
++        desc.pluginFormatName  = kCrashOnNthLoadFormatName;
++        desc.fileOrIdentifier  = kCrashOnNthLoadIdentifier;
++        desc.category          = "Effect";
++        desc.manufacturerName  = "Element";
++        desc.version           = "1.0";
++        desc.uniqueId          = kCrashOnNthLoadUniqueId;
++        desc.deprecatedUid     = kCrashOnNthLoadUniqueId;
++        desc.numInputChannels  = 0;
++        desc.numOutputChannels = 2;
++        desc.isInstrument      = false;
++        return desc;
++    }
++
++    /** Read-modify-write the shared /tmp counter; returns the new (1-based) value.
++        Worker processes are serialised by the host (one load in flight at a time),
++        so a plain read/append-rewrite is race-free enough for this single-host
++        test. */
++    static int bumpInstantiationCounter()
++    {
++        juce::File counter (kCrashOnNthLoadCounterPath);
++        const int previous = counter.existsAsFile()
++                                 ? counter.loadFileAsString().trim().getIntValue()
++                                 : 0;
++        const int next = previous + 1;
++        counter.replaceWithText (juce::String (next));
++        return next;
++    }
++
++    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (CrashOnNthLoadPluginFormat)
++};
++
+ } // namespace element
+diff --git a/test/engine/SandboxCrashOnLoadTest.cpp b/test/engine/SandboxCrashOnLoadTest.cpp
+index a96fef8b..3df37a43 100644
+--- a/test/engine/SandboxCrashOnLoadTest.cpp
++++ b/test/engine/SandboxCrashOnLoadTest.cpp
+@@ -31,6 +31,7 @@
+ 
+ #include <atomic>
+ #include <chrono>
++#include <cstdlib>
+ #include <functional>
+ #include <signal.h>
+ #include <unistd.h>
+@@ -69,6 +70,27 @@ public:
+     std::atomic<bool> crashed { false };
+ };
+ 
++// Test stub: lets the FIRST worker spawn for real (so we can reach Ready + drive
++// a load-crash), then forces every SUBSEQUENT relaunch to FAIL. This exercises
++// the bounded spawn-failure give-up path (A2) deterministically without a real
++// "can never spawn" binary. Uses the protected-virtual launchWorkerProcess seam.
++class SpawnFailingSandboxHost : public SandboxHost
++{
++public:
++    using SandboxHost::SandboxHost;
++
++    std::atomic<int> spawnCalls { 0 };
++
++protected:
++    bool launchWorkerProcess() override
++    {
++        const int n = ++spawnCalls;
++        if (n == 1)
++            return SandboxHost::launchWorkerProcess();  // real first spawn
++        return false;                                    // all relaunches fail
++    }
++};
++
+ bool pumpUntil (std::function<bool()> predicate,
+                 std::chrono::milliseconds budget)
+ {
+@@ -100,6 +122,24 @@ juce::PluginDescription makeCrashOnLoadDescription()
+     return desc;
+ }
+ 
++juce::PluginDescription makeCrashOnNthLoadDescription()
++{
++    juce::PluginDescription desc;
++    desc.name              = kCrashOnNthLoadIdentifier;
++    desc.descriptiveName   = "Element Test Crash-On-Nth-Load";
++    desc.pluginFormatName  = kCrashOnNthLoadFormatName;
++    desc.fileOrIdentifier  = kCrashOnNthLoadIdentifier;
++    desc.category          = "Effect";
++    desc.manufacturerName  = "Element";
++    desc.version           = "1.0";
++    desc.uniqueId          = kCrashOnNthLoadUniqueId;
++    desc.deprecatedUid     = kCrashOnNthLoadUniqueId;
++    desc.numInputChannels  = 0;
++    desc.numOutputChannels = 2;
++    desc.isInstrument      = false;
++    return desc;
++}
++
+ } // namespace
+ 
+ //==============================================================================
+@@ -136,12 +176,18 @@ BOOST_AUTO_TEST_CASE (RepeatedLoadCrashGivesUpBoundedWithoutHangingHost)
+     // BOUND: the OLD blocking path did 3 × pluginReadyEvent.wait(5000) = 15 s of
+     // pure blocking PLUS an IPC-thread self-join deadlock (i.e. it would never
+     // settle at all). The async path settles after a few timer-driven relaunch
+-    // attempts (~heartbeat interval each). 14 s is comfortably above the real
+-    // cost (~2-5 s) yet below the old 5 s × 3 accumulation — so reaching Error
+-    // within it genuinely distinguishes fixed-from-broken.
++    // attempts (~heartbeat interval each). The real cost is ~2-5 s. We PUMP up to
++    // 14 s (generous headroom so a slow CI box that is merely slow — not hung —
++    // still reaches Error and is not misread as a stall) but ASSERT the elapsed
++    // time is under a tighter 12 s bound. The gap between the 12 s assertion and
++    // the 14 s pump ceiling is the slow-CI headroom; both sit comfortably below
++    // the old 5 s × 3 = 15 s blocking accumulation, so reaching Error within the
++    // bound still genuinely distinguishes fixed-from-broken.
++    constexpr int kPumpCeilingMs = 14000;
++    constexpr int kElapsedBoundMs = 12000;
+     const bool settledError = pumpUntil (
+         [&] { return host.getState() == SandboxHost::State::Error; },
+-        std::chrono::milliseconds (14000));
++        std::chrono::milliseconds (kPumpCeilingMs));
+ 
+     const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds> (
+                              std::chrono::steady_clock::now() - t0);
+@@ -163,10 +209,12 @@ BOOST_AUTO_TEST_CASE (RepeatedLoadCrashGivesUpBoundedWithoutHangingHost)
+     BOOST_CHECK_MESSAGE (observer.crashed.load(), "sandboxCrashed never fired");
+     BOOST_CHECK_GE (observer.crashCount.load(), 1);
+ 
+-    // (d) bounded wall-time — no 5 s × N blocking stall, no hang.
+-    BOOST_CHECK_MESSAGE (elapsed.count() < 14000,
++    // (d) bounded wall-time — no 5 s × N blocking stall, no hang. Asserted against
++    // the tighter 12 s bound (the 14 s pump ceiling above is pure slow-CI
++    // headroom); either way far below the old 15 s blocking accumulation.
++    BOOST_CHECK_MESSAGE (elapsed.count() < kElapsedBoundMs,
+                          "crash→give-up took " << elapsed.count()
+-                         << " ms (>= 14 s) — restart path is blocking/stalling");
++                         << " ms (>= " << kElapsedBoundMs << " ms) — restart path is blocking/stalling");
+ 
+     // The crash plugin can NEVER load, so no successful (re)load should ever be
+     // reported.
+@@ -185,4 +233,166 @@ BOOST_AUTO_TEST_CASE (RepeatedLoadCrashGivesUpBoundedWithoutHangingHost)
+     BOOST_CHECK (::kill (hostPid, 0) == 0);
+ }
+ 
++// Recovery-then-second-crash: a worker loads OK once (which RESETS the host's
++// restart budget), then a LATER load crashes. Because the first success reset
++// the budget, the single later crash must NOT immediately exhaust the cap — the
++// host must recover (reload OK) rather than fall to Error. This exercises the
++// restartAttempts=0-on-PluginLoaded reset that the every-load CrashOnLoad test
++// above cannot (it never loads OK, so the budget is never reset).
++//
++// Mechanism: CrashOnNthLoadPluginFormat loads a working TestEcho instance until
++// the Nth createPluginInstance (counted across worker relaunches via a /tmp
++// file), then ::abort()s that one. With N=2:
++//   instantiation #1 -> OK   (PluginLoaded; restartAttempts reset to 0)
++//   we force a reload -> instantiation #2 -> abort -> crash-recovery (1 attempt)
++//   recovery reload   -> instantiation #3 -> OK   (sandboxRestarted; reset to 0)
++BOOST_AUTO_TEST_CASE (LoadsOkThenLaterLoadCrashRecoversWithoutGivingUp)
++{
++    auto* ctx = element::test::context();
++    BOOST_REQUIRE (ctx != nullptr);
++
++    const pid_t hostPid = ::getpid();
++
++    // Fresh shared counter + crash on the 2nd instantiation. The worker is a
++    // child process that inherits this env at spawn.
++    juce::File (kCrashOnNthLoadCounterPath).deleteFile();
++    ::setenv (kCrashOnNthLoadEnvVar, "2", 1);
++    struct EnvGuard
++    {
++        ~EnvGuard()
++        {
++            ::unsetenv (kCrashOnNthLoadEnvVar);
++            juce::File (kCrashOnNthLoadCounterPath).deleteFile();
++        }
++    } envGuard;
++
++    SandboxHost host (ctx->plugins());
++    CrashOnLoadObserver observer;
++    host.addListener (&observer);
++
++    BOOST_REQUIRE_MESSAGE (host.launch(), "SandboxHost::launch failed");
++    BOOST_REQUIRE (host.getState() == SandboxHost::State::Ready);
++
++    pumpUntil ([] { return false; }, std::chrono::milliseconds (300));
++
++    // First load: instantiation #1 -> OK.
++    host.loadPlugin (makeCrashOnNthLoadDescription());
++    const bool firstLoaded = pumpUntil (
++        [&] { return host.getState() == SandboxHost::State::Active
++                  && observer.loadCount.load() >= 1; },
++        std::chrono::milliseconds (8000));
++    BOOST_REQUIRE_MESSAGE (firstLoaded,
++                           "first (OK) load never reached Active (state="
++                           << (int) host.getState()
++                           << " loadCount=" << observer.loadCount.load() << ")");
++
++    // Force a second load -> instantiation #2 -> the worker ::abort()s mid-load.
++    // This drives the host's crash-recovery path; recovery reload is #3 -> OK.
++    const int loadsBeforeCrash = observer.loadCount.load();
++    host.loadPlugin (makeCrashOnNthLoadDescription());
++
++    // The host must RECOVER: a second successful load arrives and state is Active
++    // again. (loadCount climbs to >= loadsBeforeCrash + 1 from the recovery load.)
++    const bool recovered = pumpUntil (
++        [&] { return host.getState() == SandboxHost::State::Active
++                  && observer.loadCount.load() > loadsBeforeCrash; },
++        std::chrono::milliseconds (12000));
++
++    const bool hostAlive = (::kill (hostPid, 0) == 0);
++    BOOST_CHECK_MESSAGE (hostAlive, "host process died during recovery-then-crash");
++
++    BOOST_CHECK_MESSAGE (recovered,
++                         "host did not recover after a post-success load-crash (state="
++                         << (int) host.getState()
++                         << " loadCount=" << observer.loadCount.load()
++                         << " crashes=" << observer.crashCount.load()
++                         << " restarts=" << observer.restartCount.load() << ")");
++
++    // The single post-success crash must NOT have driven the host to permanent
++    // Error — the budget was reset by the first OK load.
++    BOOST_CHECK_MESSAGE (host.getState() != SandboxHost::State::Error,
++                         "host fell to permanent Error after one post-success crash — "
++                         "restart budget was not reset by the first successful load");
++
++    // The crash + recovery should have surfaced exactly the crash/restart signals.
++    BOOST_CHECK_GE (observer.crashCount.load(), 1);
++    BOOST_CHECK_GE (observer.restartCount.load(), 1);
++
++    BOOST_TEST_MESSAGE ("recovery-then-crash: state=" << (int) host.getState()
++                        << " loads=" << observer.loadCount.load()
++                        << " crashes=" << observer.crashCount.load()
++                        << " restarts=" << observer.restartCount.load());
++
++    host.removeListener (&observer);
++    host.shutdown();
++
++    BOOST_CHECK (::kill (hostPid, 0) == 0);
++}
++
++// Persistent spawn-failure: a worker that load-crashes once and can then NEVER
++// be relaunched (every spawn fails) must still terminate in Error within the
++// restart budget — never re-arm restartRequested forever (the A2 bug). Uses the
++// SpawnFailingSandboxHost stub: the first spawn is real (so we reach Ready and
++// can trigger a load-crash), every relaunch after that returns false.
++BOOST_AUTO_TEST_CASE (PersistentSpawnFailureTerminatesInErrorBounded)
++{
++    auto* ctx = element::test::context();
++    BOOST_REQUIRE (ctx != nullptr);
++
++    const pid_t hostPid = ::getpid();
++
++    SpawnFailingSandboxHost host (ctx->plugins());
++    CrashOnLoadObserver observer;
++    host.addListener (&observer);
++
++    BOOST_REQUIRE_MESSAGE (host.launch(), "SandboxHost::launch failed (first spawn)");
++    BOOST_REQUIRE (host.getState() == SandboxHost::State::Ready);
++
++    pumpUntil ([] { return false; }, std::chrono::milliseconds (300));
++
++    const auto t0 = std::chrono::steady_clock::now();
++
++    // Trigger a load-crash on the (real) first worker. The worker dies; the host
++    // arms a restart, but every relaunch now FAILS, so the spawn-failure budget
++    // path must drive it to Error.
++    host.loadPlugin (makeCrashOnLoadDescription());
++
++    constexpr int kSpawnFailPumpCeilingMs = 14000;
++    constexpr int kSpawnFailBoundMs = 12000;
++    const bool settledError = pumpUntil (
++        [&] { return host.getState() == SandboxHost::State::Error; },
++        std::chrono::milliseconds (kSpawnFailPumpCeilingMs));
++
++    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds> (
++                             std::chrono::steady_clock::now() - t0);
++
++    const bool hostAlive = (::kill (hostPid, 0) == 0);
++    BOOST_CHECK_MESSAGE (hostAlive, "host died during persistent spawn-failure");
++
++    BOOST_CHECK_MESSAGE (settledError,
++                         "host did not reach Error on persistent spawn-failure (state="
++                         << (int) host.getState()
++                         << " elapsed=" << elapsed.count() << " ms) — spawn-failure "
++                         "path likely re-arms restartRequested forever (A2 bug)");
++
++    BOOST_CHECK_MESSAGE (elapsed.count() < kSpawnFailBoundMs,
++                         "spawn-failure give-up took " << elapsed.count()
++                         << " ms (>= " << kSpawnFailBoundMs << " ms) — not bounded");
++
++    // Crash surfaced; relaunches were attempted; no successful (re)load ever.
++    BOOST_CHECK_GE (observer.crashCount.load(), 1);
++    BOOST_CHECK_GE (host.spawnCalls.load(), 2);   // first real + >=1 failing relaunch
++    BOOST_CHECK_EQUAL (observer.loadCount.load(), 0);
++
++    BOOST_TEST_MESSAGE ("spawn-failure: state=" << (int) host.getState()
++                        << " elapsed_ms=" << elapsed.count()
++                        << " spawnCalls=" << host.spawnCalls.load()
++                        << " crashes=" << observer.crashCount.load());
++
++    host.removeListener (&observer);
++    host.shutdown();
++
++    BOOST_CHECK (::kill (hostPid, 0) == 0);
++}
++
+ BOOST_AUTO_TEST_SUITE_END()
