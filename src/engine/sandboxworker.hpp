@@ -179,8 +179,14 @@ inline void SandboxWorker::initializeWorker()
    #endif
 
     juce::addDefaultFormatsToManager (formatManager);
-    juce::Logger::writeToLog ("[Sandbox] default plugin formats registered, total="
-                               + juce::String (formatManager.getNumFormats()));
+    {
+        juce::StringArray fmtNames;
+        for (int fi = 0; fi < formatManager.getNumFormats(); ++fi)
+            fmtNames.add (formatManager.getFormat (fi)->getName());
+        juce::Logger::writeToLog ("[Sandbox] default plugin formats registered, total="
+                                   + juce::String (formatManager.getNumFormats())
+                                   + " names=[" + fmtNames.joinIntoString (", ") + "]");
+    }
 }
 
 inline SandboxWorker::~SandboxWorker()
@@ -228,6 +234,18 @@ inline bool SandboxWorker::initialise (const juce::String& commandLine)
     if (initialiseFromCommandLine (commandLine, EL_PLUGIN_HOST_PROCESS_ID, 20000))
     {
         probeLog ("[probe] pipe-connected pid=" + juce::String ((int) ::getpid()));
+
+        // Register plugin formats IMMEDIATELY after the pipe connects and BEFORE the
+        // macOS activation-policy call further down. That call (element_app only —
+        // NSApp != nil) pumps the AppKit runloop, which lets an already-queued
+        // LoadPlugin message be handled before formatManager is populated → the
+        // worker's createPluginInstance then fails with "No compatible plug-in format
+        // exists for this plug-in" (empty formatManager). Registering here closes that
+        // init-order race; it is cheap and has no dependency on setsid()/activation
+        // policy. test_element (NSApp == nil) never set the policy, so its worker never
+        // pumped the runloop in this window and never lost the race — which is why the
+        // same plugin loads under test_element but failed under element_app.
+        initializeWorker();
 
         // Diagnostic (OPT-IN, EL_SANDBOX_PROBE=1): re-point this worker's stdout +
         // stderr at the probe log so a NATIVE death reason (dyld loader error,
@@ -288,8 +306,8 @@ inline bool SandboxWorker::initialise (const juce::String& commandLine)
         sandboxWorkerSetAccessoryPolicy();
        #endif
 
-        // Only now do we know this is a real worker process — initialize
-        initializeWorker();
+        // Formats were registered right after the pipe connected (above), before the
+        // activation-policy runloop pump — so an early LoadPlugin can't beat them.
         juce::Logger::writeToLog ("Sandbox worker initialized");
 
         // Hide dock icon on macOS
@@ -484,7 +502,14 @@ inline void SandboxWorker::handleLoadPlugin (const void* payload, uint32_t paylo
 
     if (plugin == nullptr)
     {
-        juce::Logger::writeToLog ("Failed to load plugin: " + errorMessage);
+        juce::StringArray fmtNames;
+        for (int fi = 0; fi < formatManager.getNumFormats(); ++fi)
+            fmtNames.add (formatManager.getFormat (fi)->getName());
+        juce::Logger::writeToLog ("Failed to load plugin: " + errorMessage
+            + " | desc.format='" + desc.pluginFormatName + "'"
+            + " name='" + desc.name + "'"
+            + " file='" + desc.fileOrIdentifier + "'"
+            + " registered=[" + fmtNames.joinIntoString (", ") + "]");
         sendResponse (SandboxMessageType::PluginLoadFailed,
                       errorMessage.toRawUTF8(),
                       static_cast<uint32_t> (errorMessage.getNumBytesAsUTF8()));
