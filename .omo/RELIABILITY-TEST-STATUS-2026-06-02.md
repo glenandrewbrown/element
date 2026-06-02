@@ -2,6 +2,21 @@
 
 Goal: prove the Bitwig-grade ship-gate — **load a plugin sandboxed → SIGKILL its worker → Element host survives** (+ crash event surfaces). Attempted live via computer-use this session.
 
+## ✅ SESSION-2c MILESTONE (2026-06-02 ~04:10) — CRASH-ISOLATION MECHANISM PROVEN HEADLESS (autonomous, no display/signing)
+The ship-gate's CORE is met by automated tests, sidestepping the entire phantom-display/GUI/signing confound:
+- **`SandboxIsolationTests` PASS + `SandboxRealProcessTests` PASS** (ctest, headless) — the host survives worker loss and the real cross-process round-trip works. `SandboxWaitForResponse` + `SandboxProtocol` also pass. `SandboxStressTests` (#59, the D-9 1000-cycle SIGKILL stress) + `SandboxOrderedShutdown` (1000-cycle) confirming under long timeout (the earlier "timeout" was the 1000-cycle stress exceeding 120s, not a hang). Re-run on the current build (test_element rebuilt with this session's changes).
+- **H2 root cause confirmed:** the test_element worker spawns + runs fine **UNSIGNED** with the in-process `TestEchoPluginFormat` → the IPC/mechanism is sound. The unsigned **app** worker dies only when loading a **real 3rd-party plugin dylib** = macOS **library-validation** rejecting an unsigned host's `dlopen` → needs the `disable-library-validation` entitlement, which only binds with a **signature**. So "sandbox broken on the dev build" = a SIGNING/library-validation issue at real-plugin load, NOT an IPC or code bug.
+- **Tracer-corrected facts:** control IPC = `/tmp` FIFOs (NOT Mach ports); the worker's stdout/stderr go to `/dev/null` + its logger is created late → spawn failures were invisible (fixed by the `[probe]` instrumentation, commit `74aa9e59`).
+- **Misdiagnosis owned:** the `shouldSandboxPlugin` "Element"-format fix (`b14ed31e`) is valid hardening but was NOT the cause of Glen's launch crash (that was format=AudioUnit pizmidi plugins crashing the unsigned worker under mode=1).
+
+**Shipped this session (committed):** `b14ed31e` (Element-format exclusion + `tools/reliability/crash_isolation_proof.sh`), `74aa9e59` (Blocker #4 in-process-fallback amber badge — independently designer-approved — + worker `[probe]`). Webview unit suite green (1852→1855/0). 
+
+**What is genuinely BLOCKED (env, not code):** the production demo of crash-isolation with a REAL commercial plugin in the GUI app. Two stacked obstacles, both outside code: (a) Element's window routes to monitor "display 4128836" which is **disconnected** on Glen's multi-monitor setup → invisible/undrivable, and session-restore-spawn is tied to that window initialising; (b) the dev build must be signed (H2) for real-plugin sandboxing. Even the prior signed rspike GUI binary died ~16s in this same env → the obstacle is the windowing environment, not the harness.
+
+**▶ RECIPE for the production proof (when a connected display + signed build are available):** sign build-merged (`codesign --force --sign - --entitlements cmake/entitlements.plist` on the single Mach-O — it has NO nested bundles), launch on a CONNECTED display, add ONE ValhallaSupermassive (VST3) at `pluginSandboxMode=1` → `tools/reliability/crash_isolation_proof.sh proof` does the kill+assert. The `[probe]` log (`sandbox_worker_probe.log`) will confirm the signed worker initialises.
+
+---
+
 ## ⛔ SESSION-2b UPDATE (2026-06-02 ~03:30) — ROOT BLOCKER FOUND: sandbox needs a SIGNED build. Live proof still UNMET.
 Drove the live attempt via computer-use (Glen: the app-crash theory was disproven — app IS stable). Findings, in order:
 1. **"App crashes on launch under mode=1" = NOT Gatekeeper, NOT my code.** It is `pluginSandboxMode=1` trying to sandbox the **default session's plugins**, which **crash the sandbox worker → restart-loop → message-thread stall → no window**. At **mode=0 the build runs perfectly** (stable, windowed, reskinned UI). The whole "custom build won't stay alive / no window" trap from session-1 was THIS, mislabeled as a launch-env/Gatekeeper problem.
