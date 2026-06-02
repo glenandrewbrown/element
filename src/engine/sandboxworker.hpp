@@ -199,9 +199,24 @@ inline SandboxWorker::~SandboxWorker()
 
 inline bool SandboxWorker::initialise (const juce::String& commandLine)
 {
+    // PROBE (diagnostic, cheap): the worker process is spawned with stdout/stderr
+    // routed to /dev/null (streamFlags=0 in SandboxHost::launchWorkerProcess), and its
+    // FileLogger is not created until initializeWorker() — so any failure in the
+    // spawn->handshake window is otherwise INVISIBLE (empty sandbox_worker.log). Append
+    // unconditionally to a probe log so we can see exactly how far the worker gets.
+    auto probeFile = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
+                         .getChildFile ("Element/log/sandbox_worker_probe.log");
+    probeFile.create();
+    const bool looksLikeWorker = commandLine.contains (EL_PLUGIN_HOST_PROCESS_ID);
+    probeFile.appendText ("[probe] initialise pid=" + juce::String ((int) ::getpid())
+                          + (looksLikeWorker ? " role=WORKER" : " role=host")
+                          + " cmd=\"" + commandLine.substring (0, 160) + "\"\n");
+
     // Try to connect as worker process
     if (initialiseFromCommandLine (commandLine, EL_PLUGIN_HOST_PROCESS_ID, 20000))
     {
+        probeFile.appendText ("[probe] pipe-connected pid=" + juce::String ((int) ::getpid()) + "\n");
+
         // Only now do we know this is a real worker process — initialize
         initializeWorker();
         juce::Logger::writeToLog ("Sandbox worker initialized");
@@ -214,6 +229,9 @@ inline bool SandboxWorker::initialise (const juce::String& commandLine)
         return true;
     }
 
+    if (looksLikeWorker)
+        probeFile.appendText ("[probe] initialiseFromCommandLine returned FALSE (pipe connect failed) pid="
+                              + juce::String ((int) ::getpid()) + "\n");
     return false;
 }
 

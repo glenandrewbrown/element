@@ -16,6 +16,7 @@ import {
   useSandboxCrashStore,
   selectSandboxEvent,
   selectSandboxNeedsAttention,
+  selectSandboxInProcess,
   type SandboxEventPayload,
 } from "../useSandboxCrashStore";
 
@@ -94,6 +95,36 @@ describe("selectSandboxNeedsAttention", () => {
     expect(
       selectSandboxNeedsAttention("nope")(useSandboxCrashStore.getState()),
     ).toBe(false);
+  });
+
+  it("is false for inProcessFallback (advisory, not a crash)", () => {
+    const s = useSandboxCrashStore;
+    s.getState().applyEvent(ev({ kind: "inProcessFallback" }));
+    expect(selectSandboxNeedsAttention("uuid-abc")(s.getState())).toBe(false);
+  });
+});
+
+describe("selectSandboxInProcess", () => {
+  it("records inProcessFallback and reports it (honesty band, not crash)", () => {
+    const s = useSandboxCrashStore;
+    s.getState().applyEvent(
+      ev({
+        kind: "inProcessFallback",
+        reason: "Vital running in-process — sandbox unavailable",
+      }),
+    );
+    const rec = selectSandboxEvent("uuid-abc")(s.getState());
+    expect(rec?.kind).toBe("inProcessFallback");
+    expect(selectSandboxInProcess("uuid-abc")(s.getState())).toBe(true);
+    // …and it must NOT trip the red crash badge.
+    expect(selectSandboxNeedsAttention("uuid-abc")(s.getState())).toBe(false);
+  });
+
+  it("is false for crash kinds and for unknown nodes", () => {
+    const s = useSandboxCrashStore;
+    s.getState().applyEvent(ev({ kind: "crashed" }));
+    expect(selectSandboxInProcess("uuid-abc")(s.getState())).toBe(false);
+    expect(selectSandboxInProcess("nope")(s.getState())).toBe(false);
   });
 });
 

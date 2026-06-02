@@ -16,7 +16,11 @@ export type SandboxEventKind =
   | "crashed"
   | "restarted"
   | "loadFailed"
-  | "error";
+  | "error"
+  // Sandbox was requested but the worker failed to launch/load, so the plugin
+  // is running IN-PROCESS (unprotected). NOT a crash — a muted/amber honesty
+  // signal, surfaced by the host's FellBackInProcess (int 4) sandbox event.
+  | "inProcessFallback";
 
 /** The payload the host pushes on `onSandboxEvent` (Lane-A contract). */
 export interface SandboxEventPayload {
@@ -55,6 +59,7 @@ const KINDS: ReadonlySet<string> = new Set([
   "restarted",
   "loadFailed",
   "error",
+  "inProcessFallback",
 ]);
 
 function isSandboxEventKind(v: unknown): v is SandboxEventKind {
@@ -125,10 +130,29 @@ export const selectSandboxEvent =
   (s: SandboxCrashState): SandboxNodeState | undefined =>
     s.events[nodeUuid];
 
-/** True when a node is currently in a crashed / load-failed / error state. */
+/**
+ * True when a node is in a CRASH state (crashed / load-failed / error) — the
+ * red "plugin crashed — reload" badge. `inProcessFallback` is deliberately
+ * excluded: it is not a crash, just an unprotected-load advisory (see
+ * `selectSandboxInProcess`).
+ */
 export const selectSandboxNeedsAttention =
   (nodeUuid: string) =>
   (s: SandboxCrashState): boolean => {
     const e = s.events[nodeUuid];
-    return e != null && e.kind !== "restarted";
+    return (
+      e != null && e.kind !== "restarted" && e.kind !== "inProcessFallback"
+    );
+  };
+
+/**
+ * True when a node loaded IN-PROCESS after a sandbox request failed — the muted
+ * amber "in-process — unprotected" badge. Distinct from a crash: the plugin is
+ * running fine, just without crash isolation.
+ */
+export const selectSandboxInProcess =
+  (nodeUuid: string) =>
+  (s: SandboxCrashState): boolean => {
+    const e = s.events[nodeUuid];
+    return e != null && e.kind === "inProcessFallback";
   };

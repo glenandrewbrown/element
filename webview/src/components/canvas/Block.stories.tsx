@@ -299,7 +299,10 @@ function CrashedFlow({ kind = "crashed" }: { kind?: SandboxEventKind }) {
       nodeId: 42,
       nodeUuid: data.id,
       kind,
-      reason: "Worker process exited with code 139 (SIGSEGV)",
+      reason:
+        kind === "inProcessFallback"
+          ? "Vital running in-process — sandbox unavailable"
+          : "Worker process exited with code 139 (SIGSEGV)",
     });
     return () => {
       useSandboxCrashStore.getState().clear(data.id);
@@ -332,6 +335,26 @@ export const SandboxLoadFailed: Story = {
     },
   },
   render: () => <CrashedFlow kind="loadFailed" />,
+};
+
+// ── Sandbox-unavailable (in-process fallback) honesty badge ──────────────────
+// Seeds useSandboxCrashStore with a real `inProcessFallback` event so the
+// amber InProcessBadge renders instead of the red CrashBadge. Mirrors the host
+// pushing onSandboxEvent({ kind: "inProcessFallback", ... }) after the sandbox
+// worker failed and the plugin loaded in-process (unprotected). Reuses
+// CrashedFlow (which dispatches a real applyEvent) so nothing is fabricated.
+
+export const SandboxInProcessFallback: Story = {
+  tags: ["!manifest"],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Reliability honesty (Blocker #4) — `kind: inProcessFallback`. The user opted into sandbox isolation but the worker failed to launch/load, so the plugin is running IN-PROCESS and is NOT crash-protected. Distinct from the red crash badge: an amber/advisory band with NO reload button (the plugin is running fine — only the isolation is missing). Honest: rendered only when `useSandboxCrashStore` has a real `inProcessFallback` entry (host's `FellBackInProcess` int-4 event); `selectSandboxNeedsAttention` deliberately ignores this kind so it never shows the crash badge.",
+      },
+    },
+  },
+  render: () => <CrashedFlow kind="inProcessFallback" />,
 };
 
 export const CategoryRow: Story = {

@@ -321,6 +321,12 @@ Processor* GraphManager::createFilter (const PluginDescription* desc, double x, 
     String errorMessage;
     std::unique_ptr<Processor> node;
 
+    // True when sandboxing was REQUESTED but the worker failed to launch/load and
+    // we fell back to the in-process path. We surface this to the UI after the node
+    // is added (when its final nodeId — the id the webview resolves to a Block UUID —
+    // is known), so the user learns they are NOT crash-protected.
+    bool sandboxFellBackInProcess = false;
+
     // R1 — out-of-process sandbox route. Gated by Settings::shouldSandboxPlugin()
     // which DEFAULTS TO 0/Disabled (in-process). When the user opts in via
     // Preferences → Plugins → Sandbox Mode, the plugin instantiates inside a
@@ -335,6 +341,7 @@ Processor* GraphManager::createFilter (const PluginDescription* desc, double x, 
             node.reset (pluginManager.createSandboxedGraphNode (*desc, sandboxError));
             if (node == nullptr)
             {
+                sandboxFellBackInProcess = true;
                 std::cerr << "[element] sandbox node creation failed for "
                           << desc->name.toStdString() << ": "
                           << sandboxError.toStdString()
@@ -358,7 +365,19 @@ Processor* GraphManager::createFilter (const PluginDescription* desc, double x, 
         errorMessage = "Could not find node";
     }
 
-    return node != nullptr ? processor.addNode (node.release(), nodeId) : nullptr;
+    auto* added = node != nullptr ? processor.addNode (node.release(), nodeId) : nullptr;
+
+    // Honesty signal: the user asked for sandbox isolation but the worker failed
+    // and the plugin is running in-process (unprotected). Emit on the real,
+    // post-add nodeId (addNode assigns it when the incoming id is 0/auto) so the
+    // webview can resolve it to a Block and show the "in-process — unprotected"
+    // badge. Message-thread node creation — safe to signal here (not the audio thread).
+    if (sandboxFellBackInProcess && added != nullptr)
+        pluginManager.emitSandboxEvent (added->nodeId,
+                                        PluginManager::SandboxEvent::FellBackInProcess,
+                                        desc->name + " running in-process — sandbox unavailable");
+
+    return added;
 }
 
 Processor* GraphManager::createPlaceholder (const Node& node)

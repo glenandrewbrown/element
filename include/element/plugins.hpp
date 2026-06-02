@@ -116,10 +116,15 @@ public:
     /** Lifecycle event from a sandboxed (out-of-process) plugin node. */
     enum class SandboxEvent
     {
-        Crashed = 0,    ///< Worker process died; recovery may be attempted.
-        Restarted,      ///< Worker process was relaunched after a crash.
-        LoadFailed,     ///< Plugin failed to load in the worker.
-        Error           ///< Non-fatal worker error.
+        Crashed = 0,         ///< (0) Worker process died; recovery may be attempted.
+        Restarted,           ///< (1) Worker process was relaunched after a crash.
+        LoadFailed,          ///< (2) Plugin failed to load in the worker.
+        Error,               ///< (3) Non-fatal worker error.
+        FellBackInProcess    ///< (4) Sandbox requested but worker creation failed;
+                             ///<     plugin loaded IN-PROCESS so the user is NOT
+                             ///<     crash-protected. Honesty signal — NOT a crash.
+                             ///<     element_webview_host.cpp maps this int (4) to
+                             ///<     the "inProcessFallback" kind string.
     };
 
     /** Emitted (message thread) when a sandboxed plugin node reports a lifecycle

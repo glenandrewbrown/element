@@ -4557,13 +4557,15 @@ void ElementWebViewHost::emitSandboxEventToWeb (juce::uint32 nodeId, int kind, c
         }
 
         // kind matches PluginManager::SandboxEvent: 0=crashed 1=restarted
-        // 2=loadFailed 3=error.
+        // 2=loadFailed 3=error 4=fellBackInProcess (sandbox requested but the
+        // worker failed; plugin runs in-process — NOT a crash, distinct badge).
         const char* kindStr = "error";
         switch (kind)
         {
-            case 0: kindStr = "crashed";    break;
-            case 1: kindStr = "restarted";  break;
-            case 2: kindStr = "loadFailed"; break;
+            case 0: kindStr = "crashed";          break;
+            case 1: kindStr = "restarted";        break;
+            case 2: kindStr = "loadFailed";       break;
+            case 4: kindStr = "inProcessFallback"; break;
             default: break;
         }
 

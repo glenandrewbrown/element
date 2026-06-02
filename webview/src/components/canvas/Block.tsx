@@ -12,6 +12,7 @@ import { useBlockNodeLevel } from "../../stores/useNodeMeterStore";
 import {
   useSandboxCrashStore,
   selectSandboxNeedsAttention,
+  selectSandboxInProcess,
 } from "../../stores/useSandboxCrashStore";
 import { useParameterStore } from "../../stores/useParameterStore";
 import { nativeSetNodeParameter } from "../../bridge/nativeGraph";
@@ -448,6 +449,57 @@ function CrashBadge({ categoryHex, onReload, reloading }: CrashBadgeProps) {
   );
 }
 
+// ── InProcessBadge — sandbox-unavailable honesty band ─────────────────────────
+//
+// Shown ONLY when the host pushed an `onSandboxEvent` with kind
+// "inProcessFallback" (PluginManager::SandboxEvent::FellBackInProcess, int 4)
+// for this block's nodeUuid (= d.id): the user opted into sandbox isolation but
+// the worker failed to launch/load, so the plugin is running IN-PROCESS and is
+// therefore NOT crash-protected. Nothing fabricated — the band appears iff
+// useSandboxCrashStore has a real `inProcessFallback` entry.
+//
+// Distinct from CrashBadge: amber (advisory), NOT red (failure); no reload
+// affordance — the plugin is running fine, it just lacks crash isolation, so the
+// honest remedy is at the host level (Preferences → Plugins → Sandbox Mode), not
+// a per-block restart. Same 22px chassis-foot band + z-50 so it stays readable.
+
+interface InProcessBadgeProps {
+  categoryHex: string;
+}
+
+function InProcessBadge({ categoryHex }: InProcessBadgeProps) {
+  return (
+    <div
+      className="absolute left-0 right-0 flex items-center gap-1 px-2 pointer-events-none z-50"
+      style={{
+        // Sits just above the 2px load bar — 22px band at the chassis foot.
+        bottom: 2,
+        height: 22,
+        // Dense amber fill (no transparency — neumorphic dark system rule).
+        // Left-border carries the block's category hue so identity reads through.
+        background:
+          "linear-gradient(90deg, hsl(38 54% 15%) 0%, hsl(38 50% 12%) 100%)",
+        borderLeft: `2px solid ${categoryHex}88`,
+        borderTop: "1px solid hsl(38 46% 26% / 0.6)",
+        boxShadow:
+          "inset 0 1px 0 rgba(255,255,255,0.04), 0 -1px 4px rgba(0,0,0,0.5)",
+      }}
+    >
+      {/* Shield-down glyph + label — "running unprotected" */}
+      <span
+        className="text-[9px] font-mono font-bold tracking-[0.06em] uppercase leading-none truncate"
+        style={{
+          color: "hsl(38 92% 72%)",
+          textShadow: "0 1px 3px rgba(0,0,0,0.7)",
+        }}
+      >
+        <span style={{ marginRight: 4, fontSize: 10 }}>⚠</span>
+        in-process — unprotected
+      </span>
+    </div>
+  );
+}
+
 /** JUCE `Colour::toString()` is often `#AARRGGBB`; CSS border wants opaque RGB. */
 function hostColourOutline(raw: string | undefined): string | undefined {
   if (!raw) return undefined;
@@ -774,6 +826,10 @@ function BlockComponent({ data, selected }: NodeProps) {
   // crashed/loadFailed/error entry for this block's UUID (= d.id). Nothing is
   // fabricated: the selector returns false until the host pushes a real event.
   const crashed = useSandboxCrashStore(selectSandboxNeedsAttention(d.id));
+  // Amber honesty band: sandbox requested but the worker failed → plugin runs
+  // in-process (unprotected). Mutually exclusive with `crashed` (the store holds
+  // one latest event per node, and the two selectors partition the kinds).
+  const inProcess = useSandboxCrashStore(selectSandboxInProcess(d.id));
   const sandboxRestart = useSandboxCrashStore((s) => s.restart);
   const [reloading, setReloading] = useState(false);
 
@@ -1205,6 +1261,12 @@ function BlockComponent({ data, selected }: NodeProps) {
           reloading={reloading}
         />
       )}
+
+      {/* Sandbox-unavailable honesty band. Honest: only renders when the host
+          pushed a real "inProcessFallback" event for this block's UUID — the
+          plugin loaded in-process and is NOT crash-protected. Amber/advisory,
+          not the red crash badge; mutually exclusive with `crashed`. */}
+      {inProcess && <InProcessBadge categoryHex={cat.hex} />}
 
       {/* State overlays (last in DOM, highest z). Muted (red, hard block)
           outranks bypassed (dim, pass-through) when both set. */}
