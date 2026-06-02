@@ -2,6 +2,26 @@
 
 Goal: prove the Bitwig-grade ship-gate — **load a plugin sandboxed → SIGKILL its worker → Element host survives** (+ crash event surfaces). Attempted live via computer-use this session.
 
+## ⛔ SESSION-2b UPDATE (2026-06-02 ~03:30) — ROOT BLOCKER FOUND: sandbox needs a SIGNED build. Live proof still UNMET.
+Drove the live attempt via computer-use (Glen: the app-crash theory was disproven — app IS stable). Findings, in order:
+1. **"App crashes on launch under mode=1" = NOT Gatekeeper, NOT my code.** It is `pluginSandboxMode=1` trying to sandbox the **default session's plugins**, which **crash the sandbox worker → restart-loop → message-thread stall → no window**. At **mode=0 the build runs perfectly** (stable, windowed, reskinned UI). The whole "custom build won't stay alive / no window" trap from session-1 was THIS, mislabeled as a launch-env/Gatekeeper problem.
+2. **MISDIAGNOSIS corrected:** the crashing nodes `midiForceToRange` / `midiDuplicateBlocker` are **`format="AudioUnit"`** (pizmidi AU MIDI-FX), **not** Element-format script nodes. The `shouldSandboxPlugin` "Element"-format fix I shipped (`settings.cpp:621`, rebuilt 02:58) is **valid hardening but NOT the cause** of Glen's crash. Owned, not hidden.
+3. **THE REAL BLOCKER — sandbox is non-functional on the UNSIGNED dev build.** The worker dies **on spawn, before writing any `sandbox_worker.log` init line** → every sandboxed plugin "crashes": pizmidi AUs **and ValhallaSupermassive VST3** (which rspike loaded fine **when ad-hoc signed**). Strongly indicates the Mach/shared-mem IPC + `disable-library-validation` entitlement need a real signature. → see memory `project_sandbox_needs_signed_build`.
+4. **Ad-hoc `codesign --deep` of build-merged was inconclusive** — the app then launches but won't window / logs nothing (nested VST3/AU helper bundles re-signed inconsistently; needs inside-out signing). Display is **mirrored + Space-switching**, which confounded windowing observation.
+5. **Possible robustness gap (unconfirmed):** when the unsigned worker crash-looped, the **host process also died** (`attemptRestart re-entered, ignoring` → gone). rspike proved host-survives-SIGKILL with a real (signed) worker, so this may be an artifact of the degenerate unsigned case — **re-check on a signed build**.
+
+**▶ NEXT to unblock the proof:** produce a **properly inside-out-signed** `build-merged` (`scripts/sign-all-macos.sh` with `DEVELOPER_ID_APP`, or a correct ad-hoc inside-out sign). Then the worker should init → `tools/reliability/crash_isolation_proof.sh proof` does the kill+assert, and R2 (real-AU hang) can be re-tested honestly. Env restored: conf `pluginSandboxMode=0` + `defaultNewSessionFile` back to `Default.els`; binary signature stripped back to working unsigned.
+
+---
+
+## ▶▶ HARNESS BUILT + READY (2026-06-02, session 2) — `tools/reliability/crash_isolation_proof.sh`
+Ranked-blocker #1 ("make the ship-gate terminal-driven") is operationalised. The full crash-isolation code path is **re-verified end-to-end (file:line)** and a deterministic terminal harness is built + plumbing-self-tested. **Only the 1-min GUI plugin-load (Glen's stable launch) remains.**
+
+- **Code path verified:** worker SIGKILL → JUCE pipe-break (instant) | heartbeat ≤5s [`sandboxhost.hpp:644`/`:674`] → `handleConnectionLost` (state=Crashed, `sandboxCrashed` + `crashed()`) → `SandboxedProcessorNode::sandboxCrashed` [`sandboxedprocessor.hpp:444`] logs `"[SandboxedProcessor] Sandbox crashed: <name>"` + `emitSandboxEvent(Crashed)` → `sigSandboxEvent` [`plugins.hpp:135`] → `ElementWebViewHost` → `onSandboxEvent({kind:"crashed"})` → React crash badge [`element_webview_host.cpp:4175`/`:4577`]; then `attemptRestart()`. Host never crashes (message-thread listener calls only).
+- **Worker discovery:** worker = same `Element` binary relaunched as a JUCE child carrying cmdline UID `pshelbg` (`EL_PLUGIN_HOST_PROCESS_ID`). `pgrep -f pshelbg` finds it; host = its ppid. Plumbing self-tested green (discovery + host-resolve + `kill -9`).
+- **Env prepped this session:** `pluginSandboxMode=1` already set in the conf (via `… setup`). `/Applications/Element.app` is restored (no `/tmp` aside copy). Direct-exec of build-merged does NOT LaunchServices-collide. Harness writes a PASS/FAIL evidence file to `.omo/evidence/`.
+- **Restore when done:** `tools/reliability/crash_isolation_proof.sh restore` (sets mode back to 0).
+
 ## ✅ VERIFIED (automation)
 - **Current build healthy:** `build-merged` (binary 01:03, this session) runs clean via direct-exec (only harmless `lilv` LV2 reload warnings, no crash). Has the committed sandbox route + the new reskinned webview UI (`index-DjrhxzHr.js`).
 - **Sandbox route present:** `GraphManager::createFilter` (graphmanager.cpp:332) → `Settings::shouldSandboxPlugin(desc)` → `PluginManager::createSandboxedGraphNode`. Mode key `pluginSandboxMode` (0=off default, 1=all external, 2=problematic). Settings file: **`~/Library/Application Support/Kushview/Element/Element.conf`** (XML).

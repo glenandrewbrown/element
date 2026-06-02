@@ -607,9 +607,18 @@ bool Settings::shouldSandboxPlugin (const juce::PluginDescription& desc) const
     // SIGKILL-stress harness (D-9, 696/1000 recovery, 0 host crashes).
     // Gate 1.5 ratified 2026-05-08.
     //
-    // Internal nodes are tightly coupled to host process state and never
-    // sandboxable.
-    if (desc.pluginFormatName == "Internal")
+    // Element's own nodes — built-in processors AND Lua script nodes — report
+    // pluginFormatName "Element" (EL_NODE_FORMAT_NAME); "Internal" is a legacy
+    // alias used elsewhere. NEITHER can be instantiated by the sandbox worker:
+    // it registers only standard external plugin formats via
+    // addDefaultFormatsToManager (AU/VST3/…), not Element's NodeFactory format.
+    // Sandboxing them crash-loops the worker at load and stalls the message
+    // thread during session restore (observed 2026-06-02 under mode=1: every
+    // "Element"-format script node — midiForceToRange, midiDuplicateBlocker —
+    // crashed its worker → restart loop → no window on launch). They are also
+    // tightly coupled to host process state. Never sandbox them.
+    if (desc.pluginFormatName == "Internal"
+        || desc.pluginFormatName == "Element") // EL_NODE_FORMAT_NAME (element/node.h)
         return false;
 
     switch (getPluginSandboxMode())
