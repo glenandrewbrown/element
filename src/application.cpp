@@ -206,7 +206,26 @@ const String Application::getApplicationName() { return "Element"; }
 
 const String Application::getApplicationVersion() { return ELEMENT_VERSION_STRING; }
 
-bool Application::moreThanOneInstanceAllowed() { return false; }
+bool Application::moreThanOneInstanceAllowed()
+{
+    // Worker child processes are relaunches of THIS same binary with a worker UID
+    // on the command line (the out-of-process sandbox plugin host and the plugin
+    // scanner). They MUST bypass the single-instance handler: while a host is
+    // running it holds the "juceAppLock_Element" InterProcessLock, so with this
+    // returning false JUCE's initialiseApp() forwards the child's command line to
+    // the running host and quits the child BEFORE Application::initialise() runs —
+    // maybeLaunchSandboxWorker / maybeLaunchScannerWorker never execute and the
+    // worker dies pre-init (no .ips; a clean single-instance forward). Allow
+    // multiple instances for worker command lines so the child reaches
+    // initialise() and becomes its worker. Normal user launches stay single-
+    // instance. (Regression introduced by d3a3171a "single-instance app".)
+    const auto cmd = getCommandLineParameters();
+    if (cmd.contains (EL_PLUGIN_HOST_PROCESS_ID)
+        || cmd.contains (EL_PLUGIN_SCANNER_PROCESS_ID))
+        return true;
+
+    return false;
+}
 
 void Application::initialise (const String& commandLine)
 {
