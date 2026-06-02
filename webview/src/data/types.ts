@@ -29,6 +29,8 @@ export interface BlockData {
   muteInput?: boolean;
   /** JUCE Colour::toString from graph model */
   hostColor?: string;
+  /** Oversampling factor from Processor::getOversamplingFactor() (1|2|4|8). */
+  oversample?: number;
   error: boolean;
   isMacroTagged: boolean;
   /** Number of child nodes inside a Container block */

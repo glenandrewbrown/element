@@ -4,22 +4,55 @@ import { render, screen, fireEvent } from "@testing-library/react";
 const mockToggleBypass = vi.fn();
 const mockToggleMute = vi.fn();
 const mockToggleMuteInput = vi.fn();
+const mockDisconnectNode = vi.fn();
+const mockSetNodeColor = vi.fn();
+const mockSetOversample = vi.fn();
+const mockReplacePlugin = vi.fn();
 const mockAlignSelectedNodes = vi.fn();
 const mockDistributeSelectedNodes = vi.fn();
 const mockNativeDuplicate = vi.fn();
 const mockNativeRemove = vi.fn();
 const mockNativeRename = vi.fn();
+const mockRefreshPlugins = vi.fn();
 
 const baseNode = {
   id: "node-1",
   name: "Surge XT",
+  category: "instrument",
+  format: "VST3",
   bypassed: false,
   muted: false,
   muteInput: false,
+  oversample: 1,
+  hostColor: undefined as string | undefined,
 };
 
 let storeNodes = [baseNode];
 let mockGetNodes: () => unknown[] = () => [{ id: "node-1", selected: true, type: "block" }];
+
+// Real plugin list the Replace picker reads (mirrors usePluginBrowserStore).
+const mockPlugins = [
+  {
+    identifier: "VST3-Serum-1234",
+    name: "Serum",
+    manufacturer: "Xfer",
+    format: "VST3",
+    category: "Synth",
+    blockCategory: "instrument",
+    signalOut: "audio",
+    usageCount: 3,
+  },
+  {
+    identifier: "VST3-ProQ-5678",
+    name: "Pro-Q 4",
+    manufacturer: "FabFilter",
+    format: "VST3",
+    category: "EQ",
+    blockCategory: "audiofx",
+    signalOut: "audio",
+    usageCount: 9,
+  },
+];
 
 vi.mock("@xyflow/react", () => ({
   useReactFlow: () => ({ getNodes: () => mockGetNodes() }),
@@ -32,13 +65,29 @@ vi.mock("../../../stores/useGraphStore", () => ({
       toggleBypass: mockToggleBypass,
       toggleMute: mockToggleMute,
       toggleMuteInput: mockToggleMuteInput,
+      disconnectNode: mockDisconnectNode,
+      setNodeColor: mockSetNodeColor,
+      setOversample: mockSetOversample,
+      replacePlugin: mockReplacePlugin,
       alignSelectedNodes: mockAlignSelectedNodes,
       distributeSelectedNodes: mockDistributeSelectedNodes,
     })
   ),
 }));
 
+vi.mock("../../../stores/usePluginBrowserStore", () => ({
+  usePluginBrowserStore: vi.fn((sel: (s: unknown) => unknown) =>
+    sel({
+      plugins: mockPlugins,
+      refresh: mockRefreshPlugins,
+      favoriteIdentifiers: [],
+      recentIdentifiers: [],
+    })
+  ),
+}));
+
 vi.mock("../../../bridge/nativeGraph", () => ({
+  nativeGraphCopyNodes: vi.fn(),
   nativeGraphDuplicateNodes: (...a: unknown[]) => mockNativeDuplicate(...a),
   nativeGraphRemoveNode: (...a: unknown[]) => mockNativeRemove(...a),
   nativeGraphRenameNode: (...a: unknown[]) => mockNativeRename(...a),
@@ -46,6 +95,26 @@ vi.mock("../../../bridge/nativeGraph", () => ({
 
 vi.mock("../../neu", () => ({
   Icon: ({ name }: { name: string }) => <span data-testid={`icon-${name}`} />,
+  NeuInput: ({
+    placeholder,
+    value,
+    onChange,
+  }: {
+    placeholder?: string;
+    value?: string;
+    onChange?: (v: string) => void;
+  }) => (
+    <input
+      placeholder={placeholder}
+      value={value}
+      onChange={(e) => onChange?.(e.target.value)}
+      aria-label={placeholder}
+    />
+  ),
+}));
+
+vi.mock("../../neu/iconForCategory", () => ({
+  iconForCategory: () => "Box",
 }));
 
 import { NodeContextMenu } from "../NodeContextMenu";

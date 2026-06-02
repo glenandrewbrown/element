@@ -1537,6 +1537,156 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             postCompletion (completion, ok);
         });
 
+    // G3-A (verdict #28) — node-level disconnect. The existing
+    // elementGraphDisconnect is cable-level (4 port args → RemoveConnection);
+    // this disconnects ALL matching cables on a node, mirroring the JUCE
+    // NodePopupMenu (src/ui/contextmenus.hpp:437-444).
+    //   args[0] = nodeUuid : String
+    //   args[1] = scope     : String in {"all","inputs","outputs","midi"} (default "all")
+    //   → bool. scope→(inputs,outputs,audio,midi):
+    //     all=(1,1,1,1) inputs=(1,0,1,1) outputs=(0,1,1,1) midi=(1,1,0,1)
+    registerFn (
+        Identifier ("elementGraphDisconnectNode"),
+        [this, postCompletion] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 1)
+            {
+                if (auto sess = context.session())
+                {
+                    const Graph G (sess->getCurrentGraph());
+                    if (G.isGraph())
+                    {
+                        const Node n = findNodeByUuidInGraph (G, args[0].toString());
+                        if (n.isValid())
+                        {
+                            const String scope (args.size() >= 2 ? args[1].toString() : String ("all"));
+                            bool inputs = true, outputs = true, audio = true, midi = true;
+                            if (scope == "inputs")       { inputs = true;  outputs = false; audio = true;  midi = true; }
+                            else if (scope == "outputs") { inputs = false; outputs = true;  audio = true;  midi = true; }
+                            else if (scope == "midi")    { inputs = true;  outputs = true;  audio = false; midi = true; }
+                            // "all" (and any unknown value) → full disconnect.
+                            context.services().postMessage (new DisconnectNodeMessage (n, inputs, outputs, audio, midi));
+                            ok = true;
+                        }
+                    }
+                }
+            }
+            postCompletion (completion, ok);
+        });
+
+    // G3-A — set a user node colour (round-trips through the snapshot
+    // `color` → BlockData.hostColor → Block hostColourOutline).
+    //   args[0] = nodeUuid : String
+    //   args[1] = color    : String "#RRGGBB" (opaque) OR "" to clear → category fallback
+    //   → bool
+    registerFn (
+        Identifier ("elementGraphSetNodeColor"),
+        [this, postCompletion] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 2)
+            {
+                if (auto sess = context.session())
+                {
+                    const Graph G (sess->getCurrentGraph());
+                    if (G.isGraph())
+                    {
+                        Node n = findNodeByUuidInGraph (G, args[0].toString());
+                        if (n.isValid())
+                        {
+                            const String color (args[1].toString().trim());
+                            if (color.isEmpty())
+                            {
+                                // Honest "no custom colour" — Block falls back to the
+                                // category accent (real default), not a fabricated hue.
+                                n.getUIValueTree().removeProperty (Identifier ("color"), nullptr);
+                            }
+                            else
+                            {
+                                // Webview sends "#RRGGBB"; build an opaque JUCE Colour.
+                                const String hex6 (color.startsWithChar ('#') ? color.substring (1) : color);
+                                n.setColor (juce::Colour::fromString ("FF" + hex6));
+                            }
+                            ok = true;
+                        }
+                    }
+                }
+            }
+            if (ok)
+                pushGraphSnapshot();
+            postCompletion (completion, ok);
+        });
+
+    // G3-A — oversampling factor (parity with contextmenus.hpp:332-348).
+    //   args[0] = nodeUuid : String
+    //   args[1] = factor   : int in {1,2,4,8}
+    //   → bool. false for Audio/MIDI-IO nodes (no oversampling) or invalid factor.
+    registerFn (
+        Identifier ("elementGraphSetOversample"),
+        [this, postCompletion] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 2)
+            {
+                if (auto sess = context.session())
+                {
+                    const Graph G (sess->getCurrentGraph());
+                    if (G.isGraph())
+                    {
+                        Node n = findNodeByUuidInGraph (G, args[0].toString());
+                        if (n.isValid())
+                        {
+                            const int factor = (int) args[1];
+                            auto* proc = n.getObject();
+                            const bool validFactor = (factor == 1 || factor == 2 || factor == 4 || factor == 8);
+                            if (proc != nullptr && validFactor
+                                && ! proc->isAudioIONode() && ! proc->isMidiIONode())
+                            {
+                                proc->setOversamplingFactor (factor);
+                                ok = true;
+                            }
+                        }
+                    }
+                }
+            }
+            if (ok)
+                pushGraphSnapshot();
+            postCompletion (completion, ok);
+        });
+
+    // G3-A — replace the plugin in a node in-place (keeps connections where
+    // possible; EngineService::replace handles connection retention). The
+    // webview picks the plugin from the EXISTING elementGetPluginList — no
+    // native FileChooser.
+    //   args[0] = nodeUuid         : String
+    //   args[1] = pluginIdentifier : String (from BrowserPlugin.identifier)
+    //   → bool. false if node invalid or identifier not in KnownPluginList.
+    registerFn (
+        Identifier ("elementGraphReplacePlugin"),
+        [this, postCompletion] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 2)
+            {
+                if (auto sess = context.session())
+                {
+                    const Graph G (sess->getCurrentGraph());
+                    if (G.isGraph())
+                    {
+                        const Node n = findNodeByUuidInGraph (G, args[0].toString());
+                        if (n.isValid())
+                        {
+                            const String identifier (args[1].toString());
+                            if (const auto* desc = findKnownPluginByIdentifier (context.plugins().getKnownPlugins(), identifier))
+                            {
+                                // ReplaceNodeMessage derives the graph via n.getParentGraph().
+                                context.services().postMessage (new ReplaceNodeMessage (n, *desc, true));
+                                ok = true;
+                            }
+                        }
+                    }
+                }
+            }
+            postCompletion (completion, ok);
+        });
+
     registerFn (
         Identifier ("elementGraphConnect"),
         [this, postCompletion] (const Array<var>& args, auto completion) {
@@ -4909,7 +5059,15 @@ String ElementWebViewHost::buildActiveGraphJson() const
             const Graph sub (n);
             b->setProperty ("containerNodeCount", sub.getNumNodes());
         }
-        b->setProperty ("color", n.getColor().toString());
+        // Emit the user node colour as "#AARRGGBB" (leading '#') so the webview's
+        // Block.hostColourOutline (which keys off a '#' prefix) renders it, and so
+        // the write path (elementGraphSetNodeColor, "#RRGGBB") and this read path
+        // share one "#"-prefixed contract. Empty when no custom colour set →
+        // BlockData.hostColor undefined → Block falls back to the category accent.
+        if (n.getUIValueTree().hasProperty ("color"))
+            b->setProperty ("color", "#" + n.getColor().toString());
+        else
+            b->setProperty ("color", String());
         b->setProperty ("note", n.getProperty (Identifier ("userNote"), "").toString());
 
         // Per-block CPU load + latency. Latency comes from
@@ -4926,6 +5084,10 @@ String ElementWebViewHost::buildActiveGraphJson() const
         // a transient overload doesn't render an absurd number.
         double cpuLoadPercent = 0.0;
         double latencyMs = 0.0;
+        // G3-A: real oversampling factor (Processor::getOversamplingFactor()).
+        // Surfaced so the NodeContextMenu Oversample sub-menu shows the active
+        // factor as a tick. Default 1 (off) for nodes without a processor.
+        int oversample = 1;
         if (auto* proc = n.getObject())
         {
             const int latencySamples = proc->getLatencySamples();
@@ -4939,9 +5101,12 @@ String ElementWebViewHost::buildActiveGraphJson() const
                 if (blockBudgetNanos > 0.0)
                     cpuLoadPercent = juce::jlimit (0.0, 999.0, renderNanos / blockBudgetNanos * 100.0);
             }
+
+            oversample = proc->getOversamplingFactor();
         }
         b->setProperty ("cpuLoad", cpuLoadPercent);
         b->setProperty ("latencyMs", latencyMs);
+        b->setProperty ("oversample", oversample);
 
         Array<var> portsVar;
         for (int pi = 0; pi < n.getNumPorts(); ++pi)

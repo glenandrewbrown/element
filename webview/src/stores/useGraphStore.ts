@@ -6,6 +6,10 @@ import {
   nativeGraphSetBypass,
   nativeGraphSetMute,
   nativeGraphSetMuteInput,
+  nativeGraphDisconnectNode,
+  nativeGraphSetNodeColor,
+  nativeGraphSetOversample,
+  nativeGraphReplacePlugin,
 } from "../bridge/nativeGraph";
 import { logBridgeError } from "../bridge/bridgeError";
 
@@ -89,6 +93,34 @@ interface GraphActions {
   toggleBypass: (nodeId: string) => Promise<void>;
   toggleMute: (nodeId: string) => Promise<void>;
   toggleMuteInput: (nodeId: string) => Promise<void>;
+  /**
+   * G3-A — node-level disconnect (all matching cables in the given scope).
+   * No optimistic edit: the host drives an authoritative snapshot after the
+   * DisconnectNodeMessage, so cables disappear via hydrateFromEngine. We never
+   * fake-remove cables locally. Logs on bridge failure.
+   */
+  disconnectNode: (
+    nodeId: string,
+    scope: "all" | "inputs" | "outputs" | "midi",
+  ) => Promise<void>;
+  /**
+   * G3-A — set a user node colour ("#RRGGBB", or "" to clear → category
+   * fallback). Optimistic-with-rollback (mirrors toggleBypass): the local
+   * hostColor reverts if the bridge rejects, so a no-op never leaves a fake
+   * colour on screen.
+   */
+  setNodeColor: (nodeId: string, color: string) => Promise<void>;
+  /**
+   * G3-A — set the oversampling factor (1|2|4|8). Optimistic-with-rollback.
+   * Bridge returns false for Audio/MIDI-IO nodes → the local factor reverts.
+   */
+  setOversample: (nodeId: string, factor: 1 | 2 | 4 | 8) => Promise<void>;
+  /**
+   * G3-A — replace the plugin in a node in-place. No optimistic edit: the
+   * replaced node's ports/name/params arrive via the next snapshot — never
+   * fabricated locally. Logs on bridge failure.
+   */
+  replacePlugin: (nodeId: string, pluginIdentifier: string) => Promise<void>;
   /** Replace board state from C++ ValueTree / JSON snapshot (native host). */
   hydrateFromEngine: (data: {
     nodes: BlockData[];
@@ -262,6 +294,107 @@ export const useGraphStore = create<GraphStore>()((set) => ({
           n.id === nodeId ? { ...n, muteInput: prev } : n,
         ),
       }));
+    }
+  },
+
+  disconnectNode: async (nodeId, scope) => {
+    // No optimistic local edit — the cables are removed authoritatively by the
+    // next engine snapshot (GraphManager rebuilds after DisconnectNodeMessage).
+    try {
+      const ok = await nativeGraphDisconnectNode(nodeId, scope);
+      if (!ok) {
+        logBridgeError(
+          "useGraphStore.disconnectNode",
+          `bridge rejected disconnect ${nodeId} scope=${scope}`,
+        );
+      }
+    } catch (err) {
+      logBridgeError("useGraphStore.disconnectNode", err);
+    }
+  },
+
+  setNodeColor: async (nodeId, color) => {
+    let prev: string | undefined;
+    const next = color === "" ? undefined : color;
+    set((s) => {
+      const node = s.nodes.find((n) => n.id === nodeId);
+      prev = node?.hostColor;
+      return {
+        nodes: s.nodes.map((n) =>
+          n.id === nodeId ? { ...n, hostColor: next } : n,
+        ),
+      };
+    });
+    try {
+      const ok = await nativeGraphSetNodeColor(nodeId, color);
+      if (!ok) {
+        logBridgeError(
+          "useGraphStore.setNodeColor",
+          `bridge rejected color ${nodeId} → ${color || "(clear)"}`,
+        );
+        set((s) => ({
+          nodes: s.nodes.map((n) =>
+            n.id === nodeId ? { ...n, hostColor: prev } : n,
+          ),
+        }));
+      }
+    } catch (err) {
+      logBridgeError("useGraphStore.setNodeColor", err);
+      set((s) => ({
+        nodes: s.nodes.map((n) =>
+          n.id === nodeId ? { ...n, hostColor: prev } : n,
+        ),
+      }));
+    }
+  },
+
+  setOversample: async (nodeId, factor) => {
+    let prev: number | undefined;
+    set((s) => {
+      const node = s.nodes.find((n) => n.id === nodeId);
+      prev = node?.oversample;
+      return {
+        nodes: s.nodes.map((n) =>
+          n.id === nodeId ? { ...n, oversample: factor } : n,
+        ),
+      };
+    });
+    try {
+      const ok = await nativeGraphSetOversample(nodeId, factor);
+      if (!ok) {
+        logBridgeError(
+          "useGraphStore.setOversample",
+          `bridge rejected oversample ${nodeId} → ${factor}`,
+        );
+        set((s) => ({
+          nodes: s.nodes.map((n) =>
+            n.id === nodeId ? { ...n, oversample: prev } : n,
+          ),
+        }));
+      }
+    } catch (err) {
+      logBridgeError("useGraphStore.setOversample", err);
+      set((s) => ({
+        nodes: s.nodes.map((n) =>
+          n.id === nodeId ? { ...n, oversample: prev } : n,
+        ),
+      }));
+    }
+  },
+
+  replacePlugin: async (nodeId, pluginIdentifier) => {
+    // No optimistic edit — replacing is structural; the new node's ports / name
+    // / params arrive via the next snapshot. Never fabricate the new node.
+    try {
+      const ok = await nativeGraphReplacePlugin(nodeId, pluginIdentifier);
+      if (!ok) {
+        logBridgeError(
+          "useGraphStore.replacePlugin",
+          `bridge rejected replace ${nodeId} → ${pluginIdentifier}`,
+        );
+      }
+    } catch (err) {
+      logBridgeError("useGraphStore.replacePlugin", err);
     }
   },
 

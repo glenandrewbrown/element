@@ -48,6 +48,8 @@ type EngineBlock = {
   cpuLoad?: number;
   /** Per-block latency in milliseconds (host-reported + delay comp + OS). */
   latencyMs?: number;
+  /** Real oversampling factor (Processor::getOversamplingFactor(), 1|2|4|8). */
+  oversample?: number;
   ports?: Array<{
     id: string;
     label?: string;
@@ -242,6 +244,7 @@ function mapBlock(b: EngineBlock): BlockData {
     muteInput: !!b.muteInput,
     hostColor:
       typeof b.color === "string" && b.color.length > 0 ? b.color : undefined,
+    oversample: typeof b.oversample === "number" ? b.oversample : 1,
     error: false,
     isMacroTagged: false,
     containerNodeCount: b.containerNodeCount,

@@ -95,6 +95,73 @@ export async function nativeGraphSetMuteInput(
   return r === true;
 }
 
+// ── G3-A (verdict #28): NodeContextMenu native-parity bridges ───────────────
+
+/**
+ * Disconnect all matching cables on a node (NOT a single cable — see
+ * nativeGraphDisconnect for cable-level). Mirrors the JUCE NodePopupMenu
+ * disconnect scopes. The host drives an authoritative graph snapshot after the
+ * DisconnectNodeMessage, so cables disappear via the next snapshot (no local
+ * fake-removal needed). Returns true if the node was found.
+ */
+export async function nativeGraphDisconnectNode(
+  nodeId: string,
+  scope: "all" | "inputs" | "outputs" | "midi" = "all",
+): Promise<boolean> {
+  const r = await invokeElementNative("elementGraphDisconnectNode", [
+    nodeId,
+    scope,
+  ]);
+  return r === true;
+}
+
+/**
+ * Set a user node colour. `color` is "#RRGGBB" (opaque) or "" to clear (revert
+ * to the category accent). Round-trips through the snapshot color → hostColor.
+ */
+export async function nativeGraphSetNodeColor(
+  nodeId: string,
+  color: string,
+): Promise<boolean> {
+  const r = await invokeElementNative("elementGraphSetNodeColor", [
+    nodeId,
+    color,
+  ]);
+  return r === true;
+}
+
+/**
+ * Set the oversampling factor (1 = off, 2/4/8 ×). Returns false for Audio/MIDI
+ * I/O nodes (no oversampling) or an invalid factor — the caller rolls back.
+ */
+export async function nativeGraphSetOversample(
+  nodeId: string,
+  factor: 1 | 2 | 4 | 8,
+): Promise<boolean> {
+  const r = await invokeElementNative("elementGraphSetOversample", [
+    nodeId,
+    factor,
+  ]);
+  return r === true;
+}
+
+/**
+ * Replace the plugin in a node in-place, keeping connections where possible.
+ * `pluginIdentifier` comes from the real plugin list (BrowserPlugin.identifier).
+ * The replaced node's ports/name/params arrive via the next snapshot — never
+ * fabricated locally. Returns false if the node or identifier is unknown.
+ */
+export async function nativeGraphReplacePlugin(
+  nodeId: string,
+  pluginIdentifier: string,
+): Promise<boolean> {
+  const r = await invokeElementNative("elementGraphReplacePlugin", [
+    nodeId,
+    pluginIdentifier,
+  ]);
+  return r === true;
+}
+
 export async function nativeGraphSetCanvasOptions(
   snapToGrid: boolean,
   gridSize: number,

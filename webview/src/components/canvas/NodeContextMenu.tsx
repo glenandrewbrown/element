@@ -8,7 +8,11 @@ import {
   nativeGraphRemoveNode,
   nativeGraphRenameNode,
 } from "../../bridge/nativeGraph";
-import { Icon } from "../neu";
+import {
+  usePluginBrowserStore,
+  type BrowserPlugin,
+} from "../../stores/usePluginBrowserStore";
+import { Icon, NeuInput } from "../neu";
 import { iconForCategory } from "../neu/iconForCategory";
 
 interface NodeContextMenuProps {
@@ -28,6 +32,35 @@ const CATEGORY_ACCENT: Record<string, string> = {
   modulator:  "#A87FE0",
 };
 
+// ── G3-A: oversample factors (parity with contextmenus.hpp:341-345) ──────────
+const OVERSAMPLE_FACTORS: ReadonlyArray<{ factor: 1 | 2 | 4 | 8; label: string }> = [
+  { factor: 1, label: "Off" },
+  { factor: 2, label: "2×" },
+  { factor: 4, label: "4×" },
+  { factor: 8, label: "8×" },
+];
+
+// ── G3-A: Color picker palette — the 4 category hues + Clear ─────────────────
+// Dependency-free, reuses the locked taxonomy tokens (no native colour dialog,
+// no new transparency/glass). Hex strings are sent verbatim to the bridge as
+// "#RRGGBB".
+const COLOR_SWATCHES: ReadonlyArray<{ hex: string; name: string }> = [
+  { hex: "#4A90D9", name: "Blue" },
+  { hex: "#E8A838", name: "Orange" },
+  { hex: "#2BC4C4", name: "Teal" },
+  { hex: "#A87FE0", name: "Purple" },
+];
+
+/** Normalise a hostColor (may be "#AARRGGBB" or "#RRGGBB") to "#RRGGBB" for
+ *  comparison with the swatch palette so the active swatch shows a ring. */
+function normaliseHostColorToRgb(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  const t = raw.trim().toUpperCase();
+  if (t.startsWith("#") && t.length === 9) return `#${t.slice(3)}`;
+  if (t.startsWith("#") && t.length === 7) return t;
+  return undefined;
+}
+
 /**
  * NodeContextMenu — the right-click action menu for a Block on the Board.
  *
@@ -35,12 +68,25 @@ const CATEGORY_ACCENT: Record<string, string> = {
  *   WIRED (real store/bridge action):
  *     Rename, Enable/Bypass, Mute/Unmute, Mute Input/Unmute Input,
  *     Copy, Duplicate, Delete,
- *     Disconnect All / Inputs / Outputs (sub-section),
+ *     Disconnect All / Inputs / Outputs / MIDI ports (G3-A:
+ *       elementGraphDisconnectNode — node-level, all matching cables),
+ *     Color (G3-A: elementGraphSetNodeColor — inline neu swatch palette + Clear),
+ *     Oversample Off/2x/4x/8x (G3-A: elementGraphSetOversample, active tick from
+ *       the real Processor::getOversamplingFactor() in the snapshot),
+ *     Replace (G3-A: elementGraphReplacePlugin — inline picker over the REAL
+ *       elementGetPluginList, keeps connections where possible),
  *     multi-select Align + Distribute.
  *
  *   HONEST-DISABLED (UI present, action not yet wired — see Pillar-2 backlog):
- *     Color (needs colour-picker bridge), Oversample (needs bridge call),
- *     Replace (needs plugin-picker bridge), Presets (needs nativePresetList UI).
+ *     Presets (needs nativePresetList picker UI — presets already work via the
+ *       InspectorHub PresetStrip).
+ *
+ * NOTHING fake: Color/Oversample are optimistic-with-rollback (a rejected/no-op
+ * bridge call reverts the local field, so no fabricated value persists);
+ * Disconnect/Replace mutate nothing locally — the authoritative next engine
+ * snapshot removes cables / rebuilds the replaced node. Oversample on an
+ * Audio/MIDI-IO node is honest-degraded: the bridge returns false and the
+ * optimistic factor rolls back (no visible change).
  *
  * Design: category-hue dopamine glow on hover, tight neu shadows, no resize.
  */
@@ -57,10 +103,17 @@ export function NodeContextMenu({
   const toggleBypass = useGraphStore((s) => s.toggleBypass);
   const toggleMute = useGraphStore((s) => s.toggleMute);
   const toggleMuteInput = useGraphStore((s) => s.toggleMuteInput);
+  const disconnectNode = useGraphStore((s) => s.disconnectNode);
+  const setNodeColor = useGraphStore((s) => s.setNodeColor);
+  const setOversample = useGraphStore((s) => s.setOversample);
+  const replacePlugin = useGraphStore((s) => s.replacePlugin);
   const alignSelectedNodes = useGraphStore((s) => s.alignSelectedNodes);
   const distributeSelectedNodes = useGraphStore(
     (s) => s.distributeSelectedNodes,
   );
+
+  // Replace picker: inline plugin search reusing the REAL plugin list.
+  const [replacing, setReplacing] = useState(false);
 
   const reactFlow = useReactFlow();
   const selectedBlockIds = useMemo(() => {
@@ -89,8 +142,10 @@ export function NodeContextMenu({
     };
   }, [onClose]);
 
-  // Estimated menu height including sections. Align/distribute adds ~270px.
-  const estimatedHeight = multiSelect ? 580 : 380;
+  // Estimated menu height including sections. The Options group (Color row +
+  // Oversample ×4 + Replace) adds ~150px over the legacy single-item layout;
+  // align/distribute adds ~270px more.
+  const estimatedHeight = multiSelect ? 730 : 530;
   const menuStyle: React.CSSProperties = {
     position: "fixed",
     left: Math.min(position.x, window.innerWidth - 240),
@@ -232,63 +287,91 @@ export function NodeContextMenu({
             iconName="Unplug"
             label="All Ports"
             accent={accent}
-            disabled
-            disabledReason="Requires nativeGraphDisconnectNode bridge (Pillar-2)"
-            onClick={() => {}}
+            onClick={() => {
+              void disconnectNode(nodeId, "all");
+              onClose();
+            }}
           />
           <MenuItem
             iconName="Unplug"
             label="Input Ports"
             accent={accent}
-            disabled
-            disabledReason="Requires nativeGraphDisconnectNodeInputs bridge (Pillar-2)"
-            onClick={() => {}}
+            onClick={() => {
+              void disconnectNode(nodeId, "inputs");
+              onClose();
+            }}
           />
           <MenuItem
             iconName="Unplug"
             label="Output Ports"
             accent={accent}
-            disabled
-            disabledReason="Requires nativeGraphDisconnectNodeOutputs bridge (Pillar-2)"
-            onClick={() => {}}
+            onClick={() => {
+              void disconnectNode(nodeId, "outputs");
+              onClose();
+            }}
           />
           <MenuItem
             iconName="Music"
             label="MIDI Ports"
             accent={accent}
-            disabled
-            disabledReason="Requires nativeGraphDisconnectNodeMidi bridge (Pillar-2)"
-            onClick={() => {}}
+            onClick={() => {
+              void disconnectNode(nodeId, "midi");
+              onClose();
+            }}
           />
 
           <MenuDivider />
 
-          {/* ── Plugin options (honest-disabled) ── */}
+          {/* ── Plugin options ── */}
           <SectionHeader label="Options" />
-          <MenuItem
-            iconName="Palette"
-            label="Color…"
+
+          {/* Color — inline neumorphic swatch row (4 category hues + Clear). */}
+          <ColorSwatchRow
             accent={accent}
-            disabled
-            disabledReason="Colour-picker bridge (elementGraphSetNodeColor) not yet wired (Pillar-2)"
-            onClick={() => {}}
+            currentColor={node.hostColor}
+            onPick={(hex) => {
+              void setNodeColor(nodeId, hex);
+              onClose();
+            }}
+            onClear={() => {
+              void setNodeColor(nodeId, "");
+              onClose();
+            }}
           />
-          <MenuItem
-            iconName="Zap"
-            label="Oversample…"
-            accent={accent}
-            disabled
-            disabledReason="elementGraphSetOversample bridge not yet wired (Pillar-2)"
-            onClick={() => {}}
-          />
+
+          {/* Oversample — Off / 2x / 4x / 8x, active tick from real factor. */}
+          <SectionHeader label="Oversample" />
+          {OVERSAMPLE_FACTORS.map((f) => (
+            <MenuItem
+              key={f.factor}
+              iconName="Zap"
+              label={f.label}
+              accent={accent}
+              active={(node.oversample ?? 1) === f.factor}
+              onClick={() => {
+                void setOversample(nodeId, f.factor);
+                onClose();
+              }}
+            />
+          ))}
+
+          {/* Replace — opens an inline picker over the REAL plugin list. */}
           <MenuItem
             iconName="RefreshCw"
             label="Replace…"
             accent={accent}
-            disabled
-            disabledReason="Plugin-picker for Replace not yet wired (Pillar-2)"
-            onClick={() => {}}
+            active={replacing}
+            onClick={() => setReplacing((v) => !v)}
           />
+          {replacing && (
+            <ReplacePicker
+              accent={accent}
+              onPick={(plugin) => {
+                void replacePlugin(nodeId, plugin.identifier);
+                onClose();
+              }}
+            />
+          )}
           <MenuItem
             iconName="Layers"
             label="Presets…"
@@ -385,6 +468,140 @@ function SectionHeader({ label }: { label: string }) {
   return (
     <div className="px-3 py-0.5 text-[9px] uppercase tracking-widest text-text-dim font-bold">
       {label}
+    </div>
+  );
+}
+
+// ── G3-A: Color swatch row ────────────────────────────────────────────────────
+// Inline, dependency-free colour picker: the 4 locked category hues + a Clear
+// chip. Clicking a swatch sets a real user node colour via the store
+// (elementGraphSetNodeColor); Clear removes it (→ category accent fallback).
+// Neumorphic pressed surface, no transparency/glass.
+function ColorSwatchRow({
+  accent,
+  currentColor,
+  onPick,
+  onClear,
+}: {
+  accent: string;
+  currentColor: string | undefined;
+  onPick: (hex: string) => void;
+  onClear: () => void;
+}) {
+  const activeRgb = normaliseHostColorToRgb(currentColor);
+  return (
+    <div className="px-3 py-1.5 flex items-center gap-2">
+      <Icon name="Palette" size={13} color={accent} aria-hidden />
+      <div className="flex items-center gap-1.5" role="group" aria-label="Block colour">
+        {COLOR_SWATCHES.map((sw) => {
+          const isActive = activeRgb === sw.hex.toUpperCase();
+          return (
+            <button
+              key={sw.hex}
+              type="button"
+              role="menuitemradio"
+              aria-checked={isActive}
+              aria-label={`Set colour ${sw.name}`}
+              title={sw.name}
+              onClick={() => onPick(sw.hex)}
+              className="w-4 h-4 rounded-full shrink-0 transition-transform duration-100 hover:scale-110 focus:outline-none"
+              style={{
+                backgroundColor: sw.hex,
+                boxShadow: isActive
+                  ? `0 0 0 2px var(--color-panel, #222226), 0 0 0 3px ${sw.hex}`
+                  : "inset 1px 1px 2px rgba(0,0,0,0.4)",
+              }}
+            />
+          );
+        })}
+        <button
+          type="button"
+          role="menuitem"
+          aria-label="Clear block colour"
+          title="Clear (use category colour)"
+          onClick={onClear}
+          className="w-4 h-4 rounded-full shrink-0 flex items-center justify-center bg-pressed text-text-dim hover:text-text-primary transition-colors duration-100 focus:outline-none shadow-[inset_1px_1px_2px_rgba(0,0,0,0.4)]"
+        >
+          <Icon name="X" size={9} aria-hidden />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── G3-A: Replace plugin picker ───────────────────────────────────────────────
+// Inline search over the REAL plugin list (usePluginBrowserStore — the same
+// elementGetPluginList QuickAdd reads). On pick, calls replacePlugin so the
+// engine swaps the node in-place (keeping connections where possible). No
+// hardcoded plugin names; no new native dialog.
+function ReplacePicker({
+  accent,
+  onPick,
+}: {
+  accent: string;
+  onPick: (plugin: BrowserPlugin) => void;
+}) {
+  const plugins = usePluginBrowserStore((s) => s.plugins);
+  const refresh = usePluginBrowserStore((s) => s.refresh);
+  const [query, setQuery] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  const results = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const matched = q.length === 0
+      ? plugins
+      : plugins.filter(
+          (p) =>
+            p.name.toLowerCase().includes(q) ||
+            p.manufacturer.toLowerCase().includes(q),
+        );
+    return matched.slice(0, 50);
+  }, [plugins, query]);
+
+  return (
+    <div className="px-2 pb-1.5 pt-0.5">
+      <NeuInput
+        ref={inputRef}
+        placeholder="Replace with…"
+        value={query}
+        onChange={setQuery}
+      />
+      <div className="mt-1 max-h-40 overflow-y-auto">
+        {results.length === 0 ? (
+          <div className="px-2 py-2 text-[10px] text-text-dim">
+            {plugins.length === 0 ? "No plugins available" : "No matches"}
+          </div>
+        ) : (
+          results.map((p) => (
+            <button
+              key={p.identifier}
+              type="button"
+              role="menuitem"
+              onClick={() => onPick(p)}
+              className="w-full flex items-center gap-2 px-2 py-1 rounded text-[11px] text-text-primary hover:bg-elevated transition-colors duration-100 text-left"
+            >
+              <Icon
+                name={iconForCategory(p.blockCategory, p.name)}
+                size={11}
+                color={accent}
+                aria-hidden
+              />
+              <span className="flex-1 truncate">{p.name}</span>
+              <span className="text-[8px] text-text-dim uppercase tracking-wider shrink-0">
+                {p.format}
+              </span>
+            </button>
+          ))
+        )}
+      </div>
     </div>
   );
 }
