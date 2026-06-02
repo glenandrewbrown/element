@@ -9,9 +9,8 @@ description: "Turn a narrated screen-recording of Element's UI into actioned, ve
 Converts a **narrated UI feedback video** into verified, signed-off changes for the Element webview. It fuses the `video-analyzer` MCP (what was said + what was shown, time-synced) with Element's existing review tooling, and **gates on Glen at three points** — triage, plan, sign-off — so nothing ships unverified. Honours the project's **NOTHING-fake** rule and **screenshot/AX-gate-before-done** rule.
 
 ## Prerequisites
-- `video-analyzer` MCP connected (`mcp__video-analyzer__*`)
-- `video-localfile` global skill (for local files) OR a Loom link
-- Local Whisper for private transcript: `pip install openai-whisper` + no `OPENAI_API_KEY`
+- **Native extractor deps (primary path):** `ffmpeg`, `whisper` (`brew install ffmpeg openai-whisper`), and `yt-dlp` (`brew install yt-dlp`, only for URLs). Keep `OPENAI_API_KEY` unset → transcript stays fully local.
+- **Optional:** `video-analyzer` MCP (`mcp__video-analyzer__*`) + `video-localfile` global skill — only if you want the MCP's OCR/annotation. Flaky; not required.
 - Element review tooling (all present in-repo): `storybook-element` skill, `verify-element-ui` skill, `oh-my-claudecode:visual-verdict`, `docs/CHROMATIC_FEEDBACK_WORKFLOW.md`, feedback channel `.omo/audit/ui-comments.jsonl`
 
 ## The Loop (3 HITL gates)
@@ -27,16 +26,22 @@ Never skip a gate. Default to ONE feedback item at a time unless Glen says batch
 
 ## Step-by-Step
 
-### 0. Intake — get a URL
-- **Local file:** invoke the `video-localfile` skill — launch its `serve-video.sh` with `run_in_background: true`, read the `VIDEO_URL=` line. Add `--mp4` if frames come back empty.
-- **Loom:** use the share link directly.
+### 0. Intake — get the source
+- **Local file:** use the path directly (the native extractor reads files, no serving needed).
+- **Loom / URL:** pass the share link or direct `.mp4`/`.webm` URL.
 
-### 1. Extract (automatic)
-Call once:
+### 1. Extract — NATIVE primary (reliable), MCP optional
+**Use the native extractor.** It is fully local (no cloud, no flaky dep) and produces a time-synced `timeline.json` + readable `timeline.md` from frames + Whisper transcript:
+```bash
+.claude/skills/video-review-pipeline/scripts/extract.sh \
+  --src <path-or-url> --out /tmp/review1 --threshold 0.1 --model tiny
+# → /tmp/review1/timeline.md  (🗣 narration + 🖼 frame events, sorted by time)
+#   /tmp/review1/timeline.json (events[], frameCount, segmentCount, duration)
+#   /tmp/review1/frames/*.jpg  (scene-change frames — Read these for visual context)
 ```
-mcp__video-analyzer__analyze_video(url, { detail: "detailed", threshold: 0.1 })
-```
-`threshold:0.1` = screencast-tuned (more frames). Returns transcript (timestamps), key frames, OCR (on-screen UI text/labels), and the **annotated timeline**. For a tight window use `analyze_moment(url, from, to)`; for a single callout `get_frame_at(url, "M:SS")`.
+`--threshold 0.1` = screencast-tuned (more frames; lower = more). `--model small` for better transcript accuracy. Read the frame jpgs with the Read tool for OCR/visual analysis.
+
+> **Why native:** the `video-analyzer` MCP (`analyze_video`) works but is young/flaky — it crashed mid-run in testing. Treat it as OPTIONAL: only reach for it (via the `video-localfile` serve → `analyze_video`) when you specifically want its built-in OCR/annotation and it's connected. The native path above is the default and was verified end-to-end (verbatim Whisper transcript + multi-frame scene extraction).
 
 ### 2. Comprehend — build the feedback list
 Walk the timeline. For each spoken critique produce a row:
@@ -92,18 +97,20 @@ python3 .claude/skills/video-review-pipeline/scripts/resolve-feedback.py \
 ## Guardrails
 - **3 gates are mandatory.** No applying without GATE 2, no "done" without GATE 3 + evidence.
 - **NOTHING fake** — every changed component shows real engine data; no placeholder/mock ships.
-- **Judge interaction, not stills** — for motion/transition feedback use `get_frame_burst` and weight dynamic UX.
-- **Private by default** — local file + loopback serve + local Whisper = video never leaves the Mac. Flag explicitly if a Loom link or `OPENAI_API_KEY` path sends data out.
+- **Judge interaction, not stills** — for motion/transition feedback lower `--threshold` (e.g. 0.05) for denser frames and weight dynamic UX.
+- **Private by default** — local file + native extract (`ffmpeg`+`whisper`) = video never leaves the Mac. Flag explicitly if a Loom/URL source or `OPENAI_API_KEY` sends data out.
 - **Don't re-run the bake-off** or wire shelved Dashboard/Macro/Scene UI.
 
 ## Scripts
+- `scripts/extract.sh` — **native extractor (primary):** file/URL → scene-change frames + Whisper transcript → `timeline.json`/`timeline.md`. No MCP. Flags: `--src --out [--threshold 0.1] [--model tiny] [--lang en] [--no-transcript]`.
 - `scripts/log-feedback.py` — append a feedback item to `.omo/audit/ui-comments.jsonl` (schema-exact, generates id).
 - `scripts/resolve-feedback.py` — flip an item to `status:"resolved"` with note + commit.
 
 ## Troubleshooting
-- **Empty frames** → re-serve with `--mp4`, or raise frames via `detail:"detailed"`.
-- **Transcript missing** → install `openai-whisper`; check ffmpeg on PATH.
-- **Target unresolved** → ask Glen to scrub to the moment; use `analyze_moment` on that window for denser OCR.
+- **0 frames / all one frame** → clip has no hard cuts (gradual motion doesn't trip scene detection); lower `--threshold`, or the mid-point fallback frame is expected for static clips.
+- **Transcript empty** → install `openai-whisper` + `ffmpeg` on PATH; check `whisper --help` runs.
+- **URL won't download** → `brew install yt-dlp`; for a local file pass the path directly (no download).
+- **Target unresolved** → ask Glen to scrub to the moment; re-run `extract.sh` on a trimmed `--src` (ffmpeg `-ss/-to`) for denser coverage of that window.
 
 ## Related
 - `video-localfile` (global) — local-file → URL bridge this builds on.
