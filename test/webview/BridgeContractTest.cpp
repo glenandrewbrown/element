@@ -276,4 +276,61 @@ BOOST_AUTO_TEST_CASE (performMappedParameters_mark_and_get)
         "Mapped parameter { nodeId:abc, paramIndex:5 } not found in elementPerformGetMappedParameters");
 }
 
+// ── Test 6 (U11) ─────────────────────────────────────────────────────────────
+// elementGetInstances — JSON shape. The registry is queryable even when no
+// PluginProcessor was constructed in the test (the honest standalone case): the
+// `instances` array is present (possibly empty) and `selfId` is an int.
+BOOST_AUTO_TEST_CASE (getInstances_json_shape)
+{
+    auto* ctx = test::context();
+    BOOST_REQUIRE (ctx != nullptr);
+
+    ElementWebViewHost host (*ctx, /*skipBrowser=*/true);
+    const var result = BridgeContractTest::invoke (host, "elementGetInstances");
+
+    BOOST_REQUIRE (! result.isVoid() && ! result.isUndefined());
+
+    const String json (result.toString());
+    var parsed;
+    juce::Result parseResult = JSON::parse (json, parsed);
+    BOOST_REQUIRE_MESSAGE (parseResult.wasOk(), "elementGetInstances returned invalid JSON: " + json);
+
+    auto* obj = parsed.getDynamicObject();
+    BOOST_REQUIRE (obj != nullptr);
+
+    // instances array present (may be empty — honest standalone/no-plugin case).
+    BOOST_CHECK (obj->getProperty ("instances").isArray());
+    // selfId is an int (−1 when the host's Context is not a plugin instance).
+    BOOST_CHECK (obj->getProperty ("selfId").isInt());
+}
+
+// ── Test 7 (U11) ─────────────────────────────────────────────────────────────
+// elementGetInstanceSnapshot with an unknown id → honest-degraded result:
+// `unavailable:true` and an empty `graphs` array (NOT a fabricated graph).
+BOOST_AUTO_TEST_CASE (getInstanceSnapshot_unknown_id_is_unavailable)
+{
+    auto* ctx = test::context();
+    BOOST_REQUIRE (ctx != nullptr);
+
+    ElementWebViewHost host (*ctx, /*skipBrowser=*/true);
+    const var result = BridgeContractTest::invoke (
+        host, "elementGetInstanceSnapshot", Array<var> { var (99999) });
+
+    BOOST_REQUIRE (! result.isVoid() && ! result.isUndefined());
+
+    // Result is a JSON string (the unavailable path serialises with JSON::toString).
+    const String json (result.toString());
+    var parsed;
+    juce::Result parseResult = JSON::parse (json, parsed);
+    BOOST_REQUIRE_MESSAGE (parseResult.wasOk(),
+        "elementGetInstanceSnapshot returned invalid JSON: " + json);
+
+    auto* obj = parsed.getDynamicObject();
+    BOOST_REQUIRE (obj != nullptr);
+
+    BOOST_CHECK_EQUAL ((bool) obj->getProperty ("unavailable"), true);
+    BOOST_CHECK (obj->getProperty ("graphs").isArray());
+    BOOST_CHECK_EQUAL (obj->getProperty ("graphs").size(), 0);
+}
+
 BOOST_AUTO_TEST_SUITE_END()
