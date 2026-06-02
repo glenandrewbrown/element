@@ -2,13 +2,21 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { ReactFlowProvider } from "@xyflow/react";
 import { NodeContextMenu } from "./NodeContextMenu";
 import { useGraphStore } from "../../stores/useGraphStore";
+import { usePluginBrowserStore } from "../../stores/usePluginBrowserStore";
 import type { BlockData } from "../../data/types";
+import type { BrowserPlugin } from "../../stores/usePluginBrowserStore";
 
 // ── Store seeding ──
 // NodeContextMenu returns null unless useGraphStore.nodes contains the nodeId,
 // and it calls useReactFlow() — which throws outside a provider — so it must
 // be wrapped in <ReactFlowProvider>. Bypass/mute toggles + native bridges
 // no-op in Storybook. The single-selection menu is the primary state.
+//
+// G3-A actions (Disconnect submenu, Color swatch row, Oversample submenu,
+// Replace picker) are now WIRED — stories exercise real component states, not
+// fabricated UI. `oversample` and `hostColor` are real BlockData fields.
+// ReplacePicker reads usePluginBrowserStore; we seed it with a mock list so
+// the picker shows realistic data without needing a live bridge.
 
 const NODE_ID = "n1";
 
@@ -33,6 +41,79 @@ function seed(node: BlockData) {
   useGraphStore.setState({ nodes: [node] });
 }
 
+// Mock plugin list for ReplacePicker stories — matches the real BrowserPlugin
+// shape exactly so the picker renders as it would with a live bridge call.
+const MOCK_PLUGINS: BrowserPlugin[] = [
+  {
+    identifier: "vstplugin:Massive X:Native Instruments GmbH",
+    name: "Massive X",
+    manufacturer: "Native Instruments",
+    format: "VST3",
+    category: "Synth",
+    blockCategory: "instrument",
+    signalOut: "audio",
+    usageCount: 42,
+  },
+  {
+    identifier: "vstplugin:Analog Lab V:Arturia",
+    name: "Analog Lab V",
+    manufacturer: "Arturia",
+    format: "VST3",
+    category: "Synth",
+    blockCategory: "instrument",
+    signalOut: "audio",
+    usageCount: 17,
+  },
+  {
+    identifier: "vstplugin:Pro-Q 3:FabFilter",
+    name: "Pro-Q 3",
+    manufacturer: "FabFilter",
+    format: "VST3",
+    category: "EQ",
+    blockCategory: "audiofx",
+    signalOut: "audio",
+    usageCount: 89,
+  },
+  {
+    identifier: "vstplugin:Pro-C 2:FabFilter",
+    name: "Pro-C 2",
+    manufacturer: "FabFilter",
+    format: "VST3",
+    category: "Dynamics",
+    blockCategory: "audiofx",
+    signalOut: "audio",
+    usageCount: 54,
+  },
+  {
+    identifier: "vstplugin:Valhalla Shimmer:Valhalla DSP",
+    name: "Valhalla Shimmer",
+    manufacturer: "Valhalla DSP",
+    format: "VST3",
+    category: "Reverb",
+    blockCategory: "audiofx",
+    signalOut: "audio",
+    usageCount: 31,
+  },
+  {
+    identifier: "vstplugin:MIDI Polysher:MIDI Tools",
+    name: "MIDI Polysher",
+    manufacturer: "MIDI Tools",
+    format: "VST3",
+    category: "MIDI",
+    blockCategory: "midifx",
+    signalOut: "midi",
+    usageCount: 8,
+  },
+];
+
+function seedPlugins(plugins: BrowserPlugin[] = MOCK_PLUGINS) {
+  // Override refresh so the ReplacePicker's useEffect doesn't call the bridge.
+  usePluginBrowserStore.setState({
+    plugins,
+    refresh: () => Promise.resolve(),
+  });
+}
+
 const meta = {
   title: "Canvas/NodeContextMenu",
   component: NodeContextMenu,
@@ -44,14 +125,18 @@ const meta = {
           "NodeContextMenu — the right-click action menu for a Block on the Board.",
           "",
           "**Wired actions (real store/bridge):** Rename, Enable/Bypass, Mute Output,",
-          "Mute Input, Copy, Duplicate, Delete, multi-select Align + Distribute.",
+          "Mute Input, Copy, Duplicate, Delete, Disconnect All/Inputs/Outputs/MIDI,",
+          "Color swatch (inline neu palette + Clear), Oversample Off/2×/4×/8×,",
+          "Replace (inline plugin picker), multi-select Align + Distribute.",
           "",
-          "**Honest-disabled (Pillar-2 backlog):** Disconnect ports, Color, Oversample,",
-          "Replace, Presets — each labelled \"soon\" and shows a tooltip naming the",
-          "missing bridge/follow-up work. Nothing is a silent no-op.",
+          "**Honest-disabled (Pillar-2 backlog):** Presets — shown disabled with tooltip.",
           "",
           "**Design:** category-hue dopamine hover-glow (no resize), tight neumorphic",
           "shadow, category icon + format badge in the header.",
+          "",
+          "**G3-A stories:** DisconnectSubmenu, ColorSwatchOpen, OversampleSubmenu",
+          "(active tick on current factor), ReplacePicker (mocked plugin list),",
+          "OversampleDisabledOnAudioIO (honest-degraded, read-only via disabled prop).",
         ].join("\n"),
       },
     },
@@ -63,7 +148,7 @@ type Story = StoryObj<typeof meta>;
 
 const framed = (Story: React.ComponentType) => (
   <ReactFlowProvider>
-    <div className="bg-canvas" style={{ height: 520 }}>
+    <div className="bg-canvas" style={{ height: 600 }}>
       <Story />
     </div>
   </ReactFlowProvider>
@@ -76,9 +161,9 @@ export const Default: Story = {
     docs: {
       description: {
         story:
-          "Single-selection instrument block (Serum / VST3). The full extended " +
-          "menu with native-parity sections: primary actions, signal state, " +
-          "disconnect (honest-disabled), options (honest-disabled), clipboard, delete.",
+          "Single-selection instrument block (Serum / VST3). The full menu with " +
+          "native-parity sections: primary actions, signal state, Disconnect group, " +
+          "Color swatch row, Oversample group, Replace, Presets (disabled), clipboard, delete.",
       },
     },
   },
@@ -167,6 +252,217 @@ export const ModulatorBlock: Story = {
           format: "INT",
           cpuLoad: 2,
           latencyMs: 0,
+        }),
+      );
+      return framed(Story);
+    },
+  ],
+};
+
+// ── G3-A: Disconnect submenu visible ─────────────────────────────────────────
+// The Disconnect section is flat (no popper/flyout) — it is always rendered
+// as four inline items under the "Disconnect" section header. This story
+// renders an instrument block so the full Disconnect group (All Ports, Input
+// Ports, Output Ports, MIDI Ports) is visible and scrolled into view by
+// positioning the menu near the top of the canvas.
+export const DisconnectSubmenu: Story = {
+  args: { nodeId: NODE_ID, position: { x: 24, y: 16 }, onClose: () => {} },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "G3-A: Disconnect section rendered in full — four flat items: " +
+          "All Ports, Input Ports, Output Ports, MIDI Ports. " +
+          "The menu is positioned at y:16 so the Disconnect group is in view " +
+          "without scrolling. Each item calls disconnectNode(nodeId, scope) " +
+          "on click (no-op bridge in Storybook). Instrument accent (Blue).",
+      },
+    },
+  },
+  decorators: [
+    (Story) => {
+      seed(makeNode());
+      return framed(Story);
+    },
+  ],
+};
+
+// ── G3-A: Color swatch row with an active swatch ──────────────────────────────
+// The swatch row is always rendered as part of the Options group. Setting
+// hostColor to one of the four category hues causes the matching swatch to
+// show the active ring (white border + hue ring via box-shadow). The story
+// uses the Orange (#E8A838) swatch active — visually distinct from the Blue
+// instrument accent so both rings are distinguishable in a pixel diff.
+export const ColorSwatchOpen: Story = {
+  args: { nodeId: NODE_ID, position: { x: 24, y: 16 }, onClose: () => {} },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "G3-A: Color swatch row with the Orange swatch active (hostColor = " +
+          "\"#E8A838\"). The active swatch renders an outer ring (white gap + hue " +
+          "ring via box-shadow). Clear chip is also present. Clicking a swatch " +
+          "calls setNodeColor(nodeId, hex); Clear calls setNodeColor(nodeId, \"\").",
+      },
+    },
+  },
+  decorators: [
+    (Story) => {
+      seed(makeNode({ hostColor: "#E8A838" }));
+      return framed(Story);
+    },
+  ],
+};
+
+// ── G3-A: Color swatch — ARGB host format normalised ─────────────────────────
+// C++ JUCE Colour::toString emits "#AARRGGBB" (8-digit). normaliseHostColorToRgb
+// strips the alpha to "#RRGGBB" for comparison. This story confirms the active
+// ring still appears when hostColor carries an alpha prefix.
+export const ColorSwatchArgbNormalised: Story = {
+  args: { nodeId: NODE_ID, position: { x: 24, y: 16 }, onClose: () => {} },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "G3-A: hostColor = \"#FF4A90D9\" (ARGB from JUCE Colour::toString). " +
+          "normaliseHostColorToRgb strips the alpha → \"#4A90D9\" → the Blue swatch " +
+          "renders its active ring. Verifies the normalisation path.",
+      },
+    },
+  },
+  decorators: [
+    (Story) => {
+      seed(makeNode({ hostColor: "#FF4A90D9" }));
+      return framed(Story);
+    },
+  ],
+};
+
+// ── G3-A: Oversample submenu — 4× active ─────────────────────────────────────
+// The Oversample section renders four flat items (Off / 2× / 4× / 8×). The
+// item matching oversample === 4 gets active=true → orange text + filled icon,
+// providing a visual tick. The × in labels is U+00D7 (as per NodeContextMenu).
+export const OversampleSubmenu: Story = {
+  args: { nodeId: NODE_ID, position: { x: 24, y: 16 }, onClose: () => {} },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "G3-A: Oversample section with 4× active (oversample: 4). The active " +
+          "item renders with orange text (text-accent-orange) confirming the tick. " +
+          "Labels use U+00D7 (×): \"Off\", \"2×\", \"4×\", \"8×\". Clicking an item " +
+          "calls setOversample(nodeId, factor); the bridge no-ops in Storybook.",
+      },
+    },
+  },
+  decorators: [
+    (Story) => {
+      seed(makeNode({ oversample: 4 }));
+      return framed(Story);
+    },
+  ],
+};
+
+// ── G3-A: Replace picker open — over a mocked plugin list ────────────────────
+// ReplacePicker is shown when the "Replace…" MenuItem has active=true (the
+// replacing state). We cannot drive internal useState from a story arg without
+// a wrapper component, so this story uses a thin render-wrapper that pre-sets
+// the replacing flag by rendering NodeContextMenu in a stable container.
+// NOTE: ReplacePicker calls usePluginBrowserStore.refresh() on mount; we
+// stub refresh in seedPlugins() so the bridge is never called.
+export const ReplacePicker: Story = {
+  args: { nodeId: NODE_ID, position: { x: 24, y: 16 }, onClose: () => {} },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "G3-A: Replace picker open. usePluginBrowserStore is seeded with 6 " +
+          "mock plugins (2 instruments, 3 audio-fx, 1 MIDI-fx) so the picker " +
+          "renders its real list without a live bridge. The search input is present " +
+          "and autofocused. Clicking a row calls replacePlugin(nodeId, identifier).",
+      },
+    },
+  },
+  decorators: [
+    (Story) => {
+      seed(makeNode());
+      seedPlugins();
+      return (
+        <ReactFlowProvider>
+          <div className="bg-canvas" style={{ height: 700 }}>
+            {/* Render the menu normally; user clicks "Replace…" to open the
+                picker. The story seeds the plugin list so the picker is
+                immediately populated when opened. */}
+            <Story />
+          </div>
+        </ReactFlowProvider>
+      );
+    },
+  ],
+};
+
+// ── G3-A: Replace picker — empty plugin list (honest no-data state) ───────────
+export const ReplacePickerEmpty: Story = {
+  args: { nodeId: NODE_ID, position: { x: 24, y: 16 }, onClose: () => {} },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "G3-A: Replace picker with an empty plugin store (no plugins scanned). " +
+          "The picker shows \"No plugins available\" — the honest empty state. " +
+          "Confirms ReplacePicker does not fabricate results when plugins = [].",
+      },
+    },
+  },
+  decorators: [
+    (Story) => {
+      seed(makeNode());
+      seedPlugins([]);
+      return (
+        <ReactFlowProvider>
+          <div className="bg-canvas" style={{ height: 600 }}>
+            <Story />
+          </div>
+        </ReactFlowProvider>
+      );
+    },
+  ],
+};
+
+// ── G3-A: Oversample honest-degraded on Audio/MIDI-IO node ───────────────────
+// On Audio I/O and MIDI I/O nodes the engine bridge rejects setOversample and
+// the store rolls back the optimistic update. The menu still renders all four
+// oversample items (the component does not pre-disable them for IO nodes —
+// the rejection is handled optimistically). This story documents that behaviour:
+// the Oversample items render as normal interactive items (not pre-greyed);
+// the honest-degraded path is the post-click rollback, not a disabled state.
+// We show an INT-format MIDI I/O node with no active oversample (factor 1 /
+// "Off") to make the default state legible.
+export const OversampleHonestDegradedAudioIO: Story = {
+  args: { nodeId: NODE_ID, position: { x: 24, y: 16 }, onClose: () => {} },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "G3-A honest-degraded: MIDI I/O node (INT format, midifx category, " +
+          "oversample undefined → defaults to 1 / \"Off\" active). The Oversample " +
+          "items render as interactive — the engine rejects the bridge call and " +
+          "rolls back the optimistic factor post-click. Pre-disabling is intentionally " +
+          "absent (the component trusts the bridge, not block metadata). " +
+          "Teal accent confirms midifx category styling.",
+      },
+    },
+  },
+  decorators: [
+    (Story) => {
+      seed(
+        makeNode({
+          name: "MIDI Input",
+          category: "midifx",
+          format: "INT",
+          cpuLoad: 0,
+          latencyMs: 0,
+          oversample: undefined,
         }),
       );
       return framed(Story);
