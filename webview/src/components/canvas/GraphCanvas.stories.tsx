@@ -99,3 +99,26 @@ export const Empty: Story = {
     },
   },
 };
+
+// Nested (depth > 0) — dived two Containers down. The NestedChrome overlay is
+// live: inset frame + left depth-ribbon + depth-banner, all tinted by the
+// active level token, over the populated demo Board.
+export const NestedDepth: Story = {
+  decorators: [
+    (Story) => {
+      seedGraph();
+      useGraphStore.setState({
+        breadcrumbStack: ["Main Project", "Polysynth Rack", "Voice Container"],
+      });
+      return framed(Story);
+    },
+  ],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Nested Board at depth 2 (purple) — the GraphCanvas with the NestedChrome overlay active: the inset `.nested-canvas-frame`, the left depth-ribbon (two lit rungs), and the depth-banner reading \"LEVEL 2 · Voice Container inside Polysynth Rack\" with its EXIT control, painted over the populated demo Project. The everyday dived-in editing surface.",
+      },
+    },
+  },
+};

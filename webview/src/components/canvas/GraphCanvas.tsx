@@ -44,6 +44,7 @@ import { QuickAddPopup } from "./QuickAddPopup";
 import { NodeContextMenu } from "./NodeContextMenu";
 import { EdgeContextMenu } from "./EdgeContextMenu";
 import { CanvasContextMenu } from "./CanvasContextMenu";
+import { NestedChrome } from "./NestedChrome";
 import type { BlockData, CableData, CommentBoxData } from "../../data/types";
 import { EV_FIT_BOARD, EV_CREATE_COMMENT, EV_START_RENAME } from "../../events";
 
@@ -631,6 +632,12 @@ export function GraphCanvas() {
           </div>
         </div>
       )}
+
+      {/* Nested-Board chrome — inset frame + depth ribbon + depth banner.
+          Renders only when the breadcrumb stack is deeper than root (honest:
+          absent at depth 0). Frame is pointer-events-none so the canvas stays
+          interactive; only the banner/EXIT capture clicks. */}
+      <NestedChrome />
     </div>
   );
 }
