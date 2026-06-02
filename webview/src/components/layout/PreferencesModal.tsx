@@ -8,6 +8,7 @@ import {
   nativeMappingRemoveMap,
   nativeMappingSetLearning,
   nativeOpenGraphMixer,
+  nativeOpenKeymapEditor,
   nativeOpenLuaConsole,
   nativeOscApplyHost,
   nativeWebDismissOverlay,
@@ -35,8 +36,8 @@ const TABS: Tab[] = [
 ];
 
 // ── Keyboard shortcut definitions (read from useKeyboard source of truth) ────
-// This is a READ-ONLY representation of the live key-command registry.
-// A full editable keymap editor is tracked as U9 (follow-up task).
+// This is a READ-ONLY reference list. Live rebinding opens the native
+// key-command editor via nativeOpenKeymapEditor (U9, elementOpenKeymapEditor).
 
 interface ShortcutEntry {
   keys: string[];
@@ -767,11 +768,20 @@ function ShortcutsTab() {
 
   return (
     <div className="space-y-5">
-      <p className="text-[9px] text-text-dim leading-relaxed">
-        Read-only key-command reference derived from{" "}
-        <span className="text-text-secondary font-mono">useKeyboard.ts</span>.
-        Full rebinding editor is tracked as U9.
-      </p>
+      {/* U9: open native key-command editor */}
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-[9px] text-text-dim leading-relaxed">
+          Read-only reference. To rebind, open the key-command editor.
+        </p>
+        <button
+          type="button"
+          className="shrink-0 px-3 py-1.5 rounded bg-elevated neu-raised text-text-primary text-[10px] font-bold uppercase tracking-wide hover:bg-surface-elevated transition-colors cursor-pointer focus:outline-none focus:ring-1 focus:ring-accent-blue/40"
+          onClick={() => void nativeOpenKeymapEditor()}
+          aria-label="Edit key commands"
+        >
+          Edit key commands…
+        </button>
+      </div>
 
       {sections.map((section) => (
         <div key={section}>

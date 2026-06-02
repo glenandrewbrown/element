@@ -65,6 +65,10 @@ const BLANK_HOST_EXTRAS = {
   molecules:    [],
   logLines:     [],
   activeGraphOutline: [],
+  // Store actions — present so the `as HostExtrasState` casts below are complete
+  // (vitest-runtime tests never call these; tsc -b requires the full shape).
+  hydrateFromSnapshot: vi.fn(),
+  setLogLines:  vi.fn(),
 };
 
 const BLANK_SCAN_STATE = {

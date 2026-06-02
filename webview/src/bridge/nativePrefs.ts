@@ -62,3 +62,15 @@ export async function nativeHostShowAllPluginWindows(): Promise<boolean> {
   const r = await invokeElementNative("elementHostShowAllPluginWindows", []);
   return r === true;
 }
+
+/**
+ * U9: Open the native key-command editor window.
+ * Maps to GuiService::showKeymapEditorWindow() on the C++ side.
+ * No-op-safe: resolves undefined when the JUCE bridge is absent (Vite dev).
+ *
+ * C++ bridge message name: "elementOpenKeymapEditor"
+ * Handler shape: withNativeFunction("elementOpenKeymapEditor", [](var, auto complete) { complete({}); })
+ */
+export async function nativeOpenKeymapEditor(): Promise<void> {
+  await invokeElementNative("elementOpenKeymapEditor", []);
+}

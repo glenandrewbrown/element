@@ -31,6 +31,7 @@ vi.mock("../../../bridge/nativePrefs", () => ({
   nativeMappingRemoveMap: vi.fn().mockResolvedValue(undefined),
   nativeMappingSetLearning: vi.fn().mockResolvedValue(undefined),
   nativeOpenGraphMixer: vi.fn().mockResolvedValue(undefined),
+  nativeOpenKeymapEditor: vi.fn().mockResolvedValue(undefined),
   nativeOpenLuaConsole: vi.fn().mockResolvedValue(undefined),
   nativeOscApplyHost: vi.fn().mockResolvedValue(undefined),
   nativeWebDismissOverlay: vi.fn().mockResolvedValue(undefined),
@@ -45,6 +46,7 @@ import {
   nativeMappingRemoveMap,
   nativeMappingSetLearning,
   nativeOpenGraphMixer,
+  nativeOpenKeymapEditor,
   nativeOpenLuaConsole,
   nativeOscApplyHost,
   nativeWebDismissOverlay,
@@ -82,6 +84,49 @@ function resetHostExtras() {
 }
 
 // ── tests ─────────────────────────────────────────────────────────────────────
+
+// ── U9: Shortcuts tab — "Edit key commands…" button ──────────────────────────
+
+describe("PreferencesModal — Shortcuts tab", () => {
+  const onClose = vi.fn();
+
+  beforeEach(() => {
+    onClose.mockReset();
+    vi.clearAllMocks();
+  });
+
+  function renderShortcuts() {
+    const utils = render(<PreferencesModal onClose={onClose} />);
+    // Navigate to the Shortcuts tab
+    fireEvent.click(screen.getByRole("tab", { name: /shortcuts/i }));
+    return utils;
+  }
+
+  it("renders the Shortcuts tab panel", () => {
+    renderShortcuts();
+    expect(screen.getByRole("tabpanel")).toBeInTheDocument();
+  });
+
+  it("renders 'Edit key commands…' button in the Shortcuts tab", () => {
+    renderShortcuts();
+    expect(
+      screen.getByRole("button", { name: /edit key commands/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("clicking 'Edit key commands…' calls nativeOpenKeymapEditor once", () => {
+    renderShortcuts();
+    fireEvent.click(screen.getByRole("button", { name: /edit key commands/i }));
+    expect(nativeOpenKeymapEditor).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders the read-only shortcut reference list", () => {
+    renderShortcuts();
+    // At least one kbd element should be present (shortcut keys)
+    const kbds = document.querySelectorAll("kbd");
+    expect(kbds.length).toBeGreaterThan(0);
+  });
+});
 
 // QUARANTINE: stale API — PreferencesModal UI changed; tests look for role="option"
 // (sample rates), role="checkbox" (OSC/snap-grid) that no longer match the
