@@ -30,9 +30,18 @@
 namespace element {
 
 //==============================================================================
-/** Platform hook: activate the (dock-hidden) worker app so a newly-shown editor
-    window comes to the front and can take key focus. No-op off macOS. Defined in
-    sandboxeditorwindow_mac.mm. */
+/** Platform hook: pin the sandbox worker process to a non-foreground activation
+    policy (macOS NSApplicationActivationPolicyProhibited). The worker is a
+    re-exec of the same Element Mach-O under the same bundle id; if it ever
+    registers as a foreground app, macOS duplicate-instance enforcement SIGKILLs
+    an Element process and can take the host down. Call once, early, in the
+    worker init path. No-op off macOS. Defined in sandboxeditorwindow_mac.mm. */
+void sandboxWorkerSetAccessoryPolicy();
+
+/** Platform hook: activate the worker app to Accessory so a newly-shown editor
+    window comes to the front and can take key focus, WITHOUT making the worker a
+    foreground (Regular) app — Regular trips the duplicate-instance SIGKILL.
+    No-op off macOS. Defined in sandboxeditorwindow_mac.mm. */
 void sandboxWorkerActivateForEditor();
 
 //==============================================================================

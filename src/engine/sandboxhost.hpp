@@ -295,6 +295,17 @@ private:
 
     std::atomic<bool> restartInProgress { false };
 
+    // Async restart hand-off: handleConnectionLost() runs on the IPC connection's
+    // OWN background thread, so it must NOT kill/join that thread (self-join) nor
+    // block on a reload. It only flags this; the host's juce::Timer (message
+    // thread) sees the flag in timerCallback() and drives attemptRestart() there.
+    std::atomic<bool> restartRequested { false };
+
+    // Set by attemptRestart() before re-issuing loadPlugin() so the PluginLoaded
+    // handler knows this load is a crash-RECOVERY (fire sandboxRestarted + reset
+    // the attempt budget) rather than a first-time load.
+    std::atomic<bool> awaitingRestartLoad { false };
+
     // Separate-window editor bridge state
     std::atomic<bool> editorOpen { false };
 
@@ -645,6 +656,14 @@ inline void SandboxHost::handleConnectionLost()
 {
     juce::Logger::writeToLog ("Sandbox worker connection lost");
 
+    // NOTE: JUCE's ChildProcessCoordinator delivers this on the connection's OWN
+    // background thread (callbacksOnMessageThread=false). We must therefore do
+    // ONLY lightweight, non-blocking, non-self-joining work here:
+    //  - never call killWorkerProcess()->stopThread() (that would self-join the
+    //    very thread this callback runs on -> deadlock);
+    //  - never block on a reload (pluginReadyEvent.wait) -> host hang.
+    // The actual relaunch is driven from timerCallback() on the message thread.
+
     connectionAlive.store (false);
     {
         std::lock_guard<std::mutex> lock (responseMutex);
@@ -652,6 +671,11 @@ inline void SandboxHost::handleConnectionLost()
         lastResponseType = SandboxMessageType::None;
     }
     responseCondition.notify_all();
+
+    // Unblock any control-path waiter that is parked on the plugin-ready event
+    // (e.g. a restart load that raced a second crash).
+    pluginReadyFailed.store (true);
+    pluginReadyEvent.signal();
 
     if (state.load() == State::Idle)
         return;
@@ -668,13 +692,31 @@ inline void SandboxHost::handleConnectionLost()
     listeners.call (&Listener::sandboxCrashed, this);
     crashed();
 
-    attemptRestart();
+    // Hand the relaunch to the message thread (timerCallback). Do NOT restart
+    // from this IPC thread.
+    restartRequested.store (true);
 }
 
 inline void SandboxHost::timerCallback()
 {
-    // Check heartbeat
-    if (state.load() != State::Idle && ! heartbeat.isAlive())
+    // Drive any pending crash-recovery on the MESSAGE thread (this is where
+    // killWorkerProcess()->stopThread() is safe — never the IPC thread that is
+    // being torn down). One-shot: clear the flag atomically before acting.
+    if (restartRequested.exchange (false))
+    {
+        attemptRestart();
+        return;
+    }
+
+    // Check heartbeat ONLY in live states. A missed heartbeat there means the
+    // worker is gone/hung; treat it exactly like a lost connection (flag a restart
+    // for the next tick) — reusing handleConnectionLost keeps the crash path
+    // single-sourced. Crashed is excluded (a restart is already pending) and Error
+    // is terminal (giving up) — re-detecting in either would spin a permanent
+    // Crashed<->Error loop firing sandboxCrashed forever.
+    const auto s = state.load();
+    const bool liveState = (s == State::Ready || s == State::Loading || s == State::Active);
+    if (liveState && ! heartbeat.isAlive())
     {
         juce::Logger::writeToLog ("Sandbox worker heartbeat timeout");
         handleConnectionLost();
@@ -693,10 +735,24 @@ inline bool SandboxHost::launchWorkerProcess()
 
     juce::Logger::writeToLog ("Launching sandbox worker: " + exe.getFullPathName());
 
+    // Diagnostic (OPT-IN, EL_SANDBOX_PROBE=1): keep the worker's stdout/stderr
+    // fds wired up (JUCE's default wantStdOut|wantStdErr) instead of routing them
+    // to /dev/null (streamFlags=0). The worker then re-points those fds at
+    // ~/Library/Element/log/sandbox_worker_probe.log in its init (see
+    // SandboxWorker::initialise), so a NATIVE worker death — dylib loader error,
+    // JUCE stderr assertion, plugin abort() — is captured to a readable file
+    // BEFORE the worker's FileLogger even exists. OFF by default → zero
+    // production cost (worker output → /dev/null exactly as before).
+    const bool probeEnabled =
+        juce::SystemStats::getEnvironmentVariable ("EL_SANDBOX_PROBE", {}).isNotEmpty();
+    const int streamFlags = probeEnabled
+        ? (juce::ChildProcess::wantStdOut | juce::ChildProcess::wantStdErr)
+        : 0;
+
     return ChildProcessCoordinator::launchWorkerProcess (exe,
                                                           EL_PLUGIN_HOST_PROCESS_ID,
                                                           EL_SANDBOX_TIMEOUT_MS,
-                                                          0);
+                                                          streamFlags);
 }
 
 inline void SandboxHost::handleWorkerMessage (const SandboxMessageHeader& header,
@@ -714,6 +770,23 @@ inline void SandboxHost::handleWorkerMessage (const SandboxMessageHeader& header
             pluginReadyFailed.store (false);
             pluginReadyEvent.signal();
             listeners.call (&Listener::sandboxPluginLoaded, this);
+
+            // If this load completes a crash-recovery, finish the restart here on
+            // the IPC thread the same way the initial load is finished by the node
+            // (setPluginState / prepareToPlay are pipe sends — safe off the audio
+            // thread). Then reset the attempt budget and fire sandboxRestarted.
+            if (awaitingRestartLoad.exchange (false))
+            {
+                if (lastKnownState.getSize() > 0)
+                    setPluginState (lastKnownState);
+
+                if (currentSampleRate > 0 && currentBlockSize > 0)
+                    prepareToPlay (currentSampleRate, currentBlockSize,
+                                   numInputChannels, numOutputChannels);
+
+                restartAttempts = 0;
+                listeners.call (&Listener::sandboxRestarted, this);
+            }
             break;
 
         case SandboxMessageType::PluginLoadFailed:
@@ -721,6 +794,12 @@ inline void SandboxHost::handleWorkerMessage (const SandboxMessageHeader& header
             juce::String error = payload ? juce::String::fromUTF8 (
                 static_cast<const char*> (payload),
                 static_cast<int> (header.payloadSize)) : "Unknown error";
+            // A CLEAN load failure (worker alive, reported an honest error) is
+            // terminal — the plugin is simply broken, so do not keep relaunching.
+            // Clear any pending crash-recovery flag and let the failed listener
+            // surface it. (This is distinct from a load CRASH, where the worker
+            // dies before PluginLoaded and the connection-lost path retries.)
+            awaitingRestartLoad.store (false);
             state.store (State::Ready);
             pluginReadyFailed.store (true);
             pluginReadyEvent.signal();
@@ -872,6 +951,8 @@ inline bool SandboxHost::waitForResponse (SandboxMessageType expectedType,
 
 inline void SandboxHost::attemptRestart()
 {
+    // Message-thread only (driven from timerCallback). The re-entrancy guard is
+    // belt-and-braces; with the single-threaded timer drive it should never trip.
     bool expected = false;
     if (! restartInProgress.compare_exchange_strong (expected, true))
     {
@@ -884,10 +965,23 @@ inline void SandboxHost::attemptRestart()
         ~ResetGuard() { flag.store (false); }
     } guard { restartInProgress };
 
+    // Budget check FIRST. Each entry here is one crash-recovery attempt; a worker
+    // that dies again before PluginLoaded simply re-enters via the crash path, so
+    // restartAttempts counts LOAD-CRASHES, not just clean restarts. The counter
+    // resets to 0 only on a successful PluginLoaded (see handleWorkerMessage).
     if (restartAttempts >= maxRestartAttempts)
     {
-        juce::Logger::writeToLog ("Max sandbox restart attempts reached");
+        juce::Logger::writeToLog ("Max sandbox restart attempts reached — giving up; "
+                                  "sandbox permanently in Error.");
+        awaitingRestartLoad.store (false);
+        // Publish the failure state BEFORE notifying so any listener that reads
+        // back isPluginLoaded()/getState() in its callback sees the final values.
+        pluginLoaded.store (false);
         state.store (State::Error);
+        // Surface to the UI (badge / in-process-fallback). sandboxCrashed already
+        // fired on the crash itself; fire once more on permanent give-up so the
+        // node can flip to its terminal "crashed, not recovering" presentation.
+        listeners.call (&Listener::sandboxCrashed, this);
         return;
     }
 
@@ -896,11 +990,14 @@ inline void SandboxHost::attemptRestart()
                                juce::String (restartAttempts) + "/" +
                                juce::String (maxRestartAttempts));
 
-    // Kill existing process
+    // Safe on the message thread: killWorkerProcess() -> stopThread() is NOT the
+    // IPC thread here, so there is no self-join.
     killWorkerProcess();
-    juce::Thread::sleep (100);
 
-    // Relaunch
+    // Relaunch. NON-BLOCKING: we do NOT wait for PluginLoaded. The normal
+    // PluginLoaded / PluginLoadFailed / connection-lost callbacks drive the next
+    // state transition — exactly like the initial load — so there is no
+    // 5s-per-attempt stall and the IPC thread is never blocked.
     if (launchWorkerProcess())
     {
         connectionAlive.store (true);
@@ -911,38 +1008,28 @@ inline void SandboxHost::attemptRestart()
         {
             pluginReadyEvent.reset();
             pluginReadyFailed.store (false);
-
+            awaitingRestartLoad.store (true);   // tell PluginLoaded this is a recovery
             loadPlugin (loadedPlugin);
-
-            const bool pluginReady = pluginReadyEvent.wait (pluginReadyTimeoutMs);
-
-            if (! pluginReady)
-            {
-                juce::Logger::writeToLog ("[sandbox] restart: plugin did not ack ready within "
-                                           + juce::String (pluginReadyTimeoutMs)
-                                           + " ms — skipping state restore");
-            }
-            else if (pluginReadyFailed.load())
-            {
-                juce::Logger::writeToLog ("[sandbox] restart: plugin reported load failed — skipping state restore");
-            }
-            else
-            {
-                if (lastKnownState.getSize() > 0)
-                    setPluginState (lastKnownState);
-
-                if (currentSampleRate > 0 && currentBlockSize > 0)
-                    prepareToPlay (currentSampleRate, currentBlockSize,
-                                  numInputChannels, numOutputChannels);
-            }
+            // State restore + prepareToPlay are deferred to the PluginLoaded
+            // handler (success) — see handleWorkerMessage::PluginLoaded.
         }
-
-        listeners.call (&Listener::sandboxRestarted, this);
-        restartAttempts = 0;
+        else
+        {
+            // Nothing was loaded when the worker died: a bare relaunch to Ready is
+            // a complete recovery.
+            awaitingRestartLoad.store (false);
+            restartAttempts = 0;
+            listeners.call (&Listener::sandboxRestarted, this);
+        }
     }
     else
     {
-        state.store (State::Error);
+        // Relaunch itself failed (could not spawn). Leave restartRequested set so
+        // the next timer tick retries until the budget is exhausted.
+        juce::Logger::writeToLog ("[sandbox] relaunch failed to spawn worker — will retry");
+        awaitingRestartLoad.store (false);
+        state.store (State::Crashed);
+        restartRequested.store (true);
     }
 }
 

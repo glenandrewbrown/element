@@ -88,6 +88,17 @@ add_test(NAME "SandboxWaitForResponseTests" COMMAND test_element --run_test=Sand
 set_tests_properties(SandboxWaitForResponseTests PROPERTIES RUN_SERIAL TRUE TIMEOUT 30)
 add_test(NAME "SandboxStressTests" COMMAND test_element --run_test=SandboxStressTests)
 set_tests_properties(SandboxStressTests PROPERTIES RUN_SERIAL TRUE TIMEOUT 180)
+# Crash-DURING-load isolation gate: a worker that ::abort()s on every load must
+# not hang/kill the host; the host must give up (Error) in bounded time. Proves
+# the async/off-IPC-thread restart fix (no 5s×N stall, no IPC-thread self-join).
+add_test(NAME "SandboxCrashOnLoadTests" COMMAND test_element --run_test=SandboxCrashOnLoadTests)
+set_tests_properties(SandboxCrashOnLoadTests PROPERTIES RUN_SERIAL TRUE TIMEOUT 60)
+# Real-plugin (ValhallaSupermassive VST3) out-of-process crash-isolation gate.
+# SKIPs cleanly if the plugin is not installed; requires test_element to be
+# code-signed with cmake/entitlements.plist so the worker can dlopen the signed
+# 3rd-party dylib (disable-library-validation). See SandboxRealPluginCrashTest.cpp.
+add_test(NAME "SandboxRealPluginCrashTests" COMMAND test_element --run_test=SandboxRealPluginCrashTests)
+set_tests_properties(SandboxRealPluginCrashTests PROPERTIES RUN_SERIAL TRUE TIMEOUT 120)
 
 # Phase H — service-layer test coverage extension (Team H batch 3).
 # Each <Service>Service<...>Tests sub-suite is registered as its own ctest

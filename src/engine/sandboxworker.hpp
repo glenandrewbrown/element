@@ -13,19 +13,23 @@
 
 #if EL_SANDBOX_INCLUDE_TEST_FORMATS
  #include "test_echo_plugin.hpp"
+ #include "test_crash_plugin.hpp"
 #endif
 
 #include <atomic>
+#include <cerrno>
 #include <memory>
 #include <thread>
 
 #if JUCE_MAC
+ #include <fcntl.h>
  #include <mach/mach_init.h>
  #include <mach/thread_policy.h>
  #include <mach/thread_act.h>
  #include <pthread.h>
  #include <unistd.h>
 #elif JUCE_LINUX || JUCE_BSD
+ #include <fcntl.h>
  #include <pthread.h>
  #include <sched.h>
  #include <unistd.h>
@@ -170,7 +174,8 @@ inline void SandboxWorker::initializeWorker()
 
    #if EL_SANDBOX_INCLUDE_TEST_FORMATS
     formatManager.addFormat (std::make_unique<TestEchoPluginFormat>());
-    juce::Logger::writeToLog ("[Sandbox] TestEchoPluginFormat registered (test build)");
+    formatManager.addFormat (std::make_unique<CrashOnLoadPluginFormat>());
+    juce::Logger::writeToLog ("[Sandbox] TestEchoPluginFormat + CrashOnLoadPluginFormat registered (test build)");
    #endif
 
     juce::addDefaultFormatsToManager (formatManager);
@@ -223,6 +228,65 @@ inline bool SandboxWorker::initialise (const juce::String& commandLine)
     if (initialiseFromCommandLine (commandLine, EL_PLUGIN_HOST_PROCESS_ID, 20000))
     {
         probeLog ("[probe] pipe-connected pid=" + juce::String ((int) ::getpid()));
+
+        // Diagnostic (OPT-IN, EL_SANDBOX_PROBE=1): re-point this worker's stdout +
+        // stderr at the probe log so a NATIVE death reason (dyld loader error,
+        // JUCE stderr assertion, plugin abort()/fprintf) is captured to a readable
+        // file even though it happens before the FileLogger is created. The host
+        // keeps these fds wired (streamFlags=wantStdOut|wantStdErr) when probing;
+        // here we redirect them to the file. OFF by default → no-op in production.
+       #if JUCE_MAC || JUCE_LINUX || JUCE_BSD
+        if (probeEnabled)
+        {
+            auto probePath = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
+                                 .getChildFile ("Element/log/sandbox_worker_probe.log");
+            probePath.getParentDirectory().createDirectory();
+            const int logFd = ::open (probePath.getFullPathName().toRawUTF8(),
+                                      O_WRONLY | O_CREAT | O_APPEND, 0644);
+            if (logFd >= 0)
+            {
+                ::dup2 (logFd, STDOUT_FILENO);
+                ::dup2 (logFd, STDERR_FILENO);
+                if (logFd > STDERR_FILENO)
+                    ::close (logFd);
+            }
+        }
+       #endif
+
+        // === Crash-ISOLATION hardening — do this BEFORE any heavy init ===
+        // The worker is a re-exec of the SAME Element Mach-O under the SAME
+        // CFBundleIdentifier. Two converging OS mechanisms can otherwise take
+        // the HOST down when the worker dies:
+        //
+        //  (H2) Process group: JUCE's posix fork does NOT call setsid(), so the
+        //       worker shares the host's session/process-group. A group-directed
+        //       SIGKILL (e.g. the restart-loop / OS reaping a duplicate) would
+        //       reach the host too. setsid() gives the worker its own session +
+        //       process group, fully decoupling signal delivery in both
+        //       directions. The control IPC is path-based (/tmp FIFO via JUCE
+        //       pipes) and the audio IPC is name-based (POSIX shm/sem), so
+        //       neither depends on the shared process group — setsid() is safe.
+        //
+        //  (H1) Foreground duplicate instance: see sandboxWorkerSetAccessoryPolicy.
+        //       Pin the worker to a non-foreground (Prohibited) activation policy
+        //       so macOS never sees a second FOREGROUND net.kushview.Element and
+        //       SIGKILLs an instance.
+       #if JUCE_MAC || JUCE_LINUX || JUCE_BSD
+        if (::setsid() == -1)
+            probeLog ("[probe] setsid() failed errno=" + juce::String ((int) errno)
+                      + " pid=" + juce::String ((int) ::getpid()));
+        else
+            probeLog ("[probe] setsid() ok — worker in own session/pgrp pid="
+                      + juce::String ((int) ::getpid()));
+       #endif
+
+       #if JUCE_MAC
+        // Must run before any window/foreground registration. The worker is a
+        // pure background helper until the user opens a plugin editor, at which
+        // point it promotes to Accessory (not Regular). See the .mm for why
+        // Regular/foreground trips a duplicate-instance SIGKILL that kills host.
+        sandboxWorkerSetAccessoryPolicy();
+       #endif
 
         // Only now do we know this is a real worker process — initialize
         initializeWorker();
