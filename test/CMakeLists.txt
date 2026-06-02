@@ -268,4 +268,10 @@ option(ELEMENT_RT_STRESS_TEST "Build and register the audio-thread stress test" 
 if (ELEMENT_RT_STRESS_TEST)
     target_compile_definitions(test_element PRIVATE ELEMENT_RT_STRESS_TEST=1)
     add_test(NAME "AudioThreadAllocationStressTests" COMMAND test_element --run_test=AudioThreadAllocationStressTests)
+    # ELEMENT_RT_STRESS_TEST=1 expands the sandbox soak tests from 5 to 1000 kill/recover
+    # cycles (SandboxStressTest.cpp:152, SandboxOrderedShutdownTest.cpp). The default TIMEOUTs
+    # above (180s / 60s) are sized for the 5-cycle build and GUARANTEE a timeout at 1000 cycles
+    # (~3-15 min). Override them here so the full D-9 soak can actually complete in this config.
+    set_tests_properties(SandboxStressTests PROPERTIES TIMEOUT 1800)
+    set_tests_properties(SandboxOrderedShutdownTests PROPERTIES TIMEOUT 1800)
 endif()
