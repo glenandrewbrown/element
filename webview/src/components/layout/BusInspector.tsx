@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { useShallow } from "zustand/react/shallow";
 import {
   useGraphStore,
   selectEdges,
@@ -11,6 +12,7 @@ import {
   type BusEntry,
 } from "../../stores/useBusStore";
 import { useCableMeterStore } from "../../stores/useCableMeterStore";
+import { useNodeChannelMeterStore } from "../../stores/useNodeChannelMeterStore";
 import { nativeGraphSetCableBus } from "../../bridge/nativeGraph";
 import { Icon } from "../neu/Icon";
 import type { CableData, SignalType } from "../../data/types";
@@ -39,10 +41,12 @@ import type { CableData, SignalType } from "../../data/types";
  * send/receive Bus-block model, so it is NOT shown as a fabricated number; the
  * Send/Receive levels above ARE real (max RMS across each side's cables).
  *
- * Per-channel level split (true per-lane L/R/C amplitude) is NOT yet bridged —
- * useCableMeterStore provides a single scalar per cable. The multi-channel columns
- * therefore use the cable's scalar level for all lanes (honest-idle: real signal
- * presence, fabricated per-lane balance). See Pillar-2 backlog note below.
+ * Per-channel level split (G3-B item 2): the SEND side's multi-channel columns
+ * now read REAL per-lane output RMS from each source node's per-channel atoms
+ * (useNodeChannelMeterStore, fed by the host's 60Hz onNodeChannelLevels). When
+ * a source reports fewer lanes than the bus topology, the missing lanes fall
+ * back to the scalar (documented honest-degraded, NOT invented balance). The
+ * RECEIVE side has no single source node, so it keeps the per-cable scalar.
  *
  * `onOpenBlock` is supplied by InspectorHub (selects the block + jumps to the
  * Block tab). When omitted (e.g. rendered in isolation) the affordance is hidden.
@@ -200,27 +204,39 @@ function VuColumn({
  * - Stereo (2ch): L/R pair with labels.
  * - Surround (6ch): six columns L R C LF Ls Rs in two visual groups.
  *
- * `level` is the real scalar from useCableMeterStore (per-cable RMS). Since
- * per-lane split is not yet bridged, ALL columns share this same level —
- * honest-idle: real signal presence, no invented per-channel balance.
+ * `levels` carries the REAL per-channel output RMS (G3-B item 2), one entry per
+ * output lane, sourced from the bus's SEND node via `useNodeChannelLevels`.
+ * Each VuColumn[i] shows `levels[i]`. When the source reports FEWER lanes than
+ * the bus topology (e.g. a stereo source on a 5.1 bus), the missing lanes fall
+ * back to the scalar `level` — documented honest-degraded, NOT invented balance.
+ * `level` (max scalar) is also the fallback when no per-channel data exists.
  */
 function MultiChannelVu({
   level,
+  levels,
   channelCount,
   isSidechain = false,
 }: {
   level: number;
+  /** Real per-channel levels (0–1). [] → every lane uses the scalar fallback. */
+  levels?: number[];
   channelCount: ChannelCount;
   isSidechain?: boolean;
 }) {
   const amp = Math.min(1, Math.max(0, level));
-  const active = amp > 0.01;
   const labels = CHANNEL_LABELS[channelCount];
+
+  // Per-lane resolver: real per-channel value when present, else the scalar.
+  const laneAmp = (i: number): number => {
+    const v = levels && i < levels.length ? levels[i] : amp;
+    return Math.min(1, Math.max(0, v));
+  };
+  const laneActive = (i: number): boolean => laneAmp(i) > 0.01;
 
   if (channelCount === 1) {
     return (
       <div className="flex items-end justify-center" style={{ height: 44 }}>
-        <VuColumn level={amp} active={active} label="M" isSidechain={isSidechain} />
+        <VuColumn level={laneAmp(0)} active={laneActive(0)} label="M" isSidechain={isSidechain} />
       </div>
     );
   }
@@ -228,8 +244,8 @@ function MultiChannelVu({
   if (channelCount === 2) {
     return (
       <div className="flex items-end gap-[3px]" style={{ height: 44 }}>
-        <VuColumn level={amp} active={active} label={labels[0]} isSidechain={isSidechain} />
-        <VuColumn level={amp} active={active} label={labels[1]} isSidechain={isSidechain} />
+        <VuColumn level={laneAmp(0)} active={laneActive(0)} label={labels[0]} isSidechain={isSidechain} />
+        <VuColumn level={laneAmp(1)} active={laneActive(1)} label={labels[1]} isSidechain={isSidechain} />
       </div>
     );
   }
@@ -240,7 +256,7 @@ function MultiChannelVu({
       {/* Front trio: L R C */}
       <div className="flex items-end gap-[3px]">
         {[0, 1, 2].map((i) => (
-          <VuColumn key={i} level={amp} active={active} label={labels[i]} isSidechain={isSidechain} />
+          <VuColumn key={i} level={laneAmp(i)} active={laneActive(i)} label={labels[i]} isSidechain={isSidechain} />
         ))}
       </div>
       {/* Visual separator */}
@@ -248,7 +264,7 @@ function MultiChannelVu({
       {/* Surround + LFE: LF Ls Rs */}
       <div className="flex items-end gap-[3px]">
         {[3, 4, 5].map((i) => (
-          <VuColumn key={i} level={amp} active={active} label={labels[i]} isSidechain={isSidechain} />
+          <VuColumn key={i} level={laneAmp(i)} active={laneActive(i)} label={labels[i]} isSidechain={isSidechain} />
         ))}
       </div>
     </div>
@@ -358,6 +374,32 @@ function useMaxLevel(cableIds: string[]): number {
 }
 
 /**
+ * Merge the REAL per-channel output RMS (G3-B item 2) of a bus side's SOURCE
+ * nodes into one per-lane array, taking the max per lane across all sources.
+ * Returns up to `maxChannels` lanes. `useShallow` element-compares so a steady
+ * graph keeps the same reference (no re-render churn). Empty `[]` when none of
+ * the source nodes report per-channel data → caller falls back to the scalar.
+ */
+function useMergedChannelLevels(
+  sourceBlockIds: string[],
+  maxChannels: number,
+): number[] {
+  return useNodeChannelMeterStore(
+    useShallow((s) => {
+      const out: number[] = [];
+      for (const id of sourceBlockIds) {
+        const ch = s.levels[id];
+        if (!ch) continue;
+        for (let i = 0; i < ch.length && i < maxChannels; ++i) {
+          if (out[i] === undefined || ch[i] > out[i]) out[i] = ch[i];
+        }
+      }
+      return out;
+    }),
+  );
+}
+
+/**
  * A labelled Send or Receive meter — direction label, level numeric, and
  * topology-aware VU display.
  *
@@ -369,6 +411,7 @@ function useMaxLevel(cableIds: string[]): number {
 function FlowMeter({
   dir,
   cableIds,
+  sourceBlockIds,
   signalType,
   accent,
   endpointNames,
@@ -377,6 +420,9 @@ function FlowMeter({
 }: {
   dir: "send" | "receive";
   cableIds: string[];
+  /** UUIDs of the nodes whose OUTPUT feeds this side (the SEND side's sources).
+   *  Used to resolve REAL per-channel levels; empty for the receive side. */
+  sourceBlockIds: string[];
   signalType: SignalType;
   accent: string;
   endpointNames: string[];
@@ -384,6 +430,9 @@ function FlowMeter({
   isSidechain: boolean;
 }) {
   const level = useMaxLevel(cableIds);
+  // Real per-channel levels for the SEND side (G3-B item 2). The receive side
+  // has no single source node, so it stays on the scalar (honest — documented).
+  const channelLevels = useMergedChannelLevels(sourceBlockIds, channelCount);
   const amp = Math.min(1, Math.max(0, level));
   const active = amp > 0.01;
   const isAudio = signalType === "audio";
@@ -474,7 +523,12 @@ function FlowMeter({
               : undefined
           }
         >
-          <MultiChannelVu level={amp} channelCount={channelCount} isSidechain={isSidechain} />
+          <MultiChannelVu
+            level={amp}
+            levels={channelLevels}
+            channelCount={channelCount}
+            isSidechain={isSidechain}
+          />
         </div>
       )}
 
@@ -558,19 +612,18 @@ export function BusInspector({
         ))}
       </div>
 
-      {/* Honest framing. Per-channel level split (true per-lane amplitude)
-          is NOT yet bridged — useCableMeterStore provides a single scalar per
-          cable. Multi-channel columns share that scalar (honest-idle: real
-          signal presence, no fabricated per-channel balance).
-          Missing bridge: "per-channel RMS split" — Pillar-2 backlog. */}
+      {/* Honest framing. The SEND side's multi-channel columns now show REAL
+          per-channel output RMS (G3-B item 2) resolved from each source node's
+          per-lane atoms. The RECEIVE side has no single source node, so it stays
+          on the per-cable scalar (documented, not fabricated). A dedicated
+          bus-FADER value still needs the Bus-block bridge. */}
       <div className="text-[8px] text-text-dim leading-snug pt-0.5 space-y-0.5">
         <div>
-          Send / Receive levels are live (real RMS across each side's cables).
-          A dedicated bus-fader value needs the Bus-block bridge — Pillar-2.
+          Send levels are live per-channel (real per-lane output RMS from each
+          source). Receive shares the cable scalar (no single source node).
         </div>
         <div>
-          Multi-channel columns share the cable scalar (per-lane split not yet
-          bridged — Pillar-2 backlog: "per-channel RMS split").
+          A dedicated bus-fader value needs the Bus-block bridge — Pillar-2.
         </div>
       </div>
     </div>
@@ -707,6 +760,7 @@ function BusRow({
         <FlowMeter
           dir="send"
           cableIds={sendCableIds}
+          sourceBlockIds={sendEndpoints.map((e) => e.blockId)}
           signalType={bus.signalType}
           accent={accent}
           endpointNames={sendNames}
@@ -723,6 +777,7 @@ function BusRow({
         <FlowMeter
           dir="receive"
           cableIds={recvCableIds}
+          sourceBlockIds={[]}
           signalType={bus.signalType}
           accent={accent}
           endpointNames={recvNames}

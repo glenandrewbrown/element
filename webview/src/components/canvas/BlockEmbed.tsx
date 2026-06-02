@@ -1,8 +1,9 @@
-import { memo, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import type { BlockCategory } from "../../data/types";
 import { useParameterStore } from "../../stores/useParameterStore";
 import { useBlockOutputLevel } from "../../stores/useCableMeterStore";
+import { useNodeSpectrum } from "../../hooks/useNodeSpectrum";
 
 // ── Design tokens ──
 
@@ -244,40 +245,103 @@ function MeterEmbed({
 
 // ── SpectrumEmbed ──
 
-function SpectrumEmbed() {
-  // HONEST EMPTY STATE — there is no FFT/spectrum data stream in the app.
-  // The previous static bezier curve was a fake (identical shape regardless of
-  // audio); per the "nothing fake ships" rule it has been removed. This renders
-  // an explicit "spectrum unavailable" placeholder on the same dark inset
-  // surface as the sibling meter — an EmptyState-style honest stand-in that
-  // keeps the expanded-Block height budget (BLOCK-OVERLAP).
-  //
-  // Q-FFT: when a real per-block FFT bridge lands (a spectrum channel pushed
-  // from the C++ host, mirroring the cable-level channel), replace this with a
-  // live analyser that draws REAL magnitude bins. Do NOT reintroduce a
-  // synthesised curve.
+interface SpectrumEmbedProps {
+  /** Real 0..1 magnitude bins from `useNodeSpectrum` (host FFT). Empty → honest
+   *  "No spectrum" placeholder. NEVER a synthesised curve. */
+  bins?: number[];
+}
+
+/**
+ * SpectrumEmbed — a live FFT spectrum strip (G3-B item 1).
+ *
+ * When `bins` carries real magnitude data (host-computed via juce::dsp::FFT,
+ * see useNodeSpectrum), draws the spectrum as magnitude bars on a <canvas> in
+ * the audiofx accent. When `bins` is empty — no signal, no audio output, nobody
+ * subscribed, or no bridge (Storybook/Vite) — renders the SAME honest
+ * "No spectrum" placeholder as before. The previous static bezier curve was a
+ * fake (identical regardless of audio) and stays deleted: do NOT reintroduce a
+ * synthesised curve.
+ */
+function SpectrumEmbed({ bins = [] }: SpectrumEmbedProps) {
   const w = 80;
   const h = 24;
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const hasData = bins.length > 0;
+
+  useEffect(() => {
+    if (!hasData) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    // Backing-store size (logical px — keep it cheap, no DPR scaling needed for
+    // this tiny strip). Clear, then draw log-spaced magnitude bars.
+    const W = w;
+    const H = h + 8;
+    ctx.clearRect(0, 0, W, H);
+
+    const n = bins.length;
+    const bars = 28; // condense 1024 bins into ~28 bars for the strip
+    ctx.fillStyle = "#E8A838"; // audiofx accent
+    for (let b = 0; b < bars; ++b) {
+      // Log-spaced bucket over the bins (audio spectra read best on a log axis).
+      const lo = Math.floor((Math.pow(b / bars, 2) * (n - 1)) | 0);
+      const hi = Math.max(
+        lo + 1,
+        Math.floor((Math.pow((b + 1) / bars, 2) * (n - 1)) | 0),
+      );
+      let mag = 0;
+      for (let i = lo; i < hi && i < n; ++i) mag = Math.max(mag, bins[i]);
+      // Map magnitude to a pseudo-log height so quiet content stays visible.
+      const norm = mag <= 0 ? 0 : Math.min(1, Math.max(0, 1 + Math.log10(mag) / 3));
+      const barH = Math.round(norm * (H - 2));
+      const x = Math.round((b / bars) * W);
+      const bw = Math.max(1, Math.floor(W / bars) - 1);
+      ctx.globalAlpha = 0.85;
+      ctx.fillRect(x, H - barH, bw, barH);
+    }
+    ctx.globalAlpha = 1;
+  }, [bins, hasData, w, h]);
+
+  if (!hasData) {
+    return (
+      <div
+        role="status"
+        aria-label="Spectrum unavailable"
+        className="flex items-center justify-center rounded-sm overflow-hidden"
+        style={{
+          width: w,
+          height: h + 8,
+          backgroundColor: "#1A1A1E",
+          boxShadow: SHADOW_PRESSED,
+        }}
+      >
+        <span
+          className="text-[8px] font-medium uppercase tracking-wide text-center leading-none"
+          style={{ color: "rgba(229,229,234,0.28)" }}
+        >
+          No spectrum
+        </span>
+      </div>
+    );
+  }
 
   return (
-    <div
-      role="status"
-      aria-label="Spectrum unavailable"
-      className="flex items-center justify-center rounded-sm overflow-hidden"
+    <canvas
+      ref={canvasRef}
+      width={w}
+      height={h + 8}
+      role="img"
+      aria-label="Spectrum"
+      className="rounded-sm overflow-hidden"
       style={{
         width: w,
         height: h + 8,
         backgroundColor: "#1A1A1E",
         boxShadow: SHADOW_PRESSED,
       }}
-    >
-      <span
-        className="text-[8px] font-medium uppercase tracking-wide text-center leading-none"
-        style={{ color: "rgba(229,229,234,0.28)" }}
-      >
-        No spectrum
-      </span>
-    </div>
+    />
   );
 }
 
@@ -320,9 +384,15 @@ function BlockEmbedComponent({ nodeId, category, compact = false }: BlockEmbedPr
   // until a per-channel RMS bridge lands).
   const level = useBlockOutputLevel(nodeId);
 
-  if (compact) return null;
-
+  // REAL FFT spectrum for the audiofx slot (G3-B item 1). Called
+  // unconditionally (hook-order stability across the zoom-gated mount) but only
+  // ACTIVE — i.e. subscribed + polled — for an expanded audiofx block, so the
+  // audio-thread FFT tap is scoped to exactly the blocks whose spectrum is on
+  // screen. Returns [] (→ honest "No spectrum") in Storybook/Vite (no bridge).
   const isAudioFx = category === "audiofx";
+  const spectrumBins = useNodeSpectrum(nodeId, isAudioFx && !compact);
+
+  if (compact) return null;
 
   return (
     <div className="flex flex-col gap-1 px-1 pb-1">
@@ -333,10 +403,10 @@ function BlockEmbedComponent({ nodeId, category, compact = false }: BlockEmbedPr
       {(category === "instrument" || category === "audiofx") && (
         <div className="flex items-center justify-between gap-1">
           <MeterEmbed leftLevel={level} rightLevel={level} leftPeak={level} rightPeak={level} />
-          {/* Spectrum slot only for audiofx (EQ / spectral processors).
-              Currently an honest "no spectrum" placeholder — no FFT bridge
-              exists yet (Q-FFT). */}
-          {isAudioFx && <SpectrumEmbed />}
+          {/* Spectrum slot only for audiofx (EQ / spectral processors). Live
+              FFT bins from the host (G3-B item 1); empty → honest "No spectrum"
+              placeholder (silent / no bridge / nobody subscribed). */}
+          {isAudioFx && <SpectrumEmbed bins={spectrumBins} />}
         </div>
       )}
 

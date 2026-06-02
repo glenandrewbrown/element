@@ -12,6 +12,7 @@
 #include "nodes/mididevice.hpp"
 #include "nodes/placeholder.hpp"
 #include "engine/rootgraph.hpp"
+#include "engine/spectrumanalyser.hpp"
 
 namespace element {
 
@@ -340,6 +341,17 @@ void Processor::prepare (const double newSampleRate,
             avf->set (0);
             outRMS.add (avf);
         }
+
+        // Per-node FFT analyser (G3-B item 1). Allocate the FFT object, window,
+        // ring + scratch ONCE here (prepare-time), so the audio-thread tap is
+        // allocation-free. Only meaningful when the node has audio output; a
+        // MIDI/utility node gets no analyser (popSpectrumFrame() → nullopt →
+        // honest "no spectrum"). Re-uses the host sample rate (sampleRate * 1,
+        // pre-oversampling — the RMS tap reads the same post-process buffer).
+        if (getNumAudioOutputs() > 0 && sampleRate > 0.0)
+            spectrum = std::make_unique<SpectrumAnalyser> (sampleRate);
+        else
+            spectrum.reset();
     }
 }
 
@@ -352,7 +364,46 @@ void Processor::unprepare()
         oversampler->reset();
         inRMS.clear (true);
         outRMS.clear (true);
+        spectrum.reset();
     }
+}
+
+//=============================================================================
+// Per-node FFT spectrum forwarders (G3-B item 1). The atomic flag is the only
+// thing the audio thread reads on the push path; the FFT runs in
+// popSpectrumFrame() on the message thread.
+
+void Processor::pushSpectrumSamples (const float* mono, int numSamples) noexcept
+{
+    // Guard order matters for RT-safety: the cheap relaxed-atomic flag is
+    // checked first so an unsubscribed node does nothing. `spectrum` is only
+    // (re)assigned on the message thread under prepare()/unprepare(); the audio
+    // thread observes a stable pointer for the life of a prepared graph.
+    if (! spectrumWanted.load (std::memory_order_relaxed))
+        return;
+    if (auto* a = spectrum.get())
+        a->pushSamples (mono, numSamples);
+}
+
+std::optional<std::vector<float>> Processor::popSpectrumFrame() noexcept
+{
+    auto* a = spectrum.get();
+    if (a == nullptr || ! spectrumWanted.load (std::memory_order_relaxed))
+        return std::nullopt;
+    auto frame = a->computeLatestFrame();
+    if (! frame.has_value())
+        return std::nullopt;
+    return std::vector<float> (frame->begin(), frame->end());
+}
+
+double Processor::getSpectrumSampleRate() const noexcept
+{
+    return spectrum != nullptr ? spectrum->getSampleRate() : 0.0;
+}
+
+int Processor::getSpectrumFftSize() const noexcept
+{
+    return spectrum != nullptr ? SpectrumAnalyser::getFftSize() : 0;
 }
 
 void Processor::setEnabled (const bool shouldBeEnabled)

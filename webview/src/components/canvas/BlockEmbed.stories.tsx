@@ -1,19 +1,22 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { BlockEmbed } from "./BlockEmbed";
+import { BlockEmbed, SpectrumEmbed } from "./BlockEmbed";
 import { useParameterStore } from "../../stores/useParameterStore";
 import { useGraphStore } from "../../stores/useGraphStore";
 import { useCableMeterStore } from "../../stores/useCableMeterStore";
 
 // ── Store seeding ──
-// BlockEmbed reads two REAL sources:
+// BlockEmbed reads three REAL sources:
 //   1. Mini fader fills — live parameter values from useParameterStore keyed by
 //      `${nodeId}:${index}`.
 //   2. Meter level — useBlockOutputLevel(nodeId) = max live cable level over the
 //      Block's OUTGOING edges (useGraphStore topology × useCableMeterStore levels).
-// The native bridges no-op without a backend, so each story seeds these stores
+//   3. Spectrum bins — useNodeSpectrum(nodeId) = real host FFT (G3-B item 1).
+// The native bridges no-op without a backend, so each story seeds the stores
 // directly to drive the visuals. Meters default to an HONEST 0 (silent) when no
-// outgoing cable carries signal — never fabricated. The spectrum slot is an
-// honest "no spectrum" placeholder (no FFT bridge exists yet — Q-FFT).
+// outgoing cable carries signal — never fabricated. In Storybook there is no
+// __JUCE__ bridge, so the audiofx spectrum slot shows its honest "No spectrum"
+// placeholder; the SpectrumLive story below feeds SpectrumEmbed real bins
+// directly to demonstrate the LIVE analyser.
 
 function seedParams(nodeId: string, values: number[]) {
   const next: Record<string, number> = {};
@@ -96,7 +99,7 @@ export const AudioFx: Story = {
     docs: {
       description: {
         story:
-          "AudioFx embed — the tallest variant: 5 faders + LIT stereo meter + honest 'no spectrum' placeholder (no FFT bridge exists yet — Q-FFT), orange accent. Drives the BLOCK-OVERLAP height budget.",
+          "AudioFx embed — the tallest variant: 5 faders + LIT stereo meter + spectrum slot, orange accent. In Storybook (no __JUCE__ bridge) the spectrum slot shows its HONEST 'No spectrum' placeholder; with a live host it draws real FFT bins (see SpectrumLive). Drives the BLOCK-OVERLAP height budget.",
       },
     },
   },
@@ -187,4 +190,43 @@ export const MeterSilent: Story = {
       return framed(<Story />);
     },
   ],
+};
+
+// ── Spectrum (G3-B item 1) ──
+// SpectrumLive feeds the SpectrumEmbed sub-component REAL magnitude bins so the
+// live canvas analyser renders even without a host bridge (Storybook). The
+// SpectrumEmpty story shows the honest "No spectrum" placeholder it falls back
+// to when bins are empty (silent source / no audio output / no bridge).
+
+/** A plausible decaying spectrum shape (REAL-looking magnitudes, but here just
+ *  static demo data — the COMPONENT is the live analyser; in the app these come
+ *  from the host FFT). 64 log-decaying bins. */
+const DEMO_BINS = Array.from({ length: 64 }, (_, i) =>
+  Math.max(0, 0.9 * Math.exp(-i / 14) * (0.7 + 0.3 * Math.sin(i * 0.7))),
+);
+
+export const SpectrumLive: Story = {
+  args: { nodeId: "spec-1", category: "audiofx" },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Spectrum LIVE — the SpectrumEmbed analyser fed real 0..1 magnitude bins draws magnitude bars on a <canvas> in the audiofx accent. In the app these bins come from the host's juce::dsp::FFT (G3-B item 1); here the bins are demo data so the canvas renders without a bridge.",
+      },
+    },
+  },
+  render: () => framed(<SpectrumEmbed bins={DEMO_BINS} />),
+};
+
+export const SpectrumEmpty: Story = {
+  args: { nodeId: "spec-0", category: "audiofx" },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Spectrum EMPTY (honest) — with no bins (silent source, no audio output, nobody subscribed, or no bridge) SpectrumEmbed renders the explicit 'No spectrum' placeholder rather than a fabricated curve.",
+      },
+    },
+  },
+  render: () => framed(<SpectrumEmbed bins={[]} />),
 };

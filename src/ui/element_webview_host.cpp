@@ -1059,6 +1059,89 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             postCompletion (completion, ok);
         });
 
+    // G3-B item 1 — per-node FFT spectrum, on demand by UUID.
+    //   Input:  args[0] = nodeUuid: String
+    //   Output: { bins: number[], fftSize: number, sampleRate: number } | null
+    // Polling == subscribing: the first call registers the node in
+    // spectrumSubscriptions and flips its atomic spectrumWanted, so the audio
+    // thread starts copying samples into the analyser on the NEXT block. The
+    // FFT itself runs HERE (message thread) inside Processor::popSpectrumFrame.
+    // Returns null (honest-degraded) until a full window has accumulated, or
+    // when the node has no analyser (no audio output / unprepared).
+    registerFn (
+        Identifier ("elementGetNodeSpectrum"),
+        [this, postCompletion] (const Array<var>& args, auto completion) {
+            var result; // null by default → honest "no spectrum"
+            if (args.size() >= 1)
+            {
+                const String uuid (args[0].toString());
+                if (uuid.isNotEmpty())
+                {
+                    if (auto sess = context.session())
+                    {
+                        const Graph G (sess->getCurrentGraph());
+                        const Node n = findNodeByUuidInGraph (G, uuid);
+                        if (auto* proc = n.getObject())
+                        {
+                            // Subscribe (idempotent) so the tap is live, then
+                            // pull the latest magnitude frame.
+                            spectrumSubscriptions.insert (uuid.toStdString());
+                            proc->setSpectrumWanted (true);
+
+                            if (auto frame = proc->popSpectrumFrame())
+                            {
+                                Array<var> bins;
+                                bins.ensureStorageAllocated ((int) frame->size());
+                                for (float m : *frame)
+                                    bins.add (m);
+
+                                DynamicObject::Ptr obj (new DynamicObject());
+                                obj->setProperty ("bins", var (bins));
+                                obj->setProperty ("fftSize", proc->getSpectrumFftSize());
+                                obj->setProperty ("sampleRate", proc->getSpectrumSampleRate());
+                                result = var (obj.get());
+                            }
+                        }
+                    }
+                }
+            }
+            postCompletion (completion, result);
+        });
+
+    // G3-B item 1 — subscribe / unsubscribe a node's FFT spectrum so idle cost
+    // is zero. The webview calls (uuid,false) on unmount to stop the audio
+    // thread computing for a node nobody is viewing.
+    //   Input:  args[0] = nodeUuid: String, args[1] = wanted: bool
+    //   Output: bool — true when the node was found + the flag applied.
+    registerFn (
+        Identifier ("elementSetNodeSpectrumWanted"),
+        [this, postCompletion] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 2)
+            {
+                const String uuid (args[0].toString());
+                const bool wanted = (bool) args[1];
+                if (uuid.isNotEmpty())
+                {
+                    if (auto sess = context.session())
+                    {
+                        const Graph G (sess->getCurrentGraph());
+                        const Node n = findNodeByUuidInGraph (G, uuid);
+                        if (auto* proc = n.getObject())
+                        {
+                            if (wanted)
+                                spectrumSubscriptions.insert (uuid.toStdString());
+                            else
+                                spectrumSubscriptions.erase (uuid.toStdString());
+                            proc->setSpectrumWanted (wanted);
+                            ok = true;
+                        }
+                    }
+                }
+            }
+            postCompletion (completion, ok);
+        });
+
     // R3 — manual recovery for a crashed out-of-process plugin.
     //   Input:  args[0] = nodeUuid: String
     //   Output: bool — true if the node is sandboxed and a restart was issued.
@@ -4652,6 +4735,44 @@ void ElementWebViewHost::timerCallback()
     }
 
     {
+        // G3-B item 2: per-node PER-CHANNEL output levels for surround / multi-
+        // channel bus meters. Same 60Hz cadence + calibration as onNodeLevels,
+        // but every output lane (not just the loudest). Consumed by the
+        // BusInspector's per-lane VU columns via useNodeChannelMeterStore.
+        const String chJson (buildNodeChannelLevelsJson());
+        evalInBrowser ("window.__elementNative && window.__elementNative.onNodeChannelLevels && window.__elementNative.onNodeChannelLevels("
+                       + chJson + ");");
+    }
+
+    // G3-B item 1: re-assert FFT spectrum subscriptions and clear stale ones.
+    // The webview subscribes via elementSetNodeSpectrumWanted/elementGetNode
+    // Spectrum (poll == subscribe). Re-assert setSpectrumWanted(true) on the
+    // live set each tick (cheap relaxed atomic store) and clear the flag on any
+    // node that left the graph, so a torn-down webview tab cannot leave the
+    // audio-thread FFT tap running. Zero idle cost when nobody is subscribed.
+    if (! spectrumSubscriptions.empty())
+    {
+        if (auto sess = context.session())
+        {
+            const Graph G (sess->getCurrentGraph());
+            for (auto it = spectrumSubscriptions.begin(); it != spectrumSubscriptions.end();)
+            {
+                const Node n = findNodeByUuidInGraph (G, String (*it));
+                if (auto* proc = n.getObject())
+                {
+                    proc->setSpectrumWanted (true);
+                    ++it;
+                }
+                else
+                {
+                    // Node gone (graph/selection changed) — drop the subscription.
+                    it = spectrumSubscriptions.erase (it);
+                }
+            }
+        }
+    }
+
+    {
         // Pillar-2 D2/D3: master output L/R + audio-input peak (Q-VU-LR / Q-VU-INPUT).
         const String masterJson (buildMasterLevelsJson());
         evalInBrowser ("window.__elementNative && window.__elementNative.onMasterLevels && window.__elementNative.onMasterLevels("
@@ -5282,6 +5403,53 @@ String ElementWebViewHost::buildNodeMetersJson() const
         DynamicObject::Ptr row (new DynamicObject());
         row->setProperty ("id", uuid);
         row->setProperty ("level", nodeOutputLevel (n));
+        items.add (var (row.get()));
+    }
+
+    return JSON::toString (var (items));
+}
+
+String ElementWebViewHost::buildNodeChannelLevelsJson() const
+{
+    // Per-node, per-channel output level (G3-B item 2). Reads EVERY output-RMS
+    // lane (not just the loudest, as buildNodeMetersJson does) so the
+    // BusInspector can show real surround/multi-channel columns. Pure atomic
+    // reads — RT-safe; the per-channel RMS is written lock-free on the audio
+    // thread in graphbuilder.cpp (buffer.getRMSLevel per channel). Calibration
+    // is identical to nodeOutputLevel: jmin(1, rms*3). Honest-degraded: a node
+    // with zero audio outputs simply emits an empty `ch` array (no fake lanes).
+    Array<var> items;
+    auto sess = context.session();
+    if (sess == nullptr)
+        return JSON::toString (var (items));
+
+    const Node gn (sess->getCurrentGraph());
+    if (! gn.isGraph())
+        return JSON::toString (var (items));
+
+    const Graph G (gn);
+    for (int i = 0; i < G.getNumNodes(); ++i)
+    {
+        const Node n (G.getNode (i));
+        const String uuid (n.getUuidString());
+        if (uuid.isEmpty())
+            continue;
+
+        auto* proc = n.getObject();
+        if (proc == nullptr)
+            continue;
+
+        const int numCh = proc->getNumOutputRMSChannels();
+        if (numCh <= 0)
+            continue; // honest: no audio output → no per-channel lanes
+
+        Array<var> ch;
+        for (int c = 0; c < numCh; ++c)
+            ch.add (jmin (1.0f, proc->getOutputRMS (c) * 3.0f));
+
+        DynamicObject::Ptr row (new DynamicObject());
+        row->setProperty ("id", uuid);
+        row->setProperty ("ch", var (ch));
         items.add (var (row.get()));
     }
 

@@ -17,6 +17,7 @@ import { usePluginBrowserStore } from "../stores/usePluginBrowserStore";
 import { useSessionStore } from "../stores/useSessionStore";
 import { useCableMeterStore } from "../stores/useCableMeterStore";
 import { useNodeMeterStore } from "../stores/useNodeMeterStore";
+import { useNodeChannelMeterStore } from "../stores/useNodeChannelMeterStore";
 import {
   useSandboxCrashStore,
   type SandboxEventPayload,
@@ -418,6 +419,10 @@ export type ElementNativeHooks = {
   /** Per-NODE output levels from host (~60 Hz, Q-VU-PER-BLOCK); id = node UUID.
    *  Covers terminal/unconnected blocks the cable-derived path leaves idle. */
   onNodeLevels?: (items: Array<{ id: string; level: number }>) => void;
+  /** Per-NODE PER-CHANNEL output levels from host (~60 Hz, G3-B item 2); id =
+   *  node UUID, `ch` = one level per output lane. Feeds the BusInspector's
+   *  per-lane surround/multi-channel VU columns. */
+  onNodeChannelLevels?: (items: Array<{ id: string; ch: number[] }>) => void;
   /** Master output L/R + audio-input peak (~60 Hz, Q-VU-LR / Q-VU-INPUT). */
   onMasterLevels?: (payload: {
     outL?: number;
@@ -510,6 +515,41 @@ function cancelNodeLevels(): void {
   pendingNodeLevels = null;
 }
 
+// ── Per-node-CHANNEL-level rAF coalescing (G3-B item 2) ──
+//
+// Identical discipline to the node-level coalescing above: the host pushes a
+// FULL snapshot of every node's PER-CHANNEL output levels ~60Hz on
+// `onNodeChannelLevels`; keep only the LATEST snapshot and flush at most once
+// per animation frame. The buffer is REPLACED (not accumulated).
+let pendingNodeChannelLevels: Array<{ id: string; ch: number[] }> | null = null;
+let nodeChannelLevelsRaf = 0;
+
+function flushNodeChannelLevels(): void {
+  nodeChannelLevelsRaf = 0;
+  const items = pendingNodeChannelLevels;
+  pendingNodeChannelLevels = null;
+  if (items) useNodeChannelMeterStore.getState().setNodeChannelLevels(items);
+}
+
+function scheduleNodeChannelLevels(
+  items: Array<{ id: string; ch: number[] }>,
+): void {
+  pendingNodeChannelLevels = items;
+  if (nodeChannelLevelsRaf !== 0) return;
+  if (typeof requestAnimationFrame === "function") {
+    nodeChannelLevelsRaf = requestAnimationFrame(flushNodeChannelLevels);
+  } else {
+    flushNodeChannelLevels();
+  }
+}
+
+function cancelNodeChannelLevels(): void {
+  if (nodeChannelLevelsRaf !== 0 && typeof cancelAnimationFrame === "function")
+    cancelAnimationFrame(nodeChannelLevelsRaf);
+  nodeChannelLevelsRaf = 0;
+  pendingNodeChannelLevels = null;
+}
+
 /**
  * Wires `window.__elementNative` callbacks from Element's WebView host into Zustand.
  * Safe in pure Vite dev (no `__JUCE__`): keeps demo graph unless native state is requested.
@@ -548,6 +588,10 @@ export function useJuceBridge() {
       onNodeLevels: (items: Array<{ id: string; level: number }>) => {
         prev.onNodeLevels?.(items);
         if (Array.isArray(items)) scheduleNodeLevels(items);
+      },
+      onNodeChannelLevels: (items: Array<{ id: string; ch: number[] }>) => {
+        prev.onNodeChannelLevels?.(items);
+        if (Array.isArray(items)) scheduleNodeChannelLevels(items);
       },
       onMasterLevels: (payload: {
         outL?: number;
@@ -650,6 +694,7 @@ export function useJuceBridge() {
       sessionPollTimers.forEach((id) => window.clearTimeout(id));
       cancelCableLevels();
       cancelNodeLevels();
+      cancelNodeChannelLevels();
     };
   }, []);
 

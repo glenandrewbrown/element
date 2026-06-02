@@ -13,6 +13,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace element {
 
@@ -103,6 +104,13 @@ private:
         output LevelMeters (atomic `_level`) for L/R and the audio-input node's
         output RMS for the input peak. Returns `{}` when no engine/graph. */
     juce::String buildMasterLevelsJson() const;
+    /** Per-NODE per-CHANNEL output levels for surround/multi-channel meters
+        (G3-B item 2). Message thread; emits {id, ch:[lvl0,lvl1,...]} per node
+        reading EVERY output-RMS lane (getOutputRMS(c) for c in
+        [0,getNumOutputRMSChannels())) with the SAME calibration as
+        nodeOutputLevel. The single-scalar onNodeLevels channel keeps driving
+        the Block VU; this channel feeds the BusInspector's per-lane columns. */
+    juce::String buildNodeChannelLevelsJson() const;
     juce::String buildPluginListJson() const;
     juce::String buildNodeParametersJson (const juce::String& nodeUuid) const;
     bool setNodeParameterValue (const juce::String& nodeUuid, int paramIndex, float value);
@@ -161,6 +169,15 @@ private:
         Populated during construction alongside opts.withNativeFunction so
         that BridgeContractTest can invoke functions without a live browser. */
     std::unordered_map<std::string, BridgeFn> bridgeFunctions;
+
+    /** UUIDs of nodes a webview consumer has subscribed to FFT spectrum for
+        (G3-B item 1). `elementSetNodeSpectrumWanted(uuid,true)` adds; (…,false)
+        removes; `elementGetNodeSpectrum(uuid)` also adds (poll == subscribe).
+        Each timerCallback re-asserts setSpectrumWanted(true) on the live set and
+        clears the atomic on any node that dropped out / left the graph, so the
+        audio-thread tap (and its FFT) costs nothing for unviewed nodes even if
+        the webview tears down without an explicit unsubscribe. */
+    std::unordered_set<std::string> spectrumSubscriptions;
 
     void rebuildPluginEmbedLayout();
 

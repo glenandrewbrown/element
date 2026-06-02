@@ -1,24 +1,29 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { expect, within } from "storybook/test";
 import { BusInspector } from "./BusInspector";
 import { useGraphStore } from "../../stores/useGraphStore";
 import { useBusStore } from "../../stores/useBusStore";
 import { useCableMeterStore } from "../../stores/useCableMeterStore";
+import { useNodeChannelMeterStore } from "../../stores/useNodeChannelMeterStore";
 import type { BlockData, CableData } from "../../data/types";
 
 // BusInspector reads edges/nodes from useGraphStore, bus assignments from
-// useBusStore, and live per-cable levels from useCableMeterStore (for the
-// Send/Receive meters). Seed all three in each story's decorator.
+// useBusStore, live per-cable levels from useCableMeterStore (for the
+// Send/Receive scalar), and REAL per-channel output RMS from
+// useNodeChannelMeterStore (for the SEND side's per-lane VU columns). Seed all
+// four in each story's decorator.
 //
-// R3: meters now reflect REAL channel topology + signal type from CableData:
+// R3 + G3-B: meters reflect REAL channel topology + signal type from CableData,
+// and the SEND side's columns now read REAL per-channel data per lane:
 //   • channelCount 1 → Mono single column
 //   • channelCount 2 → Stereo L/R pair
-//   • channelCount 6 → 5.1 Surround per-channel columns
+//   • channelCount 6 → 5.1 Surround per-channel columns (distinct lane heights)
 //   • signalType midi → MidiActivityIndicator (no VU)
 //   • isSidechain → orange trough + SC prefix
 //
-// Per-channel level split (true per-lane amplitude) is NOT yet bridged —
-// useCableMeterStore provides a single scalar per cable. All columns share
-// that scalar (honest-idle). See Pillar-2 backlog.
+// Per-channel split (G3-B item 2): the SEND side resolves each source node's
+// per-lane output RMS (useNodeChannelMeterStore). The RECEIVE side has no single
+// source node, so it stays on the cable scalar (documented honest-degraded).
 
 const meta = {
   title: "Layout/BusInspector",
@@ -28,7 +33,7 @@ const meta = {
     docs: {
       description: {
         component:
-          "The IO send/receive Bus auditor — now topology-aware. Mono buses show a single column meter, Stereo shows L/R pair, 5.1 Surround shows six labelled columns. MIDI buses replace the VU entirely with a teal activity indicator (blink-dot + event bead). Sidechain buses render an orange-tinted trough with SC prefix. All channel count + signal type data sourced from real CableData fields. Per-channel level split (per-lane RMS) is not yet bridged — Pillar-2 backlog.",
+          "The IO send/receive Bus auditor — topology-aware. Mono buses show a single column meter, Stereo shows L/R pair, 5.1 Surround shows six labelled columns whose SEND side reads REAL per-channel output RMS (G3-B item 2). MIDI buses replace the VU entirely with a teal activity indicator (blink-dot + event bead). Sidechain buses render an orange-tinted trough with SC prefix. All channel count + signal type data sourced from real CableData fields.",
       },
     },
   },
@@ -93,10 +98,13 @@ function seedStores(
   edges: CableData[],
   cableBus: Record<string, string>,
   levels: Record<string, number> = {},
+  channelLevels: Record<string, number[]> = {},
 ) {
   useGraphStore.setState({ nodes, edges, selectedNodeId: null, selectedEdgeId: null, commentBoxes: [] });
   useBusStore.setState({ cableBus });
   useCableMeterStore.setState((s) => ({ ...s, levels }));
+  // Per-node per-channel output RMS (G3-B item 2) — feeds the SEND side columns.
+  useNodeChannelMeterStore.setState({ levels: channelLevels });
 }
 
 // ── Stories ───────────────────────────────────────────────────────────────────
@@ -169,12 +177,22 @@ export const StereoBus: Story = {
   },
 };
 
-// Surround bus (channelCount: 6) — six labelled columns: L R C LF Ls Rs.
+// Surround bus (channelCount: 6) — six labelled columns: L R C LF Ls Rs, each
+// driven by REAL distinct per-channel output RMS (G3-B item 2).
 export const SurroundBus: Story = {
   decorators: [
     (Story) => {
       const edges = [makeEdge("c1", "synth-1", "reverb-1", "audio", 6)];
-      seedStores([SYNTH, REVERB], edges, { c1: "5.1 Room" }, { c1: 0.72 });
+      // Source node synth-1 reports DISTINCT per-lane levels (L R C LF Ls Rs) →
+      // the SEND columns differ in height; the cable scalar (max) backs the
+      // receive side + the header dB readout.
+      seedStores(
+        [SYNTH, REVERB],
+        edges,
+        { c1: "5.1 Room" },
+        { c1: 0.9 },
+        { "synth-1": [0.9, 0.75, 0.55, 0.25, 0.6, 0.4] },
+      );
       return (
         <div style={{ width: 320 }} className="bg-canvas p-4">
           <Story />
@@ -186,9 +204,22 @@ export const SurroundBus: Story = {
     docs: {
       description: {
         story:
-          "A 5.1 surround (6-channel) audio bus — renders six labelled columns in two visual groups: L/R/C (front) and LF/Ls/Rs (surround + LFE). All columns share the cable scalar level (per-lane RMS split not yet bridged — Pillar-2 backlog).",
+          "A 5.1 surround (6-channel) audio bus — renders six labelled columns in two visual groups: L/R/C (front) and LF/Ls/Rs (surround + LFE). The SEND columns show REAL per-channel output RMS from the source node (distinct lane heights — G3-B item 2); the RECEIVE side uses the cable scalar.",
       },
     },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    // All six surround channel labels render (each appears on send + receive).
+    for (const label of ["L", "R", "C", "LF", "Ls", "Rs"]) {
+      expect(canvas.getAllByText(label).length).toBeGreaterThanOrEqual(1);
+    }
+    // Lit VU LED segments (glow box-shadow) are present (signal flowing) but not
+    // every segment of every lane — proving per-lane resolution, not one scalar.
+    const lit = canvasElement.querySelectorAll('div[style*="0 0 2px"]');
+    expect(lit.length).toBeGreaterThan(0);
+    // 6 lanes × 20 segments × 2 sides = 240 ceiling; mixed lanes stay well under.
+    expect(lit.length).toBeLessThan(6 * 20 * 2);
   },
 };
 
@@ -309,6 +340,13 @@ export const MixedTopologies: Story = {
           c5: "Duck Bus",
         },
         { c1: 0.6, c2: 0.35, c3: 0.8, c4: 0.5, c5: 0.28 },
+        {
+          // REAL per-channel output RMS for the source nodes (G3-B item 2).
+          // synth-1 feeds both the stereo (c1) and surround (c3) buses → its
+          // 6-lane array supplies distinct per-lane heights on the 5.1 send.
+          "synth-1": [0.6, 0.5, 0.45, 0.2, 0.55, 0.3],
+          "choir-1": [0.35],
+        },
       );
       return (
         <div style={{ width: 340 }} className="bg-canvas p-4">

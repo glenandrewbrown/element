@@ -512,6 +512,28 @@ public:
 
         for (int i = 0; i < numAudioOuts; ++i)
             node->setOutputRMS (i, buffer.getRMSLevel (i, 0, numSamples));
+
+        // FFT spectrum tap (G3-B item 1). Same RT profile as the RMS loop right
+        // above: reads + a guard + one lock-free push. The opt-in flag
+        // (isSpectrumWanted) means an unviewed node does nothing at all. Pick
+        // the loudest output channel as the mono summary and copy its samples
+        // into the analyser's SPSC FIFO — NO FFT runs here (the analyser only
+        // memcpy's; the FFT runs on the message thread in popSpectrumFrame()).
+        if (numAudioOuts > 0 && node->isSpectrumWanted())
+        {
+            int best = 0;
+            float bestRms = 0.0f;
+            for (int i = 0; i < numAudioOuts; ++i)
+            {
+                const float r = buffer.getRMSLevel (i, 0, numSamples);
+                if (r > bestRms)
+                {
+                    bestRms = r;
+                    best = i;
+                }
+            }
+            node->pushSpectrumSamples (buffer.getReadPointer (best), numSamples);
+        }
     }
 
     const ProcessorPtr node;

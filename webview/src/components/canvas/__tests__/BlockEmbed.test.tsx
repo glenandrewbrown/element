@@ -35,11 +35,23 @@ vi.mock("../../../stores/useCableMeterStore", () => ({
   useBlockOutputLevel: () => mockBlockLevel,
 }));
 
+// ── Mock useNodeSpectrum (G3-B item 1) ─────────────────────────────────────────
+//
+// BlockEmbed subscribes the audiofx slot's FFT via useNodeSpectrum. Mock it to
+// a controllable bins array so the root tests stay deterministic and don't fire
+// async bridge effects. Default [] = honest "No spectrum" placeholder.
+let mockSpectrumBins: number[] = [];
+
+vi.mock("../../../hooks/useNodeSpectrum", () => ({
+  useNodeSpectrum: () => mockSpectrumBins,
+}));
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 beforeEach(() => {
   Object.keys(mockStoreValues).forEach((k) => { delete mockStoreValues[k]; });
   mockBlockLevel = 0;
+  mockSpectrumBins = [];
 });
 
 // ── BlockEmbed (root) ─────────────────────────────────────────────────────────
@@ -128,6 +140,21 @@ describe("BlockEmbed", () => {
     const lit = container.querySelectorAll<HTMLElement>("div[style*='height: 50%']");
     expect(lit.length).toBeGreaterThanOrEqual(2);
   });
+
+  it("shows the LIVE spectrum canvas for audiofx when real bins arrive (G3-B item 1)", () => {
+    mockSpectrumBins = [0.2, 0.7, 0.4, 0.1];
+    render(<BlockEmbed nodeId="n1" category="audiofx" />);
+    // Real bins → live canvas, honest placeholder gone.
+    expect(screen.getByLabelText("Spectrum")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Spectrum unavailable")).toBeNull();
+  });
+
+  it("keeps the honest 'No spectrum' placeholder for audiofx when bins are empty", () => {
+    mockSpectrumBins = [];
+    render(<BlockEmbed nodeId="n1" category="audiofx" />);
+    expect(screen.getByLabelText("Spectrum unavailable")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Spectrum")).toBeNull();
+  });
 });
 
 // ── ParamStripEmbed ───────────────────────────────────────────────────────────
@@ -212,18 +239,37 @@ describe("MeterEmbed", () => {
 // ── SpectrumEmbed ─────────────────────────────────────────────────────────────
 
 describe("SpectrumEmbed (honest empty state — no fake curve)", () => {
-  it("renders an explicit 'no spectrum' placeholder, NOT a fabricated SVG curve", () => {
-    const { container } = render(<SpectrumEmbed />);
+  it("renders an explicit 'no spectrum' placeholder when bins are empty, NOT a fabricated curve", () => {
+    const { container } = render(<SpectrumEmbed bins={[]} />);
     // The static bezier fake was removed: there must be NO svg / path / line.
     expect(container.querySelector("svg")).toBeNull();
     expect(container.querySelector("path")).toBeNull();
     expect(container.querySelector("line")).toBeNull();
   });
 
-  it("exposes an honest status region with a 'No spectrum' label", () => {
-    render(<SpectrumEmbed />);
+  it("exposes an honest status region with a 'No spectrum' label when no data", () => {
+    render(<SpectrumEmbed bins={[]} />);
     expect(screen.getByLabelText("Spectrum unavailable")).toBeInTheDocument();
     expect(screen.getByText(/no spectrum/i)).toBeInTheDocument();
+  });
+
+  it("defaults to the honest placeholder when bins prop is omitted", () => {
+    render(<SpectrumEmbed />);
+    expect(screen.getByLabelText("Spectrum unavailable")).toBeInTheDocument();
+  });
+
+  // ── Live FFT path (G3-B item 1) ───────────────────────────────────────────
+
+  it("renders a live <canvas> analyser when REAL bins are present (no placeholder)", () => {
+    render(<SpectrumEmbed bins={[0.1, 0.6, 0.9, 0.3, 0.2]} />);
+    // The honest placeholder must be gone…
+    expect(screen.queryByLabelText("Spectrum unavailable")).toBeNull();
+    expect(screen.queryByText(/no spectrum/i)).toBeNull();
+    // …replaced by a canvas labelled "Spectrum" (the real analyser).
+    expect(screen.getByLabelText("Spectrum")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Spectrum" }).tagName.toLowerCase()).toBe(
+      "canvas",
+    );
   });
 });
 

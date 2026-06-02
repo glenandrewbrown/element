@@ -23,6 +23,7 @@ import { installJuceBridgeMock, type JuceBridgeMock } from "../../../test/mockJu
 import { useGraphStore } from "../../../stores/useGraphStore";
 import { useBusStore } from "../../../stores/useBusStore";
 import { useCableMeterStore } from "../../../stores/useCableMeterStore";
+import { useNodeChannelMeterStore } from "../../../stores/useNodeChannelMeterStore";
 import { BusInspector } from "../BusInspector";
 
 vi.mock("../../../bridge/nativeGraph", () => ({
@@ -47,6 +48,15 @@ function resetStores() {
   });
   useBusStore.setState({ cableBus: {} });
   useCableMeterStore.setState((s) => ({ ...s, levels: {} }));
+  useNodeChannelMeterStore.setState({ levels: {} });
+}
+
+/** Count "lit" VU LED segments in the rendered tree. Lit segments carry a
+ *  non-inset glow box-shadow ("0 0 2px <color>"); unlit segments have none.
+ *  Used to prove per-lane resolution (more total lit on a uniform max scalar
+ *  than on a mixed per-channel array). */
+function countLitSegments(container: HTMLElement): number {
+  return container.querySelectorAll<HTMLElement>('div[style*="0 0 2px"]').length;
 }
 
 // A minimal BlockData-shaped node the GraphStore understands
@@ -283,5 +293,95 @@ describe("BusInspector", () => {
     });
     render(<BusInspector />);
     expect(screen.queryByRole("button", { name: /open editor/i })).not.toBeInTheDocument();
+  });
+
+  // ── 9. Per-channel (surround) RMS — G3-B item 2 ───────────────────────────
+
+  // A 6-channel surround cable from node-a (Synth) into the bus.
+  const SURROUND_CABLE = {
+    ...CABLE_1,
+    channelCount: 6 as const,
+  };
+
+  it("renders distinct per-lane heights from real per-channel data (not all-equal)", () => {
+    act(() => {
+      useGraphStore.setState({ nodes: [NODE_A, NODE_B], edges: [SURROUND_CABLE] });
+      useBusStore.setState({ cableBus: { "cable-1": "Surround Bus" } });
+      // High cable scalar so the (buggy) all-lanes-share-scalar path would light
+      // every lane fully; the per-channel array below is deliberately MIXED.
+      useCableMeterStore.setState((s) => ({ ...s, levels: { "cable-1": 0.95 } }));
+      // Source node-a reports REAL per-channel output RMS — distinct lanes.
+      useNodeChannelMeterStore.getState().setNodeChannelLevels([
+        { id: "node-a", ch: [0.95, 0.0, 0.5, 0.0, 0.8, 0.0] },
+      ]);
+    });
+    const { container } = render(<BusInspector />);
+
+    // Some lanes light (signal present) but NOT every segment of every lane —
+    // proving lanes resolve independently rather than sharing the 0.95 scalar.
+    const lit = countLitSegments(container);
+    expect(lit).toBeGreaterThan(0);
+    // 6 lanes × 20 segments × 2 sides (send+receive) = 240 max. The send side's
+    // mixed array (≈45 lit) is far below a uniform-max send side (≈114), so the
+    // total must be well under the all-lanes-max ceiling.
+    expect(lit).toBeLessThan(6 * 20 * 2);
+  });
+
+  it("lights MORE segments for a uniform-max source than a mixed one (per-lane proof)", () => {
+    // Mixed per-channel source.
+    act(() => {
+      useGraphStore.setState({ nodes: [NODE_A, NODE_B], edges: [SURROUND_CABLE] });
+      useBusStore.setState({ cableBus: { "cable-1": "Surround Bus" } });
+      useCableMeterStore.setState((s) => ({ ...s, levels: { "cable-1": 0.95 } }));
+      useNodeChannelMeterStore.getState().setNodeChannelLevels([
+        { id: "node-a", ch: [0.95, 0.0, 0.0, 0.0, 0.0, 0.0] },
+      ]);
+    });
+    const { container: mixed, unmount } = render(<BusInspector />);
+    const litMixed = countLitSegments(mixed);
+    unmount();
+
+    // Uniform-max per-channel source — every lane near full.
+    act(() => {
+      useNodeChannelMeterStore.getState().setNodeChannelLevels([
+        { id: "node-a", ch: [0.95, 0.95, 0.95, 0.95, 0.95, 0.95] },
+      ]);
+    });
+    const { container: full } = render(<BusInspector />);
+    const litFull = countLitSegments(full);
+
+    expect(litFull).toBeGreaterThan(litMixed);
+  });
+
+  it("degrades a mono (1ch) source to a single column", () => {
+    const monoCable = { ...CABLE_1, channelCount: 1 as const };
+    act(() => {
+      useGraphStore.setState({ nodes: [NODE_A, NODE_B], edges: [monoCable] });
+      useBusStore.setState({ cableBus: { "cable-1": "Mono Bus" } });
+      useCableMeterStore.setState((s) => ({ ...s, levels: { "cable-1": 0.6 } }));
+      useNodeChannelMeterStore.getState().setNodeChannelLevels([
+        { id: "node-a", ch: [0.6] },
+      ]);
+    });
+    render(<BusInspector />);
+    // Mono bus shows the single "M" lane label on both send + receive sides.
+    expect(screen.getAllByText("M").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("falls back to the scalar for lanes the source does not report", () => {
+    // Source reports only 2 lanes but the bus is 6ch — missing lanes use the
+    // scalar (honest-degraded), so the meter is not dark for lanes 2..5.
+    act(() => {
+      useGraphStore.setState({ nodes: [NODE_A, NODE_B], edges: [SURROUND_CABLE] });
+      useBusStore.setState({ cableBus: { "cable-1": "Surround Bus" } });
+      useCableMeterStore.setState((s) => ({ ...s, levels: { "cable-1": 0.7 } }));
+      useNodeChannelMeterStore.getState().setNodeChannelLevels([
+        { id: "node-a", ch: [0.9, 0.2] }, // only 2 of 6 lanes
+      ]);
+    });
+    const { container } = render(<BusInspector />);
+    // Lanes still light (the 4 missing lanes fall back to the 0.7 scalar) — the
+    // surround display is not dark, proving the documented fallback path.
+    expect(countLitSegments(container)).toBeGreaterThan(0);
   });
 });

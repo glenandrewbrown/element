@@ -16,6 +16,11 @@
 #include <element/midichannels.hpp>
 #include <element/signals.hpp>
 
+#include <atomic>
+#include <memory>
+#include <optional>
+#include <vector>
+
 namespace element {
 
 /* So render tasks can be friends of graph node */
@@ -26,6 +31,7 @@ class ProcessBufferOp;
 class Editor;
 class GraphNode;
 class ProcessBufferOp;
+class SpectrumAnalyser;
 
 struct RenderContext {
     juce::AudioSampleBuffer audio;
@@ -265,6 +271,45 @@ public:
     float getInputRMS (int chan) const { return (chan < inRMS.size()) ? inRMS.getUnchecked (chan)->get() : 0.0f; }
     void setOutputRMS (int chan, float val);
     float getOutputRMS (int chan) const { return (chan < outRMS.size()) ? outRMS.getUnchecked (chan)->get() : 0.0f; }
+
+    /** Number of per-channel output RMS atoms (== prepared output channel count).
+        Lets the WebView host iterate ALL output lanes for the per-channel
+        (surround) meter rather than guessing the port count (G3-B item 2). The
+        atoms themselves are written lock-free on the audio thread in
+        graphbuilder.cpp and read lock-free via getOutputRMS(chan). */
+    int getNumOutputRMSChannels() const noexcept { return outRMS.size(); }
+
+    //=========================================================================
+    /** Per-node FFT spectrum (G3-B item 1) — opt-in so idle cost is zero.
+
+        DESIGN: the spectrum mirrors the lock-free RMS meter path. The audio
+        thread does the absolute minimum — `pushSpectrumSamples()` copies the
+        loudest output channel's samples into a lock-free SPSC FIFO inside the
+        analyser (no FFT, no alloc, no lock). The FFT itself runs OFF the audio
+        thread, on the message thread, when the host calls `popSpectrumFrame()`
+        from its 60Hz snapshot builder. The analyser is built in prepare() and
+        torn down in unprepare() alongside outRMS. */
+
+    /** [message thread] Subscribe / unsubscribe a UI consumer. While false the
+        audio-thread tap is skipped entirely (graphbuilder guards on this), so a
+        node nobody is viewing costs nothing. */
+    void setSpectrumWanted (bool wanted) noexcept { spectrumWanted.store (wanted, std::memory_order_relaxed); }
+    bool isSpectrumWanted() const noexcept { return spectrumWanted.load (std::memory_order_relaxed); }
+
+    /** [AUDIO THREAD] Copy `numSamples` of one mono channel into the analyser's
+        lock-free FIFO. No-op unless a consumer subscribed AND the node is
+        prepared with an analyser. Allocation-free, lock-free. */
+    void pushSpectrumSamples (const float* mono, int numSamples) noexcept;
+
+    /** [message thread] Pull the latest magnitude frame (runs the FFT here).
+        Returns std::nullopt when no analyser, not subscribed, or not enough
+        samples have arrived yet (honest: no fabricated bins). */
+    std::optional<std::vector<float>> popSpectrumFrame() noexcept;
+
+    /** Sample rate the analyser is running at (0 when no analyser). */
+    double getSpectrumSampleRate() const noexcept;
+    /** FFT size of the analyser (0 when no analyser). */
+    int getSpectrumFftSize() const noexcept;
 
     /** Per-render wall-clock cost of this processor, in nanoseconds.
 
@@ -537,6 +582,13 @@ private:
     juce::Atomic<float> gain, lastGain, inputGain, lastInputGain;
     juce::OwnedArray<AtomicValue<float>> inRMS, outRMS;
     std::atomic<float> renderNanos { 0.0f }; // EMA of per-render wall-clock cost (ns)
+
+    // Per-node FFT analyser (G3-B item 1). Built in prepare(), reset in
+    // unprepare(). The audio thread only ever calls pushSamples() on it (via
+    // pushSpectrumSamples); the FFT runs on the message thread in
+    // popSpectrumFrame(). Forward-declared so juce_dsp stays out of this header.
+    std::unique_ptr<SpectrumAnalyser> spectrum;
+    std::atomic<bool> spectrumWanted { false }; // opt-in flag → zero idle cost
     juce::Atomic<int> midiInputActiveFrames { 0 };  // Frame counter for MIDI input activity
     juce::Atomic<int> midiOutputActiveFrames { 0 }; // Frame counter for MIDI output activity
 

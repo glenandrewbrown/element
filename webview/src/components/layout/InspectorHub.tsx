@@ -50,6 +50,7 @@ import {
 } from "../../bridge/nativeGraph";
 import { useHostExtrasStore } from "../../stores/useHostExtrasStore";
 import { useCableMeterStore } from "../../stores/useCableMeterStore";
+import { useNodeSpectrum } from "../../hooks/useNodeSpectrum";
 import {
   nativePluginEditorClose,
   nativePluginEditorFloat,
@@ -880,8 +881,9 @@ function MetersPanel() {
 //  the signal flowing through the selected Cable, sourced from the SAME
 //  `useCableMeterStore` 60Hz feed that drives `Cable.tsx`'s stroke and the
 //  Block VU. Nothing here is fabricated: the meter's lit-cell count and every
-//  numeric is the engine's real per-edge level, and anything with no bridge
-//  yet (spectrum, phase correlation) shows an explicit "not wired" state.
+//  numeric is the engine's real per-edge level; the spectrum is a REAL host
+//  FFT of the cable's source node (G3-B item 1); and anything still without a
+//  bridge (phase correlation) shows an explicit "not wired" state.
 // ════════════════════════════════════════════════════════════════════════
 
 /**
@@ -989,8 +991,9 @@ function StatCell({
 }
 
 // An honest "no bridge yet" tile — explicitly NOT data. Used for monitors the
-// engine does not expose a feed for (spectrum, phase correlation). Glen's hard
-// rule: never fake data; show the gap instead.
+// engine does not expose a feed for (e.g. phase correlation; spectrum is now
+// wired — see CableSpectrumTile). Glen's hard rule: never fake data; show the
+// gap instead.
 function NotWiredTile({ label, detail }: { label: string; detail: string }) {
   return (
     <div className="px-2.5 py-2 rounded-md bg-pressed/60 border border-dashed border-white/10 shadow-[inset_2px_2px_5px_rgba(0,0,0,0.35)]">
@@ -1003,6 +1006,95 @@ function NotWiredTile({ label, detail }: { label: string; detail: string }) {
         </span>
       </div>
       <div className="mt-1.5 text-[9px] text-text-dim leading-snug">{detail}</div>
+    </div>
+  );
+}
+
+/**
+ * Live FFT spectrum tile for a selected audio cable (G3-B item 1). Subscribes
+ * the cable's SOURCE node's spectrum and draws REAL host-computed magnitude
+ * bins (juce::dsp::FFT) on a canvas. When there is no data — silent source, no
+ * audio output, nobody subscribed, or no bridge (Storybook/Vite) — it falls
+ * back to the honest NotWiredTile. NEVER a synthesised curve.
+ */
+function CableSpectrumTile({
+  sourceId,
+  active,
+}: {
+  sourceId: string | undefined;
+  active: boolean;
+}) {
+  const bins = useNodeSpectrum(sourceId, active);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const hasData = bins.length > 0;
+
+  useEffect(() => {
+    if (!hasData) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const W = canvas.width;
+    const H = canvas.height;
+    ctx.clearRect(0, 0, W, H);
+
+    const n = bins.length;
+    const bars = 48; // wider strip than the Block embed → more detail
+    ctx.fillStyle = "#E8A838"; // audio accent
+    for (let b = 0; b < bars; ++b) {
+      const lo = Math.floor((Math.pow(b / bars, 2) * (n - 1)) | 0);
+      const hi = Math.max(
+        lo + 1,
+        Math.floor((Math.pow((b + 1) / bars, 2) * (n - 1)) | 0),
+      );
+      let mag = 0;
+      for (let i = lo; i < hi && i < n; ++i) mag = Math.max(mag, bins[i]);
+      const norm =
+        mag <= 0 ? 0 : Math.min(1, Math.max(0, 1 + Math.log10(mag) / 3));
+      const barH = Math.round(norm * (H - 2));
+      const x = Math.round((b / bars) * W);
+      const bw = Math.max(1, Math.floor(W / bars) - 1);
+      ctx.globalAlpha = 0.85;
+      ctx.fillRect(x, H - barH, bw, barH);
+    }
+    ctx.globalAlpha = 1;
+  }, [bins, hasData]);
+
+  if (!hasData) {
+    return (
+      <NotWiredTile
+        label="Spectrum"
+        detail="No live spectrum — the source is silent, has no audio output, or no host bridge is present. A spectrum appears here when the source carries signal."
+      />
+    );
+  }
+
+  return (
+    <div className="px-2.5 py-2 rounded-md bg-pressed/60 shadow-[inset_2px_2px_5px_rgba(0,0,0,0.35)]">
+      <div className="flex items-center gap-1.5 mb-1.5">
+        <span className="text-[8px] font-bold uppercase tracking-widest text-text-dim leading-none">
+          Spectrum
+        </span>
+        <span
+          className="text-[7px] font-bold uppercase tracking-wider px-1 py-0.5 rounded leading-none"
+          style={{
+            background: "hsl(var(--sig-audio) / 0.14)",
+            color: "hsl(var(--sig-audio))",
+          }}
+        >
+          live
+        </span>
+      </div>
+      <canvas
+        ref={canvasRef}
+        width={220}
+        height={48}
+        role="img"
+        aria-label="Cable spectrum"
+        className="w-full rounded"
+        style={{ height: 48, backgroundColor: "#15151A", display: "block" }}
+      />
     </div>
   );
 }
@@ -1366,18 +1458,15 @@ function CableMonitor({ cable }: { cable: CableData }) {
         />
       )}
 
-      {/* Honest gaps — monitors with no engine bridge yet. */}
+      {/* Live spectrum (G3-B item 1) fed by the cable's SOURCE node FFT, and
+          the honest phase/correlation gap (needs a per-channel L/R time-domain
+          feed — separate item). */}
       <div className="space-y-2">
-        {isAudio && (
-          <NotWiredTile
-            label="Spectrum"
-            detail="Per-cable FFT bins are not exposed by the engine bridge yet — only summed RMS is. Pillar-2."
-          />
-        )}
+        {isAudio && <CableSpectrumTile sourceId={cable.source} active={isAudio} />}
         {isAudio && channels >= 2 && (
           <NotWiredTile
             label="Phase / correlation"
-            detail="Stereo correlation metering needs a per-channel L/R feed; the bridge currently sends one summed RMS per cable. Pillar-2."
+            detail="Stereo correlation metering needs a per-channel L/R time-domain feed; the bridge currently sends one summed RMS per cable. Pillar-2."
           />
         )}
       </div>
