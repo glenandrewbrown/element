@@ -391,6 +391,13 @@ public:
             }
         };
 
+        // Per-block CPU tap (D4): bracket the actual processor render with two
+        // high-resolution timestamps and publish an EMA of the elapsed
+        // nanoseconds. RT-safe — two local reads, a few FP ops, and one relaxed
+        // atomic store; no allocation, no lock, no logging. Identical RT profile
+        // to the setOutputRMS store below.
+        const auto renderStartTicks = Time::getHighResolutionTicks();
+
         const auto osFactor = node->getOversamplingFactor();
         if (osFactor > 1)
         {
@@ -449,6 +456,15 @@ public:
         else
         {
             pluginProcessBlock (buffer, midiPipe, node->isSuspended());
+        }
+
+        // Fold this render's elapsed time into the lock-free EMA (see tap above).
+        {
+            const auto renderEndTicks = Time::getHighResolutionTicks();
+            const double sampleNanos = Time::highResolutionTicksToSeconds (renderEndTicks - renderStartTicks) * 1.0e9;
+            const float prev = node->getRenderNanos();
+            // Gentle smoothing: new = old * 0.9 + sample * 0.1.
+            node->setRenderNanos (prev * 0.9 + sampleNanos * 0.1);
         }
 
         // Track MIDI output activity

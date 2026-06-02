@@ -266,6 +266,16 @@ public:
     void setOutputRMS (int chan, float val);
     float getOutputRMS (int chan) const { return (chan < outRMS.size()) ? outRMS.getUnchecked (chan)->get() : 0.0f; }
 
+    /** Per-render wall-clock cost of this processor, in nanoseconds.
+
+        Stored as a single lock-free atomic (one per Processor, NOT per channel)
+        so the audio thread can publish a fresh measurement on every render and
+        the message thread can read it for CPU% display. The value is an
+        exponential moving average over recent renders, so it tracks load
+        without flickering. Mirrors the lock-free RMS tap right beside it. */
+    void setRenderNanos (double nanos) noexcept { renderNanos.store ((float) nanos, std::memory_order_relaxed); }
+    float getRenderNanos() const noexcept { return renderNanos.load (std::memory_order_relaxed); }
+
     /** Set MIDI activity for input/output.
         Uses frame counter to persist activity across multiple audio callbacks,
         allowing the UI thread (running at lower rate) to reliably detect activity.
@@ -526,6 +536,7 @@ private:
 
     juce::Atomic<float> gain, lastGain, inputGain, lastInputGain;
     juce::OwnedArray<AtomicValue<float>> inRMS, outRMS;
+    std::atomic<float> renderNanos { 0.0f }; // EMA of per-render wall-clock cost (ns)
     juce::Atomic<int> midiInputActiveFrames { 0 };  // Frame counter for MIDI input activity
     juce::Atomic<int> midiOutputActiveFrames { 0 }; // Frame counter for MIDI output activity
 

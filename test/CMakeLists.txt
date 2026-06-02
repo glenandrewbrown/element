@@ -275,6 +275,9 @@ add_test(NAME "LuaSandboxBoundaryTests"        COMMAND test_element --run_test=L
 add_test(NAME "DspRobustnessTests"             COMMAND test_element --run_test=DspRobustnessTests)
 add_test(NAME "DspStateRoundTripTests"         COMMAND test_element --run_test=DspStateRoundTripTests)
 
+# D4 — REAL per-block (per-Processor) CPU. Lock-free render-nanos tap + EMA.
+add_test(NAME "RenderNanosTests"               COMMAND test_element --run_test=RenderNanosTests)
+
 option(ELEMENT_RT_STRESS_TEST "Build and register the audio-thread stress test" OFF)
 if (ELEMENT_RT_STRESS_TEST)
     target_compile_definitions(test_element PRIVATE ELEMENT_RT_STRESS_TEST=1)
