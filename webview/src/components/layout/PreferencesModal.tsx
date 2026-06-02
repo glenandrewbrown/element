@@ -771,7 +771,7 @@ function ShortcutsTab() {
       {/* U9: open native key-command editor */}
       <div className="flex items-center justify-between gap-3">
         <p className="text-[9px] text-text-dim leading-relaxed">
-          Read-only reference. To rebind, open the key-command editor.
+          Read-only key-command reference. To rebind, open the key-command editor.
         </p>
         <button
           type="button"
