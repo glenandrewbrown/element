@@ -37,20 +37,26 @@ vi.mock("../../neu", () => ({
 import { NestedChrome } from "../NestedChrome";
 
 describe("NestedChrome — root level (depth 0)", () => {
+  // ENGINE BREADCRUMB SHAPE: [sessionName, activeGraphName, …containers].
+  // The first two entries (Project + its top-level Board) are NOT dives, so the
+  // not-dived root is a TWO-element stack and the nesting depth is length − 2.
+  // (Earlier these tests used a fabricated 1-element root that the host never
+  // emits — that masked the "LEVEL 1 painted at the real 2-element root" bug.)
   beforeEach(() => {
-    breadcrumbs = ["Project"];
+    breadcrumbs = ["Project", "Main Board"];
     vi.clearAllMocks();
   });
 
-  it("renders nothing at root depth", () => {
+  it("renders nothing at the (2-element) root", () => {
     const { container } = render(<NestedChrome />);
     expect(container.firstChild).toBeNull();
   });
 });
 
-describe("NestedChrome — depth 1 (one level in)", () => {
+describe("NestedChrome — depth 1 (one container in)", () => {
   beforeEach(() => {
-    breadcrumbs = ["Project", "SubBoard"];
+    // [session, activeGraph, container1] → one level of nesting.
+    breadcrumbs = ["Project", "Main Board", "SubBoard"];
     vi.clearAllMocks();
   });
 
@@ -62,7 +68,7 @@ describe("NestedChrome — depth 1 (one level in)", () => {
 
   it("shows parent name in 'inside' label", () => {
     render(<NestedChrome />);
-    expect(screen.getByText("Project")).toBeInTheDocument();
+    expect(screen.getByText("Main Board")).toBeInTheDocument();
   });
 
   it("shows LEVEL 1 chip", () => {
@@ -78,8 +84,8 @@ describe("NestedChrome — depth 1 (one level in)", () => {
   it("EXIT button calls exitToBreadcrumb with parent index", () => {
     render(<NestedChrome />);
     fireEvent.click(screen.getByRole("button", { name: /Exit nested Board/i }));
-    // depth=1, exitToIndex = breadcrumbs.length - 2 = 0
-    expect(mockExitToBreadcrumb).toHaveBeenCalledWith(0);
+    // exitToIndex = breadcrumbs.length - 2 = 1 (the active-graph board).
+    expect(mockExitToBreadcrumb).toHaveBeenCalledWith(1);
   });
 
   it("EXIT button has descriptive aria-label", () => {
@@ -96,9 +102,9 @@ describe("NestedChrome — depth 1 (one level in)", () => {
   });
 });
 
-describe("NestedChrome — depth 2", () => {
+describe("NestedChrome — depth 2 (two containers in)", () => {
   beforeEach(() => {
-    breadcrumbs = ["Project", "Container A", "Deep Board"];
+    breadcrumbs = ["Project", "Main Board", "Container A", "Deep Board"];
     vi.clearAllMocks();
   });
 
@@ -117,10 +123,11 @@ describe("NestedChrome — depth 2", () => {
     expect(screen.getByText("Container A")).toBeInTheDocument();
   });
 
-  it("EXIT exits to index 1 (one level up)", () => {
+  it("EXIT exits to the immediate parent index (one level up)", () => {
     render(<NestedChrome />);
     fireEvent.click(screen.getByRole("button", { name: /Exit nested Board/i }));
-    expect(mockExitToBreadcrumb).toHaveBeenCalledWith(1);
+    // exitToIndex = breadcrumbs.length - 2 = 2 (Container A).
+    expect(mockExitToBreadcrumb).toHaveBeenCalledWith(2);
   });
 
   it("renders two depth rungs", () => {
@@ -132,7 +139,7 @@ describe("NestedChrome — depth 2", () => {
 
 describe("NestedChrome — Layers icon accessibility", () => {
   beforeEach(() => {
-    breadcrumbs = ["Project", "Board"];
+    breadcrumbs = ["Project", "Main Board", "Board"];
     vi.clearAllMocks();
   });
 
@@ -147,13 +154,13 @@ describe("NestedChrome — depth plural text", () => {
   beforeEach(() => { vi.clearAllMocks(); });
 
   it("uses 'level' (singular) at depth 1", () => {
-    breadcrumbs = ["Project", "Board"];
+    breadcrumbs = ["Project", "Main Board", "Board"];
     render(<NestedChrome />);
     expect(screen.getByLabelText("Nested 1 level deep")).toBeInTheDocument();
   });
 
   it("uses 'levels' (plural) at depth 2", () => {
-    breadcrumbs = ["Project", "A", "B"];
+    breadcrumbs = ["Project", "Main Board", "A", "B"];
     render(<NestedChrome />);
     expect(screen.getByLabelText("Nested 2 levels deep")).toBeInTheDocument();
   });

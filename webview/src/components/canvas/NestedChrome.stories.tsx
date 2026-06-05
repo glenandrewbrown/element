@@ -66,8 +66,10 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 // Root — depth 0, overlay intentionally absent (honest: nothing nested).
+// The engine emits a TWO-element root stack [sessionName, activeGraphName];
+// neither is a dived container, so depth 0 / no chrome.
 export const RootNoChrome: Story = {
-  render: () => <CanvasPlane stack={["Main Project"]} />,
+  render: () => <CanvasPlane stack={["Main Project", "Main Board"]} />,
   parameters: {
     docs: {
       description: {
@@ -80,7 +82,9 @@ export const RootNoChrome: Story = {
 
 // Level 1 — first dive. Teal (--depth-1).
 export const LevelOne: Story = {
-  render: () => <CanvasPlane stack={["Main Project", "Voice Container"]} />,
+  render: () => (
+    <CanvasPlane stack={["Main Project", "Main Board", "Voice Container"]} />
+  ),
   parameters: {
     docs: {
       description: {
@@ -94,7 +98,9 @@ export const LevelOne: Story = {
 // Level 2 — purple (--depth-2). The everyday mid-depth case.
 export const LevelTwo: Story = {
   render: () => (
-    <CanvasPlane stack={["Main Project", "Polysynth Rack", "Voice Container"]} />
+    <CanvasPlane
+      stack={["Main Project", "Main Board", "Polysynth Rack", "Voice Container"]}
+    />
   ),
   parameters: {
     docs: {
@@ -134,6 +140,7 @@ export const LevelFourDeep: Story = {
     <CanvasPlane
       stack={[
         "Main Project",
+        "Main Board",
         "Instruments",
         "Polysynth Rack",
         "Voice Container",
@@ -157,6 +164,7 @@ export const LongNames: Story = {
     <CanvasPlane
       stack={[
         "Main Project Root Board",
+        "Main Board",
         "Very Long Container Name That Tests Overflow Behaviour",
       ]}
     />

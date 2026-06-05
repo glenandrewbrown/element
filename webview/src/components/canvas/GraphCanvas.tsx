@@ -297,7 +297,19 @@ export function GraphCanvas() {
   // Double-click empty canvas = "navigate UP one level" (gesture spec). Drives
   // the engine exit; the parent board + shortened breadcrumb arrive via the
   // next snapshot. No-op at the top level (host returns false).
-  const onPaneDoubleClick = useCallback(() => {
+  //
+  // This is React Flow's RAW `onDoubleClick` (there is no pane-only dbl-click
+  // prop in v12), so it ALSO fires when a node is double-clicked — the event
+  // bubbles up from the node DOM to the ReactFlow root. Without the guard below
+  // a container double-click triggered BOTH onNodeDoubleClick (enterContainer)
+  // AND this handler (exitContainer) on the same gesture: the dive was entered
+  // then immediately popped → net no-op (the "double-click does not dive" bug).
+  // Only act when the double-click landed on empty canvas (the pane / its
+  // background / the viewport transform layer), never inside a node/edge/control.
+  const onPaneDoubleClick = useCallback((event: MouseEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement | null;
+    if (target?.closest(".react-flow__node") || target?.closest(".react-flow__edge"))
+      return; // node/edge dbl-click — its own handler owns this gesture.
     void nativeExitContainer();
   }, []);
 

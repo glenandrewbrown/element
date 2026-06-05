@@ -40,8 +40,15 @@ export function NestedChrome() {
   // the banner can never disagree with the canvas. No optimistic mutation.
   const exitToBreadcrumb = useGraphStore((s) => s.exitToBreadcrumb);
 
-  // Depth 0 == root Project (stack length 1). The chrome only exists nested.
-  const depth = breadcrumbs.length - 1;
+  // The engine breadcrumb stack is [sessionName, activeGraphName, container1, …]
+  // (host element_webview_host.cpp buildActiveGraphJson + useGraphStore
+  // exitToBreadcrumb both document this shape): the FIRST TWO entries are the
+  // Project and its active top-level Board — neither is a dived container. So
+  // the nesting depth (containers descended) is length − 2, and the root
+  // (not dived) is [session, graph] (length 2 → depth 0 → chrome absent).
+  // Using length − 1 here mis-read the always-present active-graph entry as one
+  // level of nesting, painting "LEVEL 1" + the nested frame at the root.
+  const depth = Math.max(0, breadcrumbs.length - 2);
   const isNested = depth > 0;
 
   const board = breadcrumbs[breadcrumbs.length - 1] ?? "";

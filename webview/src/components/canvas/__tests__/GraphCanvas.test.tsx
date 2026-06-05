@@ -290,7 +290,41 @@ describe("GraphCanvas", () => {
 
   it("double-clicking empty canvas calls nativeExitContainer (navigate UP)", () => {
     render(<GraphCanvas />);
-    rfHandlers.onDoubleClick?.({} as React.MouseEvent);
+    // Pane double-click: target is the pane, NOT inside a node/edge.
+    const paneEl = document.createElement("div");
+    paneEl.className = "react-flow__pane";
+    rfHandlers.onDoubleClick?.({ target: paneEl } as unknown as React.MouseEvent);
     expect(nativeExitContainer).toHaveBeenCalledTimes(1);
+  });
+
+  // REGRESSION (the "double-click does not dive" live bug): React Flow's raw
+  // onDoubleClick ALSO fires when a node is double-clicked (the event bubbles
+  // from the node DOM to the ReactFlow root). The pane handler must NOT exit on
+  // a node-targeted double-click, otherwise the same gesture entered then
+  // immediately popped the container → net no-op. The earlier tests invoked the
+  // two handlers in isolation and never caught this.
+  it("a CONTAINER double-click does not ALSO pop via the pane handler (enter, not enter+exit)", () => {
+    render(<GraphCanvas />);
+
+    // (1) React Flow fires the node handler → dive in.
+    rfHandlers.onNodeDoubleClick?.(
+      { clientX: 10, clientY: 10 },
+      {
+        id: "container-1",
+        type: "block",
+        data: { name: "Voice Rack", containerNodeCount: 3 },
+      },
+    );
+
+    // (2) The SAME physical double-click bubbles to the raw onDoubleClick with a
+    //     target INSIDE the node DOM (.react-flow__node wrapper).
+    const nodeWrap = document.createElement("div");
+    nodeWrap.className = "react-flow__node react-flow__node-block";
+    const inner = document.createElement("div"); // e.g. the container header
+    nodeWrap.appendChild(inner);
+    rfHandlers.onDoubleClick?.({ target: inner } as unknown as React.MouseEvent);
+
+    expect(nativeEnterContainer).toHaveBeenCalledWith("container-1");
+    expect(nativeExitContainer).not.toHaveBeenCalled(); // would cancel the dive
   });
 });
