@@ -7,7 +7,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { NeuInput } from "../neu";
+import { NeuInput, Icon } from "../neu";
 import { useGraphStore } from "../../stores/useGraphStore";
 import { useAppStore } from "../../stores/useAppStore";
 // SHELVED (D3, hide-UI keep-code) — see FINISH-APP-PLAN. usePerformStore /
@@ -41,6 +41,12 @@ interface PaletteResult {
   category: ResultCategory;
   hint?: string;
   onSelect: () => void;
+  /**
+   * I4-B — when set, this result is a scannable plugin and the row shows a
+   * far-right persistent favourite-star toggle keyed on this identifier
+   * (BrowserPlugin.identifier). Absent for actions / blocks / settings.
+   */
+  pluginIdentifier?: string;
 }
 
 // ── Category display ──
@@ -117,6 +123,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
   const favoriteIdentifiers = usePluginBrowserStore((s) => s.favoriteIdentifiers);
   const recentIdentifiers = usePluginBrowserStore((s) => s.recentIdentifiers);
   const refreshPlugins = usePluginBrowserStore((s) => s.refresh);
+  const toggleFavorite = usePluginBrowserStore((s) => s.toggleFavorite);
   const mappingLearning = useHostExtrasStore((s) => s.midiMapping.learning);
 
   useEffect(() => {
@@ -282,6 +289,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
       category: "plugin",
       hint: [plugin.manufacturer, plugin.format].filter(Boolean).join(" · "),
       onSelect: runAndClose(() => nativeGraphAddPlugin(plugin.identifier)),
+      pluginIdentifier: plugin.identifier,
     }));
 
     // SHELVED (D3, hide-UI keep-code) — see FINISH-APP-PLAN. Scene results are
@@ -476,11 +484,57 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
                           ].join(" ")}
                         >
                           <span className="text-[12px] truncate">{result.label}</span>
-                          {result.hint && (
-                            <span className="text-[10px] text-text-dim shrink-0 tabular">
-                              {result.hint}
-                            </span>
-                          )}
+                          <span className="flex items-center gap-2 shrink-0">
+                            {result.hint && (
+                              <span className="text-[10px] text-text-dim tabular">
+                                {result.hint}
+                              </span>
+                            )}
+                            {/* I4-B — persistent favourite-star, plugin rows only. */}
+                            {result.pluginIdentifier && (
+                              <span
+                                role="button"
+                                tabIndex={-1}
+                                aria-label={
+                                  favoriteIdentifiers.has(result.pluginIdentifier)
+                                    ? "Remove from favourites"
+                                    : "Add to favourites"
+                                }
+                                aria-pressed={favoriteIdentifiers.has(
+                                  result.pluginIdentifier,
+                                )}
+                                title={
+                                  favoriteIdentifiers.has(result.pluginIdentifier)
+                                    ? "Remove from favourites"
+                                    : "Add to favourites"
+                                }
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  e.preventDefault();
+                                  toggleFavorite(result.pluginIdentifier!);
+                                }}
+                                className={[
+                                  "inline-flex items-center justify-center w-4 h-4 rounded-sm cursor-pointer transition-colors duration-100",
+                                  favoriteIdentifiers.has(result.pluginIdentifier)
+                                    ? "text-[#E8A838]"
+                                    : "text-text-dim opacity-50 hover:opacity-100 hover:text-text-secondary",
+                                ].join(" ")}
+                              >
+                                <Icon
+                                  name="Star"
+                                  size={12}
+                                  strokeWidth={1.75}
+                                  style={{
+                                    fill: favoriteIdentifiers.has(
+                                      result.pluginIdentifier,
+                                    )
+                                      ? "#E8A838"
+                                      : "none",
+                                  }}
+                                />
+                              </span>
+                            )}
+                          </span>
                         </button>
                       );
                     })}

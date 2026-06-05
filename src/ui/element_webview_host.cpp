@@ -1692,6 +1692,30 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             postCompletion (completion, ok);
         });
 
+    // I4-B — persistent favourite-star toggle from the webview. Mirrors the
+    // native PluginsPanelView star-click path (toggleFavorite on the matching
+    // PluginDescription), but driven from a QuickAdd / command-palette row. The
+    // tracker persists the change (scheduleSave); favourites live in the
+    // pull-based plugin-list snapshot (buildPluginListJson), NOT the graph
+    // snapshot, so there is no push here — the webview flips optimistically and
+    // reconciles on its next plugin-list refresh().
+    // Does NOT insert a Block. No-op safely if the identifier doesn't resolve.
+    registerFn (
+        Identifier ("elementToggleFavorite"),
+        [this, postCompletion] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 1)
+            {
+                const String identifier (args[0].toString());
+                if (const auto* desc = findKnownPluginByIdentifier (context.plugins().getKnownPlugins(), identifier))
+                {
+                    context.plugins().getUsageTracker().toggleFavorite (*desc);
+                    ok = true;
+                }
+            }
+            postCompletion (completion, ok);
+        });
+
     registerFn (
         Identifier ("elementGraphRemoveNode"),
         [this, postCompletion] (const Array<var>& args, auto completion) {

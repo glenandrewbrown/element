@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { invokeElementNative } from "../bridge/juceBackend";
 import { logBridgeError } from "../bridge/bridgeError";
+import { nativeToggleFavorite } from "../bridge/nativeGraph";
 import type { BlockCategory, SignalType } from "../data/types";
 
 export type BrowserPlugin = {
@@ -72,12 +73,33 @@ interface PluginBrowserState {
   favoriteIdentifiers: Set<string>;
   recentIdentifiers: string[];
   refresh: () => Promise<void>;
+  /**
+   * I4-B — toggle a plugin's persistent favourite status (does NOT insert a
+   * Block). Optimistically flips the id in `favoriteIdentifiers` for instant UI
+   * feedback, then calls the native bridge which persists it on the
+   * PluginUsageTracker. The optimistic state reconciles to the host's truth on
+   * the next `refresh()` (the favourite set is re-read from the snapshot).
+   */
+  toggleFavorite: (identifier: string) => void;
 }
 
 export const usePluginBrowserStore = create<PluginBrowserState>()((set) => ({
   plugins: [],
   favoriteIdentifiers: new Set(),
   recentIdentifiers: [],
+
+  toggleFavorite: (identifier: string) => {
+    if (!identifier) return;
+    // Optimistic flip — new Set so subscribers re-render (Zustand uses
+    // reference equality). Reconciles to the persisted snapshot on next refresh.
+    set((state) => {
+      const next = new Set(state.favoriteIdentifiers);
+      if (next.has(identifier)) next.delete(identifier);
+      else next.add(identifier);
+      return { favoriteIdentifiers: next };
+    });
+    void nativeToggleFavorite(identifier);
+  },
 
   refresh: async () => {
     try {

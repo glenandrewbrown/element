@@ -264,14 +264,71 @@ function CategoryLabel({
   );
 }
 
-interface PluginRowProps {
-  plugin:    PluginEntry;
-  isActive:  boolean;
-  onSelect:  (id: string) => void;
-  onHover:   () => void;
+/** Gold used for a filled favourite star (matches the native panel's accent). */
+const FAV_STAR_GOLD = "#E8A838";
+
+/**
+ * Far-right favourite-star toggle. Rendered as a focusable `role="button"`
+ * span (NOT a nested <button>, which is invalid inside the row's outer
+ * <button>). Clicking toggles the plugin's PERSISTENT favourite status WITHOUT
+ * inserting a Block — it stops propagation + prevents default so the row's
+ * insert-block onClick never fires. Filled/gold when starred, hollow outline
+ * otherwise. Occupies its own minimal fixed slot so row alignment stays tidy.
+ */
+function FavoriteStar({
+  isFavorite,
+  onToggle,
+}: {
+  isFavorite: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <span
+      role="button"
+      tabIndex={-1}
+      aria-label={isFavorite ? "Remove from favourites" : "Add to favourites"}
+      aria-pressed={isFavorite}
+      title={isFavorite ? "Remove from favourites" : "Add to favourites"}
+      onClick={(e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        onToggle();
+      }}
+      className={[
+        "shrink-0 inline-flex items-center justify-center w-4 h-4 rounded-sm cursor-pointer",
+        "transition-colors duration-100",
+        isFavorite
+          ? "text-[#E8A838]"
+          : "text-text-dim opacity-50 hover:opacity-100 hover:text-text-secondary",
+      ].join(" ")}
+    >
+      <Icon
+        name="Star"
+        size={12}
+        strokeWidth={1.75}
+        style={{ fill: isFavorite ? FAV_STAR_GOLD : "none" }}
+      />
+    </span>
+  );
 }
 
-function PluginRow({ plugin, isActive, onSelect, onHover }: PluginRowProps) {
+interface PluginRowProps {
+  plugin:     PluginEntry;
+  isActive:   boolean;
+  isFavorite: boolean;
+  onSelect:   (id: string) => void;
+  onToggleFavorite: (id: string) => void;
+  onHover:    () => void;
+}
+
+function PluginRow({
+  plugin,
+  isActive,
+  isFavorite,
+  onSelect,
+  onToggleFavorite,
+  onHover,
+}: PluginRowProps) {
   const glowVar = CAT_GLOW_VAR[plugin.category] ?? CAT_GLOW_VAR.audiofx;
   return (
     <button
@@ -302,6 +359,10 @@ function PluginRow({ plugin, isActive, onSelect, onHover }: PluginRowProps) {
         </span>
       )}
       <CategoryLabel category={plugin.category} rawCategory={plugin.rawCategory} />
+      <FavoriteStar
+        isFavorite={isFavorite}
+        onToggle={() => onToggleFavorite(plugin.id)}
+      />
     </button>
   );
 }
@@ -400,6 +461,7 @@ export function QuickAddPopup({ x, y, portType, onClose }: QuickAddPopupProps) {
   const favoriteIdentifiers  = usePluginBrowserStore((s) => s.favoriteIdentifiers);
   const recentIdentifiers    = usePluginBrowserStore((s) => s.recentIdentifiers);
   const refreshPlugins       = usePluginBrowserStore((s) => s.refresh);
+  const toggleFavorite       = usePluginBrowserStore((s) => s.toggleFavorite);
 
   useEffect(() => {
     void refreshPlugins();
@@ -737,7 +799,9 @@ export function QuickAddPopup({ x, y, portType, onClose }: QuickAddPopupProps) {
                           key={plugin.id}
                           plugin={plugin}
                           isActive={i === activeIndex}
+                          isFavorite={favoriteIdentifiers.has(plugin.id)}
                           onSelect={handleSelect}
+                          onToggleFavorite={toggleFavorite}
                           onHover={() => setActiveIndex(i)}
                         />
                       ))}
@@ -757,7 +821,9 @@ export function QuickAddPopup({ x, y, portType, onClose }: QuickAddPopupProps) {
                             key={plugin.id}
                             plugin={plugin}
                             isActive={flatIndex === activeIndex}
+                            isFavorite={favoriteIdentifiers.has(plugin.id)}
                             onSelect={handleSelect}
+                            onToggleFavorite={toggleFavorite}
                             onHover={() => setActiveIndex(flatIndex)}
                           />
                         );
@@ -783,7 +849,9 @@ export function QuickAddPopup({ x, y, portType, onClose }: QuickAddPopupProps) {
                             key={plugin.id}
                             plugin={plugin}
                             isActive={flatIndex === activeIndex}
+                            isFavorite={favoriteIdentifiers.has(plugin.id)}
                             onSelect={handleSelect}
+                            onToggleFavorite={toggleFavorite}
                             onHover={() => setActiveIndex(flatIndex)}
                           />
                         );
@@ -802,7 +870,9 @@ export function QuickAddPopup({ x, y, portType, onClose }: QuickAddPopupProps) {
                     key={plugin.id}
                     plugin={plugin}
                     isActive={i === activeIndex}
+                    isFavorite={favoriteIdentifiers.has(plugin.id)}
                     onSelect={handleSelect}
+                    onToggleFavorite={toggleFavorite}
                     onHover={() => setActiveIndex(i)}
                   />
                 ))}

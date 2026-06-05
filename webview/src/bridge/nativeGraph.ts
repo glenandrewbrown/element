@@ -8,6 +8,21 @@ export async function nativeGraphAddPlugin(
   return r === true;
 }
 
+/**
+ * I4-B — toggle a plugin's persistent favourite status WITHOUT inserting a
+ * Block. `identifier` is the real BrowserPlugin.identifier
+ * (PluginDescription.createIdentifierString). The host flips + persists it on
+ * the PluginUsageTracker; the new favourite set is read back on the next
+ * `usePluginBrowserStore.refresh()` (pull-based snapshot). Returns false if the
+ * identifier doesn't resolve to a known plugin.
+ */
+export async function nativeToggleFavorite(
+  identifier: string,
+): Promise<boolean> {
+  const r = await invokeElementNative("elementToggleFavorite", [identifier]);
+  return r === true;
+}
+
 export async function nativeGraphRemoveNode(nodeId: string): Promise<boolean> {
   const r = await invokeElementNative("elementGraphRemoveNode", [nodeId]);
   return r === true;

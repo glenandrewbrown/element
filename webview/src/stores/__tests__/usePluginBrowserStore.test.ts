@@ -284,3 +284,79 @@ describe("usePluginBrowserStore.refresh", () => {
     },
   );
 });
+
+// ── I4-B: persistent favourite-star toggle (optimistic + bridge call) ────────
+
+describe("usePluginBrowserStore.toggleFavorite", () => {
+  let bridge: JuceBridgeMock;
+
+  beforeEach(() => {
+    bridge = installJuceBridgeMock();
+    resetStore();
+  });
+
+  afterEach(() => bridge.uninstall());
+
+  it("optimistically ADDS an unstarred id to favoriteIdentifiers", () => {
+    usePluginBrowserStore.getState().toggleFavorite("vst3.Reverb");
+    expect(usePluginBrowserStore.getState().favoriteIdentifiers.has("vst3.Reverb")).toBe(
+      true,
+    );
+  });
+
+  it("optimistically REMOVES an already-starred id", () => {
+    usePluginBrowserStore.setState({ favoriteIdentifiers: new Set(["vst3.Synth"]) });
+    usePluginBrowserStore.getState().toggleFavorite("vst3.Synth");
+    expect(usePluginBrowserStore.getState().favoriteIdentifiers.has("vst3.Synth")).toBe(
+      false,
+    );
+  });
+
+  it("produces a NEW Set reference (so subscribers re-render)", () => {
+    const before = usePluginBrowserStore.getState().favoriteIdentifiers;
+    usePluginBrowserStore.getState().toggleFavorite("vst3.A");
+    const after = usePluginBrowserStore.getState().favoriteIdentifiers;
+    expect(after).not.toBe(before);
+  });
+
+  it("calls the native bridge with elementToggleFavorite + identifier", async () => {
+    bridge.mock.mockResolvedValueOnce(true);
+    usePluginBrowserStore.getState().toggleFavorite("vst3.Reverb");
+    // The bridge handshake resolves on a microtask; flush it before asserting.
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(bridge.mock).toHaveBeenCalledWith("elementToggleFavorite", ["vst3.Reverb"]);
+  });
+
+  it("does NOT insert a Block (never calls elementGraphAddPlugin)", async () => {
+    usePluginBrowserStore.getState().toggleFavorite("vst3.Reverb");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(bridge.callsOf("elementGraphAddPlugin")).toHaveLength(0);
+  });
+
+  it("no-ops on an empty identifier (no state change, no bridge call)", async () => {
+    const before = usePluginBrowserStore.getState().favoriteIdentifiers;
+    usePluginBrowserStore.getState().toggleFavorite("");
+    await Promise.resolve();
+    expect(usePluginBrowserStore.getState().favoriteIdentifiers).toBe(before);
+    expect(bridge.callsOf("elementToggleFavorite")).toHaveLength(0);
+  });
+
+  it("reconciles to the host snapshot on the next refresh (truth wins)", async () => {
+    // Optimistically star two ids locally...
+    usePluginBrowserStore.getState().toggleFavorite("vst3.A");
+    usePluginBrowserStore.getState().toggleFavorite("vst3.B");
+    await Promise.resolve();
+    // ...then the host snapshot only confirms one (e.g. B failed to resolve).
+    bridge.mock.mockResolvedValueOnce({
+      plugins: [],
+      favoriteIdentifiers: ["vst3.A"],
+      recentIdentifiers: [],
+    });
+    await usePluginBrowserStore.getState().refresh();
+    const fav = usePluginBrowserStore.getState().favoriteIdentifiers;
+    expect(fav.has("vst3.A")).toBe(true);
+    expect(fav.has("vst3.B")).toBe(false); // snapshot truth overrides optimistic
+  });
+});
