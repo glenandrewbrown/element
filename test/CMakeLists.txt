@@ -71,6 +71,10 @@ add_test(NAME "BridgeContractTests" COMMAND test_element --run_test=BridgeContra
 # QUARANTINE: corrupted 204f5545, unverified — JS bridge unavailable in headless test context;
 # elementGetGraphState returns invalid JSON in non-JUCE-app harness.
 set_tests_properties(BridgeContractTests PROPERTIES DISABLED TRUE)
+# Container-dive END-TO-END host test (P2-A1). Drives the real
+# elementEnterContainer/elementExitContainer natives via invokeForTest — no JS
+# bridge needed, so (unlike BridgeContractTests) it runs in the headless harness.
+add_test(NAME "ContainerDiveTests" COMMAND test_element --run_test=ContainerDiveTests)
 add_test(NAME "RootGraphMissingNodeTests" COMMAND test_element --run_test=RootGraphMissingNodeTests)
 add_test(NAME "SandboxIsolationTests" COMMAND test_element --run_test=SandboxIsolationTests)
 add_test(NAME "LuaBoundsTests" COMMAND test_element --run_test=LuaBoundsTests)
