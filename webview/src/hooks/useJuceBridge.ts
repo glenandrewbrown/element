@@ -445,6 +445,17 @@ export type ElementNativeHooks = {
   onLogHistory?: (lines: string[]) => void;
   /** ~15 Hz delta channel of changed AudioProcessorParameter values. */
   onParameterUpdate?: (deltas: ParameterDelta[]) => void;
+  /**
+   * Host pushes this whenever it tears down the embedded plugin editor —
+   * from ANY path: the explicit close bridge (✕ / Esc / double-click toggle /
+   * Float), a container dive/exit, or a node delete. The host's
+   * `pluginEditorClose()` is the single teardown choke point and emits this
+   * after clearing `pluginEmbedNodeUuid`, so the webview mirror
+   * (`useAppStore.embeddedEditorNodeId`) can clear in lock-step. Without this,
+   * host-initiated closes (dive/exit/delete) leave the mirror stale at the old
+   * node id, so a later double-click on that Block takes the toggle's CLOSE
+   * branch and dead-ends instead of re-opening. (P1-A reopen fix) */
+  onEmbeddedEditorClosed?: () => void;
 };
 
 declare global {
@@ -625,6 +636,14 @@ export function useJuceBridge() {
         prev.onParameterUpdate?.(deltas);
         if (Array.isArray(deltas))
           useParameterStore.getState().applyDeltas(deltas);
+      },
+      onEmbeddedEditorClosed: () => {
+        prev.onEmbeddedEditorClosed?.();
+        // Host tore the embed down (any path) — clear the webview mirror so the
+        // canvas double-click toggle + ✕ pill + Esc rung all agree "nothing is
+        // embedded". Idempotent with the optimistic clear in
+        // nativePluginEditorClose(). (P1-A reopen fix)
+        useAppStore.getState().setEmbeddedEditorNodeId(null);
       },
     };
 

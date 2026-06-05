@@ -17,6 +17,7 @@ import {
   nativePluginEditorOpen,
   nativePluginEditorSetBounds,
 } from "../nativePluginEditor";
+import { useAppStore } from "../../stores/useAppStore";
 
 describe("nativePluginEditorOpen", () => {
   let bridge: JuceBridgeMock;
@@ -125,5 +126,159 @@ describe("nativePluginEditorFloat", () => {
     const result = await nativePluginEditorFloat();
     expect(result).toBeUndefined();
     expect(bridge.mock).toHaveBeenCalledWith("elementPluginEditorFloat", []);
+  });
+});
+
+// ── BUG 1 regression: open → ✕-close → double-click must RE-OPEN ──────────────
+//
+// The canvas double-click is a toggle (GraphCanvas.tsx onNodeDoubleClick):
+//   if (embeddedEditorNodeId === node.id) close(); else open(node).
+// After a ✕-close the webview mirror (`embeddedEditorNodeId`) MUST be null so
+// the SECOND double-click on the same Block takes the OPEN branch — not the
+// CLOSE branch (which would dead-end). These tests drive the REAL bridge +
+// REAL useAppStore through a faithful model of the C++ host so the open/close/
+// toggle state machine is exercised end-to-end.
+describe("BUG 1: open → ✕-close → reopen toggle consistency", () => {
+  let bridge: JuceBridgeMock;
+
+  // Faithful model of the C++ ElementWebViewHost embed teardown contract:
+  //  - pluginEditorOpen(uuid): close-first then create; ok = editor != null.
+  //  - pluginEditorClose(): editor=null, embedNodeUuid=null, and (the fix)
+  //    pushes onEmbeddedEditorClosed() back to the webview.
+  class HostModel {
+    embedNodeUuid: string | null = null;
+    editor: object | null = null;
+    /** Set true to make the NEXT open attempt fail (transient C++ false). */
+    failNextOpen = false;
+
+    open(uuid: string): boolean {
+      // close-first (silent — matches pluginEditorOpen's inline reset)
+      this.editor = null;
+      this.embedNodeUuid = null;
+      if (!uuid) return false;
+      if (this.failNextOpen) {
+        this.failNextOpen = false;
+        return false; // createPluginEditorPanel returned nullptr this attempt
+      }
+      this.embedNodeUuid = uuid;
+      this.editor = {};
+      return this.editor != null;
+    }
+    close() {
+      const had = this.editor != null;
+      this.editor = null;
+      this.embedNodeUuid = null;
+      // The fix: terminal close notifies the webview so the mirror clears.
+      if (had) bridge.emit("__juce__pluginCloseFired", undefined);
+    }
+  }
+
+  let host: HostModel;
+
+  // Mirror onNodeDoubleClick's toggle DECISION (GraphCanvas.tsx:246-254).
+  // Returns the underlying promise so assertions can await deterministically;
+  // production fires it with `void`, but the branch chosen is identical.
+  function doubleClick(nodeId: string): Promise<unknown> {
+    if (useAppStore.getState().embeddedEditorNodeId === nodeId)
+      return nativePluginEditorClose();
+    return nativePluginEditorOpen(nodeId, 80, 80, 720, 480);
+  }
+
+  beforeEach(() => {
+    bridge = installJuceBridgeMock();
+    host = new HostModel();
+    useAppStore.getState().setEmbeddedEditorNodeId(null);
+    // Route the bridge into the host model. When the host fires its close
+    // notification, clear the mirror — this stands in for useJuceBridge's
+    // onEmbeddedEditorClosed handler (validated separately in the hook test).
+    bridge.emit("__juce__pluginCloseFired", undefined); // no-op listener prime
+    bridge.mock.mockImplementation(async (name: string, args: unknown[]) => {
+      if (name === "elementPluginEditorOpen") return host.open(String(args[0]));
+      if (name === "elementPluginEditorClose") {
+        host.close();
+        return true;
+      }
+      if (name === "elementPluginEditorFloat") {
+        host.close();
+        return true;
+      }
+      return undefined;
+    });
+  });
+
+  afterEach(() => {
+    bridge.uninstall();
+    useAppStore.getState().setEmbeddedEditorNodeId(null);
+  });
+
+  it("the SECOND double-click calls OPEN (not close) and the editor re-opens", async () => {
+    const N = "valhalla";
+
+    // 1) First double-click → OPEN.
+    await doubleClick(N);
+    expect(useAppStore.getState().embeddedEditorNodeId).toBe(N);
+    expect(host.editor).not.toBeNull();
+
+    // 2) ✕-close.
+    await nativePluginEditorClose();
+    expect(useAppStore.getState().embeddedEditorNodeId).toBeNull();
+    expect(host.editor).toBeNull();
+    expect(host.embedNodeUuid).toBeNull();
+
+    // Record bridge calls AFTER the close so we can prove the 2nd double-click
+    // dispatches OPEN, not CLOSE.
+    const callsBefore = bridge.callsOf().length;
+
+    // 3) Second double-click → must take the OPEN branch.
+    await doubleClick(N);
+
+    const newCalls = bridge.callsOf().slice(callsBefore);
+    const newNames = newCalls.map((c) => c.name);
+    expect(newNames).toContain("elementPluginEditorOpen");
+    expect(newNames).not.toContain("elementPluginEditorClose");
+
+    // And the editor is back up, both sides in sync.
+    expect(useAppStore.getState().embeddedEditorNodeId).toBe(N);
+    expect(host.editor).not.toBeNull();
+    expect(host.embedNodeUuid).toBe(N);
+  });
+
+  it("host-initiated close (no bridge close call) still re-syncs the mirror so reopen works", async () => {
+    const N = "valhalla";
+    await doubleClick(N);
+    expect(useAppStore.getState().embeddedEditorNodeId).toBe(N);
+
+    // Simulate a HOST-SIDE teardown (container dive / node delete / Float):
+    // the C++ pluginEditorClose() runs and pushes onEmbeddedEditorClosed, which
+    // the webview consumes to clear the mirror. We model that push here.
+    host.close();
+    useAppStore.getState().setEmbeddedEditorNodeId(null); // onEmbeddedEditorClosed
+    expect(useAppStore.getState().embeddedEditorNodeId).toBeNull();
+
+    // Double-click now correctly OPENs (no dead-end on a stale mirror).
+    const callsBefore = bridge.callsOf().length;
+    await doubleClick(N);
+    const newNames = bridge
+      .callsOf()
+      .slice(callsBefore)
+      .map((c) => c.name);
+    expect(newNames).toContain("elementPluginEditorOpen");
+    expect(useAppStore.getState().embeddedEditorNodeId).toBe(N);
+  });
+
+  it("reopen recovers when the host's first open attempt returns false (retry backoff)", async () => {
+    const N = "valhalla";
+    await doubleClick(N);
+    await nativePluginEditorClose();
+    expect(useAppStore.getState().embeddedEditorNodeId).toBeNull();
+
+    // First reopen attempt fails (transient C++ false); the retry loop's next
+    // attempt succeeds. Mirror ends correct, editor up.
+    host.failNextOpen = true;
+    await doubleClick(N);
+    expect(useAppStore.getState().embeddedEditorNodeId).toBe(N);
+    expect(host.editor).not.toBeNull();
+    // The open path tried at least twice for the reopen.
+    expect(bridge.callsOf("elementPluginEditorOpen").length).toBeGreaterThanOrEqual(3);
   });
 });

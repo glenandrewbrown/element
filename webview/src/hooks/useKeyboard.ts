@@ -307,6 +307,21 @@ export function useKeyboard({
           // the native editor first (it would otherwise be a dead-end that only
           // closes via the Inspector). Owner uuid mirrors the host's
           // pluginEmbedNodeUuid; close is idempotent.
+          //
+          // KNOWN LIMITATION (BUG 2, by design): this fires ONLY when the
+          // webview itself has keyboard focus. While the native embedded plugin
+          // editor (a CALayerHost-backed NSView) holds first-responder, macOS
+          // routes the Esc keyDown to the PLUGIN, not to this window-level
+          // listener — so Esc cannot close a *focused* embed from here. The same
+          // native-focus boundary defeats a JUCE-side KeyListener on the embed's
+          // host component (JUCE's key pipeline sits upstream of the focused
+          // NSView). The only ways to intercept that key — an NSEvent local
+          // key-down monitor or swizzling the plugin's keyDown: — would steal Esc
+          // from the plugin's own UI (cancel dialogs, preset-name edits), so they
+          // are deliberately NOT shipped. Closing a focused embed is therefore
+          // done via the ✕ pill / double-click toggle / delete / Float, all of
+          // which are OS-routable regardless of plugin focus. (Esc still works
+          // here when focus is on the canvas/webview.)
           if (useAppStore.getState().embeddedEditorNodeId) {
             e.preventDefault();
             void nativePluginEditorClose();

@@ -4856,14 +4856,39 @@ void ElementWebViewHost::resized()
 
 void ElementWebViewHost::pluginEditorClose()
 {
+    // Was an embed actually up? Only notify the webview when we tear something
+    // down, so a no-op close (idempotent guard paths) stays silent.
+    const bool hadEmbed = (pluginEmbedEditor != nullptr);
+
     pluginEmbedEditor.reset();
     pluginEmbedBounds = {};
     pluginEmbedNodeUuid = {};
+
+    // P1-A reopen fix: tell the webview the embed is gone so its mirror
+    // (useAppStore.embeddedEditorNodeId) clears in lock-step with the host's
+    // pluginEmbedNodeUuid. This is the SINGLE teardown choke point — every close
+    // path (the elementPluginEditorClose bridge for ✕/Esc/toggle/Float, plus the
+    // container dive/exit and node-delete paths that call pluginEditorClose()
+    // directly) routes through here. Without it, host-initiated closes leave the
+    // webview mirror stale at the old node id, so a later double-click on that
+    // Block takes the toggle's CLOSE branch and dead-ends instead of re-opening.
+    // Always on the message thread (all callers are); evalInBrowser is a no-op
+    // when the browser is absent.
+    if (hadEmbed)
+        evalInBrowser ("window.__elementNative && window.__elementNative.onEmbeddedEditorClosed && window.__elementNative.onEmbeddedEditorClosed();");
 }
 
 void ElementWebViewHost::pluginEditorOpen (const String& nodeUuid, int x, int y, int w, int h)
 {
-    pluginEditorClose();
+    // Tear down any prior embed WITHOUT firing the onEmbeddedEditorClosed push:
+    // this is the prelude to a re-open (often the SAME node via the retry loop),
+    // so notifying "closed" here would race the open's mirror-set on the webview
+    // and could clear it. Terminal closes go through pluginEditorClose() (which
+    // does notify). Mirror its reset exactly. (P1-A reopen fix)
+    pluginEmbedEditor.reset();
+    pluginEmbedBounds = {};
+    pluginEmbedNodeUuid = {};
+
     auto sess = context.session();
     if (sess == nullptr || nodeUuid.isEmpty())
         return;

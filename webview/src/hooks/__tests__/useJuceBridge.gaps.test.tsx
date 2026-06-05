@@ -332,4 +332,38 @@ describe("useJuceBridge — gap coverage", () => {
 
     expect(usePerformStore.getState().isPlaying).toBe(true);
   });
+
+  // ── onEmbeddedEditorClosed → clears the embed mirror (BUG 1 reopen fix) ────
+
+  it("onEmbeddedEditorClosed clears embeddedEditorNodeId so a reopen toggle works", async () => {
+    renderHook(() => useJuceBridge());
+    await act(async () => { await flushAsync(); });
+
+    // Mirror is set (e.g. host opened an embed) …
+    act(() => {
+      useAppStore.getState().setEmbeddedEditorNodeId("valhalla");
+    });
+    expect(useAppStore.getState().embeddedEditorNodeId).toBe("valhalla");
+
+    // … then the host tears the embed down (container dive / delete / Float /
+    // explicit close) and pushes onEmbeddedEditorClosed. The mirror must clear,
+    // otherwise the next canvas double-click on that Block dead-ends on CLOSE.
+    act(() => {
+      window.__elementNative?.onEmbeddedEditorClosed?.();
+    });
+    expect(useAppStore.getState().embeddedEditorNodeId).toBeNull();
+  });
+
+  it("onEmbeddedEditorClosed chains to a previously-installed handler", async () => {
+    const prev = vi.fn();
+    window.__elementNative = { onEmbeddedEditorClosed: prev };
+
+    renderHook(() => useJuceBridge());
+    await act(async () => { await flushAsync(); });
+
+    act(() => {
+      window.__elementNative?.onEmbeddedEditorClosed?.();
+    });
+    expect(prev).toHaveBeenCalledTimes(1);
+  });
 });
