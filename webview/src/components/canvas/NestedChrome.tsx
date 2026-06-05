@@ -35,7 +35,10 @@ const EASE_OUT_EXPO = [0.16, 1, 0.3, 1] as const;
  */
 export function NestedChrome() {
   const breadcrumbs = useGraphStore(selectBreadcrumbs);
-  const navigate = useGraphStore((s) => s.navigateToBreadcrumb);
+  // EXIT is engine-driven (the dive-desync fix): it asks the host to back out,
+  // and the breadcrumb redraws ONLY from the snapshot the host re-pushes — so
+  // the banner can never disagree with the canvas. No optimistic mutation.
+  const exitToBreadcrumb = useGraphStore((s) => s.exitToBreadcrumb);
 
   // Depth 0 == root Project (stack length 1). The chrome only exists nested.
   const depth = breadcrumbs.length - 1;
@@ -46,7 +49,7 @@ export function NestedChrome() {
 
   // One level UP — the EXIT target and what double-click / Escape already do.
   const exitToIndex = breadcrumbs.length - 2;
-  const exit = () => navigate(exitToIndex);
+  const exit = () => void exitToBreadcrumb(exitToIndex);
 
   return (
     <AnimatePresence>

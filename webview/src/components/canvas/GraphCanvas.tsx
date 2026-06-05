@@ -28,6 +28,8 @@ import { useGraphStore, zoomToTier } from "../../stores/useGraphStore";
 import { useAppStore } from "../../stores/useAppStore";
 import { useHostExtrasStore } from "../../stores/useHostExtrasStore";
 import {
+  nativeEnterContainer,
+  nativeExitContainer,
   nativeGraphCommentAdd,
   nativeGraphCommentUpsert,
   nativeGraphConnect,
@@ -158,8 +160,6 @@ export function GraphCanvas() {
   const selectNode = useGraphStore((s) => s.selectNode);
   const selectEdge = useGraphStore((s) => s.selectEdge);
   const clearSelection = useGraphStore((s) => s.clearSelection);
-  const pushBreadcrumb = useGraphStore((s) => s.pushBreadcrumb);
-  const popBreadcrumb = useGraphStore((s) => s.popBreadcrumb);
   const updateNodePositions = useGraphStore((s) => s.updateNodePositions);
   const updateCommentBoxLayout = useGraphStore((s) => s.updateCommentBoxLayout);
   const setZoomTier = useGraphStore((s) => s.setZoomTier);
@@ -228,8 +228,14 @@ export function GraphCanvas() {
     (event, node) => {
       if (node.type === "comment") return;
       const data = node.data as BlockData;
-      if (data.containerNodeCount != null || data.isPortal) {
-        pushBreadcrumb(data.name);
+      // Real LOCAL Container → dive INTO its nested Board via the engine. The
+      // host re-pushes a snapshot with the nested nodes/edges + a deeper
+      // breadcrumb, so the canvas + breadcrumb update from snapshot truth — no
+      // optimistic client push (the dive-desync fix). A Portal is NOT a real
+      // local board (it links an external .elboard), so it must NOT fake a
+      // dive — it falls through to the honest "open to edit" affordance below.
+      if (data.containerNodeCount != null && !data.isPortal) {
+        void nativeEnterContainer(node.id);
         return;
       }
       // Plugin Block: toggle the embedded plugin GUI window (Blueprint §10.1).
@@ -247,7 +253,7 @@ export function GraphCanvas() {
       const anchorY = (event as MouseEvent).clientY ?? 80;
       void nativePluginEditorOpen(node.id, anchorX, anchorY, 720, 480);
     },
-    [pushBreadcrumb],
+    [],
   );
 
   const onEdgeClick = useCallback(
@@ -288,9 +294,12 @@ export function GraphCanvas() {
     [isEdit, selectEdge],
   );
 
+  // Double-click empty canvas = "navigate UP one level" (gesture spec). Drives
+  // the engine exit; the parent board + shortened breadcrumb arrive via the
+  // next snapshot. No-op at the top level (host returns false).
   const onPaneDoubleClick = useCallback(() => {
-    popBreadcrumb();
-  }, [popBreadcrumb]);
+    void nativeExitContainer();
+  }, []);
 
   const onPaneContextMenu = useCallback(
     (event: MouseEvent | globalThis.MouseEvent) => {

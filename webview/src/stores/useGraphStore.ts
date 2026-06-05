@@ -10,6 +10,8 @@ import {
   nativeGraphSetNodeColor,
   nativeGraphSetOversample,
   nativeGraphReplacePlugin,
+  nativeEnterContainer,
+  nativeExitContainer,
 } from "../bridge/nativeGraph";
 import { logBridgeError } from "../bridge/bridgeError";
 
@@ -71,7 +73,20 @@ interface GraphState {
   edges: CableData[];
   selectedNodeId: string | null;
   selectedEdgeId: string | null;
+  /**
+   * REAL multi-level dive path, fed SOLELY by the engine snapshot via
+   * {@link GraphActions.hydrateFromEngine}:
+   * `[sessionName, activeGraphName, container1, container2, …]`. Never mutated
+   * optimistically client-side — the breadcrumb can therefore never disagree
+   * with the canvas (the dive-desync fix). "Is dived" = `length > 2`.
+   */
   breadcrumbStack: string[];
+  /**
+   * Id of the nested Board currently shown, present ONLY when dived (mirrors
+   * the snapshot's `currentBoardId`). `null` at the top level. A second honest
+   * "is dived" signal alongside `breadcrumbStack.length > 2`.
+   */
+  currentBoardId: string | null;
   commentBoxes: CommentBoxData[];
   /** React Flow minimap visibility (Shift+M). */
   minimapVisible: boolean;
@@ -83,8 +98,41 @@ interface GraphActions {
   selectNode: (id: string | null) => void;
   selectEdge: (id: string | null) => void;
   clearSelection: () => void;
+  /**
+   * Dive INTO a Container's nested Board. Calls the host bridge
+   * (`nativeEnterContainer`); the new board's nodes/edges + the deeper
+   * breadcrumb path arrive via the next engine snapshot — never faked. A no-op
+   * `false` from the host leaves the breadcrumb untouched (desync-safe).
+   */
+  enterContainer: (nodeId: string) => Promise<void>;
+  /**
+   * Back out ONE level. Calls `nativeExitContainer`; the parent board +
+   * shortened breadcrumb arrive via the snapshot. No-op at the top.
+   */
+  exitContainer: () => Promise<void>;
+  /**
+   * Exit UP to the breadcrumb segment at `targetIndex` (used by clickable
+   * breadcrumb crumbs / the NestedChrome EXIT). Loops `nativeExitContainer`
+   * `(breadcrumbStack.length − 1 − targetIndex)` times; surplus calls at the
+   * top are honest no-ops. The breadcrumb redraws only from the snapshots the
+   * host pushes back — so it can never disagree with the canvas.
+   */
+  exitToBreadcrumb: (targetIndex: number) => Promise<void>;
+  /**
+   * NEUTERED (dive-desync fix): the breadcrumb is now driven SOLELY by the
+   * engine snapshot, so the old optimistic client push is a no-op. Kept on the
+   * API for back-compat with callers/tests; use {@link enterContainer} to dive.
+   */
   pushBreadcrumb: (boardId: string) => void;
+  /**
+   * NEUTERED (dive-desync fix): no-op. Use {@link exitContainer} to back out;
+   * the breadcrumb follows the snapshot the host re-pushes.
+   */
   popBreadcrumb: () => void;
+  /**
+   * NEUTERED (dive-desync fix): no-op. Use {@link exitToBreadcrumb} for
+   * crumb-click navigation; the breadcrumb follows the engine snapshot.
+   */
   navigateToBreadcrumb: (index: number) => void;
   toggleMinimap: () => void;
   /** Update semantic zoom tier from React Flow viewport zoom value. */
@@ -131,6 +179,8 @@ interface GraphActions {
     edges: CableData[];
     commentBoxes?: CommentBoxData[];
     breadcrumbs?: string[];
+    /** Present only when dived; names the nested Board shown. */
+    currentBoardId?: string | null;
   }) => void;
   /** Update block positions after user drag (local + optional native sync). */
   updateNodePositions: (
@@ -169,6 +219,7 @@ export const useGraphStore = create<GraphStore>()((set) => ({
   selectedNodeId: null,
   selectedEdgeId: null,
   breadcrumbStack: ["Main Project"],
+  currentBoardId: null,
   commentBoxes: initialComments,
   minimapVisible: true,
   zoomTier: "standard",
@@ -179,21 +230,59 @@ export const useGraphStore = create<GraphStore>()((set) => ({
 
   clearSelection: () => set({ selectedNodeId: null, selectedEdgeId: null }),
 
-  pushBreadcrumb: (boardId) =>
-    set((s) => ({ breadcrumbStack: [...s.breadcrumbStack, boardId] })),
+  // ── Container dive — engine-driven, NEVER optimistic ──────────────────────
+  // The breadcrumb + canvas reflect ONLY the engine snapshot. These actions
+  // call the host bridge; the host re-pushes an authoritative snapshot (nested
+  // board nodes/edges + the new breadcrumb path) which hydrateFromEngine then
+  // applies. So the breadcrumb can never disagree with the canvas (the
+  // dive-desync fix), and a host no-op (`false`) changes nothing locally.
 
-  popBreadcrumb: () =>
-    set((s) => ({
-      breadcrumbStack:
-        s.breadcrumbStack.length > 1
-          ? s.breadcrumbStack.slice(0, -1)
-          : s.breadcrumbStack,
-    })),
+  enterContainer: async (nodeId) => {
+    try {
+      const ok = await nativeEnterContainer(nodeId);
+      if (!ok) {
+        logBridgeError(
+          "useGraphStore.enterContainer",
+          `host refused enter ${nodeId} (not a direct-child graph)`,
+        );
+      }
+    } catch (err) {
+      logBridgeError("useGraphStore.enterContainer", err);
+    }
+  },
 
-  navigateToBreadcrumb: (index) =>
-    set((s) => ({
-      breadcrumbStack: s.breadcrumbStack.slice(0, index + 1),
-    })),
+  exitContainer: async () => {
+    try {
+      await nativeExitContainer();
+    } catch (err) {
+      logBridgeError("useGraphStore.exitContainer", err);
+    }
+  },
+
+  exitToBreadcrumb: async (targetIndex) => {
+    // Number of levels to back out = current path length − 1 − targetIndex.
+    // (breadcrumbStack = [session, activeGraph, container1, …]; index 2 = the
+    // first dived container.) Surplus exits at the top are honest no-ops.
+    const steps = useGraphStore.getState().breadcrumbStack.length - 1 - targetIndex;
+    for (let i = 0; i < steps; i++) {
+      try {
+        const ok = await nativeExitContainer();
+        if (!ok) break; // already at top — stop early
+      } catch (err) {
+        logBridgeError("useGraphStore.exitToBreadcrumb", err);
+        break;
+      }
+    }
+  },
+
+  // NEUTERED (dive-desync fix) — the breadcrumb is snapshot-driven now, so the
+  // old optimistic push/pop/navigate are no-ops. Retained on the API for
+  // back-compat. Dive via enterContainer / exitContainer / exitToBreadcrumb.
+  pushBreadcrumb: () => {},
+
+  popBreadcrumb: () => {},
+
+  navigateToBreadcrumb: () => {},
 
   toggleMinimap: () => set((s) => ({ minimapVisible: !s.minimapVisible })),
 
@@ -424,6 +513,9 @@ export const useGraphStore = create<GraphStore>()((set) => ({
         data.breadcrumbs && data.breadcrumbs.length > 0
           ? data.breadcrumbs
           : ["Main Project"],
+      // Snapshot is the SOLE source of dive state. `currentBoardId` is present
+      // only when dived; coerce undefined → null so the top level is honest.
+      currentBoardId: data.currentBoardId ?? null,
     });
   },
 
@@ -560,6 +652,14 @@ export const selectSelectedNodeId = (s: GraphStore) => s.selectedNodeId;
 export const selectSelectedEdgeId = (s: GraphStore) => s.selectedEdgeId;
 export const selectBreadcrumbs = (s: GraphStore) => s.breadcrumbStack;
 export const selectCommentBoxes = (s: GraphStore) => s.commentBoxes;
+
+/**
+ * True when the canvas is showing a nested Container Board (i.e. the user has
+ * dived in). Honest from EITHER engine signal: the snapshot's `currentBoardId`
+ * is set, OR the breadcrumb path is deeper than `[session, activeGraph]`.
+ */
+export const selectIsDived = (s: GraphStore) =>
+  s.currentBoardId != null || s.breadcrumbStack.length > 2;
 
 export const selectZoomTier = (s: GraphStore) => s.zoomTier;
 

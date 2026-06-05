@@ -3,6 +3,7 @@ import { useReactFlow } from "@xyflow/react";
 import { useGraphStore } from "../stores/useGraphStore";
 import { useAppStore } from "../stores/useAppStore";
 import {
+  nativeExitContainer,
   nativeGraphCommentAdd,
   nativeGraphCommentDelete,
   nativeGraphCopyNodes,
@@ -312,13 +313,19 @@ export function useKeyboard({
             return;
           }
 
-          // Priority 3: deselect / pop breadcrumb (existing behaviour — unchanged).
-          const { selectedNodeId, selectedEdgeId, breadcrumbStack } =
+          // Priority 3: deselect, then (if nothing selected) back out one dive
+          // level. The dive exit is ENGINE-driven (the dive-desync fix) — we
+          // ask the host to exit and let the snapshot redraw the breadcrumb +
+          // canvas, never an optimistic client pop that could disagree with the
+          // canvas. "Is dived" = currentBoardId set OR the breadcrumb path is
+          // deeper than [session, activeGraph] (length > 2).
+          const { selectedNodeId, selectedEdgeId, currentBoardId, breadcrumbStack } =
             useGraphStore.getState();
           if (selectedNodeId || selectedEdgeId) {
             useGraphStore.getState().clearSelection();
-          } else if (breadcrumbStack.length > 1) {
-            useGraphStore.getState().popBreadcrumb();
+          } else if (currentBoardId != null || breadcrumbStack.length > 2) {
+            e.preventDefault();
+            void nativeExitContainer();
           }
           return;
         }

@@ -15,16 +15,29 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock nativeGraph bridge before importing the store.
+// nativeEnterContainer / nativeExitContainer default to `true` (host accepted)
+// and to `false` (already at top) where a test needs the no-op branch; both are
+// re-pointed per-test via mockResolvedValueOnce.
 vi.mock("../../bridge/nativeGraph", () => ({
   nativeGraphMoveNodes: vi.fn(async () => undefined),
   nativeGraphSetBypass: vi.fn(async () => undefined),
   nativeGraphSetMute: vi.fn(async () => undefined),
   nativeGraphSetMuteInput: vi.fn(async () => undefined),
+  nativeGraphDisconnectNode: vi.fn(async () => true),
+  nativeGraphSetNodeColor: vi.fn(async () => true),
+  nativeGraphSetOversample: vi.fn(async () => true),
+  nativeGraphReplacePlugin: vi.fn(async () => true),
+  nativeEnterContainer: vi.fn(async () => true),
+  nativeExitContainer: vi.fn(async () => true),
 }));
 
 import type { BlockData, CableData } from "../../data/types";
-import { useGraphStore } from "../useGraphStore";
+import { useGraphStore, selectIsDived } from "../useGraphStore";
 import { useBusStore } from "../useBusStore";
+import {
+  nativeEnterContainer,
+  nativeExitContainer,
+} from "../../bridge/nativeGraph";
 
 const makeBlock = (id: string, x = 0, y = 0): BlockData => ({
   id,
@@ -59,6 +72,7 @@ describe("useGraphStore", () => {
       selectedNodeId: null,
       selectedEdgeId: null,
       breadcrumbStack: ["Main Project"],
+      currentBoardId: null,
       commentBoxes: [],
       minimapVisible: true,
       zoomTier: "standard",
@@ -141,32 +155,128 @@ describe("useGraphStore", () => {
     expect(updated[1].position).toEqual({ x: 50, y: 50 });
   });
 
-  // ── Breadcrumb stack ──────────────────────────────────────────────────────
+  // ── Container dive (engine-driven, NO desync) ─────────────────────────────
+  // The breadcrumb is fed SOLELY by the snapshot now, so the legacy optimistic
+  // mutators are neutered no-ops and the dive goes through the host bridge.
 
-  it("pushBreadcrumb appends to the stack", () => {
+  it("pushBreadcrumb is a neutered no-op (breadcrumb is snapshot-driven)", () => {
     useGraphStore.getState().pushBreadcrumb("Container A");
+    // No optimistic local mutation — the stack only changes via a snapshot.
+    expect(useGraphStore.getState().breadcrumbStack).toEqual(["Main Project"]);
+    expect(nativeEnterContainer).not.toHaveBeenCalled();
+  });
+
+  it("popBreadcrumb is a neutered no-op", () => {
+    useGraphStore.setState({
+      breadcrumbStack: ["Main Project", "Graph", "Sub"],
+    });
+    useGraphStore.getState().popBreadcrumb();
     expect(useGraphStore.getState().breadcrumbStack).toEqual([
       "Main Project",
-      "Container A",
+      "Graph",
+      "Sub",
+    ]);
+    expect(nativeExitContainer).not.toHaveBeenCalled();
+  });
+
+  it("navigateToBreadcrumb is a neutered no-op", () => {
+    useGraphStore.setState({
+      breadcrumbStack: ["Main Project", "Graph", "A", "B"],
+    });
+    useGraphStore.getState().navigateToBreadcrumb(0);
+    expect(useGraphStore.getState().breadcrumbStack).toEqual([
+      "Main Project",
+      "Graph",
+      "A",
+      "B",
     ]);
   });
 
-  it("popBreadcrumb removes the last entry but keeps at least one", () => {
-    useGraphStore.getState().pushBreadcrumb("Sub");
-    useGraphStore.getState().popBreadcrumb();
+  it("enterContainer calls the host bridge with the node id (no local mutation)", async () => {
+    await useGraphStore.getState().enterContainer("node-uuid-1");
+    expect(nativeEnterContainer).toHaveBeenCalledWith("node-uuid-1");
+    // Breadcrumb unchanged until the host pushes a snapshot — desync-safe.
     expect(useGraphStore.getState().breadcrumbStack).toEqual(["Main Project"]);
   });
 
-  it("popBreadcrumb is a no-op when only one entry remains", () => {
-    useGraphStore.getState().popBreadcrumb();
-    expect(useGraphStore.getState().breadcrumbStack).toEqual(["Main Project"]);
+  it("exitContainer calls the host exit bridge", async () => {
+    await useGraphStore.getState().exitContainer();
+    expect(nativeExitContainer).toHaveBeenCalledTimes(1);
   });
 
-  it("navigateToBreadcrumb trims to the requested index", () => {
-    useGraphStore.getState().pushBreadcrumb("A");
-    useGraphStore.getState().pushBreadcrumb("B");
-    useGraphStore.getState().navigateToBreadcrumb(0);
-    expect(useGraphStore.getState().breadcrumbStack).toEqual(["Main Project"]);
+  it("breadcrumb reflects ONLY the snapshot — hydrate drives the multi-level path", () => {
+    // Simulate the host re-pushing a 2-deep dive snapshot.
+    useGraphStore.getState().hydrateFromEngine({
+      nodes: [],
+      edges: [],
+      breadcrumbs: ["Project", "Main", "Synth Rack", "Voice"],
+      currentBoardId: "voice-board",
+    });
+    expect(useGraphStore.getState().breadcrumbStack).toEqual([
+      "Project",
+      "Main",
+      "Synth Rack",
+      "Voice",
+    ]);
+    expect(useGraphStore.getState().currentBoardId).toBe("voice-board");
+  });
+
+  it("hydrate coerces a missing currentBoardId to null (honest top level)", () => {
+    useGraphStore.setState({ currentBoardId: "stale" });
+    useGraphStore.getState().hydrateFromEngine({
+      nodes: [],
+      edges: [],
+      breadcrumbs: ["Project", "Main"],
+    });
+    expect(useGraphStore.getState().currentBoardId).toBeNull();
+  });
+
+  it("selectIsDived is false at top, true when currentBoardId set or path > 2", () => {
+    expect(selectIsDived(useGraphStore.getState())).toBe(false);
+    useGraphStore.setState({ currentBoardId: "b1" });
+    expect(selectIsDived(useGraphStore.getState())).toBe(true);
+    useGraphStore.setState({
+      currentBoardId: null,
+      breadcrumbStack: ["P", "Main", "Container"],
+    });
+    expect(selectIsDived(useGraphStore.getState())).toBe(true);
+  });
+
+  // Interaction (d): a 2-level enter then 2-level exit drives exactly 2 enter
+  // and 2 exit bridge calls — the host owns the actual navigation + snapshots.
+  it("2-level dive: 2× enterContainer + 2× exitContainer drive 2 enter / 2 exit bridge calls", async () => {
+    await useGraphStore.getState().enterContainer("container-1");
+    await useGraphStore.getState().enterContainer("container-2");
+    expect(nativeEnterContainer).toHaveBeenCalledTimes(2);
+    expect(nativeEnterContainer).toHaveBeenNthCalledWith(1, "container-1");
+    expect(nativeEnterContainer).toHaveBeenNthCalledWith(2, "container-2");
+
+    await useGraphStore.getState().exitContainer();
+    await useGraphStore.getState().exitContainer();
+    expect(nativeExitContainer).toHaveBeenCalledTimes(2);
+  });
+
+  it("exitToBreadcrumb loops nativeExitContainer (length − 1 − targetIndex) times", async () => {
+    // Path [session, activeGraph, c1, c2] (length 4). Exiting to index 1
+    // (activeGraph = fully out) → 4 − 1 − 1 = 2 exit calls.
+    useGraphStore.setState({
+      breadcrumbStack: ["Project", "Main", "C1", "C2"],
+    });
+    await useGraphStore.getState().exitToBreadcrumb(1);
+    expect(nativeExitContainer).toHaveBeenCalledTimes(2);
+  });
+
+  it("exitToBreadcrumb stops early when the host signals top reached", async () => {
+    useGraphStore.setState({
+      breadcrumbStack: ["Project", "Main", "C1", "C2", "C3"],
+    });
+    // Host accepts the first exit, then reports it is already at the top.
+    (nativeExitContainer as unknown as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false);
+    await useGraphStore.getState().exitToBreadcrumb(0);
+    // Would have looped 4× by depth, but the false short-circuits at 2 calls.
+    expect(nativeExitContainer).toHaveBeenCalledTimes(2);
   });
 
   // ── Selector shape ────────────────────────────────────────────────────────
@@ -237,8 +347,8 @@ describe("zoomToTier", () => {
     expect(zoomToTier(0.8)).toBe("standard");
     expect(zoomToTier(0.65)).toBe("standard");
   });
-  it("returns 'expanded' above 0.8", () => {
-    expect(zoomToTier(0.81)).toBe("expanded");
+  it("returns 'expanded' above 0.9", () => {
+    expect(zoomToTier(0.95)).toBe("expanded");
     expect(zoomToTier(2)).toBe("expanded");
   });
 });

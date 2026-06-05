@@ -51,6 +51,7 @@ const {
   mockDuplicateNodes,
   mockUndo,
   mockRedo,
+  mockExitContainer,
 } = vi.hoisted(() => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const spread = (fn: (...a: any[]) => any) => (...a: any[]) => fn(...a);
@@ -64,6 +65,7 @@ const {
   const mockDuplicateNodes = vi.fn(async () => 1);
   const mockUndo = vi.fn(async () => undefined);
   const mockRedo = vi.fn(async () => undefined);
+  const mockExitContainer = vi.fn(async () => true);
   return {
     mockCommentAdd,
     mockCommentDelete,
@@ -75,6 +77,7 @@ const {
     mockDuplicateNodes,
     mockUndo,
     mockRedo,
+    mockExitContainer,
     spread,
   };
 });
@@ -83,6 +86,7 @@ vi.mock("../../bridge/nativeGraph", () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const sp = (fn: (...a: any[]) => any) => (...a: any[]) => fn(...a);
   return {
+    nativeExitContainer: sp(mockExitContainer),
     nativeGraphCommentAdd: sp(mockCommentAdd),
     nativeGraphCommentDelete: sp(mockCommentDelete),
     nativeGraphCopyNodes: sp(mockCopyNodes),
@@ -314,17 +318,32 @@ describe("useKeyboard — Escape", () => {
     expect(clearSpy).toHaveBeenCalled();
   });
 
-  it("pops breadcrumb when nothing selected and stack has >1 entry", () => {
-    const popSpy = vi.fn();
+  it("calls nativeExitContainer when dived (path > 2) and nothing selected", () => {
+    mockExitContainer.mockClear();
+    // Dived: [session, activeGraph, container] (length 3 > 2). Engine-driven
+    // exit — the breadcrumb redraws from the snapshot, never an optimistic pop.
     useGraphStore.setState({
       selectedNodeId: null,
       selectedEdgeId: null,
-      breadcrumbStack: ["Root", "Child"],
-      popBreadcrumb: popSpy,
+      currentBoardId: null,
+      breadcrumbStack: ["Project", "Main", "Container"],
     });
     mountHook();
     act(() => { fire("Escape", {}); });
-    expect(popSpy).toHaveBeenCalled();
+    expect(mockExitContainer).toHaveBeenCalled();
+  });
+
+  it("does NOT exit at the top level (path length 2, not dived)", () => {
+    mockExitContainer.mockClear();
+    useGraphStore.setState({
+      selectedNodeId: null,
+      selectedEdgeId: null,
+      currentBoardId: null,
+      breadcrumbStack: ["Project", "Main"],
+    });
+    mountHook();
+    act(() => { fire("Escape", {}); });
+    expect(mockExitContainer).not.toHaveBeenCalled();
   });
 });
 

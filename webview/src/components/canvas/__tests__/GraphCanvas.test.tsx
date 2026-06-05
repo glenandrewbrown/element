@@ -15,21 +15,38 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 
 // ── Mock @xyflow/react ──────────────────────────────────────────────────────
+// We capture onNodeDoubleClick / onDoubleClick so dive-gesture tests can invoke
+// them directly with a synthetic node/event (full RF interaction is E2E).
+type RFProps = {
+  children?: React.ReactNode;
+  onPaneContextMenu?: (e: React.MouseEvent) => void;
+  onNodeDoubleClick?: (e: unknown, node: unknown) => void;
+  onDoubleClick?: (e: React.MouseEvent) => void;
+};
+const rfHandlers: {
+  onNodeDoubleClick?: RFProps["onNodeDoubleClick"];
+  onDoubleClick?: RFProps["onDoubleClick"];
+} = {};
+
 vi.mock("@xyflow/react", () => {
   const ReactFlow = ({
     children,
     onPaneContextMenu,
-  }: {
-    children?: React.ReactNode;
-    onPaneContextMenu?: (e: React.MouseEvent) => void;
-  }) => (
-    <div
-      data-testid="react-flow"
-      onContextMenu={onPaneContextMenu}
-    >
-      {children}
-    </div>
-  );
+    onNodeDoubleClick,
+    onDoubleClick,
+  }: RFProps) => {
+    rfHandlers.onNodeDoubleClick = onNodeDoubleClick;
+    rfHandlers.onDoubleClick = onDoubleClick;
+    return (
+      <div
+        data-testid="react-flow"
+        onContextMenu={onPaneContextMenu}
+        onDoubleClick={onDoubleClick}
+      >
+        {children}
+      </div>
+    );
+  };
 
   return {
     ReactFlow,
@@ -117,6 +134,8 @@ vi.mock("../../../stores/useHostExtrasStore", () => ({
 
 // ── Mock bridge calls ────────────────────────────────────────────────────────
 vi.mock("../../../bridge/nativeGraph", () => ({
+  nativeEnterContainer: vi.fn(async () => true),
+  nativeExitContainer: vi.fn(async () => true),
   nativeGraphCommentAdd: vi.fn(),
   nativeGraphCommentUpsert: vi.fn(),
   nativeGraphConnect: vi.fn(),
@@ -128,6 +147,7 @@ vi.mock("../../../bridge/nativeGraph", () => ({
 
 vi.mock("../../../bridge/nativePluginEditor", () => ({
   nativePluginEditorOpen: vi.fn(),
+  nativePluginEditorClose: vi.fn(),
 }));
 
 // ── Mock child components ────────────────────────────────────────────────────
@@ -150,6 +170,11 @@ vi.mock("../EdgeContextMenu", () => ({
 }));
 
 import { GraphCanvas } from "../GraphCanvas";
+import {
+  nativeEnterContainer,
+  nativeExitContainer,
+} from "../../../bridge/nativeGraph";
+import { nativePluginEditorOpen } from "../../../bridge/nativePluginEditor";
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -157,6 +182,7 @@ describe("GraphCanvas", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockAppStore.mode = "edit";
+    mockAppStore.embeddedEditorNodeId = null;
   });
 
   // ── Happy path ────────────────────────────────────────────────────────────
@@ -215,5 +241,56 @@ describe("GraphCanvas", () => {
     render(<GraphCanvas />);
     // Should not throw or show any blocks
     expect(screen.queryByTestId("block")).not.toBeInTheDocument();
+  });
+
+  // ── Container dive gestures (the dive-desync fix) ───────────────────────────
+  // Double-clicking a real local Container dives IN via the engine bridge; the
+  // breadcrumb/canvas then update from the host snapshot (no optimistic push).
+
+  it("double-clicking a Container Block calls nativeEnterContainer(node.id)", () => {
+    render(<GraphCanvas />);
+    // A real local Container: containerNodeCount set, not a Portal.
+    rfHandlers.onNodeDoubleClick?.(
+      { clientX: 10, clientY: 10 },
+      {
+        id: "container-1",
+        type: "block",
+        data: { name: "Voice Rack", containerNodeCount: 3 },
+      },
+    );
+    expect(nativeEnterContainer).toHaveBeenCalledWith("container-1");
+    // It is a DIVE, not a plugin-editor open.
+    expect(nativePluginEditorOpen).not.toHaveBeenCalled();
+  });
+
+  it("double-clicking a Portal does NOT dive — it opens to edit (honest)", () => {
+    render(<GraphCanvas />);
+    // A Portal links an external .elboard; it must not fake a local dive.
+    rfHandlers.onNodeDoubleClick?.(
+      { clientX: 10, clientY: 10 },
+      {
+        id: "portal-1",
+        type: "block",
+        data: { name: "External Board", containerNodeCount: 5, isPortal: true },
+      },
+    );
+    expect(nativeEnterContainer).not.toHaveBeenCalled();
+    expect(nativePluginEditorOpen).toHaveBeenCalled();
+  });
+
+  it("double-clicking a plain plugin Block does NOT dive", () => {
+    render(<GraphCanvas />);
+    rfHandlers.onNodeDoubleClick?.(
+      { clientX: 10, clientY: 10 },
+      { id: "synth-1", type: "block", data: { name: "Polysynth" } },
+    );
+    expect(nativeEnterContainer).not.toHaveBeenCalled();
+    expect(nativePluginEditorOpen).toHaveBeenCalled();
+  });
+
+  it("double-clicking empty canvas calls nativeExitContainer (navigate UP)", () => {
+    render(<GraphCanvas />);
+    rfHandlers.onDoubleClick?.({} as React.MouseEvent);
+    expect(nativeExitContainer).toHaveBeenCalledTimes(1);
   });
 });

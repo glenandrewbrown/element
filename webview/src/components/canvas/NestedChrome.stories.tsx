@@ -9,8 +9,13 @@ import { useGraphStore } from "../../stores/useGraphStore";
 // the stack is deeper than the root (depth = length - 1 > 0). It paints itself
 // over whatever sits behind it, so each story seeds a breadcrumb path and frames
 // the overlay over a mock "canvas" surface (dotted dark background) to show the
-// inset frame + left depth-ribbon + depth-banner in context. The EXIT button
-// calls navigateToBreadcrumb — in Storybook that pops the seeded stack live.
+// inset frame + left depth-ribbon + depth-banner in context.
+//
+// EXIT is ENGINE-driven (the dive-desync fix): it calls exitToBreadcrumb, which
+// asks the host to back out and lets the breadcrumb redraw from the snapshot the
+// host re-pushes. There is no host in Storybook, so EXIT is a visual-only no-op
+// here (the seeded stack is the source of truth for the layout) — the live-pop
+// behaviour is covered by the GraphCanvas/useGraphStore unit tests instead.
 
 function seed(stack: string[]) {
   useGraphStore.setState({ breadcrumbStack: stack });
@@ -19,8 +24,6 @@ function seed(stack: string[]) {
 /** A mock canvas plane so the inset frame + ribbon read against real depth. */
 function CanvasPlane({ stack }: { stack: string[] }) {
   // Seed the breadcrumb stack on mount (and when a story switches its stack).
-  // Effect-only — never in render — so an EXIT click (which mutates the stack)
-  // is not immediately re-clobbered back to the seeded depth.
   useEffect(() => {
     seed(stack);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -101,8 +104,11 @@ export const LevelTwo: Story = {
       },
     },
   },
-  // Proves the chrome reads REAL breadcrumb state and that EXIT drives
-  // navigateToBreadcrumb (the same path double-click / Escape take).
+  // Proves the chrome reads REAL breadcrumb state and surfaces a working EXIT
+  // affordance. EXIT is engine-driven (it calls exitToBreadcrumb → the host),
+  // so with no host attached the live stack does not change here — the actual
+  // back-out is unit-tested (GraphCanvas/useGraphStore). We assert the banner
+  // reflects the seeded path verbatim and that EXIT is present + clickable.
   play: async ({ canvasElement }) => {
     const body = within(canvasElement.ownerDocument.body);
 
@@ -113,17 +119,12 @@ export const LevelTwo: Story = {
     await expect(body.getByText("Polysynth Rack")).toBeVisible();
     await expect(body.getByText("inside")).toBeVisible();
 
-    // EXIT pops one level — to the parent (index = length - 2 = 1).
+    // EXIT is the visible back-out affordance (engine-driven; one level up).
     const exit = body.getByRole("button", {
       name: /exit nested board/i,
     });
+    await expect(exit).toBeVisible();
     await userEvent.click(exit);
-
-    // Real store mutated: stack is now [root, parent], depth 1.
-    await expect(useGraphStore.getState().breadcrumbStack).toEqual([
-      "Main Project",
-      "Polysynth Rack",
-    ]);
   },
 };
 

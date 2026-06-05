@@ -1,10 +1,14 @@
 /**
  * useKeyboard — Escape priority resolver tests.
  *
- * Verifies the three-level Escape priority introduced in Task 1 (P2-B):
- *   (1) palette open  → close palette, do NOT deselect
- *   (2) P1-A stub     → no-op (not wired yet; priority slot reserved)
- *   (3) deselect / popBreadcrumb  → existing behaviour when palette is closed
+ * Verifies the Escape priority chain:
+ *   (1) palette open       → close palette, do NOT deselect
+ *   (2) embedded editor    → close it (P1-A)
+ *   (3a) selection         → deselect
+ *   (3b) dived (no select) → ENGINE exit one level (nativeExitContainer), NOT a
+ *                            cosmetic client pop. "Is dived" = currentBoardId set
+ *                            OR breadcrumb path deeper than [session, activeGraph]
+ *                            (length > 2). Breadcrumb redraws from the snapshot.
  *
  * Also verifies that there is exactly ONE window "keydown" listener after
  * the hook mounts (regression guard against adding a second listener).
@@ -14,6 +18,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useKeyboard } from "../useKeyboard";
 import { useGraphStore } from "../../stores/useGraphStore";
+import { nativeExitContainer } from "../../bridge/nativeGraph";
 
 // ── ReactFlow mock ────────────────────────────────────────────────────────────
 
@@ -32,6 +37,7 @@ vi.mock("@xyflow/react", () => ({
 // ── bridge mocks ──────────────────────────────────────────────────────────────
 
 vi.mock("../../bridge/nativeGraph", () => ({
+  nativeExitContainer: vi.fn(async () => true),
   nativeGraphCommentAdd: vi.fn(async () => undefined),
   nativeGraphCommentDelete: vi.fn(async () => undefined),
   nativeGraphCopyNodes: vi.fn(async () => undefined),
@@ -63,7 +69,8 @@ function resetGraphStore() {
     edges: [],
     selectedNodeId: null,
     selectedEdgeId: null,
-    breadcrumbStack: [{ id: "root", label: "Root" }],
+    breadcrumbStack: ["Main Project"],
+    currentBoardId: null,
     commentBoxes: [],
     minimapVisible: false,
     snapToGrid: false,
@@ -75,6 +82,8 @@ function resetGraphStore() {
 describe("useKeyboard — Escape priority resolver", () => {
   beforeEach(() => {
     resetGraphStore();
+    // Clear accumulated bridge-mock calls between tests (module mocks persist).
+    (nativeExitContainer as unknown as ReturnType<typeof vi.fn>).mockClear();
   });
 
   afterEach(() => {
@@ -103,16 +112,14 @@ describe("useKeyboard — Escape priority resolver", () => {
     expect(useGraphStore.getState().selectedNodeId).toBe("node-1");
   });
 
-  it("priority 1 beats priority 3: palette open → no breadcrumb pop either", () => {
+  it("priority 1 beats priority 3: palette open → no dive exit either", () => {
     const onClosePalette = vi.fn();
 
+    // Dived (length 3 = [session, activeGraph, container]).
     useGraphStore.setState({
       selectedNodeId: null,
       selectedEdgeId: null,
-      breadcrumbStack: [
-        { id: "root", label: "Root" },
-        { id: "child", label: "Child" },
-      ],
+      breadcrumbStack: ["Project", "Main", "Container"],
     } as unknown as Parameters<typeof useGraphStore.setState>[0]);
 
     renderHook(() =>
@@ -126,8 +133,8 @@ describe("useKeyboard — Escape priority resolver", () => {
     fireEsc();
 
     expect(onClosePalette).toHaveBeenCalledOnce();
-    // breadcrumb must NOT have been popped
-    expect(useGraphStore.getState().breadcrumbStack).toHaveLength(2);
+    // Dive exit must NOT have fired while the palette is open.
+    expect(nativeExitContainer).not.toHaveBeenCalled();
   });
 
   it("priority 3: palette closed + node selected → clears selection", () => {
@@ -149,16 +156,15 @@ describe("useKeyboard — Escape priority resolver", () => {
     expect(useGraphStore.getState().selectedNodeId).toBeNull();
   });
 
-  it("priority 3: palette closed + nothing selected + deep breadcrumb → pops breadcrumb", () => {
+  it("priority 3b: palette closed + nothing selected + dived → ENGINE exit (no client pop)", () => {
     const onClosePalette = vi.fn();
 
+    // Dived: breadcrumb path deeper than [session, activeGraph] (length > 2).
     useGraphStore.setState({
       selectedNodeId: null,
       selectedEdgeId: null,
-      breadcrumbStack: [
-        { id: "root", label: "Root" },
-        { id: "child", label: "Child" },
-      ],
+      breadcrumbStack: ["Project", "Main", "Container A"],
+      currentBoardId: "container-a",
     } as unknown as Parameters<typeof useGraphStore.setState>[0]);
 
     renderHook(() =>
@@ -172,7 +178,40 @@ describe("useKeyboard — Escape priority resolver", () => {
     fireEsc();
 
     expect(onClosePalette).not.toHaveBeenCalled();
-    expect(useGraphStore.getState().breadcrumbStack).toHaveLength(1);
+    // Engine-driven: the host backs out and re-pushes the snapshot. The local
+    // breadcrumb is NOT mutated optimistically (desync-safe).
+    expect(nativeExitContainer).toHaveBeenCalledTimes(1);
+    expect(useGraphStore.getState().breadcrumbStack).toHaveLength(3);
+  });
+
+  it("priority 3b: dived via currentBoardId alone (path length 2) still exits on Esc", () => {
+    useGraphStore.setState({
+      selectedNodeId: null,
+      selectedEdgeId: null,
+      breadcrumbStack: ["Project", "Main"],
+      currentBoardId: "some-board",
+    } as unknown as Parameters<typeof useGraphStore.setState>[0]);
+
+    renderHook(() => useKeyboard({ onToggleCommandPalette: vi.fn() }));
+
+    fireEsc();
+
+    expect(nativeExitContainer).toHaveBeenCalledTimes(1);
+  });
+
+  it("priority 3b: NOT dived (top level) → Esc does NOT exit", () => {
+    useGraphStore.setState({
+      selectedNodeId: null,
+      selectedEdgeId: null,
+      breadcrumbStack: ["Project", "Main"],
+      currentBoardId: null,
+    } as unknown as Parameters<typeof useGraphStore.setState>[0]);
+
+    renderHook(() => useKeyboard({ onToggleCommandPalette: vi.fn() }));
+
+    fireEsc();
+
+    expect(nativeExitContainer).not.toHaveBeenCalled();
   });
 
   it("backwards-compat: omitting paletteOpen/onClosePalette still clears selection", () => {

@@ -159,6 +159,8 @@ type EngineSnapshot = {
     }>;
   };
   breadcrumbs?: string[];
+  /** Present only when dived; names the nested Board the snapshot describes. */
+  currentBoardId?: string;
   commentBoxes?: EngineComment[];
   blocks?: EngineBlock[];
   cables?: EngineCable[];
@@ -310,12 +312,18 @@ function applySnapshot(raw: unknown) {
   const comments = s.commentBoxes ? mapCommentBoxes(s.commentBoxes) : [];
   const breadcrumbs =
     s.breadcrumbs && s.breadcrumbs.length > 0 ? [...s.breadcrumbs] : undefined;
+  // Present only when dived into a Container; the store coerces undefined → null.
+  const currentBoardId =
+    typeof s.currentBoardId === "string" && s.currentBoardId.length > 0
+      ? s.currentBoardId
+      : undefined;
 
   useGraphStore.getState().hydrateFromEngine({
     nodes: blockList.map(mapBlock),
     edges: cableList.map(mapCable),
     commentBoxes: comments,
     breadcrumbs,
+    currentBoardId,
   });
 
   // Drop streamed parameter entries for nodes that no longer exist.

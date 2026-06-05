@@ -28,7 +28,10 @@ const CHEVRON = (
  */
 export function Breadcrumb() {
   const breadcrumbs = useGraphStore(selectBreadcrumbs);
-  const navigate = useGraphStore((s) => s.navigateToBreadcrumb);
+  // Crumb clicks are engine-driven (the dive-desync fix): exiting to a level
+  // asks the host to back out that many times, and the trail redraws ONLY from
+  // the snapshot the host re-pushes — so it can never disagree with the canvas.
+  const exitToBreadcrumb = useGraphStore((s) => s.exitToBreadcrumb);
 
   if (breadcrumbs.length <= 1) return null;
 
@@ -47,7 +50,7 @@ export function Breadcrumb() {
             {i > 0 && CHEVRON}
             <button
               type="button"
-              onClick={() => !isLast && navigate(i)}
+              onClick={() => !isLast && void exitToBreadcrumb(i)}
               aria-current={isLast ? "page" : undefined}
               className={[
                 "flex items-center h-5 px-2 rounded-full text-[10px] font-bold tracking-wide uppercase whitespace-nowrap transition-colors",

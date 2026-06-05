@@ -5,7 +5,10 @@ import { Breadcrumb } from "../Breadcrumb";
 
 // Provide selectBreadcrumbs as a real selector so the component receives actual data.
 // useGraphStore is mocked as a fn whose implementation we swap per-test.
-const mockNavigate = vi.fn();
+// Crumb clicks are now ENGINE-driven (the dive-desync fix): the component calls
+// exitToBreadcrumb(i) (which loops nativeExitContainer) instead of mutating the
+// stack optimistically, so we assert on that action.
+const mockExitToBreadcrumb = vi.fn();
 const mockUseGraphStore = vi.fn();
 
 vi.mock("../../../stores/useGraphStore", () => ({
@@ -14,14 +17,14 @@ vi.mock("../../../stores/useGraphStore", () => ({
 }));
 
 function setupStore(breadcrumbs: string[]) {
-  const state = { breadcrumbs, navigateToBreadcrumb: mockNavigate };
+  const state = { breadcrumbs, exitToBreadcrumb: mockExitToBreadcrumb };
   mockUseGraphStore.mockImplementation((selector: (s: any) => any) => selector(state));
 }
 
 describe("Breadcrumb", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockNavigate.mockReset();
+    mockExitToBreadcrumb.mockReset();
   });
 
   it("renders null when breadcrumbs length is 1 (root only)", () => {
@@ -58,20 +61,20 @@ describe("Breadcrumb", () => {
     expect(rootBtn.className).toContain("cursor-pointer");
   });
 
-  it("clicking a non-last crumb calls navigateToBreadcrumb with its index", () => {
+  it("clicking a non-last crumb calls exitToBreadcrumb with its index", () => {
     setupStore(["Root", "Container A", "Nested B"]);
     render(<Breadcrumb />);
     fireEvent.click(screen.getByText("Root"));
-    expect(mockNavigate).toHaveBeenCalledWith(0);
+    expect(mockExitToBreadcrumb).toHaveBeenCalledWith(0);
     fireEvent.click(screen.getByText("Container A"));
-    expect(mockNavigate).toHaveBeenCalledWith(1);
+    expect(mockExitToBreadcrumb).toHaveBeenCalledWith(1);
   });
 
-  it("clicking the last crumb does NOT call navigate", () => {
+  it("clicking the last crumb does NOT trigger an exit", () => {
     setupStore(["Root", "Nested B"]);
     render(<Breadcrumb />);
     fireEvent.click(screen.getByText("Nested B"));
-    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(mockExitToBreadcrumb).not.toHaveBeenCalled();
   });
 
   it("renders n-1 chevron SVGs for n crumbs", () => {
@@ -86,7 +89,7 @@ describe("Breadcrumb", () => {
     setupStore(["Root", "Child"]);
     render(<Breadcrumb />);
     fireEvent.click(screen.getByText("Root"));
-    expect(mockNavigate).toHaveBeenCalledWith(0);
-    expect(mockNavigate).toHaveBeenCalledTimes(1);
+    expect(mockExitToBreadcrumb).toHaveBeenCalledWith(0);
+    expect(mockExitToBreadcrumb).toHaveBeenCalledTimes(1);
   });
 });

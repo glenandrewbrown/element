@@ -117,6 +117,8 @@ vi.mock("../../../stores/useHostExtrasStore", () => ({
 }));
 
 const mockNativeGraph = vi.hoisted(() => ({
+  nativeEnterContainer: vi.fn(async () => true),
+  nativeExitContainer: vi.fn(async () => true),
   nativeGraphCommentAdd: vi.fn(),
   nativeGraphCommentUpsert: vi.fn(),
   nativeGraphConnect: vi.fn(),
@@ -130,6 +132,7 @@ vi.mock("../../../bridge/nativeGraph", () => mockNativeGraph);
 
 const mockNativePluginEditor = vi.hoisted(() => ({
   nativePluginEditorOpen: vi.fn(),
+  nativePluginEditorClose: vi.fn(),
 }));
 
 vi.mock("../../../bridge/nativePluginEditor", () => mockNativePluginEditor);
@@ -195,28 +198,35 @@ describe("GraphCanvas (gaps)", () => {
 
   // ── onNodeDoubleClick ────────────────────────────────────────────────────────
 
-  it("onNodeDoubleClick comment type → no-op (no breadcrumb, no editor)", () => {
+  it("onNodeDoubleClick comment type → no-op (no dive, no editor)", () => {
     render(<GraphCanvas />);
     act(() =>
       (capturedProps.onNodeDoubleClick as Function)(mockEvt, { id: "c1", type: "comment", data: {} }),
     );
-    expect(mockStore.pushBreadcrumb).not.toHaveBeenCalled();
+    expect(mockNativeGraph.nativeEnterContainer).not.toHaveBeenCalled();
     expect(mockNativePluginEditor.nativePluginEditorOpen).not.toHaveBeenCalled();
   });
 
-  it("onNodeDoubleClick container block → pushBreadcrumb", () => {
+  it("onNodeDoubleClick container block → nativeEnterContainer (engine dive)", () => {
     render(<GraphCanvas />);
     const node = { id: "cont1", type: "block", data: { name: "My Rack", containerNodeCount: 3 } };
     act(() => (capturedProps.onNodeDoubleClick as Function)(mockEvt, node));
-    expect(mockStore.pushBreadcrumb).toHaveBeenCalledWith("My Rack");
+    // Dives by node id (the breadcrumb follows the snapshot, not a client push).
+    expect(mockNativeGraph.nativeEnterContainer).toHaveBeenCalledWith("cont1");
     expect(mockNativePluginEditor.nativePluginEditorOpen).not.toHaveBeenCalled();
   });
 
-  it("onNodeDoubleClick portal block → pushBreadcrumb", () => {
+  it("onNodeDoubleClick portal block → does NOT dive (opens to edit, honest)", () => {
     render(<GraphCanvas />);
-    const node = { id: "p1", type: "block", data: { name: "Portal", isPortal: true } };
+    // A Portal links an external .elboard — it must not fake a local dive.
+    const node = {
+      id: "p1",
+      type: "block",
+      data: { name: "Portal", containerNodeCount: 4, isPortal: true },
+    };
     act(() => (capturedProps.onNodeDoubleClick as Function)(mockEvt, node));
-    expect(mockStore.pushBreadcrumb).toHaveBeenCalledWith("Portal");
+    expect(mockNativeGraph.nativeEnterContainer).not.toHaveBeenCalled();
+    expect(mockNativePluginEditor.nativePluginEditorOpen).toHaveBeenCalled();
   });
 
   it("onNodeDoubleClick plugin block → nativePluginEditorOpen with click coords", () => {
@@ -227,7 +237,7 @@ describe("GraphCanvas (gaps)", () => {
     expect(mockNativePluginEditor.nativePluginEditorOpen).toHaveBeenCalledWith(
       "b1", 300, 150, 720, 480,
     );
-    expect(mockStore.pushBreadcrumb).not.toHaveBeenCalled();
+    expect(mockNativeGraph.nativeEnterContainer).not.toHaveBeenCalled();
   });
 
   // ── onEdgeClick ──────────────────────────────────────────────────────────────
@@ -260,13 +270,13 @@ describe("GraphCanvas (gaps)", () => {
     expect(screen.queryByTestId("edge-context-menu")).not.toBeInTheDocument();
   });
 
-  // ── onPaneDoubleClick → popBreadcrumb ────────────────────────────────────────
+  // ── onPaneDoubleClick → nativeExitContainer (navigate UP one level) ──────────
 
-  it("onPaneDoubleClick → popBreadcrumb", () => {
+  it("onPaneDoubleClick → nativeExitContainer (engine exit)", () => {
     render(<GraphCanvas />);
     const pane = screen.getByTestId("react-flow");
     fireEvent.doubleClick(pane);
-    expect(mockStore.popBreadcrumb).toHaveBeenCalled();
+    expect(mockNativeGraph.nativeExitContainer).toHaveBeenCalled();
   });
 
   // ── onPaneClick dismiss ──────────────────────────────────────────────────────

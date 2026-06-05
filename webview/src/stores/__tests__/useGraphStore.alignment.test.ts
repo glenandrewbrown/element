@@ -95,8 +95,8 @@ function resetStore() {
 // ── zoomToTier ────────────────────────────────────────────────────────────────
 
 describe("zoomToTier", () => {
-  it("returns compact for zoom < 0.5", () => {
-    expect(zoomToTier(0.49)).toBe("compact");
+  it("returns compact for zoom < 0.45", () => {
+    expect(zoomToTier(0.4)).toBe("compact");
     expect(zoomToTier(0)).toBe("compact");
   });
 
@@ -110,8 +110,8 @@ describe("zoomToTier", () => {
     expect(zoomToTier(0.65)).toBe("standard");
   });
 
-  it("returns expanded for zoom > 0.8", () => {
-    expect(zoomToTier(0.81)).toBe("expanded");
+  it("returns expanded for zoom > 0.9", () => {
+    expect(zoomToTier(0.95)).toBe("expanded");
     expect(zoomToTier(2)).toBe("expanded");
   });
 });
@@ -183,9 +183,12 @@ describe("updateCommentBoxLayout", () => {
   });
 });
 
-// ── navigateToBreadcrumb ──────────────────────────────────────────────────────
+// ── navigateToBreadcrumb (NEUTERED — dive is engine-driven now) ───────────────
+// The breadcrumb is fed SOLELY by the engine snapshot (the dive-desync fix), so
+// the legacy optimistic slicer is a no-op; crumb-click navigation goes through
+// exitToBreadcrumb → nativeExitContainer instead (covered in useGraphStore.test).
 
-describe("navigateToBreadcrumb", () => {
+describe("navigateToBreadcrumb (neutered no-op)", () => {
   beforeEach(() => {
     resetStore();
     useGraphStore.setState({
@@ -193,26 +196,31 @@ describe("navigateToBreadcrumb", () => {
     });
   });
 
-  it("slices to the given index (inclusive)", () => {
+  it("does NOT slice the stack (snapshot is the sole source of truth)", () => {
     useGraphStore.getState().navigateToBreadcrumb(1);
-    expect(useGraphStore.getState().breadcrumbStack).toEqual(["Root", "Board A"]);
+    expect(useGraphStore.getState().breadcrumbStack).toEqual([
+      "Root",
+      "Board A",
+      "Board B",
+      "Board C",
+    ]);
   });
 
-  it("navigating to index 0 keeps only root", () => {
+  it("leaves the stack untouched at index 0 too", () => {
     useGraphStore.getState().navigateToBreadcrumb(0);
-    expect(useGraphStore.getState().breadcrumbStack).toEqual(["Root"]);
-  });
-
-  it("navigating to last index keeps all entries", () => {
-    useGraphStore.getState().navigateToBreadcrumb(3);
-    expect(useGraphStore.getState().breadcrumbStack).toEqual(["Root", "Board A", "Board B", "Board C"]);
+    expect(useGraphStore.getState().breadcrumbStack).toEqual([
+      "Root",
+      "Board A",
+      "Board B",
+      "Board C",
+    ]);
   });
 });
 
-describe("popBreadcrumb — boundary", () => {
+describe("popBreadcrumb (neutered no-op)", () => {
   beforeEach(resetStore);
 
-  it("is a no-op when only one entry remains", () => {
+  it("never mutates the stack — breadcrumb follows the snapshot", () => {
     expect(useGraphStore.getState().breadcrumbStack).toHaveLength(1);
     useGraphStore.getState().popBreadcrumb();
     expect(useGraphStore.getState().breadcrumbStack).toEqual(["Main Project"]);

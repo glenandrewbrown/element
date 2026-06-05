@@ -177,6 +177,36 @@ export async function nativeGraphReplacePlugin(
   return r === true;
 }
 
+/**
+ * Container dive — descend INTO a Container Block's nested Board.
+ *
+ * `nodeUuid` is the real Block UUID of a direct-child graph node. The host
+ * makes that nested Board the active graph and re-pushes an authoritative
+ * snapshot (the nested nodes/edges + a deeper `breadcrumbs` path) — so the
+ * canvas content + breadcrumb update FROM THE SNAPSHOT, never optimistically.
+ * Returns false (no-op) if the node isn't a direct-child graph; the caller
+ * must NOT fake any local breadcrumb change on false.
+ *
+ * C++ bridge: elementEnterContainer
+ */
+export async function nativeEnterContainer(nodeUuid: string): Promise<boolean> {
+  const r = await invokeElementNative("elementEnterContainer", [nodeUuid]);
+  return r === true;
+}
+
+/**
+ * Container dive — back out ONE level to the parent Board. The host re-pushes
+ * the parent's snapshot + the shortened breadcrumb path. Returns false when
+ * already at the top (no parent to exit to) — safe to call in a loop to exit
+ * multiple levels, since the surplus calls at the top are honest no-ops.
+ *
+ * C++ bridge: elementExitContainer
+ */
+export async function nativeExitContainer(): Promise<boolean> {
+  const r = await invokeElementNative("elementExitContainer", []);
+  return r === true;
+}
+
 export async function nativeGraphSetCanvasOptions(
   snapToGrid: boolean,
   gridSize: number,

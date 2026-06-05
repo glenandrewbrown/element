@@ -38,6 +38,7 @@ vi.mock("@xyflow/react", () => ({
 // ── bridge mocks ──────────────────────────────────────────────────────────────
 
 vi.mock("../../bridge/nativeGraph", () => ({
+  nativeExitContainer: vi.fn(async () => true),
   nativeGraphCommentAdd: vi.fn(async () => undefined),
   nativeGraphCommentDelete: vi.fn(async () => undefined),
   nativeGraphCopyNodes: vi.fn(async () => undefined),
@@ -55,7 +56,7 @@ vi.mock("../../bridge/nativeSession", () => ({
   nativeSessionSaveAs: vi.fn(async () => undefined),
 }));
 
-import { nativeGraphRemoveNode, nativeGraphCopyNodes, nativeUndo, nativeRedo } from "../../bridge/nativeGraph";
+import { nativeGraphRemoveNode, nativeGraphCopyNodes, nativeUndo, nativeRedo, nativeExitContainer } from "../../bridge/nativeGraph";
 import { nativeSessionSave, nativeSessionSaveAs } from "../../bridge/nativeSession";
 
 // ── store helpers ─────────────────────────────────────────────────────────────
@@ -239,17 +240,20 @@ describe("Escape", () => {
     expect(spy).toHaveBeenCalled();
   });
 
-  it("calls popBreadcrumb when breadcrumbs.length > 1 and nothing selected", () => {
+  it("calls nativeExitContainer when dived (path > 2) and nothing selected", () => {
+    (nativeExitContainer as unknown as ReturnType<typeof vi.fn>).mockClear();
+    // Dived: [session, activeGraph, container] (length 3 > 2).
     useGraphStore.setState((s) => ({
       ...s,
       selectedNodeId: null,
       selectedEdgeId: null,
-      breadcrumbStack: ["root", "child"],
+      currentBoardId: null,
+      breadcrumbStack: ["Project", "Main", "Container"],
     }) as any);
-    const spy = vi.spyOn(useGraphStore.getState(), "popBreadcrumb");
     renderHook(() => useKeyboard({ onToggleCommandPalette: vi.fn() }));
     fire("Escape");
-    expect(spy).toHaveBeenCalled();
+    // Engine-driven exit (the breadcrumb redraws from the snapshot, not a pop).
+    expect(nativeExitContainer).toHaveBeenCalled();
   });
 });
 

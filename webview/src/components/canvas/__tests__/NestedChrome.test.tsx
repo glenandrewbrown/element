@@ -13,16 +13,19 @@ vi.mock("framer-motion", () => ({
 }));
 
 // ── Store mock ────────────────────────────────────────────────────────────────
+// EXIT is now ENGINE-driven (the dive-desync fix): NestedChrome calls
+// exitToBreadcrumb(parentIndex) (which loops nativeExitContainer) instead of
+// optimistically mutating the breadcrumb, so the assertions target that action.
 
-const mockNavigate = vi.fn();
+const mockExitToBreadcrumb = vi.fn();
 
 let breadcrumbs: string[] = [];
 
 vi.mock("../../../stores/useGraphStore", () => ({
   useGraphStore: vi.fn((sel: (s: unknown) => unknown) =>
-    sel({ navigateToBreadcrumb: mockNavigate })
+    sel({ exitToBreadcrumb: mockExitToBreadcrumb })
   ),
-  selectBreadcrumbs: (_s: { navigateToBreadcrumb: unknown }) => breadcrumbs,
+  selectBreadcrumbs: (_s: { exitToBreadcrumb: unknown }) => breadcrumbs,
 }));
 
 vi.mock("../../neu", () => ({
@@ -72,11 +75,11 @@ describe("NestedChrome — depth 1 (one level in)", () => {
     expect(screen.getByText("inside")).toBeInTheDocument();
   });
 
-  it("EXIT button calls navigateToBreadcrumb with parent index", () => {
+  it("EXIT button calls exitToBreadcrumb with parent index", () => {
     render(<NestedChrome />);
     fireEvent.click(screen.getByRole("button", { name: /Exit nested Board/i }));
     // depth=1, exitToIndex = breadcrumbs.length - 2 = 0
-    expect(mockNavigate).toHaveBeenCalledWith(0);
+    expect(mockExitToBreadcrumb).toHaveBeenCalledWith(0);
   });
 
   it("EXIT button has descriptive aria-label", () => {
@@ -114,10 +117,10 @@ describe("NestedChrome — depth 2", () => {
     expect(screen.getByText("Container A")).toBeInTheDocument();
   });
 
-  it("EXIT navigates to index 1 (one level up)", () => {
+  it("EXIT exits to index 1 (one level up)", () => {
     render(<NestedChrome />);
     fireEvent.click(screen.getByRole("button", { name: /Exit nested Board/i }));
-    expect(mockNavigate).toHaveBeenCalledWith(1);
+    expect(mockExitToBreadcrumb).toHaveBeenCalledWith(1);
   });
 
   it("renders two depth rungs", () => {
