@@ -79,12 +79,14 @@ export function LiveHealth() {
             <span className="text-text-secondary uppercase font-bold">
               CPU Load
             </span>
-            <span className="text-accent-teal tabular">{health.cpu}%</span>
+            <span className="text-accent-teal tabular">
+              {Number.isFinite(health.cpu) ? health.cpu.toFixed(1) : "0.0"}%
+            </span>
           </div>
           <div className="h-3 bg-pressed shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] rounded-full overflow-hidden p-0.5">
             <div
               className="h-full bg-gradient-to-r from-accent-teal to-accent-blue rounded-full"
-              style={{ width: `${health.cpu}%` }}
+              style={{ width: `${Math.max(0, Math.min(100, health.cpu))}%` }}
             />
           </div>
         </div>
@@ -135,7 +137,7 @@ export function LiveHealth() {
               Latency
             </span>
             <div className="text-xs font-bold text-text-primary tabular">
-              {health.latency} ms
+              {typeof health.latency === "number" && health.latency > 0 ? `${health.latency.toFixed(1)} ms` : "—"}
             </div>
           </div>
         </div>

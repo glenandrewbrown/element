@@ -49,16 +49,20 @@ const initialEdges = useDemoSeed ? demoGraph.cables : [];
 const initialComments = useDemoSeed ? demoGraph.commentBoxes : [];
 
 /** Zoom-level tier for semantic block rendering.
- * - compact  (zoom < 0.5):  category dot + name only, no ports
- * - standard (0.5–0.8):    current full block (ports visible)
- * - expanded (zoom > 0.8): full block + embedded controls (BlockEmbed)
+ * - compact  (zoom < 0.45):   category dot + name only, no ports
+ * - standard (0.45–0.9):      current full block (ports visible)
+ * - expanded (zoom > 0.9):    full block + embedded controls (BlockEmbed)
+ *
+ * The standard band is intentionally wide (0.45–0.9) so that normal
+ * mouse-wheel steps land in it rather than skipping straight from
+ * compact to expanded.
  */
 export type ZoomTier = "compact" | "standard" | "expanded";
 
 /** Derive the tier from a raw React Flow zoom value. */
 export function zoomToTier(zoom: number): ZoomTier {
-  if (zoom < 0.5) return "compact";
-  if (zoom > 0.8) return "expanded";
+  if (zoom < 0.45) return "compact";
+  if (zoom > 0.9) return "expanded";
   return "standard";
 }
 
