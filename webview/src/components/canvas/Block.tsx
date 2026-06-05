@@ -793,6 +793,95 @@ function PortRow({
   );
 }
 
+// Lean-port-lane expander (Glen, 2026-06-03). A compact, on-brand row that
+// collapses the Value/CV param-port wall behind a single "▸ N params" control.
+// Positioned absolutely INTO the port lane like a PortRow so it shares the
+// lane's rhythm. Visual language = the locked neumorphic "one chassis": a
+// recessed pill (pressed INTO the surface) tinted with the Value/CV orange
+// (#E8A838 — these ARE value ports, so the accent is honest, not decorative),
+// understated so it reads as a quiet utility, not a loud button. Chevron flips
+// ▸→▾ on expand. The whole row is the hit target. stopPropagation keeps a click
+// from selecting/dragging the node underneath.
+const PARAM_ACCENT = "#E8A838"; // Value/CV signal colour (matches portColor.value)
+
+function ParamLaneToggle({
+  count,
+  expanded,
+  top,
+  onToggle,
+}: {
+  count: number;
+  expanded: boolean;
+  top: number;
+  onToggle: (e: React.MouseEvent) => void;
+}) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      title={expanded ? "Hide parameter ports" : "Show parameter ports"}
+      aria-expanded={expanded}
+      aria-label={`${expanded ? "Hide" : "Show"} ${count} parameter ${count === 1 ? "port" : "ports"}`}
+      className="nodeblock-param-toggle absolute flex items-center gap-1 px-1.5 leading-none select-none"
+      style={{
+        top,
+        left: "50%",
+        transform: "translate(-50%, -50%)",
+        height: 13,
+        borderRadius: 3,
+        // Recessed into the chassis (inset shadow) — pressed, not raised.
+        // Idle keeps a bare recess; hover warms a faint orange tint + a hair
+        // brighter so the affordance surfaces without breaking the "off" rest
+        // state. Same idle/hover grammar as the header StateBtn + port wells.
+        background: hovered
+          ? `linear-gradient(180deg, ${PARAM_ACCENT}14 0%, ${PARAM_ACCENT}0A 100%)`
+          : "linear-gradient(180deg, rgba(26,26,30,0.9) 0%, rgba(20,20,24,0.95) 100%)",
+        boxShadow: hovered
+          ? `inset 1px 1px 2px rgba(0,0,0,0.7), inset -0.5px -0.5px 1px rgba(255,255,255,0.04), 0 0 5px ${PARAM_ACCENT}33`
+          : "inset 1px 1px 2px rgba(0,0,0,0.7), inset -0.5px -0.5px 1px rgba(255,255,255,0.04)",
+        cursor: "pointer",
+        transition: "background 90ms ease, box-shadow 90ms ease",
+        // Above the bypass dim (z-20 lane) but the lane itself already sits at
+        // z-20; nothing extra needed — it inherits the lane stacking.
+        pointerEvents: "auto",
+      }}
+    >
+      {/* Chevron — flips on expand. Orange so it ties to the Value/CV ports it
+          governs. */}
+      <span
+        aria-hidden
+        className="font-mono"
+        style={{
+          fontSize: 8,
+          lineHeight: 1,
+          color: PARAM_ACCENT,
+          opacity: hovered || expanded ? 1 : 0.85,
+          // Rotate a single ▸ glyph rather than swapping characters so the
+          // motion reads as a smooth disclosure twist.
+          transform: expanded ? "rotate(90deg)" : "rotate(0deg)",
+          transition: "transform 120ms ease, opacity 90ms ease",
+          display: "inline-block",
+        }}
+      >
+        ▸
+      </span>
+      <span
+        className="font-mono tabular-nums tracking-tight whitespace-nowrap"
+        style={{
+          fontSize: 8.5,
+          color: hovered ? "rgba(229,229,234,0.9)" : "rgba(146,146,153,0.92)",
+          letterSpacing: "0.02em",
+        }}
+      >
+        {count} {count === 1 ? "param" : "params"}
+      </span>
+    </button>
+  );
+}
+
 function BlockComponent({ data, selected }: NodeProps) {
   const d = data as unknown as BlockData;
   const cat = catConfig[d.category] ?? catConfig.instrument;
@@ -868,6 +957,36 @@ function BlockComponent({ data, selected }: NodeProps) {
 
   const inputPorts = d.ports.filter((p) => p.direction === "input");
   const outputPorts = d.ports.filter((p) => p.direction === "output");
+
+  // ── Lean port lane (Glen, 2026-06-03) — split essential I/O from param/mod ──
+  //
+  // A plugin hosted via a params-as-ports format (e.g. a Valhalla reverb's Mix,
+  // Feedback, Density, Width, LowCut… exposed as CV inputs) dumps an
+  // overwhelming wall of rows. Split by signal TYPE — the cleanest signal the
+  // port data carries:
+  //   • ESSENTIAL  = audio + MIDI ports (`type !== "value"`) — the main I/O you
+  //     almost always wire. Always VISIBLE.
+  //   • PARAM/MOD  = Value/CV ports (`type === "value"`) — these map to plugin
+  //     parameters / modulation inputs (orange Value signal type). COLLAPSED by
+  //     default behind a "▸ N params" expander, revealed on click.
+  // Heuristic note: Element's Port model has no explicit "is this a main bus vs
+  // a param" flag, so signal type IS the discriminator — and it lines up with
+  // the design system (audio blue / MIDI teal = essential; value orange = the
+  // param/mod ports). If a future port ever tags main-vs-param explicitly,
+  // prefer that; until then `type === "value"` is the honest best signal.
+  const isParamPort = (p: Port) => p.type === "value";
+  const essentialInputs = inputPorts.filter((p) => !isParamPort(p));
+  const essentialOutputs = outputPorts.filter((p) => !isParamPort(p));
+  const paramInputs = inputPorts.filter(isParamPort);
+  const paramOutputs = outputPorts.filter(isParamPort);
+  const paramPortCount = paramInputs.length + paramOutputs.length;
+  const hasParamPorts = paramPortCount > 0;
+
+  // Per-block local UI state — collapsed by default (lean). Does NOT persist;
+  // a fresh mount (reload / re-add) starts collapsed again, which is the lean
+  // default we want. Container/Portal branches return before this is read, so
+  // the hook order stays stable (this is below all early returns' hooks).
+  const [paramsExpanded, setParamsExpanded] = useState(false);
 
   // ── Phase 5B — derive port→busName map for this block ──
   // We look at every cable that touches this block; if useBusStore has the
@@ -1231,30 +1350,88 @@ function BlockComponent({ data, selected }: NodeProps) {
 
       {/* Port lane — dedicated band below the deck (mockup). z-20 so the port
           pips stay VISIBLE above the bypass dim (signal passes through) but
-          BELOW the muted overlay (z-30, hard block hides them). */}
-      <div
-        className="relative shrink-0 z-20"
-        style={{ height: Math.max(inputPorts.length, outputPorts.length, 1) * PORT_LANE_H + 6 }}
-      >
-        {inputPorts.map((port, i) => (
-          <PortRow
-            key={port.id}
-            port={port}
-            side="input"
-            top={i * PORT_LANE_H + PORT_LANE_H / 2 + 2}
-            busName={portBusMap.get(port.id)}
-          />
-        ))}
-        {outputPorts.map((port, i) => (
-          <PortRow
-            key={port.id}
-            port={port}
-            side="output"
-            top={i * PORT_LANE_H + PORT_LANE_H / 2 + 2}
-            busName={portBusMap.get(port.id)}
-          />
-        ))}
-      </div>
+          BELOW the muted overlay (z-30, hard block hides them).
+
+          LEAN (Glen, 2026-06-03): essential audio/MIDI I/O always shows; the
+          Value/CV param-port wall collapses behind a "▸ N params" toggle so a
+          params-heavy plugin doesn't dump 18 rows by default. Lane height tracks
+          exactly what's shown — lean when collapsed, grows on expand. */}
+      {(() => {
+        const essentialRows = Math.max(
+          essentialInputs.length,
+          essentialOutputs.length,
+        );
+        const paramRows = Math.max(paramInputs.length, paramOutputs.length);
+        // The toggle, when present, occupies the row directly below the
+        // essential I/O. Param rows (when expanded) stack below the toggle.
+        const toggleTop = essentialRows * PORT_LANE_H + PORT_LANE_H / 2 + 2;
+        const paramBaseRow = essentialRows + (hasParamPorts ? 1 : 0);
+        const shownRows =
+          essentialRows +
+          (hasParamPorts ? 1 : 0) +
+          (paramsExpanded ? paramRows : 0);
+        return (
+          <div
+            className="relative shrink-0 z-20"
+            style={{ height: Math.max(shownRows, 1) * PORT_LANE_H + 6 }}
+          >
+            {/* ESSENTIAL — audio + MIDI I/O, exactly where they always sat. */}
+            {essentialInputs.map((port, i) => (
+              <PortRow
+                key={port.id}
+                port={port}
+                side="input"
+                top={i * PORT_LANE_H + PORT_LANE_H / 2 + 2}
+                busName={portBusMap.get(port.id)}
+              />
+            ))}
+            {essentialOutputs.map((port, i) => (
+              <PortRow
+                key={port.id}
+                port={port}
+                side="output"
+                top={i * PORT_LANE_H + PORT_LANE_H / 2 + 2}
+                busName={portBusMap.get(port.id)}
+              />
+            ))}
+
+            {/* PARAM/MOD — collapsed by default behind the toggle. */}
+            {hasParamPorts && (
+              <ParamLaneToggle
+                count={paramPortCount}
+                expanded={paramsExpanded}
+                top={toggleTop}
+                onToggle={(e) => {
+                  e.stopPropagation();
+                  setParamsExpanded((v) => !v);
+                }}
+              />
+            )}
+            {hasParamPorts &&
+              paramsExpanded &&
+              paramInputs.map((port, i) => (
+                <PortRow
+                  key={port.id}
+                  port={port}
+                  side="input"
+                  top={(paramBaseRow + i) * PORT_LANE_H + PORT_LANE_H / 2 + 2}
+                  busName={portBusMap.get(port.id)}
+                />
+              ))}
+            {hasParamPorts &&
+              paramsExpanded &&
+              paramOutputs.map((port, i) => (
+                <PortRow
+                  key={port.id}
+                  port={port}
+                  side="output"
+                  top={(paramBaseRow + i) * PORT_LANE_H + PORT_LANE_H / 2 + 2}
+                  busName={portBusMap.get(port.id)}
+                />
+              ))}
+          </div>
+        );
+      })()}
 
       {/* Load bar — thin status rail at the chassis foot (mockup). Bypassed
           keeps a lit (dimmed-green) rail = signal passes THROUGH; muted greys

@@ -215,11 +215,34 @@ describe("<Block /> (gaps)", () => {
     expect(screen.getByTestId("handle-in-0")).toBeInTheDocument();
   });
 
-  it("value/CV port renders port-well Handle", () => {
+  // Lean port lane (Glen, 2026-06-03): Value/CV ports map to plugin params and
+  // are COLLAPSED by default behind a "▸ N params" toggle, so a value port's
+  // Handle is NOT in the DOM until the lane is expanded. (Audio/MIDI stay
+  // essential + always visible — asserted above.)
+  it("value/CV port is collapsed behind the param toggle by default (lean)", () => {
     renderBlock({
-      ports: [{ id: "in-0", label: "In", direction: "input", type: "value", connected: false }],
+      ports: [{ id: "in-0", label: "Cutoff", direction: "input", type: "value", connected: false }],
     });
+    // The param port row + its Handle are hidden while collapsed…
+    expect(screen.queryByTestId("handle-in-0")).not.toBeInTheDocument();
+    expect(screen.queryByText("Cutoff")).not.toBeInTheDocument();
+    // …surfaced instead as a single "▸ 1 param" expander (real count).
+    const toggle = screen.getByRole("button", { name: /show 1 parameter port/i });
+    expect(toggle).toBeInTheDocument();
+    expect(toggle).toHaveTextContent(/1 param/i);
+  });
+
+  it("value/CV port Handle reveals after clicking the param toggle", () => {
+    renderBlock({
+      ports: [{ id: "in-0", label: "Cutoff", direction: "input", type: "value", connected: false }],
+    });
+    fireEvent.click(screen.getByRole("button", { name: /show 1 parameter port/i }));
+    // Now the param port row + Handle + label render.
     expect(screen.getByTestId("handle-in-0")).toBeInTheDocument();
+    expect(screen.getByText("Cutoff")).toBeInTheDocument();
+    // Toggle flips to the collapse affordance (aria-expanded true).
+    const hide = screen.getByRole("button", { name: /hide 1 parameter port/i });
+    expect(hide).toHaveAttribute("aria-expanded", "true");
   });
 
   // ── PortRow sidechain detection ───────────────────────────────────────────────

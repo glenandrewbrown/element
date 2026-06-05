@@ -1,156 +1,24 @@
-import { memo, useEffect, useRef, useState } from "react";
-import { useShallow } from "zustand/react/shallow";
+import { memo, useEffect, useRef } from "react";
 import type { BlockCategory } from "../../data/types";
-import { useParameterStore } from "../../stores/useParameterStore";
 import { useBlockOutputLevel } from "../../stores/useCableMeterStore";
 import { useNodeSpectrum } from "../../hooks/useNodeSpectrum";
 
 // ── Design tokens ──
 
-const CATEGORY_COLOR: Record<BlockCategory, string> = {
-  instrument: "#4A90D9",
-  audiofx: "#E8A838",
-  midifx: "#2BC4C4",
-  modulator: "#A87FE0",
-};
-
 const SHADOW_PRESSED =
   "inset 1px 1px 3px rgba(0,0,0,0.4), inset -1px -1px 2px rgba(255,255,255,0.03)";
 
-// ── Parameter data ──
-//
-// Pulled live from `useParameterStore`, which is fed by the C++ host's
-// 15 Hz delta channel (`onParameterUpdate`). Names are synthesised when no
-// metadata is available — mini fader strips don't need full names, three
-// characters are enough to disambiguate at expanded zoom.
-
-interface MiniParam {
-  name: string;
-  /** 0–1 normalised */
-  value: number;
-}
-
-const FALLBACK_NAMES: ReadonlyArray<string> = [
-  "Gain",
-  "Pan",
-  "Mix",
-  "Freq",
-  "Q",
-];
-
-function synthName(idx: number): string {
-  return FALLBACK_NAMES[idx] ?? `P${idx + 1}`;
-}
-
-// ── ParamStripEmbed ──
-
-interface MiniFaderProps {
-  param: MiniParam;
-  color: string;
-}
-
-function MiniFader({ param, color }: MiniFaderProps) {
-  const [hovered, setHovered] = useState(false);
-  const fillPct = `${Math.round(param.value * 100)}%`;
-
-  return (
-    <div
-      className="flex flex-col items-center gap-0.5 relative"
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-    >
-      {/* Value tooltip on hover — absolutely positioned so it stays OUT of the
-          flex flow; an in-flow row would add ~11px of permanent height to every
-          expanded block (LAYOUT-P1). Floats above the track on hover instead. */}
-      <div
-        className="absolute -top-2.5 text-[9px] tabular-nums font-bold transition-opacity duration-100 pointer-events-none z-10"
-        style={{
-          color,
-          opacity: hovered ? 1 : 0,
-        }}
-      >
-        {Math.round(param.value * 100)}
-      </div>
-
-      {/* Track — compressed 32→20px to keep the expanded block within budget */}
-      <div
-        className="w-1 rounded-sm relative overflow-hidden"
-        style={{
-          height: 20,
-          backgroundColor: "#1A1A1E",
-          boxShadow: SHADOW_PRESSED,
-        }}
-      >
-        {/* Fill — grows from bottom */}
-        <div
-          className="absolute bottom-0 left-0 right-0 rounded-sm transition-none"
-          style={{
-            height: fillPct,
-            backgroundColor: color,
-            opacity: 0.85,
-          }}
-        />
-      </div>
-
-      {/* Param name */}
-      <span
-        className="text-[10px] font-medium uppercase tracking-tighter text-center leading-none"
-        style={{ color: "rgba(229,229,234,0.4)", maxWidth: 24 }}
-      >
-        {param.name.slice(0, 3)}
-      </span>
-    </div>
-  );
-}
-
-interface ParamStripEmbedProps {
-  nodeId?: string;
-  category: BlockCategory;
-  /** How many faders to show (3–5) */
-  count?: number;
-}
-
-function ParamStripEmbed({ nodeId, category, count = 4 }: ParamStripEmbedProps) {
-  const color = CATEGORY_COLOR[category];
-  const visible = Math.max(3, Math.min(5, count));
-
-  // Pull the first `visible` parameter values for this node from the store.
-  // The selector derives a fresh array on every call, so it MUST be wrapped
-  // in `useShallow`: Zustand v5 forwards the raw selector result to React's
-  // `useSyncExternalStore`, which compares it with `Object.is`. A new array
-  // each call is never `Object.is`-equal to the previous one, so React would
-  // treat the snapshot as perpetually changed and loop forever ("The result
-  // of getSnapshot should be cached" → "Maximum update depth exceeded").
-  // `useShallow` element-compares and returns the cached array when unchanged.
-  const values = useParameterStore(
-    useShallow((st) => {
-      const out: number[] = new Array(visible);
-      if (!nodeId) {
-        for (let i = 0; i < visible; ++i) out[i] = NaN;
-        return out;
-      }
-      const prefix = `${nodeId}:`;
-      for (let i = 0; i < visible; ++i) {
-        const v = st.values[prefix + i];
-        out[i] = typeof v === "number" ? v : NaN;
-      }
-      return out;
-    }),
-  );
-
-  const params: MiniParam[] = values.map((v, i) => ({
-    name: synthName(i),
-    value: Number.isFinite(v) ? v : 0,
-  }));
-
-  return (
-    <div className="flex items-end justify-around px-1 py-0.5">
-      {params.map((p, i) => (
-        <MiniFader key={i} param={p} color={color} />
-      ))}
-    </div>
-  );
-}
+// NOTE — the generic GAIN/PAN/MIX/FREQ/Q mini-fader strip was REMOVED here
+// (Glen, 2026-06-03). It synthesised parameter NAMES from a hardcoded fallback
+// list ("Gain","Pan","Mix","Freq","Q"), so it misreported every hosted plugin's
+// real controls — e.g. a Valhalla reverb's true params are Mix/Feedback/Density,
+// never "Pan"/"Freq"/"Q". Showing fabricated labels violates the nothing-fake
+// rule (a fader labelled "Gain" that doesn't move the plugin's gain is a lie).
+// The honest, real-data embeds (live output meter + host FFT spectrum) stay.
+// Real per-parameter values, when genuinely the plugin's, surface on the
+// STANDARD-tier on-Block knobs (Block.tsx, indexed P1/P2/P3 — index-honest, no
+// invented names) and in the Inspector. Do NOT reintroduce a synthesised-name
+// fader strip; lean = remove, not replace-with-fake.
 
 // ── MeterEmbed ──
 
@@ -349,15 +217,16 @@ function SpectrumEmbed({ bins = [] }: SpectrumEmbedProps) {
 
 export interface BlockEmbedProps {
   /**
-   * Id of the Block this embed belongs to. Used to key live parameter values
-   * out of `useParameterStore` (`${nodeId}:${index}`) so the mini faders track
-   * the host's 15 Hz delta channel for this specific Block.
+   * Id of the Block this embed belongs to. Keys the REAL data sources for this
+   * specific Block: its output level via `useBlockOutputLevel(nodeId)` (meter)
+   * and its host FFT via `useNodeSpectrum(nodeId)` (audiofx spectrum strip).
    */
   nodeId: string;
   /**
-   * Block category — selects the semantic accent colour and the sub-embed
-   * layout: generators/modifiers get a meter (modifiers also get a spectrum
-   * curve), logic Blocks get a param strip + compact meter only.
+   * Block category — selects the sub-embed layout: instruments/audiofx get an
+   * output meter (audiofx also gets a live spectrum strip), midifx/modulator
+   * get a compact meter only. (The old generic param-fader strip was removed —
+   * it fabricated parameter names; see the note at the top of this file.)
    */
   category: BlockCategory;
   /** When true, suppress all sub-embeds (semantic zoom compact mode). */
@@ -365,13 +234,14 @@ export interface BlockEmbedProps {
 }
 
 /**
- * BlockEmbed — the rich in-Block instrument panel shown only at the expanded
+ * BlockEmbed — the in-Block instrument panel shown only at the expanded
  * semantic-zoom tier. Rendered inside `Block` when the user zooms in close, it
- * surfaces a Block's live parameters (mini fader strip), output level (meter),
- * and — for modifiers — a spectrum/EQ curve, so an expert can read and trust a
- * Block's state without opening the full plugin window. Mount it via `Block`'s
- * zoom gating rather than standalone; it reads parameter values live from
- * `useParameterStore` keyed by `nodeId`.
+ * surfaces a Block's REAL output level (meter) and — for audiofx — a live host
+ * FFT spectrum strip, so an expert can read and trust a Block's signal without
+ * opening the full plugin window. Every embed shows real engine data only; the
+ * old generic param-fader strip was removed (it fabricated parameter names —
+ * see the note at the top of this file). Mount it via `Block`'s zoom gating
+ * rather than standalone.
  */
 function BlockEmbedComponent({ nodeId, category, compact = false }: BlockEmbedProps) {
   // REAL output level for this Block's meter — max live cable level over its
@@ -396,10 +266,8 @@ function BlockEmbedComponent({ nodeId, category, compact = false }: BlockEmbedPr
 
   return (
     <div className="flex flex-col gap-1 px-1 pb-1">
-      {/* Param strip — shown for all categories */}
-      <ParamStripEmbed nodeId={nodeId} category={category} count={isAudioFx ? 5 : 3} />
-
-      {/* Meter — instruments and audiofx */}
+      {/* Meter — instruments and audiofx. The output meter is the lead readout
+          now the fabricated-name fader strip is gone. */}
       {(category === "instrument" || category === "audiofx") && (
         <div className="flex items-center justify-between gap-1">
           <MeterEmbed leftLevel={level} rightLevel={level} leftPeak={level} rightPeak={level} />
@@ -410,7 +278,7 @@ function BlockEmbedComponent({ nodeId, category, compact = false }: BlockEmbedPr
         </div>
       )}
 
-      {/* midifx and modulator: just param strip + compact meter */}
+      {/* midifx and modulator: compact meter only. */}
       {(category === "midifx" || category === "modulator") && (
         <div className="flex items-center justify-end">
           <MeterEmbed leftLevel={level} rightLevel={level} leftPeak={level} rightPeak={level} />
@@ -423,4 +291,4 @@ function BlockEmbedComponent({ nodeId, category, compact = false }: BlockEmbedPr
 export const BlockEmbed = memo(BlockEmbedComponent);
 
 // Named sub-component exports for composability
-export { ParamStripEmbed, MeterEmbed, SpectrumEmbed };
+export { MeterEmbed, SpectrumEmbed };

@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import type { Node } from "@xyflow/react";
+import { expect, userEvent, within } from "storybook/test";
 import { MiniFlow } from "../../../.storybook/decorators";
 import { Block } from "./Block";
 import { useParameterStore } from "../../stores/useParameterStore";
@@ -379,4 +380,113 @@ export const CategoryRow: Story = {
       ]}
     />
   ),
+};
+
+// ── Lean port lane (Glen, 2026-06-03) — params-as-ports collapse ─────────────
+//
+// A params-as-ports plugin (e.g. a Valhalla reverb whose Mix/Feedback/Density/
+// Width/LowCut/HighCut/PreDelay/Decay are exposed as Value/CV input ports) would
+// dump a wall of rows. The lane now splits ESSENTIAL audio/MIDI I/O (always
+// shown) from PARAM/MOD Value-typed ports (collapsed behind a "▸ N params"
+// toggle). These two stories let the design be eyeballed in both states; the
+// play functions also interaction-test the toggle. Heuristic: `port.type ===
+// "value"` ⇒ param/mod (the cleanest signal the Port model carries — and it
+// lines up with the design system: audio blue / MIDI teal = essential, value
+// orange = param/mod).
+
+// A realistic Valhalla-style reverb: 2 audio I/O + 8 Value param ports.
+function reverbWithParamPorts(): BlockData {
+  return makeBlock({
+    name: "ValhallaDelay",
+    category: "audiofx",
+    format: "VST3",
+    ports: [
+      // ESSENTIAL — main audio I/O (stay visible)
+      { id: "in-l", type: "audio", direction: "input", label: "In L", connected: true },
+      { id: "in-r", type: "audio", direction: "input", label: "In R", connected: true },
+      { id: "out-l", type: "audio", direction: "output", label: "Out L", connected: true },
+      { id: "out-r", type: "audio", direction: "output", label: "Out R", connected: true },
+      // PARAM/MOD — Value/CV ports mapped to the plugin's real parameters
+      // (collapsed by default). Labels are the plugin's ACTUAL param names —
+      // nothing fabricated; this is exactly the params-as-ports shape Element
+      // hydrates from the engine.
+      { id: "p-mix", type: "value", direction: "input", label: "Mix", connected: false },
+      { id: "p-fb", type: "value", direction: "input", label: "Feedback", connected: true },
+      { id: "p-density", type: "value", direction: "input", label: "Density", connected: false },
+      { id: "p-width", type: "value", direction: "input", label: "Width", connected: false },
+      { id: "p-lowcut", type: "value", direction: "input", label: "LowCut", connected: false },
+      { id: "p-highcut", type: "value", direction: "input", label: "HighCut", connected: false },
+      { id: "p-predelay", type: "value", direction: "input", label: "PreDelay", connected: false },
+      { id: "p-decay", type: "value", direction: "input", label: "Decay", connected: true },
+    ],
+  });
+}
+
+export const LeanPortLane: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Lean port lane — COLLAPSED (default). A params-as-ports reverb (8 Value/CV param ports) shows ONLY its essential audio I/O (In/Out L/R) plus a single compact \"▸ 8 params\" expander — instead of dumping 12 rows. The expander is a recessed, on-brand neumorphic pill in the Value/CV orange. Click it to reveal the param ports (see LeanPortLaneExpanded). The play function asserts the essential ports + toggle render and the param-port labels stay hidden until expanded.",
+      },
+    },
+    design: {
+      type: "iframe",
+      name: "Bake-off ref — mockup NodeBlock (mindful-studio :6008)",
+      url: "http://localhost:6008",
+    },
+  },
+  render: () => (
+    <MiniFlow nodes={[flowNode(reverbWithParamPorts())]} nodeTypes={nodeTypes} height={340} />
+  ),
+  play: async ({ canvasElement }) => {
+    // Block renders inside the React Flow portal — query the document body.
+    // findBy* tolerates React Flow's async node mount/measure.
+    const body = within(canvasElement.ownerDocument.body);
+    // Essential audio I/O is visible…
+    await expect(await body.findByText("In L")).toBeInTheDocument();
+    await expect(body.getByText("Out R")).toBeInTheDocument();
+    // …the param wall is collapsed behind a single toggle (real count = 8)…
+    const toggle = await body.findByRole("button", {
+      name: /show 8 parameter ports/i,
+    });
+    await expect(toggle).toBeInTheDocument();
+    await expect(toggle).toHaveTextContent(/8 params/i);
+    // …and the param-port labels are NOT in the DOM while collapsed (lean).
+    await expect(body.queryByText("Feedback")).toBeNull();
+    await expect(body.queryByText("Density")).toBeNull();
+  },
+};
+
+export const LeanPortLaneExpanded: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Lean port lane — EXPANDED. Same reverb after clicking the \"▸ 8 params\" toggle: the chevron flips to ▾ and all 8 Value/CV param ports (Mix, Feedback, Density, Width, LowCut, HighCut, PreDelay, Decay — the plugin's REAL param names, nothing fabricated) reveal below the essential I/O. The block grows only when expanded; collapsing returns it to the lean height. The play function clicks the toggle and asserts the param ports appear.",
+      },
+    },
+  },
+  render: () => (
+    <MiniFlow nodes={[flowNode(reverbWithParamPorts())]} nodeTypes={nodeTypes} height={420} />
+  ),
+  play: async ({ canvasElement }) => {
+    const body = within(canvasElement.ownerDocument.body);
+    // Collapsed at mount — param labels absent.
+    await expect(body.queryByText("Feedback")).toBeNull();
+    // Open the param lane.
+    const toggle = await body.findByRole("button", {
+      name: /show 8 parameter ports/i,
+    });
+    await userEvent.click(toggle);
+    // Param ports now revealed (plugin's real names).
+    await expect(await body.findByText("Mix")).toBeInTheDocument();
+    await expect(body.getByText("Feedback")).toBeInTheDocument();
+    await expect(body.getByText("Decay")).toBeInTheDocument();
+    // The toggle now offers to HIDE them (chevron flipped, aria-expanded true).
+    const hideToggle = await body.findByRole("button", {
+      name: /hide 8 parameter ports/i,
+    });
+    await expect(hideToggle).toHaveAttribute("aria-expanded", "true");
+  },
 };
