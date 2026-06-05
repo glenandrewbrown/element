@@ -37,7 +37,7 @@ function AppInner() {
   const togglePalette = useCallback(() => setPaletteOpen((prev) => !prev), []);
   const closePalette = useCallback(() => setPaletteOpen(false), []);
 
-  useKeyboard({ onToggleCommandPalette: togglePalette });
+  useKeyboard({ onToggleCommandPalette: togglePalette, paletteOpen, onClosePalette: closePalette });
   useJuceBridge();
 
   // Status bar is 24px tall (STATUS_H in AppShell). Virtual keyboard sits directly above it.

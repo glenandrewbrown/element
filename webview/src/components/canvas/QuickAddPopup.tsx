@@ -254,7 +254,8 @@ function CategoryLabel({
       style={{
         color,
         backgroundColor: `color-mix(in srgb, ${color} 15%, #1E1E22)`,
-        width: 60,
+        maxWidth: 48,
+        minWidth: 24,
       }}
       title={rawCategory}
     >
@@ -296,7 +297,7 @@ function PluginRow({ plugin, isActive, onSelect, onHover }: PluginRowProps) {
       <CategoryIcon category={plugin.category} name={plugin.name} />
       <span className="truncate flex-1 min-w-0">{plugin.name}</span>
       {plugin.manufacturer && (
-        <span className="shrink-0 w-[60px] text-[9px] text-text-dim truncate text-right hidden sm:inline">
+        <span className="shrink-0 max-w-[44px] text-[9px] text-text-dim truncate text-right hidden sm:inline">
           {plugin.manufacturer}
         </span>
       )}

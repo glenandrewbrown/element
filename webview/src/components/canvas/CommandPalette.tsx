@@ -394,13 +394,15 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
           event.preventDefault();
           flatList[activeIndex]?.onSelect();
           break;
-        case "Escape":
-          event.preventDefault();
-          onClose();
-          break;
+        // Escape is intentionally NOT handled here — it is routed through the
+        // single window-level handler in useKeyboard (priority 1) so there is
+        // exactly ONE Escape authority. Removing the element-level case fixes
+        // the JUCE WKWebView swallow: NeuInput consumed the keydown before it
+        // could bubble to this onKeyDown, so Esc never fired. The window
+        // listener fires regardless of focus depth.
       }
     },
-    [flatList, activeIndex, onClose],
+    [flatList, activeIndex],
   );
 
   let runningIndex = 0;

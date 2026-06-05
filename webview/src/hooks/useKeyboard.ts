@@ -27,9 +27,24 @@ import { EV_START_RENAME } from "../events";
 
 interface UseKeyboardOptions {
   onToggleCommandPalette: () => void;
+  /**
+   * Whether the CommandPalette is currently open. When true, Escape closes it
+   * at priority 1 — before deselect / popBreadcrumb.
+   * Wired by App.tsx; optional so existing call sites keep compiling.
+   */
+  paletteOpen?: boolean;
+  /**
+   * Closes the CommandPalette without toggling. Companion to paletteOpen.
+   * Wired by App.tsx; optional so existing call sites keep compiling.
+   */
+  onClosePalette?: () => void;
 }
 
-export function useKeyboard({ onToggleCommandPalette }: UseKeyboardOptions) {
+export function useKeyboard({
+  onToggleCommandPalette,
+  paletteOpen = false,
+  onClosePalette,
+}: UseKeyboardOptions) {
   const reactFlow = useReactFlow();
 
   const handleKeyDown = useCallback(
@@ -278,6 +293,24 @@ export function useKeyboard({ onToggleCommandPalette }: UseKeyboardOptions) {
 
       switch (key) {
         case "Escape": {
+          // Priority 1: CommandPalette open → close it.
+          if (paletteOpen) {
+            e.preventDefault();
+            onClosePalette?.();
+            return;
+          }
+
+          // Priority 2 (P1-A reservation): embedded plugin editor open → close it.
+          // P1-A: embed-open → nativePluginEditorClose()
+          // Uncomment and wire when useAppStore.embedOpen + nativePluginEditorClose are added:
+          // const { embedOpen } = useAppStore.getState();
+          // if (embedOpen) {
+          //   e.preventDefault();
+          //   nativePluginEditorClose();
+          //   return;
+          // }
+
+          // Priority 3: deselect / pop breadcrumb (existing behaviour — unchanged).
           const { selectedNodeId, selectedEdgeId, breadcrumbStack } =
             useGraphStore.getState();
           if (selectedNodeId || selectedEdgeId) {
@@ -348,7 +381,7 @@ export function useKeyboard({ onToggleCommandPalette }: UseKeyboardOptions) {
         }
       }
     },
-    [onToggleCommandPalette, reactFlow],
+    [onToggleCommandPalette, paletteOpen, onClosePalette, reactFlow],
   );
 
   useEffect(() => {
