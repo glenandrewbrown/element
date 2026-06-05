@@ -306,6 +306,25 @@ export async function nativeGraphSetNodeNote(
   return r === true;
 }
 
+/**
+ * Set the per-block hidden parameter-port set (Configure Parameters… popover,
+ * Glen 2026-06-03). `hiddenIds` are the Value/CV param-port ids the user chose
+ * to hide on the Block. Sent as a comma-joined CSV (host stores it verbatim on
+ * the Node ValueTree as "userHiddenParams", mirroring "userNote"), so the
+ * choice persists across project save/load and reconciles on the next snapshot
+ * (`hiddenParams` field). Empty array → "" clears all (every param visible).
+ */
+export async function nativeGraphSetNodeHiddenParams(
+  nodeId: string,
+  hiddenIds: string[],
+): Promise<boolean> {
+  const r = await invokeElementNative("elementGraphSetNodeHiddenParams", [
+    nodeId,
+    hiddenIds.join(","),
+  ]);
+  return r === true;
+}
+
 export async function nativeGraphCommentAdd(
   x: number,
   y: number,

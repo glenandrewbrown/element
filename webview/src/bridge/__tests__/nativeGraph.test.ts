@@ -38,6 +38,7 @@ import {
   nativeGraphDuplicateNode,
   nativeGraphRenameNode,
   nativeGraphSetNodeNote,
+  nativeGraphSetNodeHiddenParams,
   nativeGraphCommentAdd,
   nativeGraphCommentUpsert,
   nativeGraphCommentDelete,
@@ -358,6 +359,19 @@ const booleanCases: BoolCase[] = [
     call: () => nativeGraphSetNodeNote("n", "hi"),
     nativeName: "elementGraphSetNodeNote",
     args: ["n", "hi"],
+  },
+  // Hidden params: the array is joined to a CSV before crossing the bridge.
+  {
+    name: "nativeGraphSetNodeHiddenParams (CSV join)",
+    call: () => nativeGraphSetNodeHiddenParams("n", ["p-mix", "p-width"]),
+    nativeName: "elementGraphSetNodeHiddenParams",
+    args: ["n", "p-mix,p-width"],
+  },
+  {
+    name: "nativeGraphSetNodeHiddenParams (empty → clears)",
+    call: () => nativeGraphSetNodeHiddenParams("n", []),
+    nativeName: "elementGraphSetNodeHiddenParams",
+    args: ["n", ""],
   },
   {
     name: "nativeGraphCommentAdd (defaults)",

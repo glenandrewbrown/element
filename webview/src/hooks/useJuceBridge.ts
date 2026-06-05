@@ -52,6 +52,10 @@ type EngineBlock = {
   latencyMs?: number;
   /** Real oversampling factor (Processor::getOversamplingFactor(), 1|2|4|8). */
   oversample?: number;
+  /** Free-form user note (persisted "userNote"). */
+  note?: string;
+  /** CSV of hidden param-port ids (persisted "userHiddenParams"). */
+  hiddenParams?: string;
   ports?: Array<{
     id: string;
     label?: string;
@@ -253,10 +257,17 @@ function mapBlock(b: EngineBlock): BlockData {
     isMacroTagged: false,
     containerNodeCount: b.containerNodeCount,
     isPortal: false,
-    note:
-      typeof (b as { note?: unknown }).note === "string"
-        ? ((b as { note?: string }).note as string)
-        : undefined,
+    note: typeof b.note === "string" ? b.note : undefined,
+    // Hidden param-port ids: the host emits a CSV ("userHiddenParams"); split
+    // into the array, trimming + dropping blanks so "" / "a,,b" hydrate cleanly
+    // to [] / ["a","b"]. Empty → [] (all params visible — the default).
+    hiddenParams:
+      typeof b.hiddenParams === "string" && b.hiddenParams.length > 0
+        ? b.hiddenParams
+            .split(",")
+            .map((s) => s.trim())
+            .filter((s) => s.length > 0)
+        : [],
   };
 }
 

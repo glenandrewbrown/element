@@ -26,11 +26,13 @@ const {
   mockSetMute,
   mockSetMuteInput,
   mockMoveNodes,
+  mockSetHiddenParams,
 } = vi.hoisted(() => ({
   mockSetBypass: vi.fn(async () => true as boolean | undefined),
   mockSetMute: vi.fn(async () => true as boolean | undefined),
   mockSetMuteInput: vi.fn(async () => true as boolean | undefined),
   mockMoveNodes: vi.fn(async () => 0),
+  mockSetHiddenParams: vi.fn(async () => true as boolean | undefined),
 }));
 
 vi.mock("../../bridge/nativeGraph", () => {
@@ -41,6 +43,7 @@ vi.mock("../../bridge/nativeGraph", () => {
     nativeGraphSetMute: sp(mockSetMute),
     nativeGraphSetMuteInput: sp(mockSetMuteInput),
     nativeGraphMoveNodes: sp(mockMoveNodes),
+    nativeGraphSetNodeHiddenParams: sp(mockSetHiddenParams),
   };
 });
 
@@ -181,6 +184,44 @@ describe("toggleMuteInput — async rollback paths", () => {
     mockSetMuteInput.mockRejectedValueOnce(new Error("timeout"));
     await useGraphStore.getState().toggleMuteInput("n1");
     expect(useGraphStore.getState().nodes[0].muteInput).toBe(false);
+  });
+});
+
+// ── setHiddenParams rollback (Configure Parameters… popover) ─────────────────
+
+describe("setHiddenParams — async rollback paths", () => {
+  beforeEach(() => {
+    resetStore();
+    // Start with one param already hidden so a rollback target is non-empty.
+    useGraphStore.setState({
+      nodes: [{ ...makeBlock("n1"), hiddenParams: ["p-keep"] }],
+    });
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    mockSetHiddenParams.mockImplementation(async () => true);
+  });
+
+  it("keeps the new hidden set when the bridge confirms", async () => {
+    mockSetHiddenParams.mockResolvedValueOnce(true);
+    await useGraphStore.getState().setHiddenParams("n1", ["p-a", "p-b"]);
+    expect(useGraphStore.getState().nodes[0].hiddenParams).toEqual([
+      "p-a",
+      "p-b",
+    ]);
+  });
+
+  it("rolls back to the previous hidden set when the bridge returns false", async () => {
+    mockSetHiddenParams.mockResolvedValueOnce(false);
+    await useGraphStore.getState().setHiddenParams("n1", ["p-a"]);
+    expect(useGraphStore.getState().nodes[0].hiddenParams).toEqual(["p-keep"]);
+  });
+
+  it("rolls back to the previous hidden set when the bridge throws", async () => {
+    mockSetHiddenParams.mockRejectedValueOnce(new Error("host crash"));
+    await useGraphStore.getState().setHiddenParams("n1", ["p-a"]);
+    expect(useGraphStore.getState().nodes[0].hiddenParams).toEqual(["p-keep"]);
   });
 });
 

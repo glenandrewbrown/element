@@ -14,6 +14,7 @@ import {
 } from "../../stores/usePluginBrowserStore";
 import { Icon, NeuInput } from "../neu";
 import { iconForCategory } from "../neu/iconForCategory";
+import { ParamConfigPopover } from "./ParamConfigPopover";
 
 interface NodeContextMenuProps {
   /** Id of the right-clicked Block. Looked up in `useGraphStore.nodes`; the menu renders nothing if the id is absent. */
@@ -75,6 +76,9 @@ function normaliseHostColorToRgb(raw: string | undefined): string | undefined {
  *       the real Processor::getOversamplingFactor() in the snapshot),
  *     Replace (G3-A: elementGraphReplacePlugin — inline picker over the REAL
  *       elementGetPluginList, keeps connections where possible),
+ *     Configure Parameters… (per-block param-port show/hide via
+ *       elementGraphSetNodeHiddenParams — inline ParamConfigPopover, persisted
+ *       on the Node tree; only offered for blocks with Value/CV param ports),
  *     multi-select Align + Distribute.
  *
  *   HONEST-DISABLED (UI present, action not yet wired — see Pillar-2 backlog):
@@ -114,6 +118,8 @@ export function NodeContextMenu({
 
   // Replace picker: inline plugin search reusing the REAL plugin list.
   const [replacing, setReplacing] = useState(false);
+  // Configure Parameters… : inline per-block param-presence editor.
+  const [configuring, setConfiguring] = useState(false);
 
   const reactFlow = useReactFlow();
   const selectedBlockIds = useMemo(() => {
@@ -145,7 +151,11 @@ export function NodeContextMenu({
   // Estimated menu height including sections. The Options group (Color row +
   // Oversample ×4 + Replace) adds ~150px over the legacy single-item layout;
   // align/distribute adds ~270px more.
-  const estimatedHeight = multiSelect ? 730 : 530;
+  // The Configure-Parameters popover adds ~260px (header + bulk chips + the
+  // ~176px scroll well) when open; budget for it so the menu isn't clamped
+  // above the viewport top with the list cut off.
+  const estimatedHeight =
+    (multiSelect ? 730 : 530) + (configuring ? 260 : 0);
   const menuStyle: React.CSSProperties = {
     position: "fixed",
     left: Math.min(position.x, window.innerWidth - 240),
@@ -187,6 +197,11 @@ export function NodeContextMenu({
 
   const accent = CATEGORY_ACCENT[node.category] ?? "#4A90D9";
   const catIcon = iconForCategory(node.category, node.name);
+  // "Configure Parameters…" is offered only for blocks that HAVE Value/CV
+  // param ports (the ports the popover governs). Hidden params still count as
+  // param ports here — hiding them must not make the entry disappear. Guard the
+  // ports array (a node may surface before its ports hydrate).
+  const hasParamPorts = (node.ports ?? []).some((p) => p.type === "value");
 
   return (
     <div
@@ -372,6 +387,25 @@ export function NodeContextMenu({
               }}
             />
           )}
+
+          {/* Configure Parameters… — per-block param-presence editor. Only for
+              blocks that expose Value/CV param ports; honest-disabled otherwise
+              (a block with no params has nothing to configure). Opens an inline
+              popover (like Replace) so the whole feature stays self-contained in
+              this menu — no separate canvas mount. */}
+          <MenuItem
+            iconName="SlidersHorizontal"
+            label="Configure Parameters…"
+            accent={accent}
+            active={configuring}
+            disabled={!hasParamPorts}
+            disabledReason="This block has no parameter ports to configure"
+            onClick={() => setConfiguring((v) => !v)}
+          />
+          {configuring && hasParamPorts && (
+            <ParamConfigPopover nodeId={nodeId} accent={accent} />
+          )}
+
           <MenuItem
             iconName="Layers"
             label="Presets…"

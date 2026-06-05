@@ -490,3 +490,59 @@ export const LeanPortLaneExpanded: Story = {
     await expect(hideToggle).toHaveAttribute("aria-expanded", "true");
   },
 };
+
+// ── Hidden params (Configure Parameters… persistence, Glen 2026-06-03) ────────
+//
+// The same reverb after the user hid two params (Density + Width) via the
+// right-click → Configure Parameters… popover. d.hiddenParams (persisted on the
+// node tree, hydrated from the snapshot) lists those port ids; Block.tsx filters
+// them OUT of the param-port group AND the "▸ N params" count. So the lane now
+// reads "▸ 6 params" (8 − 2), and Density/Width never render even when expanded.
+// NOTHING fabricated — the hidden set is engine-persisted, not a client guess.
+export const HiddenParams: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Two params hidden via Configure Parameters… (`hiddenParams: [\"p-density\", " +
+          "\"p-width\"]`). The lean lane toggle reads \"▸ 6 params\" — the visible " +
+          "(non-hidden) count, NOT 8. Expanding reveals the 6 remaining params; Density " +
+          "and Width are filtered out entirely (they don't render on the Block). The " +
+          "hidden set persists on the node tree (survives save/reload) and hydrates from " +
+          "the engine snapshot — nothing fabricated.",
+      },
+    },
+  },
+  render: () => (
+    <MiniFlow
+      nodes={[
+        flowNode({
+          ...reverbWithParamPorts(),
+          hiddenParams: ["p-density", "p-width"],
+        }),
+      ]}
+      nodeTypes={nodeTypes}
+      height={420}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    const body = within(canvasElement.ownerDocument.body);
+    // Lane count = VISIBLE params (8 − 2 hidden = 6), not 8.
+    const toggle = await body.findByRole("button", {
+      name: /show 6 parameter ports/i,
+    });
+    await expect(toggle).toHaveTextContent(/6 params/i);
+    // No "8 params" toggle exists — the hidden ones are excluded from the count.
+    await expect(
+      body.queryByRole("button", { name: /show 8 parameter ports/i }),
+    ).toBeNull();
+    // Expand: the 6 remaining params render…
+    await userEvent.click(toggle);
+    await expect(await body.findByText("Mix")).toBeInTheDocument();
+    await expect(body.getByText("Feedback")).toBeInTheDocument();
+    await expect(body.getByText("Decay")).toBeInTheDocument();
+    // …but the two HIDDEN params never appear, even expanded.
+    await expect(body.queryByText("Density")).toBeNull();
+    await expect(body.queryByText("Width")).toBeNull();
+  },
+};

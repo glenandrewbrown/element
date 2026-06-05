@@ -224,6 +224,32 @@ describe("mapBlock field mapping", () => {
     pushSnapshot({ blocks: [{ id: "b1", name: "X", format: "VST3" }], cables: [] });
     expect(useGraphStore.getState().nodes[0]?.format).toBe("VST3");
   });
+
+  // ── hiddenParams CSV → array (Configure Parameters… persistence) ──
+  it("defaults hiddenParams to [] when absent", () => {
+    mountHook();
+    pushSnapshot({ blocks: [{ id: "b1", name: "X" }], cables: [] });
+    expect(useGraphStore.getState().nodes[0]?.hiddenParams).toEqual([]);
+  });
+
+  it("defaults hiddenParams to [] when the CSV is empty", () => {
+    mountHook();
+    pushSnapshot({ blocks: [{ id: "b1", name: "X", hiddenParams: "" }], cables: [] });
+    expect(useGraphStore.getState().nodes[0]?.hiddenParams).toEqual([]);
+  });
+
+  it("splits a hiddenParams CSV into a trimmed, blank-free array", () => {
+    mountHook();
+    pushSnapshot({
+      blocks: [{ id: "b1", name: "X", hiddenParams: "p-mix, p-width ,,p-decay" }],
+      cables: [],
+    });
+    expect(useGraphStore.getState().nodes[0]?.hiddenParams).toEqual([
+      "p-mix",
+      "p-width",
+      "p-decay",
+    ]);
+  });
 });
 
 // ── mapCable ──────────────────────────────────────────────────────────────────

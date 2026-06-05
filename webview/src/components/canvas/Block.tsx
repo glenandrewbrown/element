@@ -977,8 +977,22 @@ function BlockComponent({ data, selected }: NodeProps) {
   const isParamPort = (p: Port) => p.type === "value";
   const essentialInputs = inputPorts.filter((p) => !isParamPort(p));
   const essentialOutputs = outputPorts.filter((p) => !isParamPort(p));
-  const paramInputs = inputPorts.filter(isParamPort);
-  const paramOutputs = outputPorts.filter(isParamPort);
+  // Per-block hidden params (Configure Parameters… popover, Glen 2026-06-03):
+  // the user can HIDE the Value/CV param ports they don't care about on this
+  // Block. d.hiddenParams holds those port ids (persisted on the node tree);
+  // filter them out entirely so they neither render nor count toward
+  // "▸ N params". Default [] ⇒ nothing hidden ⇒ all params present (the
+  // previous behaviour). NOTHING-fake: the set is engine-persisted, hydrated
+  // from the snapshot, and reconciled — not a transient client guess.
+  const hiddenParamIds = useMemo(
+    () => new Set(d.hiddenParams ?? []),
+    [d.hiddenParams],
+  );
+  const isVisibleParamPort = (p: Port) =>
+    isParamPort(p) && !hiddenParamIds.has(p.id);
+  const paramInputs = inputPorts.filter(isVisibleParamPort);
+  const paramOutputs = outputPorts.filter(isVisibleParamPort);
+  // Count = VISIBLE (non-hidden) param ports — what the expander actually shows.
   const paramPortCount = paramInputs.length + paramOutputs.length;
   const hasParamPorts = paramPortCount > 0;
 

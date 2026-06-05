@@ -26,6 +26,7 @@ vi.mock("../../bridge/nativeGraph", () => ({
   nativeGraphDisconnectNode: vi.fn(async () => true),
   nativeGraphSetNodeColor: vi.fn(async () => true),
   nativeGraphSetOversample: vi.fn(async () => true),
+  nativeGraphSetNodeHiddenParams: vi.fn(async () => true),
   nativeGraphReplacePlugin: vi.fn(async () => true),
   nativeEnterContainer: vi.fn(async () => true),
   nativeExitContainer: vi.fn(async () => true),
@@ -37,6 +38,7 @@ import { useBusStore } from "../useBusStore";
 import {
   nativeEnterContainer,
   nativeExitContainer,
+  nativeGraphSetNodeHiddenParams,
 } from "../../bridge/nativeGraph";
 
 const makeBlock = (id: string, x = 0, y = 0): BlockData => ({
@@ -142,6 +144,42 @@ describe("useGraphStore", () => {
       breadcrumbs: ["Root", "Sub"],
     });
     expect(useGraphStore.getState().breadcrumbStack).toEqual(["Root", "Sub"]);
+  });
+
+  it("hydrateFromEngine preserves per-node hiddenParams array", () => {
+    const node: BlockData = {
+      ...makeBlock("n1"),
+      hiddenParams: ["p-mix", "p-width"],
+    };
+    useGraphStore.getState().hydrateFromEngine({ nodes: [node], edges: [] });
+    expect(useGraphStore.getState().nodes[0].hiddenParams).toEqual([
+      "p-mix",
+      "p-width",
+    ]);
+  });
+
+  // ── setHiddenParams (Configure Parameters… popover) ────────────────────────
+
+  it("setHiddenParams optimistically sets the full hidden set on the node", async () => {
+    useGraphStore.setState({ nodes: [makeBlock("n1")] });
+    await useGraphStore.getState().setHiddenParams("n1", ["p-a", "p-b"]);
+    expect(useGraphStore.getState().nodes[0].hiddenParams).toEqual([
+      "p-a",
+      "p-b",
+    ]);
+    expect(nativeGraphSetNodeHiddenParams).toHaveBeenCalledWith("n1", [
+      "p-a",
+      "p-b",
+    ]);
+  });
+
+  it("setHiddenParams with [] clears the hidden set (all params shown)", async () => {
+    useGraphStore.setState({
+      nodes: [{ ...makeBlock("n1"), hiddenParams: ["p-a"] }],
+    });
+    await useGraphStore.getState().setHiddenParams("n1", []);
+    expect(useGraphStore.getState().nodes[0].hiddenParams).toEqual([]);
+    expect(nativeGraphSetNodeHiddenParams).toHaveBeenCalledWith("n1", []);
   });
 
   // ── updateNodePositions ───────────────────────────────────────────────────

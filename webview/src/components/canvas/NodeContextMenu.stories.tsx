@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { expect, userEvent, within } from "storybook/test";
 import { ReactFlowProvider } from "@xyflow/react";
 import { NodeContextMenu } from "./NodeContextMenu";
 import { useGraphStore } from "../../stores/useGraphStore";
@@ -427,6 +428,94 @@ export const ReplacePickerEmpty: Story = {
       );
     },
   ],
+};
+
+// ── Configure Parameters… — param-presence editor entry (Glen 2026-06-03) ────
+// The "Configure Parameters…" item is enabled only for blocks with Value/CV
+// param ports. This story seeds a params-as-ports reverb (8 Value ports) so the
+// entry is active; clicking it opens the inline ParamConfigPopover. The play
+// function opens it and asserts the param list + count render.
+const REVERB_PARAM_PORTS = [
+  { id: "in-l", type: "audio" as const, direction: "input" as const, label: "In L", connected: true },
+  { id: "out-l", type: "audio" as const, direction: "output" as const, label: "Out L", connected: true },
+  { id: "p-mix", type: "value" as const, direction: "input" as const, label: "Mix", connected: false },
+  { id: "p-fb", type: "value" as const, direction: "input" as const, label: "Feedback", connected: true },
+  { id: "p-density", type: "value" as const, direction: "input" as const, label: "Density", connected: false },
+  { id: "p-width", type: "value" as const, direction: "input" as const, label: "Width", connected: false },
+  { id: "p-lowcut", type: "value" as const, direction: "input" as const, label: "LowCut", connected: false },
+  { id: "p-highcut", type: "value" as const, direction: "input" as const, label: "HighCut", connected: false },
+  { id: "p-predelay", type: "value" as const, direction: "input" as const, label: "PreDelay", connected: false },
+  { id: "p-decay", type: "value" as const, direction: "input" as const, label: "Decay", connected: true },
+];
+
+export const ConfigureParametersOpen: Story = {
+  args: { nodeId: NODE_ID, position: { x: 24, y: 16 }, onClose: () => {} },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Configure Parameters… — the per-block param-presence editor. Seeded with " +
+          "a params-as-ports reverb (8 Value/CV ports) so the entry is enabled. The story " +
+          "opens the inline ParamConfigPopover, which lists the 8 params with show/hide " +
+          "switches, a visible/total count, and Show all / Hide all. Toggling a switch " +
+          "persists via setHiddenParams (no-op bridge in Storybook).",
+      },
+    },
+  },
+  decorators: [
+    (Story) => {
+      seed(makeNode({ name: "ValhallaDelay", category: "audiofx", ports: REVERB_PARAM_PORTS }));
+      return framed(Story);
+    },
+  ],
+  play: async ({ canvasElement }) => {
+    const body = within(canvasElement.ownerDocument.body);
+    const entry = await body.findByRole("menuitem", {
+      name: /configure parameters/i,
+    });
+    await userEvent.click(entry);
+    // The popover header count (8/8) + a param row render.
+    await expect(
+      await body.findByLabelText(/8 of 8 parameters visible/i),
+    ).toBeInTheDocument();
+    await expect(body.getByText("Mix")).toBeInTheDocument();
+  },
+};
+
+export const ConfigureParametersDisabledNoParams: Story = {
+  args: { nodeId: NODE_ID, position: { x: 24, y: 16 }, onClose: () => {} },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Honest-disabled — a block with NO Value/CV param ports (audio I/O only). " +
+          "\"Configure Parameters…\" renders disabled with a tooltip; there is nothing " +
+          "to configure, so the entry never opens a popover.",
+      },
+    },
+  },
+  decorators: [
+    (Story) => {
+      seed(
+        makeNode({
+          name: "Gain",
+          category: "audiofx",
+          ports: [
+            { id: "in-l", type: "audio", direction: "input", label: "In", connected: true },
+            { id: "out-l", type: "audio", direction: "output", label: "Out", connected: true },
+          ],
+        }),
+      );
+      return framed(Story);
+    },
+  ],
+  play: async ({ canvasElement }) => {
+    const body = within(canvasElement.ownerDocument.body);
+    const entry = await body.findByRole("menuitem", {
+      name: /configure parameters/i,
+    });
+    await expect(entry).toBeDisabled();
+  },
 };
 
 // ── G3-A: Oversample honest-degraded on Audio/MIDI-IO node ───────────────────

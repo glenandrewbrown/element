@@ -2333,6 +2333,42 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             postCompletion (completion, ok);
         });
 
+    // Per-block hidden parameter ports (Configure Parameters… popover, Glen
+    // 2026-06-03). Persisted as a "userHiddenParams" CSV ValueTree property on
+    // the Node — mirrors "userNote" exactly — so the user's per-block choice of
+    // which Value/CV param ports to hide on the Block survives session
+    // save/load. Read back into the snapshot as `hiddenParams` (see block-emit).
+    //   args[0] = nodeUuid     : String
+    //   args[1] = hiddenIdsCsv : String (comma-joined port ids; "" clears all)
+    //   → bool
+    registerFn (
+        Identifier ("elementGraphSetNodeHiddenParams"),
+        [this, postCompletion] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 2)
+            {
+                if (auto sess = context.session())
+                {
+                    const Graph G (currentBoard());
+                    if (G.isGraph())
+                    {
+                        Node n = findNodeByUuidInGraph (G, args[0].toString());
+                        if (n.isValid())
+                        {
+                            n.setProperty (Identifier ("userHiddenParams"), args[1].toString());
+                            ok = true;
+                        }
+                    }
+                }
+            }
+            // A purely visual per-Block UI property — no audio/RT path. The
+            // 40 ms coalesced push reflects the new hidden set on the next
+            // snapshot (the webview already updated optimistically).
+            if (ok)
+                scheduleGraphPush (40);
+            postCompletion (completion, ok);
+        });
+
     registerFn (
         Identifier ("elementGraphDuplicateNodes"),
         [this, postCompletion] (const Array<var>& args, auto completion) {
@@ -5545,6 +5581,12 @@ String ElementWebViewHost::buildActiveGraphJson() const
         else
             b->setProperty ("color", String());
         b->setProperty ("note", n.getProperty (Identifier ("userNote"), "").toString());
+        // Per-block hidden parameter ports (Configure Parameters… popover) —
+        // the CSV of port ids the user chose to hide on this Block. Persisted as
+        // "userHiddenParams" (mirrors userNote); the webview splits the CSV into
+        // BlockData.hiddenParams and filters those Value/CV ports off the Block.
+        // Empty when none hidden → BlockData.hiddenParams [] → all params shown.
+        b->setProperty ("hiddenParams", n.getProperty (Identifier ("userHiddenParams"), "").toString());
 
         // Per-block CPU load + latency. Latency comes from
         // `Processor::getLatencySamples()` (already aggregates host-reported,

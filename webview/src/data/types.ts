@@ -41,6 +41,15 @@ export interface BlockData {
    * persists in the Node ValueTree as "userNote" so it survives save/load.
    */
   note?: string;
+  /**
+   * Per-block hidden parameter-port ids (Configure Parameters… popover, Glen
+   * 2026-06-03). The Value/CV (`type === "value"`) param ports the user chose
+   * to HIDE on this Block. Filtered out of the Block's param-port group and
+   * excluded from the "▸ N params" count. Persists in the Node ValueTree as the
+   * "userHiddenParams" CSV (mirrors `note`/userNote) so it survives save/load.
+   * Default/empty = [] → all params present (current behaviour preserved).
+   */
+  hiddenParams?: string[];
 }
 
 export interface CableData {

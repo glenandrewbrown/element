@@ -10,6 +10,7 @@ import {
   nativeGraphSetNodeColor,
   nativeGraphSetOversample,
   nativeGraphReplacePlugin,
+  nativeGraphSetNodeHiddenParams,
   nativeEnterContainer,
   nativeExitContainer,
 } from "../bridge/nativeGraph";
@@ -167,6 +168,16 @@ interface GraphActions {
    * Bridge returns false for Audio/MIDI-IO nodes → the local factor reverts.
    */
   setOversample: (nodeId: string, factor: 1 | 2 | 4 | 8) => Promise<void>;
+  /**
+   * Set the per-block hidden parameter-port set (Configure Parameters…
+   * popover). Optimistic-with-rollback (mirrors setNodeColor): the local
+   * `hiddenParams` array updates immediately, then the bridge persists the CSV
+   * on the Node ValueTree; if the bridge rejects/throws, the local set reverts
+   * so a no-op never leaves a fabricated hidden set on screen. The next
+   * snapshot reconciles authoritatively. `hiddenIds` is the FULL desired hidden
+   * set for the node (not a delta).
+   */
+  setHiddenParams: (nodeId: string, hiddenIds: string[]) => Promise<void>;
   /**
    * G3-A — replace the plugin in a node in-place. No optimistic edit: the
    * replaced node's ports/name/params arrive via the next snapshot — never
@@ -470,6 +481,41 @@ export const useGraphStore = create<GraphStore>()((set) => ({
       set((s) => ({
         nodes: s.nodes.map((n) =>
           n.id === nodeId ? { ...n, oversample: prev } : n,
+        ),
+      }));
+    }
+  },
+
+  setHiddenParams: async (nodeId, hiddenIds) => {
+    let prev: string[] | undefined;
+    const next = [...hiddenIds];
+    set((s) => {
+      const node = s.nodes.find((n) => n.id === nodeId);
+      prev = node?.hiddenParams;
+      return {
+        nodes: s.nodes.map((n) =>
+          n.id === nodeId ? { ...n, hiddenParams: next } : n,
+        ),
+      };
+    });
+    try {
+      const ok = await nativeGraphSetNodeHiddenParams(nodeId, hiddenIds);
+      if (!ok) {
+        logBridgeError(
+          "useGraphStore.setHiddenParams",
+          `bridge rejected hiddenParams ${nodeId} → [${hiddenIds.join(",")}]`,
+        );
+        set((s) => ({
+          nodes: s.nodes.map((n) =>
+            n.id === nodeId ? { ...n, hiddenParams: prev } : n,
+          ),
+        }));
+      }
+    } catch (err) {
+      logBridgeError("useGraphStore.setHiddenParams", err);
+      set((s) => ({
+        nodes: s.nodes.map((n) =>
+          n.id === nodeId ? { ...n, hiddenParams: prev } : n,
         ),
       }));
     }
