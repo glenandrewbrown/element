@@ -1750,11 +1750,81 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                                     pluginEditorClose();
                             }
 
+                            // P2-A1 INTERACTION (c): primary delete-while-dived
+                            // truncation. If the node being removed is the dived
+                            // board (or an ancestor on boardPath), pop the path to
+                            // its surviving parent so the canvas exits to a valid
+                            // board. Idempotent w.r.t. the valueTreeChildRemoved
+                            // backstop (the UUID is gone from the path after this).
+                            truncateBoardPathOnNodeRemoval (n.getUuidString());
+
                             context.services().postMessage (new RemoveNodeMessage (n));
                             ok = true;
                         }
                     }
                 }
+            }
+            postCompletion (completion, ok);
+        });
+
+    // P2-A1 (host side of the container dive). The WV-canvas worker wires the
+    // double-click; these two natives move the host "current board" pointer the
+    // snapshot walks, then re-push the graph snapshot (the dive lives inside the
+    // graph snapshot, so scheduleGraphPush is the correct channel).
+    //
+    //   elementEnterContainer(nodeUuid : String) → bool
+    //     Dive INTO a Container Block. The node must be a DIRECT child of the
+    //     current board AND a graph (Node::isGraph()); otherwise it's a safe
+    //     no-op returning false. Any open embedded plugin editor is closed first
+    //     because its node lives on the (now parent) board.
+    registerFn (
+        Identifier ("elementEnterContainer"),
+        [this, postCompletion] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 1)
+            {
+                const String uuid (args[0].toString());
+                if (uuid.isNotEmpty())
+                {
+                    const Node board (currentBoard());
+                    if (board.isValid())
+                    {
+                        // recursive=false: only a DIRECT child of the current
+                        // board is a valid one-level dive target.
+                        const Node target (board.getNodeByUuid (Uuid (uuid), false));
+                        if (target.isValid() && target.isGraph())
+                        {
+                            // INTERACTION (b): the embed editor's node lives on
+                            // the parent board — close it before descending.
+                            if (pluginEmbedNodeUuid.isNotEmpty())
+                                pluginEditorClose();
+
+                            boardPath.add (uuid);
+                            scheduleGraphPush (40);
+                            ok = true;
+                        }
+                    }
+                }
+            }
+            postCompletion (completion, ok);
+        });
+
+    //   elementExitContainer() → bool
+    //     Pop ONE level off the board path (clamped at the top-level active
+    //     graph). Returns false when already at the top (nothing to exit). Any
+    //     open embedded plugin editor is closed first (same reason as enter).
+    registerFn (
+        Identifier ("elementExitContainer"),
+        [this, postCompletion] (const Array<var>&, auto completion) {
+            bool ok = false;
+            if (! boardPath.isEmpty())
+            {
+                if (pluginEmbedNodeUuid.isNotEmpty())
+                    pluginEditorClose();
+
+                boardPath.removeLast();
+                scheduleGraphPush (40);
+                ok = true;
             }
             postCompletion (completion, ok);
         });
@@ -2569,6 +2639,11 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                 {
                     if (isPositiveAndBelow (idx, sess->getNumGraphs()))
                     {
+                        // P2-A1: a top-level tab switch starts at that tab's TOP
+                        // board — drop any dive on the previous tab so the
+                        // snapshot doesn't try to walk a container UUID that
+                        // doesn't exist under the newly-activated graph.
+                        boardPath.clearQuick();
                         sess->setActiveGraph (idx);
                         if (auto* gui = context.services().find<GuiService>())
                             gui->stabilizeContent();
@@ -4984,6 +5059,67 @@ bool ElementWebViewHost::isUnderActiveGraph (const ValueTree& start) const
     return false;
 }
 
+Node ElementWebViewHost::currentBoard() const
+{
+    auto sess = context.session();
+    if (sess == nullptr)
+        return {};
+
+    // EMPTY boardPath ⇒ exactly the top-level active graph (== pre-dive
+    // behaviour). The loop below does not execute, so the returned Node is
+    // byte-for-byte the same object buildActiveGraphJson previously walked.
+    Node board (sess->getActiveGraph());
+    if (! board.isValid())
+        return board;
+
+    for (const auto& uuid : boardPath)
+    {
+        // Resolve ONE level down: the container must be a DIRECT child of the
+        // board we're currently standing on (recursive=false). A
+        // recursive=true search could jump levels / match a same-named UUID
+        // elsewhere in the tree, which would corrupt the path semantics.
+        const Node next (board.getNodeByUuid (Uuid (uuid), false));
+        if (! next.isValid() || ! next.isGraph())
+            break; // stale / non-container entry — stop at deepest valid board.
+        board = next;
+    }
+    return board;
+}
+
+bool ElementWebViewHost::isUnderCurrentBoard (const ValueTree& start) const
+{
+    // When boardPath is empty, currentBoard() == getActiveGraph(), so this
+    // walk is identical to isUnderActiveGraph (regression-safe by construction).
+    const Node board (currentBoard());
+    if (! board.isValid())
+        return false;
+    const ValueTree boardRoot = board.data();
+    ValueTree t = start;
+    while (t.isValid())
+    {
+        if (t == boardRoot)
+            return true;
+        t = t.getParent();
+    }
+    return false;
+}
+
+void ElementWebViewHost::truncateBoardPathOnNodeRemoval (const String& removedUuid)
+{
+    if (removedUuid.isEmpty() || boardPath.isEmpty())
+        return;
+
+    // If the removed node is the current board or any ancestor on the path,
+    // drop it and everything below it so the canvas exits to the surviving
+    // parent board rather than pointing at a deleted (now-invalid) graph.
+    const int idx = boardPath.indexOf (removedUuid);
+    if (idx >= 0)
+    {
+        boardPath.removeRange (idx, boardPath.size() - idx);
+        scheduleGraphPush (40);
+    }
+}
+
 bool ElementWebViewHost::shouldIgnoreSessionRootProperty (const Identifier& prop) const
 {
     return prop != tags::tempo && prop != tags::name;
@@ -5019,7 +5155,7 @@ void ElementWebViewHost::valueTreeChildAdded (ValueTree& parent, ValueTree&)
         return;
     }
     const ValueTree graphs = sessionRoot.getChildWithName (tags::graphs);
-    if (parent == graphs || isUnderActiveGraph (parent))
+    if (parent == graphs || isUnderCurrentBoard (parent))
         scheduleGraphPush (40);
 }
 
@@ -5039,6 +5175,15 @@ void ElementWebViewHost::valueTreeChildRemoved (ValueTree& parent, ValueTree& ch
         pluginEditorClose();
     }
 
+    // P2-A1 INTERACTION (c): if the removed node is the dived board or one of
+    // its ancestors on boardPath, truncate the path so the canvas exits to a
+    // surviving parent board rather than walking into a deleted graph. This is
+    // the belt-and-braces backstop (undo / session swap / Lua); the primary,
+    // earlier truncation also runs in the elementGraphRemoveNode handler. A
+    // removal whose UUID is not on the path (cables, ports, unrelated nodes) is
+    // a safe no-op. Always on the message thread (ValueTree listener contract).
+    truncateBoardPathOnNodeRemoval (child.getProperty (tags::uuid).toString());
+
     auto sess = context.session();
     if (sess == nullptr)
         return;
@@ -5049,7 +5194,7 @@ void ElementWebViewHost::valueTreeChildRemoved (ValueTree& parent, ValueTree& ch
         return;
     }
     const ValueTree graphs = sessionRoot.getChildWithName (tags::graphs);
-    if (parent == graphs || isUnderActiveGraph (parent))
+    if (parent == graphs || isUnderCurrentBoard (parent))
         scheduleGraphPush (40);
 }
 
@@ -5065,13 +5210,13 @@ void ElementWebViewHost::valueTreeChildOrderChanged (ValueTree& parent, int, int
         return;
     }
     const ValueTree graphs = sessionRoot.getChildWithName (tags::graphs);
-    if (parent == graphs || isUnderActiveGraph (parent))
+    if (parent == graphs || isUnderCurrentBoard (parent))
         scheduleGraphPush (40);
 }
 
 void ElementWebViewHost::valueTreeParentChanged (ValueTree& tree)
 {
-    if (isUnderActiveGraph (tree))
+    if (isUnderCurrentBoard (tree))
         scheduleGraphPush (40);
 }
 
@@ -5080,10 +5225,14 @@ void ElementWebViewHost::valueTreeRedirected (ValueTree& tree)
     auto sess = context.session();
     if (sess != nullptr && tree == sess->getValueTree())
     {
+        // P2-A1: the session root was redirected (new project loaded / session
+        // swap) — any dive from the previous project is meaningless now. Reset
+        // to the top board so the snapshot walks the freshly-loaded active graph.
+        boardPath.clearQuick();
         scheduleGraphPush (40);
         return;
     }
-    if (isUnderActiveGraph (tree))
+    if (isUnderCurrentBoard (tree))
         scheduleGraphPush (40);
 }
 
@@ -5243,7 +5392,11 @@ String ElementWebViewHost::buildActiveGraphJson() const
         root->setProperty ("engine", var (engine.get()));
     }
 
-    const Node gn (sess->getCurrentGraph());
+    // P2-A1: the snapshot walks the CURRENT BOARD, not the top-level active
+    // graph directly. When boardPath is empty (not dived) currentBoard() ==
+    // getActiveGraph() == getCurrentGraph(), so `gn` and everything derived
+    // from it below is byte-identical to the pre-dive output (regression guard).
+    const Node gn (currentBoard());
     if (! gn.isGraph())
     {
         DynamicObject::Ptr canvas (new DynamicObject());
@@ -5270,12 +5423,36 @@ String ElementWebViewHost::buildActiveGraphJson() const
     }
 
     const Graph G (gn);
-    root->setProperty ("activeGraphId", gn.getUuidString());
+    // activeGraphId / activeGraphIndex keep naming the TOP-LEVEL active graph
+    // TAB (unchanged — the React tab strip keys off these, and when NOT dived
+    // gn == getActiveGraph() so getUuidString() is the same value as the old
+    // gn.getUuidString()). currentBoardId names the board the canvas is actually
+    // showing; it is emitted ONLY when dived, so a NOT-dived snapshot adds no new
+    // key and stays byte-identical to the pre-dive output (hard regression guard).
+    root->setProperty ("activeGraphId", sess->getActiveGraph().getUuidString());
     root->setProperty ("activeGraphIndex", sess->getActiveGraphIndex());
+    if (! boardPath.isEmpty())
+        root->setProperty ("currentBoardId", gn.getUuidString());
 
+    // Real breadcrumb PATH: [sessionName, activeGraphName, container1, ...].
+    // Walk the same boardPath the snapshot walked, resolving each container's
+    // display name level-by-level. When boardPath is empty this reduces to
+    // EXACTLY the prior 2-tuple [sessionName, activeGraphName] (regression guard).
     Array<var> breadcrumbs;
     breadcrumbs.add (var (sess->getName()));
-    breadcrumbs.add (var (gn.getName()));
+    {
+        Node walk (sess->getActiveGraph());
+        if (walk.isValid())
+            breadcrumbs.add (var (walk.getName()));
+        for (const auto& uuid : boardPath)
+        {
+            const Node next (walk.getNodeByUuid (Uuid (uuid), false));
+            if (! next.isValid() || ! next.isGraph())
+                break;
+            breadcrumbs.add (var (next.getName()));
+            walk = next;
+        }
+    }
     root->setProperty ("breadcrumbs", var (breadcrumbs));
 
     appendCanvasJson (gn, G, root);
@@ -5474,7 +5651,10 @@ String ElementWebViewHost::buildCableLevelsJson() const
     if (sess == nullptr)
         return JSON::toString (var (items));
 
-    const Node gn (sess->getCurrentGraph());
+    // P2-A1: follow the CURRENT BOARD so the dived canvas's cable IDs (built
+    // from currentBoard() in buildActiveGraphJson) match these level rows. When
+    // not dived currentBoard() == getActiveGraph(), so output is unchanged.
+    const Node gn (currentBoard());
     if (! gn.isGraph())
         return JSON::toString (var (items));
 
@@ -5541,7 +5721,9 @@ String ElementWebViewHost::buildNodeMetersJson() const
     if (sess == nullptr)
         return JSON::toString (var (items));
 
-    const Node gn (sess->getCurrentGraph());
+    // P2-A1: follow the CURRENT BOARD so a dived Block's VU reflects its real
+    // signal (keyed by the dived node's UUID). Identical when not dived.
+    const Node gn (currentBoard());
     if (! gn.isGraph())
         return JSON::toString (var (items));
 
@@ -5576,7 +5758,9 @@ String ElementWebViewHost::buildNodeChannelLevelsJson() const
     if (sess == nullptr)
         return JSON::toString (var (items));
 
-    const Node gn (sess->getCurrentGraph());
+    // P2-A1: follow the CURRENT BOARD (per-lane meters for dived nodes). When
+    // not dived currentBoard() == getActiveGraph(), so output is unchanged.
+    const Node gn (currentBoard());
     if (! gn.isGraph())
         return JSON::toString (var (items));
 

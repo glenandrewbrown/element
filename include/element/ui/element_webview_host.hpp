@@ -91,6 +91,32 @@ private:
     bool isUnderActiveGraph (const juce::ValueTree& start) const;
     bool shouldIgnoreSessionRootProperty (const juce::Identifier& prop) const;
 
+    // ── Container dive (P2-A1, host side) ────────────────────────────────────
+    /** Navigation stack of nested-container node UUIDs, top-level → deepest.
+        EMPTY means "at the top-level active graph" — the default, identical to
+        pre-dive behaviour. Each entry is the UUID of a Container Block
+        (`Node::isGraph()`) one level deeper than the previous. */
+    juce::Array<juce::String> boardPath;
+
+    /** The board the snapshot currently walks. When `boardPath` is empty this is
+        EXACTLY `session->getActiveGraph()` (byte-identical to the pre-dive
+        snapshot). Otherwise it resolves the active graph and descends one
+        direct-child container per `boardPath` entry; an unresolvable / non-graph
+        entry stops the walk at the deepest valid board. */
+    Node currentBoard() const;
+
+    /** Like `isUnderActiveGraph` but rooted at `currentBoard()`. When not dived
+        (`boardPath` empty) `currentBoard() == getActiveGraph()`, so this reduces
+        to `isUnderActiveGraph` exactly. Used by the graph-mutation listeners so
+        edits INSIDE the dived board still schedule a push. */
+    bool isUnderCurrentBoard (const juce::ValueTree& start) const;
+
+    /** If `removedUuid` is the current board or one of its ancestors in
+        `boardPath`, truncate the path to just above the removed node so the
+        canvas exits to a surviving board instead of pointing at a deleted graph.
+        No-op when the removed node is not on the path. Message thread only. */
+    void truncateBoardPathOnNodeRemoval (const juce::String& removedUuid);
+
     juce::String buildActiveGraphJson() const;
     /** Per-cable levels for Web §2.4 (message thread; reads processor RMS / MIDI activity). */
     juce::String buildCableLevelsJson() const;
