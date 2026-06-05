@@ -51,6 +51,13 @@ interface AppState {
    * is never open immediately after reload). (P1-A)
    */
   embeddedEditorNodeId: string | null;
+  /**
+   * Flow-Debug mode: when true, every Cable renders a live mid-cable chip —
+   * audio dB / signed CV value / MIDI activity / dim "—" when no signal —
+   * the "see what's passing where" overlay (logic-routing-flow-debug plan).
+   * Session-only; never persisted.
+   */
+  flowDebug: boolean;
 }
 
 interface AppActions {
@@ -64,6 +71,7 @@ interface AppActions {
   getSpatialBookmark: (slot: string) => SpatialBookmark | undefined;
   toggleCableRouting: () => void;
   setCableRouting: (routing: CableRouting) => void;
+  toggleFlowDebug: () => void;
   markHostReady: () => void;
   requestGraphStateRefresh: () => void;
   setEmbeddedEditorNodeId: (nodeId: string | null) => void;
@@ -86,6 +94,7 @@ export const useAppStore = create<AppStore>()(
   hostReady: false,
   refreshNonce: 0,
   embeddedEditorNodeId: null,
+  flowDebug: false,
 
   markHostReady: () => set({ hostReady: true }),
 
@@ -147,6 +156,8 @@ export const useAppStore = create<AppStore>()(
     })),
 
   setCableRouting: (routing) => set({ cableRouting: routing }),
+
+  toggleFlowDebug: () => set((s) => ({ flowDebug: !s.flowDebug })),
     }),
     {
       // SHELVED (D3, hide-UI keep-code) — see FINISH-APP-PLAN. Perform mode is

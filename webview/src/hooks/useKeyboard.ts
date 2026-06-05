@@ -294,6 +294,15 @@ export function useKeyboard({
       // ── Plain keys ──
 
       switch (key) {
+        case "d":
+        case "D": {
+          // Flow-Debug overlay toggle (logic-routing plan W3): live per-cable
+          // readout chips. Distinct from Cmd+D (duplicate) handled above.
+          e.preventDefault();
+          useAppStore.getState().toggleFlowDebug();
+          return;
+        }
+
         case "Escape": {
           // Priority 1: CommandPalette open → close it.
           if (paletteOpen) {

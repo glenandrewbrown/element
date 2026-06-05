@@ -1,6 +1,7 @@
 import { memo } from "react";
 import {
   BaseEdge,
+  EdgeLabelRenderer,
   getSmoothStepPath,
   getBezierPath,
   type EdgeProps,
@@ -90,6 +91,17 @@ function CableComponent({
   const isSidechain = d?.isSidechain ?? false;
   const level = useCableMeterStore((s) => s.levels[id] ?? 0);
   const routing = useAppStore((s) => s.cableRouting);
+  // Flow-Debug mode (logic-routing plan W3): live per-cable readout chip.
+  // Both selectors return primitives so a steady graph never re-renders:
+  // `flowDebug` is a boolean; the CV value is display-quantised to 2dp INSIDE
+  // the selector, so sub-0.01 jitter fails Object.is equality checks upstream
+  // of React (the store's epsilon-diff already gates 60Hz pushes).
+  const flowDebug = useAppStore((s) => s.flowDebug);
+  const cvValue = useCableMeterStore((s) => {
+    // Optional-chained: tests/stories may replace-setState with only {levels}.
+    const v = s.values?.[id];
+    return v === undefined ? undefined : Math.round(v * 100) / 100;
+  });
   // Phase 5B — wireless: when this cable is on a named bus, hide the curve
   // and let the port-side bus badges represent the connection visually.
   const busName = useBusStore((s) => s.cableBus[id]);
@@ -113,7 +125,7 @@ function CableComponent({
     return (idx - (outPorts.length - 1) / 2) * MANHATTAN_FAN_PX;
   });
 
-  const [edgePath] =
+  const [edgePath, labelX, labelY] =
     routing === "bezier"
       ? getBezierPath({
           sourceX,
@@ -188,8 +200,77 @@ function CableComponent({
           animation: amp > 0.05 ? "signalPulse 1s linear infinite" : "none",
         }}
       />
+
+      {/* Flow-Debug readout chip (W3) — live engine data ONLY (NOTHING-fake):
+          audio → dB, value/CV → signed numeric, MIDI → activity, no signal →
+          dim "—" (also the intentional rendering for Control-sourced "value"
+          cables, which carry no numeric `v` by design). */}
+      {flowDebug && (
+        <EdgeLabelRenderer>
+          <div
+            data-testid={`flow-debug-chip-${id}`}
+            style={{
+              position: "absolute",
+              transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
+              pointerEvents: "none",
+              background: "#1A1A1E",
+              border: `1px solid ${chipActive(d?.signalType, amp, cvValue) ? color : "#2A2A2E"}`,
+              borderRadius: 4,
+              padding: "1px 5px",
+              fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+              fontSize: 9,
+              lineHeight: "12px",
+              color: chipActive(d?.signalType, amp, cvValue) ? color : "#8E8E93",
+              boxShadow:
+                "inset 1px 1px 2px rgba(0,0,0,0.4), inset -1px -1px 2px rgba(255,255,255,0.04)",
+              whiteSpace: "nowrap",
+              zIndex: 5,
+            }}
+          >
+            {chipText(d?.signalType, amp, cvValue)}
+          </div>
+        </EdgeLabelRenderer>
+      )}
     </>
   );
+}
+
+// ── Flow-Debug chip content ──
+// Pure functions of (signalType, presence amp, quantised CV value) so the chip
+// is trivially unit-testable and never invents data.
+
+/** True when the chip should light in the cable's signal colour. */
+export function chipActive(
+  signalType: string | undefined,
+  amp: number,
+  cvValue: number | undefined,
+): boolean {
+  if (signalType === "value") return cvValue !== undefined && Math.abs(cvValue) > 0.001;
+  return amp > 0.001;
+}
+
+/** The chip's text: audio → dB, value → signed 2dp, MIDI → activity, idle → "—". */
+export function chipText(
+  signalType: string | undefined,
+  amp: number,
+  cvValue: number | undefined,
+): string {
+  switch (signalType) {
+    case "value": {
+      // Control-sourced cables have no numeric feed (host folds Control+CV
+      // into "value" but only CV carries `v`) — show the idle dash.
+      if (cvValue === undefined) return "—";
+      return cvValue.toFixed(2);
+    }
+    case "midi":
+      return amp > 0.05 ? "● midi" : "—";
+    default: {
+      // Audio: presence as dBFS-ish readout from the calibrated level.
+      if (amp <= 0.001) return "—";
+      const db = 20 * Math.log10(amp);
+      return `${db.toFixed(1)} dB`;
+    }
+  }
 }
 
 export const Cable = memo(CableComponent);

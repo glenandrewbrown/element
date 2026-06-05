@@ -198,6 +198,8 @@ export function Toolbar() {
 
   const cableRouting = useAppStore(selectCableRouting);
   const setCableRouting = useAppStore((s) => s.setCableRouting);
+  const flowDebug = useAppStore((s) => s.flowDebug);
+  const toggleFlowDebug = useAppStore((s) => s.toggleFlowDebug);
 
   // F-04: format Hz → compact "44.1k" / "48k" / "96k" label for the SAMPLE
   // field. Falls back to an em-dash when the device hasn't reported a rate.
@@ -512,6 +514,23 @@ export function Toolbar() {
               BEZ
             </button>
           </div>
+
+          {/* Flow-Debug toggle — live per-cable signal readout chips (audio dB /
+              CV value / MIDI activity). Pressed-in while active with the
+              standard active micro-glow. Shortcut: D. */}
+          <button
+            type="button"
+            className={`px-2 h-7 rounded-[5px] text-[9px] font-black tracking-widest uppercase transition-colors t-precision ${
+              flowDebug
+                ? "neu-pressed-shallow bg-pressed text-accent-blue shadow-[0_0_4px_rgba(74,144,217,0.25)]"
+                : "neu-raised bg-surface text-text-secondary hover:text-text-primary"
+            }`}
+            title="Flow Debug — live signal readout on every cable (D)"
+            aria-pressed={flowDebug}
+            onClick={toggleFlowDebug}
+          >
+            FLOW
+          </button>
 
           {/* U11 — Multi-instance switcher. Honest "1×" disabled pill in the
               standalone app / single-instance host; a dropdown to mirror a peer

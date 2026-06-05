@@ -3,10 +3,21 @@ import { useShallow } from "zustand/react/shallow";
 import { useGraphStore } from "./useGraphStore";
 import type { CableData } from "../data/types";
 
+/** One per-cable level row pushed by the host (~60Hz, full snapshot). */
+export interface CableLevelItem {
+  id: string;
+  /** Unsigned presence 0–1 (audio RMS / MIDI activity / |CV|). */
+  level: number;
+  /** SIGNED CV value — present only on CV-sourced cables (flow-debug readout). */
+  v?: number;
+}
+
 /** Per-cable signal level 0–1 from host (audio RMS / MIDI activity), keyed by edge id. */
 interface CableMeterState {
   levels: Record<string, number>;
-  setCableLevels: (items: Array<{ id: string; level: number }>) => void;
+  /** Signed CV values, keyed by edge id — only CV-sourced cables have an entry. */
+  values: Record<string, number>;
+  setCableLevels: (items: CableLevelItem[]) => void;
 }
 
 /** Below this absolute delta a meter change is visually imperceptible. */
@@ -14,29 +25,47 @@ const LEVEL_EPSILON = 0.001;
 
 export const useCableMeterStore = create<CableMeterState>()((set) => ({
   levels: {},
+  values: {},
   setCableLevels: (items) =>
     set((state) => {
       const levels: Record<string, number> = {};
-      for (const { id, level } of items) levels[id] = level;
+      const values: Record<string, number> = {};
+      for (const item of items) {
+        levels[item.id] = item.level;
+        if (typeof item.v === "number") values[item.id] = item.v;
+      }
       // Diff before set. The host pushes a FULL snapshot of every cable
       // ~60Hz; without this an idle/steady graph re-notifies every Cable
       // subscriber every frame forever (session-drift perf plan Rank 1).
-      // Returning the unchanged `levels` reference keeps subscriber slices
-      // identical, so React skips the re-render.
-      const prev = state.levels;
-      const prevKeys = Object.keys(prev);
-      if (prevKeys.length === items.length) {
+      // Returning the unchanged references keeps subscriber slices
+      // identical, so React skips the re-render. The epsilon-diff covers
+      // BOTH records — a steady CV value must not re-render its chip.
+      const prevLevels = state.levels;
+      const prevValues = state.values;
+      if (
+        Object.keys(prevLevels).length === items.length &&
+        Object.keys(prevValues).length === Object.keys(values).length
+      ) {
         let changed = false;
         for (const key in levels) {
-          const before = prev[key];
+          const before = prevLevels[key];
           if (before === undefined || Math.abs(before - levels[key]) > LEVEL_EPSILON) {
             changed = true;
             break;
           }
         }
-        if (!changed) return { levels: prev };
+        if (!changed) {
+          for (const key in values) {
+            const before = prevValues[key];
+            if (before === undefined || Math.abs(before - values[key]) > LEVEL_EPSILON) {
+              changed = true;
+              break;
+            }
+          }
+        }
+        if (!changed) return { levels: prevLevels, values: prevValues };
       }
-      return { levels };
+      return { levels, values };
     }),
 }));
 

@@ -3,6 +3,7 @@ import type { Node, Edge } from "@xyflow/react";
 import { MiniFlow } from "../../../.storybook/decorators";
 import { Cable } from "./Cable";
 import type { CableData, SignalType } from "../../data/types";
+import { useAppStore } from "../../stores/useAppStore";
 import { useBusStore } from "../../stores/useBusStore";
 import { useCableMeterStore } from "../../stores/useCableMeterStore";
 
@@ -41,7 +42,8 @@ const edgeTypes = { cable: Cable };
 
 function resetStores() {
   useBusStore.setState({ cableBus: {} });
-  useCableMeterStore.setState({ levels: {} });
+  useCableMeterStore.setState({ levels: {}, values: {} });
+  useAppStore.setState({ flowDebug: false });
 }
 
 // Render-only edge stories drive everything through MiniFlow, so the story
@@ -168,6 +170,65 @@ export const ActiveWithSignal: Story = {
     },
   ],
 };
+
+// ── Flow-Debug chips (logic-routing plan W3) ──
+// VISUAL-ONLY coverage: these stories inject store fixtures to exercise the
+// chip's render states. They CANNOT and do not verify engine behaviour — the
+// engine path is gated by test/engine/CVFlowTests.cpp + the live OSC check.
+
+function flowDebugStory(
+  doc: string,
+  data: Partial<CableData>,
+  meter: { levels?: Record<string, number>; values?: Record<string, number> },
+): Story {
+  return {
+    parameters: { docs: { description: { story: doc } } },
+    render: () => (
+      <MiniFlow nodes={nodes} edges={[edge(makeCable(data))]} edgeTypes={edgeTypes} height={220} />
+    ),
+    decorators: [
+      (Story) => {
+        resetStores();
+        useCableMeterStore.setState({
+          levels: meter.levels ?? {},
+          values: meter.values ?? {},
+        });
+        useAppStore.setState({ flowDebug: true });
+        return <Story />;
+      },
+    ],
+  };
+}
+
+export const FlowDebugAudioHot: Story = flowDebugStory(
+  "Flow-Debug on an active audio Cable — mid-cable chip reads the live level as dB in the cable's blue.",
+  { signalType: "audio" },
+  { levels: { "cab-1": 0.5 } },
+);
+
+export const FlowDebugAudioSilent: Story = flowDebugStory(
+  "Flow-Debug on a silent audio Cable — dim '—' chip: the blocked/no-signal state a gated path shows.",
+  { signalType: "audio" },
+  { levels: { "cab-1": 0 } },
+);
+
+export const FlowDebugCvValue: Story = flowDebugStory(
+  "Flow-Debug on a CV Cable — the chip shows the SIGNED live value (here -0.80) in value-orange; this is the conditional-routing readout (a Comparator emitting 0/1 reads as 0.00/1.00).",
+  { signalType: "value" },
+  { levels: { "cab-1": 0.8 }, values: { "cab-1": -0.8 } },
+);
+
+export const FlowDebugMidiActive: Story = flowDebugStory(
+  "Flow-Debug on an active MIDI Cable — '● midi' activity chip in teal while events pass.",
+  { signalType: "midi" },
+  { levels: { "cab-1": 0.75 } },
+);
+
+export const FlowDebugControlValueDash: Story = flowDebugStory(
+  "Flow-Debug on a Control-sourced value Cable — intentionally shows '—' (Control carries no numeric feed; only CV does). Not a defect.",
+  { signalType: "value" },
+  { levels: { "cab-1": 0.75 } },
+);
 
 // Wireless cable on a named bus. The badge lives in Block.tsx; the cable
 // itself draws only a faint dotted ghost, and only when selected — so the
