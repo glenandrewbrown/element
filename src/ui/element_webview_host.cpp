@@ -1080,7 +1080,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                 {
                     if (auto sess = context.session())
                     {
-                        const Graph G (sess->getCurrentGraph());
+                        const Graph G (currentBoard());
                         const Node n = findNodeByUuidInGraph (G, uuid);
                         if (auto* proc = n.getObject())
                         {
@@ -1126,7 +1126,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                 {
                     if (auto sess = context.session())
                     {
-                        const Graph G (sess->getCurrentGraph());
+                        const Graph G (currentBoard());
                         const Node n = findNodeByUuidInGraph (G, uuid);
                         if (auto* proc = n.getObject())
                         {
@@ -1157,7 +1157,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                 const String uuid (args[0].toString());
                 if (auto sess = context.session())
                 {
-                    const Graph G (sess->getCurrentGraph());
+                    const Graph G (currentBoard());
                     const Node n = findNodeByUuidInGraph (G, uuid);
                     if (n.isValid())
                         if (auto* sbn = dynamic_cast<SandboxedProcessorNode*> (n.getObject()))
@@ -1187,7 +1187,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                 const int sy = args.size() >= 3 ? (int) args[2] : 0;
                 if (auto sess = context.session())
                 {
-                    const Graph G (sess->getCurrentGraph());
+                    const Graph G (currentBoard());
                     const Node n = findNodeByUuidInGraph (G, uuid);
                     if (n.isValid())
                         if (auto* sbn = dynamic_cast<SandboxedProcessorNode*> (n.getObject()))
@@ -1212,7 +1212,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                 const String uuid (args[0].toString());
                 if (auto sess = context.session())
                 {
-                    const Graph G (sess->getCurrentGraph());
+                    const Graph G (currentBoard());
                     const Node n = findNodeByUuidInGraph (G, uuid);
                     if (n.isValid())
                         if (auto* sbn = dynamic_cast<SandboxedProcessorNode*> (n.getObject()))
@@ -1440,7 +1440,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             {
                 if (auto sess = context.session())
                 {
-                    const Graph G (sess->getCurrentGraph());
+                    const Graph G (currentBoard());
                     if (G.isGraph())
                     {
                         const Node n = findNodeByUuidInGraph (G, args[0].toString());
@@ -1463,7 +1463,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             {
                 if (auto sess = context.session())
                 {
-                    const Graph G (sess->getCurrentGraph());
+                    const Graph G (currentBoard());
                     if (G.isGraph())
                     {
                         const Node n = findNodeByUuidInGraph (G, args[0].toString());
@@ -1494,7 +1494,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             {
                 if (auto sess = context.session())
                 {
-                    const Graph G (sess->getCurrentGraph());
+                    const Graph G (currentBoard());
                     if (G.isGraph())
                     {
                         const Node n = findNodeByUuidInGraph (G, args[0].toString());
@@ -1543,7 +1543,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             {
                 if (auto sess = context.session())
                 {
-                    const Graph G (sess->getCurrentGraph());
+                    const Graph G (currentBoard());
                     if (G.isGraph())
                     {
                         const Node n = findNodeByUuidInGraph (G, args[0].toString());
@@ -1681,7 +1681,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                 if (const auto* desc = findKnownPluginByIdentifier (context.plugins().getKnownPlugins(), identifier))
                 {
                     auto sess = context.session();
-                    const Node graph (sess != nullptr ? sess->getCurrentGraph() : Node());
+                    const Node graph (sess != nullptr ? currentBoard() : Node());
                     if (graph.isGraph())
                     {
                         context.services().postMessage (new AddPluginMessage (graph, *desc, true));
@@ -1724,7 +1724,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             {
                 if (auto sess = context.session())
                 {
-                    const Graph G (sess->getCurrentGraph());
+                    const Graph G (currentBoard());
                     if (G.isGraph())
                     {
                         const Node n = findNodeByUuidInGraph (G, args[0].toString());
@@ -1845,7 +1845,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             {
                 if (auto sess = context.session())
                 {
-                    const Graph G (sess->getCurrentGraph());
+                    const Graph G (currentBoard());
                     if (G.isGraph())
                     {
                         const Node n = findNodeByUuidInGraph (G, args[0].toString());
@@ -1879,7 +1879,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             {
                 if (auto sess = context.session())
                 {
-                    const Graph G (sess->getCurrentGraph());
+                    const Graph G (currentBoard());
                     if (G.isGraph())
                     {
                         Node n = findNodeByUuidInGraph (G, args[0].toString());
@@ -1920,7 +1920,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             {
                 if (auto sess = context.session())
                 {
-                    const Graph G (sess->getCurrentGraph());
+                    const Graph G (currentBoard());
                     if (G.isGraph())
                     {
                         Node n = findNodeByUuidInGraph (G, args[0].toString());
@@ -1959,7 +1959,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             {
                 if (auto sess = context.session())
                 {
-                    const Graph G (sess->getCurrentGraph());
+                    const Graph G (currentBoard());
                     if (G.isGraph())
                     {
                         const Node n = findNodeByUuidInGraph (G, args[0].toString());
@@ -1987,7 +1987,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             {
                 if (auto sess = context.session())
                 {
-                    const Graph G (sess->getCurrentGraph());
+                    const Graph G (currentBoard());
                     if (G.isGraph())
                     {
                         const Node src = findNodeByUuidInGraph (G, args[0].toString());
@@ -2014,7 +2014,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             {
                 if (auto sess = context.session())
                 {
-                    const Graph G (sess->getCurrentGraph());
+                    const Graph G (currentBoard());
                     if (G.isGraph())
                     {
                         const Node src = findNodeByUuidInGraph (G, args[0].toString());
@@ -2048,7 +2048,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                         const double y = (double) obj->getProperty ("y");
                         if (auto sess = context.session())
                         {
-                            const Graph G (sess->getCurrentGraph());
+                            const Graph G (currentBoard());
                             if (G.isGraph())
                             {
                                 Node n = findNodeByUuidInGraph (G, id);
@@ -2083,7 +2083,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             {
                 if (auto sess = context.session())
                 {
-                    const Graph G (sess->getCurrentGraph());
+                    const Graph G (currentBoard());
                     if (G.isGraph())
                     {
                         for (const auto& item : *args[0].getArray())
@@ -2117,7 +2117,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             {
                 if (auto sess = context.session())
                 {
-                    const Graph G (sess->getCurrentGraph());
+                    const Graph G (currentBoard());
                     if (G.isGraph())
                     {
                         Node n = findNodeByUuidInGraph (G, args[0].toString());
@@ -2143,7 +2143,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             if (args.size() >= 2)
                 if (auto sess = context.session())
                 {
-                    const Graph G (sess->getCurrentGraph());
+                    const Graph G (currentBoard());
                     if (G.isGraph())
                     {
                         Node n = findNodeByUuidInGraph (G, args[0].toString());
@@ -2166,7 +2166,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             if (args.size() >= 2)
                 if (auto sess = context.session())
                 {
-                    const Graph G (sess->getCurrentGraph());
+                    const Graph G (currentBoard());
                     if (G.isGraph())
                     {
                         Node n = findNodeByUuidInGraph (G, args[0].toString());
@@ -2189,7 +2189,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             if (args.size() >= 2)
                 if (auto sess = context.session())
                 {
-                    Graph G (sess->getCurrentGraph());
+                    Graph G (currentBoard());
                     if (G.isGraph())
                     {
                         ValueTree wc = ensureWebCanvasInGraph (G);
@@ -2210,7 +2210,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             if (args.size() >= 3)
                 if (auto sess = context.session())
                 {
-                    Graph G (sess->getCurrentGraph());
+                    Graph G (currentBoard());
                     if (G.isGraph())
                     {
                         ValueTree wc = ensureWebCanvasInGraph (G);
@@ -2233,7 +2233,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             {
                 if (auto sess = context.session())
                 {
-                    const Graph G (sess->getCurrentGraph());
+                    const Graph G (currentBoard());
                     if (G.isGraph())
                     {
                         const Node n = findNodeByUuidInGraph (G, args[0].toString());
@@ -2289,7 +2289,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             {
                 if (auto sess = context.session())
                 {
-                    const Graph G (sess->getCurrentGraph());
+                    const Graph G (currentBoard());
                     if (G.isGraph())
                     {
                         Node n = findNodeByUuidInGraph (G, args[0].toString());
@@ -2316,7 +2316,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             {
                 if (auto sess = context.session())
                 {
-                    const Graph G (sess->getCurrentGraph());
+                    const Graph G (currentBoard());
                     if (G.isGraph())
                     {
                         Node n = findNodeByUuidInGraph (G, args[0].toString());
@@ -2342,7 +2342,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                 const var& ids = args[0];
                 if (auto sess = context.session())
                 {
-                    const Graph G (sess->getCurrentGraph());
+                    const Graph G (currentBoard());
                     if (G.isGraph())
                     {
                         if (ids.isArray())
@@ -2395,7 +2395,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             int count = 0;
             if (auto sess = context.session())
             {
-                const Graph G (sess->getCurrentGraph());
+                const Graph G (currentBoard());
                 if (G.isGraph())
                 {
                     for (const auto& uuid : graphCopyPasteboard)
@@ -2420,7 +2420,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             bool ok = false;
             if (auto sess = context.session())
             {
-                Graph G (sess->getCurrentGraph());
+                Graph G (currentBoard());
                 if (G.isGraph())
                 {
                     double x = 80, y = 80, w = 240, h = 160;
@@ -2462,7 +2462,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                 {
                     if (auto sess = context.session())
                     {
-                        Graph G (sess->getCurrentGraph());
+                        Graph G (currentBoard());
                         if (G.isGraph())
                         {
                             ValueTree boxes = ensureCommentBoxesContainer (G);
@@ -2513,7 +2513,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                 const String id = args[0].toString();
                 if (auto sess = context.session())
                 {
-                    Graph G (sess->getCurrentGraph());
+                    Graph G (currentBoard());
                     if (G.isGraph())
                     {
                         ValueTree ui = G.getUIValueTree();
@@ -2932,7 +2932,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             if (args.size() >= 1)
                 if (auto sess = context.session())
                 {
-                    Node graphNode = sess->getCurrentGraph();
+                    Node graphNode = currentBoard();
                     if (graphNode.isGraph())
                     {
                         const String molName = args[0].toString();
@@ -3226,7 +3226,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             bool ok = false;
             if (auto sess = context.session())
             {
-                const Node gn (sess->getCurrentGraph());
+                const Node gn (currentBoard());
                 if (gn.isGraph())
                 {
                     const Graph G (gn);
@@ -3331,7 +3331,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
 
                             if (auto sess = context.session())
                             {
-                                const Node gn (sess->getCurrentGraph());
+                                const Node gn (currentBoard());
                                 if (gn.isGraph())
                                 {
                                     const Graph G (gn);
@@ -3376,7 +3376,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             Array<var> cables;
             if (auto sess = context.session())
             {
-                const Node gn (sess->getCurrentGraph());
+                const Node gn (currentBoard());
                 if (gn.isGraph())
                 {
                     const Graph G (gn);
@@ -3464,7 +3464,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             if (! sess)
                 return fail ("no active session");
 
-            const Graph G (sess->getCurrentGraph());
+            const Graph G (currentBoard());
             if (! G.isGraph())
                 return fail ("no active graph");
 
@@ -3566,7 +3566,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             if (! sess)
                 return fail ("no active session");
 
-            const Graph G (sess->getCurrentGraph());
+            const Graph G (currentBoard());
             if (! G.isGraph())
                 return fail ("no active graph");
 
@@ -3653,7 +3653,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             if (! sess)
                 return fail ("no active session");
 
-            Graph G (sess->getCurrentGraph());
+            Graph G (currentBoard());
             if (! G.isGraph())
                 return fail ("no active graph");
 
@@ -3689,7 +3689,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             juce::Array<juce::var> items;
             if (auto sess = context.session())
             {
-                const Graph G (sess->getCurrentGraph());
+                const Graph G (currentBoard());
                 if (G.isGraph())
                 {
                     const juce::ValueTree ui = G.getUIValueTree();
@@ -3730,7 +3730,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                 {
                     if (auto sess = context.session())
                     {
-                        Graph G (sess->getCurrentGraph());
+                        Graph G (currentBoard());
                         if (G.isGraph())
                         {
                             juce::ValueTree ui = G.getUIValueTree();
@@ -3792,7 +3792,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             if (! sess)
                 return fail ("no active session");
 
-            Graph G (sess->getCurrentGraph());
+            Graph G (currentBoard());
             if (! G.isGraph())
                 return fail ("no active graph");
 
@@ -3867,7 +3867,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             juce::Array<juce::var> items;
             if (auto sess = context.session())
             {
-                const Graph G (sess->getCurrentGraph());
+                const Graph G (currentBoard());
                 if (G.isGraph())
                 {
                     const juce::ValueTree ui = G.getUIValueTree();
@@ -3977,7 +3977,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                 const var& ids = args[0];
                 if (auto sess = context.session())
                 {
-                    const Graph G (sess->getCurrentGraph());
+                    const Graph G (currentBoard());
                     if (G.isGraph())
                     {
                         if (ids.isArray())
@@ -4067,7 +4067,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             if (! sess)
                 return fail ("no active session");
 
-            Graph G (sess->getCurrentGraph());
+            Graph G (currentBoard());
             if (! G.isGraph())
                 return fail ("no active graph");
 
@@ -4138,7 +4138,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             juce::Array<juce::var> items;
             if (auto sess = context.session())
             {
-                const Graph G (sess->getCurrentGraph());
+                const Graph G (currentBoard());
                 if (G.isGraph())
                 {
                     const juce::ValueTree ui = G.getUIValueTree();
@@ -4196,7 +4196,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             if (sess == nullptr)
                 return fail ("no session");
 
-            Node gn (sess->getCurrentGraph());
+            Node gn (currentBoard());
             if (! gn.isGraph())
                 return fail ("no active graph");
 
@@ -4284,7 +4284,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             if (sess == nullptr)
                 return fail ("no session");
 
-            Node gn (sess->getCurrentGraph());
+            Node gn (currentBoard());
             if (! gn.isGraph())
                 return fail ("no active graph");
 
@@ -4365,7 +4365,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             if (sess == nullptr)
                 return fail ("no session");
 
-            const Graph G (sess->getCurrentGraph());
+            const Graph G (currentBoard());
             if (! G.isGraph())
                 return fail ("no active graph");
 
@@ -4409,7 +4409,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             if (sess == nullptr)
                 return fail ("no session");
 
-            const Graph G (sess->getCurrentGraph());
+            const Graph G (currentBoard());
             if (! G.isGraph())
                 return fail ("no active graph");
 
@@ -4868,7 +4868,7 @@ void ElementWebViewHost::pluginEditorOpen (const String& nodeUuid, int x, int y,
     if (sess == nullptr || nodeUuid.isEmpty())
         return;
 
-    const Graph G (sess->getCurrentGraph());
+    const Graph G (currentBoard());
     const Node n = findNodeByUuidInGraph (G, nodeUuid);
     if (! n.isValid())
         return;
@@ -4908,7 +4908,7 @@ void ElementWebViewHost::pluginEditorFloat()
     if (sess == nullptr || gui == nullptr)
         return;
 
-    const Graph G (sess->getCurrentGraph());
+    const Graph G (currentBoard());
     const Node n = findNodeByUuidInGraph (G, pluginEmbedNodeUuid);
     if (n.isValid())
         gui->presentPluginWindow (n, true);
@@ -4968,7 +4968,7 @@ void ElementWebViewHost::timerCallback()
     {
         if (auto sess = context.session())
         {
-            const Graph G (sess->getCurrentGraph());
+            const Graph G (currentBoard());
             for (auto it = spectrumSubscriptions.begin(); it != spectrumSubscriptions.end();)
             {
                 const Node n = findNodeByUuidInGraph (G, String (*it));
@@ -5276,7 +5276,7 @@ void ElementWebViewHost::emitSandboxEventToWeb (juce::uint32 nodeId, int kind, c
         String uuid;
         if (auto sess = self->context.session())
         {
-            const Graph G (sess->getCurrentGraph());
+            const Graph G (self->currentBoard());
             uuid = nodeUuidFromGraphNodeId (G, nodeId);
         }
 
@@ -5907,7 +5907,7 @@ String ElementWebViewHost::buildNodeParametersJson (const String& nodeUuid) cons
         return JSON::toString (var (root.get()));
     }
 
-    const Graph G (sess->getCurrentGraph());
+    const Graph G (currentBoard());
     if (! G.isGraph())
     {
         root->setProperty ("parameters", var (params));
@@ -5965,7 +5965,7 @@ void ElementWebViewHost::pushParameterUpdates()
     if (sess == nullptr)
         return;
 
-    const Graph G (sess->getCurrentGraph());
+    const Graph G (currentBoard());
     if (! G.isGraph())
         return;
 
@@ -6041,7 +6041,7 @@ bool ElementWebViewHost::setNodeParameterValue (const String& nodeUuid, int para
     if (sess == nullptr || nodeUuid.isEmpty())
         return false;
 
-    const Graph G (sess->getCurrentGraph());
+    const Graph G (currentBoard());
     if (! G.isGraph())
         return false;
 
