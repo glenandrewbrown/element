@@ -11,9 +11,38 @@
 // Exit 0 = every story rendered clean. Exit 1 = at least one failed.
 
 import { chromium } from "@playwright/test";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
 
 const BASE = process.env.SB_URL ?? "http://localhost:6006";
 const filter = process.argv[2] ?? "";
+
+// ── NOTHING-fake gate (P3-B / GATE-NODE) ─────────────────────────────────────
+// Block.tsx once rendered a hardcoded 2×2 grid of invented child names
+// ("NODE_A".."NODE_D") as a Container's in-canvas preview — a NOTHING-fake
+// violation (fabricated node identities). It was replaced by an honest real
+// child-count affordance. This guard fails the build if that literal ever
+// returns to the PRODUCTION render site.
+//
+// SCOPE: EXACTLY Block.tsx — do NOT broaden to src/components/** (or grep the
+// tree). "NODE_A"/"NODE_B" are legitimate test-fixture variable names in
+// BusInspector.test.tsx, and "NODE_ID" appears in NodeContextMenu.stories.tsx;
+// a broad match would false-fail on honest code.
+function checkNoFakeNodeLabels() {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const blockPath = path.resolve(here, "../src/components/canvas/Block.tsx");
+  const src = readFileSync(blockPath, "utf8");
+  if (src.includes("NODE_")) {
+    console.error(
+      `\n✗ NOTHING-fake gate FAILED: ${blockPath} contains the literal "NODE_".\n` +
+        `  The Container preview must show the REAL child count (containerNodeCount),\n` +
+        `  never fabricated "NODE_x" placeholder identities. Remove the literal.`,
+    );
+    return false;
+  }
+  return true;
+}
 
 // Ignore noisy-but-harmless console messages (Storybook/React dev chatter).
 const IGNORE = [
@@ -96,9 +125,16 @@ for (const { id, viewMode } of items) {
 await browser.close();
 
 console.log(`\n${items.length - failures.length}/${items.length} entries rendered clean.`);
+
+// Static NOTHING-fake gate — runs regardless of story results so a reintroduced
+// fake label fails CI even if every story still renders.
+const noFakeLabels = checkNoFakeNodeLabels();
+
 if (failures.length) {
   console.log(`\n${failures.length} FAILED:`);
   for (const f of failures) console.log(`  - ${f.id}`);
+}
+if (failures.length || !noFakeLabels) {
   process.exit(1);
 }
 process.exit(0);

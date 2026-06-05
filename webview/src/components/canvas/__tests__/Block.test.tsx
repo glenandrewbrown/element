@@ -200,11 +200,25 @@ describe("<Block />", () => {
 
   // ── Container / Portal labels ─────────────────────────────────────────────
 
-  it("shows nested placeholder blocks for Container blocks", () => {
+  it("shows the honest real child-count affordance for Container blocks (P3-B)", () => {
+    // The old fake 2×2 "NODE_A…NODE_D" placeholder grid was a NOTHING-fake
+    // violation (invented identities) and is gone. A Container now shows its
+    // REAL child count (engine getNumNodes() → containerNodeCount) and an
+    // "open to edit" affordance — the dive opens the actual nested Board.
     renderBlock({ containerNodeCount: 4 });
-    // Container renders NODE_A…NODE_D placeholder labels (capped at 4)
-    expect(screen.getByText("NODE_A")).toBeInTheDocument();
-    expect(screen.getByText("NODE_D")).toBeInTheDocument();
+    expect(screen.getByText("4 Blocks — open to edit")).toBeInTheDocument();
+    // No fabricated per-child labels remain.
+    expect(screen.queryByText("NODE_A")).toBeNull();
+  });
+
+  it("pluralises the child count honestly (1 Block, not 1 Blocks)", () => {
+    renderBlock({ containerNodeCount: 1 });
+    expect(screen.getByText("1 Block — open to edit")).toBeInTheDocument();
+  });
+
+  it("shows an Empty affordance for a Container with zero children", () => {
+    renderBlock({ containerNodeCount: 0 });
+    expect(screen.getByText("Empty — open to edit")).toBeInTheDocument();
   });
 
   it("shows PORTAL label for portal blocks", () => {

@@ -8,7 +8,7 @@ import {
   selectEdges,
 } from "../../stores/useGraphStore";
 import { useBusStore } from "../../stores/useBusStore";
-import { useBlockNodeLevel } from "../../stores/useNodeMeterStore";
+import { useBlockNodeLevelBallistic } from "../../hooks/useBlockNodeLevelBallistic";
 import {
   useSandboxCrashStore,
   selectSandboxNeedsAttention,
@@ -608,19 +608,28 @@ function FunctionIcon({
 // floor → amber shoulder (last ~4) → red ceiling (last ~2). Honest: `level` is
 // real 0–1 amplitude and defaults to 0 (idle) — never fabricates motion. The
 // strip flexes to fill remaining deck width (two stacked = L/R).
+//
+// `stale` = no host frame for >250ms (engine wedged / dead — see P3-A
+// ballistics). When stale the ladder renders as a uniform DIMMED GREY no-data
+// bar (every cell dark, zero lit, no green/amber/red), so a frozen reading can
+// never masquerade as live signal. Stays subtle + on-brand (recessed neumorphic
+// well); it reads as "no data", not as an alarm.
 function RmsMeter({
   level = 0,
   active,
   clip,
   accent,
+  stale = false,
 }: {
   level?: number;
   active: boolean;
   clip: boolean;
   accent: string;
+  stale?: boolean;
 }) {
   const SEG = 14;
-  const lit = clip ? SEG : Math.round(level * SEG);
+  // Stale ⇒ zero cells lit (no-data), regardless of any frozen `level`.
+  const lit = stale ? 0 : clip ? SEG : Math.round(level * SEG);
   return (
     <div
       className="flex gap-[1.5px] h-[7px] items-stretch"
@@ -641,11 +650,15 @@ function RmsMeter({
         const isClipSeg = i >= SEG - 2;
         const isWarnSeg = i >= SEG - 5;
         const litThis = i < lit;
-        const segColor = isClipSeg
-          ? "hsl(var(--status-clip))"
-          : isWarnSeg
-            ? "hsl(var(--status-warn))"
-            : "hsl(var(--status-ok))";
+        // Stale: drop the semantic ramp entirely — every cell is a neutral grey
+        // recessed bar (no-data), so the strip can't be mistaken for signal.
+        const segColor = stale
+          ? "hsl(240 6% 42%)"
+          : isClipSeg
+            ? "hsl(var(--status-clip))"
+            : isWarnSeg
+              ? "hsl(var(--status-warn))"
+              : "hsl(var(--status-ok))";
         void accent;
         return (
           <div
@@ -656,8 +669,10 @@ function RmsMeter({
               // that SAME colour crushed to a dim recessed bar so the meter
               // reads as a real LED ladder at rest (every cell visible, none
               // misreading as "hot"). Honest: lit count = real level only.
+              // Stale: all cells crushed to a faint uniform grey (no-data) —
+              // slightly dimmer than the live unlit floor so it reads "off".
               background: segColor,
-              opacity: litThis ? (active ? 1 : 0.45) : 0.16,
+              opacity: stale ? 0.12 : litThis ? (active ? 1 : 0.45) : 0.16,
               boxShadow: litThis
                 ? `0 0 2px ${segColor}, inset 0 0.5px 0 rgba(255,255,255,0.3)`
                 : "inset 0 0.5px 1px rgba(0,0,0,0.6)",
@@ -793,13 +808,19 @@ function BlockComponent({ data, selected }: NodeProps) {
   const toggleMute = useGraphStore((s) => s.toggleMute);
 
   // ── VU level (Q-VU-PER-BLOCK D1 — per-node output RMS) — REAL signal ──
-  // Reads the host's per-node output RMS directly from useNodeMeterStore, which
-  // the bridge populates ~60Hz from graphbuilder.cpp's atomic per-channel RMS.
-  // Supersedes the old cable-derived `useBlockOutputLevel` path: terminal /
-  // unconnected / output-only blocks now meter REAL signal (not idle 0).
-  // Called unconditionally (before any early return) so hook order is stable
-  // across zoom/container/portal branches.
-  const meterLevel = useBlockNodeLevel(d.id);
+  // Reads the host's per-node output RMS (populated ~60Hz from graphbuilder.cpp's
+  // atomic per-channel RMS) through the falling-envelope ballistics (P3-A): the
+  // display snaps UP instantly on a host push and decays toward 0 between
+  // pushes, so a stopped-but-alive engine falls to 0 and HOLDS 0 instead of
+  // freezing on the last value. `meterState` distinguishes honest idle (engine
+  // alive, no signal) from "stale" (no host frame for >250ms → no-data), which
+  // the meter renders dimmed/grey rather than as a coloured reading. Supersedes
+  // the cable-derived path: terminal / unconnected / output-only blocks meter
+  // REAL signal (not idle 0). Called unconditionally (before any early return)
+  // so hook order is stable across zoom/container/portal branches.
+  const { level: meterLevel, state: meterState } = useBlockNodeLevelBallistic(
+    d.id,
+  );
 
   // ── On-Block knobs (verdict 1) — live param values + real host write ──
   // Read the first N param values for this Block off the 15 Hz delta channel.
@@ -921,19 +942,29 @@ function BlockComponent({ data, selected }: NodeProps) {
             ⤢
           </span>
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          {Array.from({ length: Math.min(d.containerNodeCount ?? 2, 4) }).map(
-            (_, i) => (
-              <div
-                key={i}
-                className="h-14 rounded bg-[#252529] opacity-40 border border-dashed border-white/10 flex items-center justify-center text-[10px] text-text-secondary"
-                style={{ boxShadow: shadowRaised }}
-              >
-                NODE_{String.fromCharCode(65 + i)}
-              </div>
-            ),
-          )}
-        </div>
+        {/* Honest in-canvas preview (P3-B): a Container holds a REAL nested
+            Board whose contents we do not mirror here — so show the real child
+            count (engine getNumNodes()), not invented node identities. The dive
+            (double-click) opens the actual Board. NOTHING-fake: no placeholder
+            grid, no fabricated per-child labels. */}
+        {(() => {
+          const n = d.containerNodeCount ?? 0;
+          const label =
+            n > 0
+              ? `${n} ${n === 1 ? "Block" : "Blocks"} — open to edit`
+              : "Empty — open to edit";
+          return (
+            <div
+              className="h-14 rounded bg-[#252529] border border-white/5 flex items-center justify-center gap-2 text-[11px] text-text-secondary"
+              style={{ boxShadow: shadowRaised }}
+            >
+              <span aria-hidden className="text-[13px] opacity-70">
+                ▦
+              </span>
+              <span className="tabular-nums">{label}</span>
+            </div>
+          );
+        })()}
 
         {/* Ports */}
         {inputPorts.map((port, i) => (
@@ -1149,16 +1180,16 @@ function BlockComponent({ data, selected }: NodeProps) {
                   channels read the Block's real output level (max over its
                   outgoing cables) until a true per-channel L/R bridge lands. */}
               <div className="flex-1 flex flex-col gap-px ml-1 min-w-0">
-                <RmsMeter level={meterLevel} active={active} clip={d.error} accent={accentHsl} />
-                <RmsMeter level={meterLevel} active={active} clip={d.error} accent={accentHsl} />
+                <RmsMeter level={meterLevel} active={active} clip={d.error} accent={accentHsl} stale={meterState === "stale"} />
+                <RmsMeter level={meterLevel} active={active} clip={d.error} accent={accentHsl} stale={meterState === "stale"} />
               </div>
             </>
           ) : isAudioBearing ? (
             // Audio Block with no exposed knobs → the meter strip becomes the
             // whole deck, filling the space (no dead middle).
             <div className="flex-1 flex flex-col gap-1 min-w-0 justify-center">
-              <RmsMeter level={meterLevel} active={active} clip={d.error} accent={accentHsl} />
-              <RmsMeter level={meterLevel} active={active} clip={d.error} accent={accentHsl} />
+              <RmsMeter level={meterLevel} active={active} clip={d.error} accent={accentHsl} stale={meterState === "stale"} />
+              <RmsMeter level={meterLevel} active={active} clip={d.error} accent={accentHsl} stale={meterState === "stale"} />
             </div>
           ) : (
             // MIDI / modulator → status text + activity dot (mockup).

@@ -21,10 +21,32 @@ interface NodeMeterState {
 /** Below this absolute delta a meter change is visually imperceptible. */
 const LEVEL_EPSILON = 0.001;
 
+/**
+ * Wall-clock of the LAST host frame, stamped on EVERY `setNodeLevels` call —
+ * even the deduped one that returns the unchanged `levels` reference. This is a
+ * non-reactive heartbeat (kept OUTSIDE Zustand state so it triggers zero
+ * re-renders) used by the falling-envelope ballistics
+ * ({@link useBlockNodeLevelBallistic}) to tell "engine alive, every node
+ * silent" (honest idle) apart from "host stopped pushing" (stale / no-data).
+ * Without it, a fully-steady silent graph (every node identical frame-over-
+ * frame → store returns the same reference → no subscriber fires) would be
+ * misread as stale. Reads via {@link nodeLevelsLastPushAt}.
+ */
+let lastPushAt = 0;
+
+/** Wall-clock (performance.now) of the most recent host meter frame, or 0. */
+export function nodeLevelsLastPushAt(): number {
+  return lastPushAt;
+}
+
 export const useNodeMeterStore = create<NodeMeterState>()((set) => ({
   levels: {},
   setNodeLevels: (items) =>
     set((state) => {
+      // Heartbeat first — a frame ARRIVED, regardless of whether its values
+      // moved past epsilon. Stamped before the dedup early-return below.
+      lastPushAt =
+        typeof performance !== "undefined" ? performance.now() : Date.now();
       const levels: Record<string, number> = {};
       for (const { id, level } of items) levels[id] = level;
       // Diff before set — identical discipline to useCableMeterStore. The host
