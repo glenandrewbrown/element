@@ -67,7 +67,7 @@ describe("LiveHealth — CPU bar", () => {
   it("shows CPU 0% label and zero-width bar", () => {
     setHealth({ cpu: 0 });
     const { container } = render(<LiveHealth />);
-    expect(screen.getByText("0%")).toBeInTheDocument();
+    expect(screen.getByText("0.0%")).toBeInTheDocument();
     const bar = container.querySelector(".bg-gradient-to-r") as HTMLElement | null;
     expect(bar?.style.width).toBe("0%");
   });
@@ -75,7 +75,7 @@ describe("LiveHealth — CPU bar", () => {
   it("shows CPU 50% label and half-width bar", () => {
     setHealth({ cpu: 50 });
     const { container } = render(<LiveHealth />);
-    expect(screen.getByText("50%")).toBeInTheDocument();
+    expect(screen.getByText("50.0%")).toBeInTheDocument();
     const bar = container.querySelector(".bg-gradient-to-r") as HTMLElement | null;
     expect(bar?.style.width).toBe("50%");
   });
@@ -83,7 +83,7 @@ describe("LiveHealth — CPU bar", () => {
   it("shows CPU 100% label and full-width bar", () => {
     setHealth({ cpu: 100 });
     const { container } = render(<LiveHealth />);
-    expect(screen.getByText("100%")).toBeInTheDocument();
+    expect(screen.getByText("100.0%")).toBeInTheDocument();
     const bar = container.querySelector(".bg-gradient-to-r") as HTMLElement | null;
     expect(bar?.style.width).toBe("100%");
   });
@@ -103,14 +103,15 @@ describe("LiveHealth — metrics grid", () => {
   it("renders latency in ms", () => {
     setHealth({ latency: 11 });
     render(<LiveHealth />);
-    expect(screen.getByText("11 ms")).toBeInTheDocument();
+    expect(screen.getByText("11.0 ms")).toBeInTheDocument();
   });
 
   it("renders zero buffer and zero latency", () => {
     setHealth({ buffer: 0, latency: 0 });
     render(<LiveHealth />);
     expect(screen.getByText("0 smp")).toBeInTheDocument();
-    expect(screen.getByText("0 ms")).toBeInTheDocument();
+    // W1: latency <= 0 now renders an em-dash placeholder, not "0 ms".
+    expect(screen.getByText("—")).toBeInTheDocument();
   });
 });
 

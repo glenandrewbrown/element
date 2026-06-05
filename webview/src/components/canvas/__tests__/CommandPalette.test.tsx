@@ -206,10 +206,13 @@ describe("<CommandPalette />", () => {
 
   // ── Keyboard navigation ───────────────────────────────────────────────────
 
-  it("closes on Escape key", () => {
+  it("does NOT self-close on element-level Escape (now the global Esc authority's job)", () => {
     render(<CommandPalette open={true} onClose={onClose} />);
     fireEvent.keyDown(screen.getByRole("textbox"), { key: "Escape" });
-    expect(onClose).toHaveBeenCalledOnce();
+    // Esc-close moved OUT of CommandPalette to the single window-level handler in
+    // useKeyboard — the element-level keydown was swallowed by the input in the
+    // JUCE WebView. The global path is covered by useKeyboard.esc.test.tsx.
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it("moves activeIndex down on ArrowDown", () => {
