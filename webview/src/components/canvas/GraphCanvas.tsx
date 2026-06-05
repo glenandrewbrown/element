@@ -17,6 +17,7 @@ import {
   type NodeTypes,
   type EdgeTypes,
   type NodeMouseHandler,
+  type OnNodeDrag,
   type Connection,
   type Viewport,
   BackgroundVariant,
@@ -44,19 +45,30 @@ import {
 } from "../../bridge/nativePluginEditor";
 import { Block } from "./Block";
 import { Cable } from "./Cable";
+import { GhostEdge, type GhostEdgeData } from "./GhostEdge";
 import { CommentFrame } from "./CommentFrame";
 import { QuickAddPopup } from "./QuickAddPopup";
 import { NodeContextMenu } from "./NodeContextMenu";
 import { EdgeContextMenu } from "./EdgeContextMenu";
 import { CanvasContextMenu } from "./CanvasContextMenu";
 import { NestedChrome } from "./NestedChrome";
+import {
+  computeRouteSuggestions,
+  type RouteSuggestion,
+} from "./autoRouteSuggestions";
 import type { BlockData, CableData, CommentBoxData } from "../../data/types";
 import { EV_FIT_BOARD, EV_CREATE_COMMENT, EV_START_RENAME } from "../../events";
 
 // ── Custom node/edge type registrations (stable references) ──
 
 const nodeTypes: NodeTypes = { block: Block, comment: CommentFrame };
-const edgeTypes: EdgeTypes = { cable: Cable };
+const edgeTypes: EdgeTypes = { cable: Cable, ghost: GhostEdge };
+
+// Throttle interval for the auto-route suggestion compute during a drag.
+// The canvas is aggressively memoised, so we recompute at most ~every 60ms
+// (≈16fps) instead of on every pointermove pixel — matching the "keep it
+// performant / don't recompute every pixel" constraint.
+const SUGGEST_THROTTLE_MS = 60;
 
 // ── Category → minimap colour ──
 
@@ -111,6 +123,34 @@ function toFlowEdges(cables: CableData[], selectedId: string | null): Edge[] {
     targetHandle: c.targetPort,
     data: c,
     selected: c.id === selectedId,
+  }));
+}
+
+// ── Convert auto-route suggestions to faded "ghost" React Flow edges ──
+//
+// Ghosts render UNDER the real Cables (they're concatenated FIRST in the edge
+// array, so they paint below). The closest suggestion is marked `top` — it is
+// drawn brighter, labelled, and is the one Tab/Enter accepts.
+
+function toGhostEdges(
+  suggestions: RouteSuggestion[],
+  onAccept: (id: string) => void,
+): Edge[] {
+  return suggestions.map((s, i) => ({
+    id: s.id,
+    type: "ghost",
+    source: s.source,
+    sourceHandle: s.sourcePort,
+    target: s.target,
+    targetHandle: s.targetPort,
+    selectable: false,
+    deletable: false,
+    focusable: false,
+    data: {
+      signalType: s.signalType,
+      top: i === 0,
+      onAccept,
+    } satisfies GhostEdgeData,
   }));
 }
 
@@ -201,16 +241,25 @@ export function GraphCanvas() {
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const reactFlow = useReactFlow();
 
+  // ── Auto-route suggestions (ghost cables shown while dragging) ──
+  // `suggestions` is the live list of valid (compatible/free/acyclic) ghost
+  // cables for the in-flight drag; empty when not dragging. The throttle ref
+  // gates how often the compute runs (see SUGGEST_THROTTLE_MS).
+  const [suggestions, setSuggestions] = useState<RouteSuggestion[]>([]);
+  const lastSuggestRef = useRef(0);
+  // Keep the latest suggestions in a ref too, so the global key handler and
+  // drag-stop can read/accept the top one without being re-created per change.
+  const suggestionsRef = useRef<RouteSuggestion[]>([]);
+  useEffect(() => {
+    suggestionsRef.current = suggestions;
+  }, [suggestions]);
+
   useEffect(() => {
     setNodes([
       ...toFlowNodes(blocks, selectedNodeId),
       ...toCommentFlowNodes(commentBoxes, selectedNodeId),
     ]);
   }, [blocks, commentBoxes, selectedNodeId, setNodes]);
-
-  useEffect(() => {
-    setEdges(toFlowEdges(cables, selectedEdgeId));
-  }, [cables, selectedEdgeId, setEdges]);
 
   // ── Handlers ──
 
@@ -350,12 +399,95 @@ export function GraphCanvas() {
     [isEdit, selectNode],
   );
 
+  // ── Auto-route suggestion lifecycle ──
+
+  const clearSuggestions = useCallback(() => {
+    lastSuggestRef.current = 0;
+    setSuggestions((prev) => (prev.length === 0 ? prev : []));
+  }, []);
+
+  // Promote a single ghost suggestion to a real Cable via the existing bridge.
+  // The new cable arrives authoritatively on the next engine snapshot (we never
+  // fabricate the Cable locally), so we only fire the connect + clear ghosts.
+  const acceptSuggestion = useCallback(
+    (ghostId: string) => {
+      const s = suggestionsRef.current.find((x) => x.id === ghostId);
+      if (!s) return;
+      void nativeGraphConnect(s.source, s.sourcePort, s.target, s.targetPort);
+      clearSuggestions();
+    },
+    [clearSuggestions],
+  );
+
+  // While a Block is dragged, (throttled) recompute the ghost suggestions from
+  // the LIVE drag position. React Flow mutates `nodes` in place during the
+  // drag, so we overlay the live RF positions/sizes onto the store's BlockData
+  // (which carries the ports + signal types) before running the pure matcher.
+  const onNodeDrag: OnNodeDrag = useCallback(
+    (_event, node) => {
+      if (!isEdit || node.type === "comment") {
+        if (suggestionsRef.current.length > 0) clearSuggestions();
+        return;
+      }
+      const now =
+        typeof performance !== "undefined" ? performance.now() : Date.now();
+      if (now - lastSuggestRef.current < SUGGEST_THROTTLE_MS) return;
+      lastSuggestRef.current = now;
+
+      // Live positions/sizes from the in-flight React Flow node graph.
+      const rfNodes = reactFlow.getNodes();
+      const livePos = new Map<string, { x: number; y: number }>();
+      const measured = new Map<string, { width: number; height: number }>();
+      for (const n of rfNodes) {
+        if (n.type === "comment") continue;
+        livePos.set(n.id, { x: n.position.x, y: n.position.y });
+        const w = n.measured?.width;
+        const h = n.measured?.height;
+        if (typeof w === "number" && typeof h === "number") {
+          measured.set(n.id, { width: w, height: h });
+        }
+      }
+
+      const liveBlocks: BlockData[] = useGraphStore
+        .getState()
+        .nodes.map((b) => {
+          const p = livePos.get(b.id);
+          return p ? { ...b, position: p } : b;
+        });
+
+      const next = computeRouteSuggestions(
+        node.id,
+        liveBlocks,
+        useGraphStore.getState().edges,
+        measured,
+      );
+      setSuggestions(next);
+    },
+    [isEdit, reactFlow, clearSuggestions],
+  );
+
   const onNodeDragStop = useCallback(
     (
-      _: MouseEvent | globalThis.MouseEvent,
+      event: MouseEvent | globalThis.MouseEvent,
       node: Node,
       draggedNodes?: Node[],
     ) => {
+      // Accept-on-drop — mirrors the JUCE BlockComponent::mouseUp contract:
+      // dropping with the modifier key (Cmd / Ctrl) held APPLIES the ghost
+      // suggestions; a plain drop just discards them. This keeps the user in
+      // control — repositioning a Block never silently auto-wires it. JUCE
+      // applies ALL pending ghosts, so we do too.
+      const accept =
+        node.type !== "comment" &&
+        (Boolean((event as MouseEvent | globalThis.MouseEvent).metaKey) ||
+          Boolean((event as MouseEvent | globalThis.MouseEvent).ctrlKey));
+      if (accept) {
+        for (const s of suggestionsRef.current) {
+          void nativeGraphConnect(s.source, s.sourcePort, s.target, s.targetPort);
+        }
+      }
+      clearSuggestions();
+
       // React Flow fires onNodeDragStop ONCE per drag operation but passes
       // all participating nodes as `draggedNodes` (the primary plus every
       // co-selected sibling). Without iterating that list, multi-select
@@ -395,8 +527,38 @@ export function GraphCanvas() {
         void nativeGraphMoveNodes(blockMoves);
       }
     },
-    [updateNodePositions, updateCommentBoxLayout],
+    [updateNodePositions, updateCommentBoxLayout, clearSuggestions],
   );
+
+  // Real Cables + (while dragging) ghost suggestions. Ghosts are concatenated
+  // FIRST so they paint UNDER the real Cables. Re-runs when either changes.
+  useEffect(() => {
+    setEdges([
+      ...toGhostEdges(suggestions, acceptSuggestion),
+      ...toFlowEdges(cables, selectedEdgeId),
+    ]);
+  }, [cables, selectedEdgeId, suggestions, acceptSuggestion, setEdges]);
+
+  // Keyboard accept/dismiss for ghost suggestions — only bound while at least
+  // one suggestion is live (so it never shadows global shortcuts at rest).
+  // Tab / Enter accept the TOP (closest) suggestion; Escape dismisses them all.
+  const hasSuggestions = suggestions.length > 0;
+  useEffect(() => {
+    if (!hasSuggestions) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Tab" || e.key === "Enter") {
+        const top = suggestionsRef.current[0];
+        if (!top) return;
+        e.preventDefault();
+        acceptSuggestion(top.id);
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        clearSuggestions();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [hasSuggestions, acceptSuggestion, clearSuggestions]);
 
   const onConnect = useCallback((conn: Connection) => {
     if (!conn.source || !conn.target) return;
@@ -523,6 +685,7 @@ export function GraphCanvas() {
         edgeTypes={edgeTypes}
         onNodeClick={onNodeClick}
         onNodeDoubleClick={onNodeDoubleClick}
+        onNodeDrag={isEdit ? onNodeDrag : undefined}
         onNodeDragStop={onNodeDragStop}
         onEdgeClick={onEdgeClick}
         onEdgeContextMenu={onEdgeContextMenu}
