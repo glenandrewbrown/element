@@ -88,13 +88,18 @@ const mockAppStore = {
   mode: "edit" as "edit" | "perform",
   setMode: vi.fn(),
   openBlockTab: vi.fn(),
+  embeddedEditorNodeId: null as string | null,
 };
 
-vi.mock("../../../stores/useAppStore", () => ({
-  useAppStore: vi.fn((sel: (s: typeof mockAppStore) => unknown) =>
+vi.mock("../../../stores/useAppStore", () => {
+  const fn = vi.fn((sel: (s: typeof mockAppStore) => unknown) =>
     sel(mockAppStore)
-  ),
-}));
+  );
+  // Zustand stores expose .getState() as a static method.
+  (fn as unknown as { getState: () => typeof mockAppStore }).getState = () =>
+    mockAppStore;
+  return { useAppStore: fn };
+});
 
 const mockHostExtras = {
   canvas: {

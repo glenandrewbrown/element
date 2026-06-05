@@ -46,6 +46,7 @@ const { capturedProps, capturedMinimapProps, mockStore, mockAppStore, mockHostEx
     const appStore = {
       mode: "edit" as "edit" | "perform",
       openBlockTab: vi.fn(),
+      embeddedEditorNodeId: null as string | null,
     };
     const hostExtras = {
       canvas: { snapToGrid: false, gridSize: 8, graphBounds: { minX: 0, minY: 0, maxX: 800, maxY: 600 } },
@@ -104,9 +105,12 @@ vi.mock("../../../stores/useGraphStore", () => {
   };
 });
 
-vi.mock("../../../stores/useAppStore", () => ({
-  useAppStore: vi.fn((sel: (s: typeof mockAppStore) => unknown) => sel(mockAppStore)),
-}));
+vi.mock("../../../stores/useAppStore", () => {
+  const fn = vi.fn((sel: (s: typeof mockAppStore) => unknown) => sel(mockAppStore));
+  (fn as unknown as { getState: () => typeof mockAppStore }).getState = () =>
+    mockAppStore;
+  return { useAppStore: fn };
+});
 
 vi.mock("../../../stores/useHostExtrasStore", () => ({
   useHostExtrasStore: vi.fn((sel: (s: typeof mockHostExtras) => unknown) => sel(mockHostExtras)),

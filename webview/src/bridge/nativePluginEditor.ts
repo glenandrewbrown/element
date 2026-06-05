@@ -1,4 +1,5 @@
 import { invokeElementNative } from "./juceBackend";
+import { useAppStore } from "../stores/useAppStore";
 
 /**
  * Retry-poll backoff for the plugin-editor open path. The C++ handler
@@ -31,12 +32,22 @@ export async function nativePluginEditorOpen(
       w,
       h,
     ]);
-    if (r === true) return true;
+    if (r === true) {
+      // Mirror the host's `pluginEmbedNodeUuid` so the webview knows which
+      // Block currently owns the embedded editor (drives the double-click
+      // toggle, Esc-to-close, and the ✕ affordance). (P1-A)
+      useAppStore.getState().setEmbeddedEditorNodeId(nodeId);
+      return true;
+    }
   }
   return false;
 }
 
 export async function nativePluginEditorClose(): Promise<void> {
+  // Clear the webview mirror first so the UI reflects "no embed" immediately,
+  // independent of the async host round-trip. Idempotent — calling close when
+  // nothing is open is a harmless no-op on both sides. (P1-A)
+  useAppStore.getState().setEmbeddedEditorNodeId(null);
   await invokeElementNative("elementPluginEditorClose", []);
 }
 
@@ -50,5 +61,8 @@ export async function nativePluginEditorSetBounds(
 }
 
 export async function nativePluginEditorFloat(): Promise<void> {
+  // Floating tears down the embed on the host (pluginEditorClose runs inside
+  // the float handler), so the webview mirror must clear too. (P1-A)
+  useAppStore.getState().setEmbeddedEditorNodeId(null);
   await invokeElementNative("elementPluginEditorFloat", []);
 }

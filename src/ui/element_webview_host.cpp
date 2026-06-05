@@ -1706,6 +1706,26 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                         const Node n = findNodeByUuidInGraph (G, args[0].toString());
                         if (n.isValid())
                         {
+                            // P1-A — close the embedded plugin editor NOW, while the
+                            // processor is still alive, if it points at the node being
+                            // removed (or, defensively, at a node nested under it when a
+                            // container is removed). RemoveNodeMessage below is async and
+                            // later calls releaseResources() + drops the node's final ref;
+                            // closing reactively in valueTreeChildRemoved would then run
+                            // ~PluginWindowContent->editorBeingDeleted() on a freed
+                            // processor (UAF). pluginEditorClose() only resets a unique_ptr
+                            // and is idempotent, so an unrelated removal is a no-op.
+                            if (pluginEmbedNodeUuid.isNotEmpty())
+                            {
+                                const bool removingEmbeddedNode =
+                                    (n.getUuidString() == pluginEmbedNodeUuid);
+                                const bool embeddedNodeIsUnderRemoved =
+                                    n.isGraph()
+                                    && n.getNodeByUuid (Uuid (pluginEmbedNodeUuid), true).isValid();
+                                if (removingEmbeddedNode || embeddedNodeIsUnderRemoved)
+                                    pluginEditorClose();
+                            }
+
                             context.services().postMessage (new RemoveNodeMessage (n));
                             ok = true;
                         }
@@ -4979,8 +4999,22 @@ void ElementWebViewHost::valueTreeChildAdded (ValueTree& parent, ValueTree&)
         scheduleGraphPush (40);
 }
 
-void ElementWebViewHost::valueTreeChildRemoved (ValueTree& parent, ValueTree&, int)
+void ElementWebViewHost::valueTreeChildRemoved (ValueTree& parent, ValueTree& child, int)
 {
+    // P1-A (belt-and-braces) — the primary, UAF-safe close happens at removal
+    // INITIATION in the elementGraphRemoveNode handler (processor still alive),
+    // which clears pluginEmbedNodeUuid. So for the normal bridge-driven delete
+    // this guard does NOT fire (uuid already empty). It only catches a removal
+    // that bypassed that handler (e.g. undo / session swap / Lua). Safe here:
+    // PluginWindowContent holds a ref-counted ProcessorPtr (pluginwindow.cpp:227),
+    // so the processor object outlives the graph's ref-drop and pluginEditorClose()
+    // only resets a unique_ptr — no engine deref of freed memory.
+    if (pluginEmbedEditor != nullptr && pluginEmbedNodeUuid.isNotEmpty()
+        && child.getProperty (tags::uuid).toString() == pluginEmbedNodeUuid)
+    {
+        pluginEditorClose();
+    }
+
     auto sess = context.session();
     if (sess == nullptr)
         return;

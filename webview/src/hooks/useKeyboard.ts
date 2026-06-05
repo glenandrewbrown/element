@@ -23,6 +23,7 @@ import {
   nativeSessionSave,
   nativeSessionSaveAs,
 } from "../bridge/nativeSession";
+import { nativePluginEditorClose } from "../bridge/nativePluginEditor";
 import { EV_START_RENAME } from "../events";
 
 interface UseKeyboardOptions {
@@ -300,15 +301,16 @@ export function useKeyboard({
             return;
           }
 
-          // Priority 2 (P1-A reservation): embedded plugin editor open → close it.
-          // P1-A: embed-open → nativePluginEditorClose()
-          // Uncomment and wire when useAppStore.embedOpen + nativePluginEditorClose are added:
-          // const { embedOpen } = useAppStore.getState();
-          // if (embedOpen) {
-          //   e.preventDefault();
-          //   nativePluginEditorClose();
-          //   return;
-          // }
+          // Priority 2 (P1-A): embedded plugin editor open → close it. Sits
+          // above the deselect/pop-breadcrumb branch so a single Esc dismisses
+          // the native editor first (it would otherwise be a dead-end that only
+          // closes via the Inspector). Owner uuid mirrors the host's
+          // pluginEmbedNodeUuid; close is idempotent.
+          if (useAppStore.getState().embeddedEditorNodeId) {
+            e.preventDefault();
+            void nativePluginEditorClose();
+            return;
+          }
 
           // Priority 3: deselect / pop breadcrumb (existing behaviour — unchanged).
           const { selectedNodeId, selectedEdgeId, breadcrumbStack } =

@@ -36,7 +36,10 @@ import {
   nativeGraphRenameNode,
   nativeGraphSetViewport,
 } from "../../bridge/nativeGraph";
-import { nativePluginEditorOpen } from "../../bridge/nativePluginEditor";
+import {
+  nativePluginEditorClose,
+  nativePluginEditorOpen,
+} from "../../bridge/nativePluginEditor";
 import { Block } from "./Block";
 import { Cable } from "./Cable";
 import { CommentFrame } from "./CommentFrame";
@@ -163,6 +166,7 @@ export function GraphCanvas() {
 
   const mode = useAppStore((s) => s.mode);
   const openBlockTab = useAppStore((s) => s.openBlockTab);
+  const embeddedEditorNodeId = useAppStore((s) => s.embeddedEditorNodeId);
 
   const isEdit = mode === "edit";
 
@@ -228,9 +232,17 @@ export function GraphCanvas() {
         pushBreadcrumb(data.name);
         return;
       }
-      // Plugin Block: open the embedded plugin GUI window (Blueprint §10.1).
-      // Anchor the GUI near the click location with a sensible default size;
-      // the host clamps to screen bounds.
+      // Plugin Block: toggle the embedded plugin GUI window (Blueprint §10.1).
+      // Double-clicking the Block that already owns the embed CLOSES it (fast
+      // dismissal — P1-A), so a double-click is a true open/close toggle rather
+      // than a dead-end re-open. Read the owner from the store at call time to
+      // avoid a stale closure without widening the dep array.
+      if (useAppStore.getState().embeddedEditorNodeId === node.id) {
+        void nativePluginEditorClose();
+        return;
+      }
+      // Otherwise anchor a fresh editor near the click with a sensible default
+      // size; the host clamps to screen bounds.
       const anchorX = (event as MouseEvent).clientX ?? 80;
       const anchorY = (event as MouseEvent).clientY ?? 80;
       void nativePluginEditorOpen(node.id, anchorX, anchorY, 720, 480);
@@ -559,6 +571,30 @@ export function GraphCanvas() {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Embedded-editor close affordance (P1-A) — a small ✕ pill pinned
+          top-centre while a plugin editor is embedded, so the editor is never
+          a dead-end (it can also be dismissed via Esc or a double-click on its
+          Block). Only the pill captures clicks; the canvas stays interactive. */}
+      {embeddedEditorNodeId && (
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 z-[60] pointer-events-none">
+          <button
+            type="button"
+            onClick={() => void nativePluginEditorClose()}
+            title="Close plugin editor (Esc)"
+            aria-label="Close plugin editor"
+            className="pointer-events-auto flex items-center gap-1.5 rounded-full bg-panel border border-white/10 px-2.5 py-1 text-[10px] font-medium text-text-secondary shadow-[4px_4px_16px_rgba(0,0,0,0.45)] hover:text-text-primary hover:border-white/20 transition-colors"
+          >
+            <span className="truncate max-w-[180px]">
+              {blocks.find((b) => b.id === embeddedEditorNodeId)?.name ??
+                "Plugin editor"}
+            </span>
+            <span aria-hidden className="text-[12px] leading-none">
+              ✕
+            </span>
+          </button>
         </div>
       )}
 

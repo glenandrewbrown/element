@@ -41,6 +41,16 @@ interface AppState {
    * and the bridge hook. (T-P6-4)
    */
   refreshNonce: number;
+  /**
+   * UUID of the Block whose native plugin editor is currently embedded by
+   * the host, or `null` when none is open. Single source of truth for the
+   * webview side of the C++ `pluginEmbedEditor` — set on open / cleared on
+   * close from the `nativePluginEditorOpen`/`nativePluginEditorClose` choke
+   * points so every caller (canvas double-click toggle, InspectorHub embed,
+   * Esc, ✕ affordance) stays in sync. Transient — never persisted (an editor
+   * is never open immediately after reload). (P1-A)
+   */
+  embeddedEditorNodeId: string | null;
 }
 
 interface AppActions {
@@ -56,6 +66,7 @@ interface AppActions {
   setCableRouting: (routing: CableRouting) => void;
   markHostReady: () => void;
   requestGraphStateRefresh: () => void;
+  setEmbeddedEditorNodeId: (nodeId: string | null) => void;
 }
 
 type AppStore = AppState & AppActions;
@@ -74,8 +85,11 @@ export const useAppStore = create<AppStore>()(
   cableRouting: "manhattan",
   hostReady: false,
   refreshNonce: 0,
+  embeddedEditorNodeId: null,
 
   markHostReady: () => set({ hostReady: true }),
+
+  setEmbeddedEditorNodeId: (nodeId) => set({ embeddedEditorNodeId: nodeId }),
 
   requestGraphStateRefresh: () =>
     set((s) => ({ refreshNonce: s.refreshNonce + 1 })),
@@ -168,3 +182,5 @@ export const selectBottomPanel = (s: AppStore) => s.bottomPanelOpen;
 export const selectVirtualKeyboardOpen = (s: AppStore) => s.virtualKeyboardOpen;
 export const selectActiveScene = (s: AppStore) => s.activeScene;
 export const selectOpenBlockTabs = (s: AppStore) => s.openBlockTabs;
+export const selectEmbeddedEditorNodeId = (s: AppStore) =>
+  s.embeddedEditorNodeId;
