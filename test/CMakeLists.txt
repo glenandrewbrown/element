@@ -251,6 +251,12 @@ set_tests_properties(NodeFactoryExtendedTests PROPERTIES DISABLED TRUE)
 # Block category mapping (4-category V3 taxonomy)
 add_test(NAME "BlockCategoryMapTests" COMMAND test_element --run_test=BlockCategoryMapTests)
 
+# Wave-0/1 conditional & logic routing (plan: logic-routing-flow-debug-2026-06-05)
+# CVFlowTests = the MANDATORY built-graph CV signal-flow proof gate; LogicNodesTest
+# = per-node render/state coverage for the conditional family.
+add_test(NAME "CVFlowTests"     COMMAND test_element --run_test=CVFlowTests)
+add_test(NAME "LogicNodesTest"  COMMAND test_element --run_test=LogicNodesTest)
+
 # Phase M — new node coverage: TriggerNode, MidiVelocityAmpNode,
 #           PackMidiNode, UnpackMidiNode, WetDryProcessor
 add_test(NAME "TriggerNodeTests"        COMMAND test_element --run_test=TriggerNodeTests)

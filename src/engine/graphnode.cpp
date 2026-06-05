@@ -396,6 +396,7 @@ void GraphNode::buildRenderingSequence()
 {
     Array<void*> newRenderingOps;
     int numRenderingBuffersNeeded = 2;
+    int numCvBuffersNeeded = 1;
     int numMidiBuffersNeeded = 1;
     int numAtomBuffersNeeded = 1;
 
@@ -420,6 +421,7 @@ void GraphNode::buildRenderingSequence()
 
         GraphBuilder builder (*this, orderedNodes, newRenderingOps);
         numRenderingBuffersNeeded = builder.buffersNeeded (PortType::Audio);
+        numCvBuffersNeeded = builder.buffersNeeded (PortType::CV);
         numMidiBuffersNeeded = builder.buffersNeeded (PortType::Midi);
         numAtomBuffersNeeded = builder.buffersNeeded (PortType::Atom);
         setLatencySamples (builder.getTotalLatencySamples());
@@ -431,6 +433,13 @@ void GraphNode::buildRenderingSequence()
             const ScopedLock sl (getPropertyLock());
             renderingBuffers.setSize (numRenderingBuffersNeeded, 4096);
             renderingBuffers.clear();
+
+            // CV pool: sized HERE (rebuild time, under the property lock) to a
+            // fixed 4096 samples so a buffer-size change never reallocates on
+            // the render thread. Channel 0 stays read-only zeros (cleared now,
+            // ops never write it — getFreeBuffer starts at 1).
+            cvRenderingBuffers.setSize (jmax (1, numCvBuffersNeeded), 4096);
+            cvRenderingBuffers.clear();
 
             for (int i = midiBuffers.size(); --i >= 0;)
                 midiBuffers.getUnchecked (i)->clear();
@@ -518,6 +527,7 @@ void GraphNode::releaseResources()
     _prepared = false;
 
     renderingBuffers.setSize (1, 1);
+    cvRenderingBuffers.setSize (1, 1);
     midiBuffers.clear();
 
     currentAudioInputBuffer = nullptr;
@@ -583,7 +593,7 @@ void GraphNode::render (RenderContext& rc)
             for (auto ptr : *ops)
             {
                 GraphOp* const op = static_cast<GraphOp*> (ptr);
-                op->perform (renderingBuffers, midiBuffers, numSamples);
+                op->perform (renderingBuffers, cvRenderingBuffers, midiBuffers, numSamples);
             }
         }
     }

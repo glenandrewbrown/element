@@ -279,6 +279,22 @@ public:
         graphbuilder.cpp and read lock-free via getOutputRMS(chan). */
     int getNumOutputRMSChannels() const noexcept { return outRMS.size(); }
 
+    /** [AUDIO THREAD] Latch the most-recent sample of a CV OUTPUT channel.
+        Written lock-free in graphbuilder.cpp's ProcessBufferOp (the CV analogue
+        of the setOutputRMS loop) and read lock-free by the UI thread for
+        flow-debug cable readouts. `chan` is the per-direction CV output channel
+        index (NOT a port index). */
+    void setOutputCV (int chan, float val);
+
+    /** [any thread] Most-recent rendered sample of a CV output channel, or 0
+        when out of range / never rendered. */
+    float getOutputCV (int chan) const { return (chan < outCV.size()) ? outCV.getUnchecked (chan)->get() : 0.0f; }
+
+    /** Number of per-channel CV-output value atoms. Sized from the CV OUTPUT
+        port count in prepare() — never from audio outputs (a CV-only node has
+        zero audio outputs but real CV values). */
+    int getNumOutputCVChannels() const noexcept { return outCV.size(); }
+
     //=========================================================================
     /** Per-node FFT spectrum (G3-B item 1) — opt-in so idle cost is zero.
 
@@ -581,6 +597,7 @@ private:
 
     juce::Atomic<float> gain, lastGain, inputGain, lastInputGain;
     juce::OwnedArray<AtomicValue<float>> inRMS, outRMS;
+    juce::OwnedArray<AtomicValue<float>> outCV; // last-sample latch per CV output channel
     std::atomic<float> renderNanos { 0.0f }; // EMA of per-render wall-clock cost (ns)
 
     // Per-node FFT analyser (G3-B item 1). Built in prepare(), reset in

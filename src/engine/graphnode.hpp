@@ -213,6 +213,11 @@ private:
 
     uint32 lastNodeId;
     AudioSampleBuffer renderingBuffers;
+    // Parallel CV buffer pool (Wave-0 "make CV flow"). Sized at rebuild time
+    // under the property lock — see buildRenderingSequence(). NOTE: unlike the
+    // old Atom count (computed but never allocated), this pool MUST stay
+    // allocated + passed through GraphOp::perform or CV goes dead again.
+    AudioSampleBuffer cvRenderingBuffers;
     OwnedArray<MidiBuffer> midiBuffers;
     bool _prepared = false;
 

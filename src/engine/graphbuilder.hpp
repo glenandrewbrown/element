@@ -16,7 +16,11 @@ public:
     GraphOp() {}
     virtual ~GraphOp() {}
 
+    /** Render-thread op. `sharedBufferChans` = the audio buffer pool,
+        `sharedCvChans` = the CV buffer pool (parallel namespace, channel 0 is
+        read-only zeros in both), `sharedMidiBuffers` = the MIDI pool. */
     virtual void perform (AudioSampleBuffer& sharedBufferChans,
+                          AudioSampleBuffer& sharedCvChans,
                           const OwnedArray<MidiBuffer>& sharedMidiBuffers,
                           const int numSamples) = 0;
 

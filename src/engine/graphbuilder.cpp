@@ -35,7 +35,7 @@ public:
     {
     }
 
-    void perform (AudioSampleBuffer&, const OwnedArray<MidiBuffer>&, const int) override {}
+    void perform (AudioSampleBuffer&, AudioSampleBuffer&, const OwnedArray<MidiBuffer>&, const int) override {}
 
 private:
     ParameterPtr param1, param2;
@@ -50,7 +50,7 @@ public:
     {
     }
 
-    void perform (AudioSampleBuffer& sharedBufferChans, const OwnedArray<MidiBuffer>&, const int numSamples)
+    void perform (AudioSampleBuffer& sharedBufferChans, AudioSampleBuffer&, const OwnedArray<MidiBuffer>&, const int numSamples) override
     {
         sharedBufferChans.clear (channelNum, 0, numSamples);
     }
@@ -70,7 +70,7 @@ public:
     {
     }
 
-    void perform (AudioSampleBuffer& sharedBufferChans, const OwnedArray<MidiBuffer>&, const int numSamples)
+    void perform (AudioSampleBuffer& sharedBufferChans, AudioSampleBuffer&, const OwnedArray<MidiBuffer>&, const int numSamples) override
     {
         sharedBufferChans.copyFrom (dstChannelNum, 0, sharedBufferChans, srcChannelNum, 0, numSamples);
     }
@@ -90,7 +90,7 @@ public:
     {
     }
 
-    void perform (AudioSampleBuffer& sharedBufferChans, const OwnedArray<MidiBuffer>&, const int numSamples)
+    void perform (AudioSampleBuffer& sharedBufferChans, AudioSampleBuffer&, const OwnedArray<MidiBuffer>&, const int numSamples) override
     {
         sharedBufferChans.addFrom (dstChannelNum, 0, sharedBufferChans, srcChannelNum, 0, numSamples);
     }
@@ -101,6 +101,59 @@ private:
     JUCE_DECLARE_NON_COPYABLE (AddChannelOp)
 };
 
+// =============================================================================
+// CV-pool variants of the channel ops (Wave-0 "make CV flow"). Identical float
+// semantics to the audio ops above, but they target the parallel CV buffer
+// pool. Kept as distinct classes (no behaviour flags) so an op's target pool
+// is explicit at construction.
+
+class CvClearChannelOp : public GraphOp
+{
+public:
+    CvClearChannelOp (const int channelNum_) : channelNum (channelNum_) {}
+
+    void perform (AudioSampleBuffer&, AudioSampleBuffer& sharedCvChans, const OwnedArray<MidiBuffer>&, const int numSamples) override
+    {
+        sharedCvChans.clear (channelNum, 0, numSamples);
+    }
+
+private:
+    const int channelNum;
+    JUCE_DECLARE_NON_COPYABLE (CvClearChannelOp)
+};
+
+class CvCopyChannelOp : public GraphOp
+{
+public:
+    CvCopyChannelOp (const int srcChannelNum_, const int dstChannelNum_)
+        : srcChannelNum (srcChannelNum_), dstChannelNum (dstChannelNum_) {}
+
+    void perform (AudioSampleBuffer&, AudioSampleBuffer& sharedCvChans, const OwnedArray<MidiBuffer>&, const int numSamples) override
+    {
+        sharedCvChans.copyFrom (dstChannelNum, 0, sharedCvChans, srcChannelNum, 0, numSamples);
+    }
+
+private:
+    const int srcChannelNum, dstChannelNum;
+    JUCE_DECLARE_NON_COPYABLE (CvCopyChannelOp)
+};
+
+class CvAddChannelOp : public GraphOp
+{
+public:
+    CvAddChannelOp (const int srcChannelNum_, const int dstChannelNum_)
+        : srcChannelNum (srcChannelNum_), dstChannelNum (dstChannelNum_) {}
+
+    void perform (AudioSampleBuffer&, AudioSampleBuffer& sharedCvChans, const OwnedArray<MidiBuffer>&, const int numSamples) override
+    {
+        sharedCvChans.addFrom (dstChannelNum, 0, sharedCvChans, srcChannelNum, 0, numSamples);
+    }
+
+private:
+    const int srcChannelNum, dstChannelNum;
+    JUCE_DECLARE_NON_COPYABLE (CvAddChannelOp)
+};
+
 class ClearMidiBufferOp : public GraphOp
 {
 public:
@@ -109,7 +162,7 @@ public:
     {
     }
 
-    void perform (AudioSampleBuffer&, const OwnedArray<MidiBuffer>& sharedMidiBuffers, const int)
+    void perform (AudioSampleBuffer&, AudioSampleBuffer&, const OwnedArray<MidiBuffer>& sharedMidiBuffers, const int) override
     {
         sharedMidiBuffers.getUnchecked (bufferNum)->clear();
     }
@@ -129,7 +182,7 @@ public:
     {
     }
 
-    void perform (AudioSampleBuffer&, const OwnedArray<MidiBuffer>& sharedMidiBuffers, const int)
+    void perform (AudioSampleBuffer&, AudioSampleBuffer&, const OwnedArray<MidiBuffer>& sharedMidiBuffers, const int) override
     {
         *sharedMidiBuffers.getUnchecked (dstBufferNum) = *sharedMidiBuffers.getUnchecked (srcBufferNum);
     }
@@ -149,7 +202,7 @@ public:
     {
     }
 
-    void perform (AudioSampleBuffer&, const OwnedArray<MidiBuffer>& sharedMidiBuffers, const int numSamples)
+    void perform (AudioSampleBuffer&, AudioSampleBuffer&, const OwnedArray<MidiBuffer>& sharedMidiBuffers, const int numSamples) override
     {
         sharedMidiBuffers.getUnchecked (dstBufferNum)
             ->addEvents (*sharedMidiBuffers.getUnchecked (srcBufferNum), 0, numSamples, 0);
@@ -173,7 +226,7 @@ public:
         buffer.calloc ((size_t) bufferSize);
     }
 
-    void perform (AudioSampleBuffer& sharedBufferChans, const OwnedArray<MidiBuffer>&, const int numSamples)
+    void perform (AudioSampleBuffer& sharedBufferChans, AudioSampleBuffer&, const OwnedArray<MidiBuffer>&, const int numSamples) override
     {
         float* data = sharedBufferChans.getWritePointer (channel, 0);
 
@@ -204,17 +257,29 @@ public:
                      const Array<int>& audioChannelsToUse_,
                      const int totalChans_,
                      const int midiBufferToUse_,
-                     const Array<int> chans[PortType::Unknown])
+                     const Array<int> chans[PortType::Unknown],
+                     const Array<int>& cvInChannelsToUse_,
+                     const Array<int>& cvOutChannelsToUse_)
         : node (node_),
           processor (node_->getAudioPluginInstance()),
           audioChannelsToUse (audioChannelsToUse_),
           midiChannelsToUse (chans[PortType::Midi]),
+          cvInChannelsToUse (cvInChannelsToUse_),
+          cvOutChannelsToUse (cvOutChannelsToUse_),
           totalChans (jmax (1, totalChans_)),
           numAudioIns (node_->getNumPorts (PortType::Audio, true)),
           numAudioOuts (node_->getNumPorts (PortType::Audio, false)),
+          totalCvChans (cvInChannelsToUse_.size() + cvOutChannelsToUse_.size()),
           midiBufferToUse (midiBufferToUse_)
     {
         channels.calloc ((size_t) totalChans);
+
+        // CV channel pointer array: rc.cv layout is [ins..., outs...] (per-
+        // direction channel indexes — see e.g. mathnodes.hpp "channel 0 = inA,
+        // channel 1 = inB, channel 2 = out"). Allocated here (message thread),
+        // only pointer-filled in perform().
+        if (totalCvChans > 0)
+            cvChannels.calloc ((size_t) totalCvChans);
 
         while (audioChannelsToUse.size() < totalChans)
             audioChannelsToUse.add (0);
@@ -234,21 +299,40 @@ public:
         tempMidi.ensureSize (128);
     }
 
-    void perform (AudioSampleBuffer& sharedBufferChans, const OwnedArray<MidiBuffer>& sharedMidiBuffers, const int numSamples)
+    void perform (AudioSampleBuffer& sharedBufferChans, AudioSampleBuffer& sharedCvChans, const OwnedArray<MidiBuffer>& sharedMidiBuffers, const int numSamples) override
     {
         for (int i = totalChans; --i >= 0;)
         {
             channels[i] = sharedBufferChans.getWritePointer (audioChannelsToUse.getUnchecked (i), 0);
         }
 
+        // Gather CV pool pointers: inputs first, then outputs (the rc.cv
+        // layout nodes render against). Pointer reads only — RT-safe.
+        const int numCvIns = cvInChannelsToUse.size();
+        const int numCvOuts = cvOutChannelsToUse.size();
+        for (int i = 0; i < numCvIns; ++i)
+            cvChannels[i] = sharedCvChans.getWritePointer (cvInChannelsToUse.getUnchecked (i), 0);
+        for (int i = 0; i < numCvOuts; ++i)
+            cvChannels[numCvIns + i] = sharedCvChans.getWritePointer (cvOutChannelsToUse.getUnchecked (i), 0);
+
         AudioSampleBuffer buffer (channels, totalChans, numSamples);
-        RenderContext rc (buffer.getArrayOfWritePointers(), totalChans, dummyCV.getArrayOfWritePointers(), 0, sharedMidiBuffers, midiChannelsToUse, numSamples);
+        AudioSampleBuffer cvBuffer (totalCvChans > 0 ? cvChannels.get() : dummyCV.getArrayOfWritePointers(),
+                                    totalCvChans,
+                                    numSamples);
+        RenderContext rc (buffer.getArrayOfWritePointers(), totalChans, cvBuffer.getArrayOfWritePointers(), totalCvChans, sharedMidiBuffers, midiChannelsToUse, numSamples);
         MidiPipe& midiPipe (rc.midi);
 
         if (! node->isEnabled())
         {
             for (int ch = numAudioIns; ch < numAudioOuts; ++ch)
                 buffer.clear (ch, 0, buffer.getNumSamples());
+            // Disabled node: silence CV outs + zero the UI latches so
+            // flow-debug never shows a stale value on a dead node.
+            for (int i = 0; i < numCvOuts; ++i)
+            {
+                cvBuffer.clear (numCvIns + i, 0, numSamples);
+                node->setOutputCV (i, 0.0f);
+            }
             return;
         }
 
@@ -513,6 +597,14 @@ public:
         for (int i = 0; i < numAudioOuts; ++i)
             node->setOutputRMS (i, buffer.getRMSLevel (i, 0, numSamples));
 
+        // CV-output last-sample latch (Wave-0 flow-debug). Same RT profile as
+        // the RMS loop above: one read + one relaxed atomic store per CV out.
+        {
+            const int numCvIns = cvInChannelsToUse.size();
+            for (int i = 0; i < cvOutChannelsToUse.size(); ++i)
+                node->setOutputCV (i, cvBuffer.getSample (numCvIns + i, numSamples - 1));
+        }
+
         // FFT spectrum tap (G3-B item 1). Same RT profile as the RMS loop right
         // above: reads + a guard + one lock-free push. The opt-in flag
         // (isSpectrumWanted) means an unviewed node does nothing at all. Pick
@@ -542,8 +634,11 @@ public:
 private:
     Array<int> audioChannelsToUse;
     Array<int> midiChannelsToUse;
+    Array<int> cvInChannelsToUse, cvOutChannelsToUse; // CV-pool channel indexes (ins / outs)
     HeapBlock<float*> channels;
+    HeapBlock<float*> cvChannels; // rc.cv pointer array: [ins..., outs...]
     int totalChans, numAudioIns, numAudioOuts;
+    int totalCvChans = 0;
     int midiBufferToUse;
     bool lastMute = false;
     MidiTranspose transpose;
@@ -635,13 +730,17 @@ void GraphBuilder::createRenderingOpsForNode (Processor* const node,
     }
 
     Array<int> channelsToUse[PortType::Unknown];
+    // CV-pool channel assignments, kept per-direction (Wave-0 "make CV flow").
+    // CV does NOT use the audio in-place model: rc.cv is laid out
+    // [ins..., outs...], every CV output gets its OWN pool buffer.
+    Array<int> cvInChannels, cvOutChannels;
     int maxLatency = getInputLatency (node->nodeId);
 
     const uint32 numPorts (node->getNumPorts());
     for (uint32 port = 0; port < numPorts; ++port)
     {
         const PortType portType (node->getPortType (port));
-        if (portType != PortType::Audio && portType != PortType::Midi && portType != PortType::Control)
+        if (portType != PortType::Audio && portType != PortType::Midi && portType != PortType::Control && portType != PortType::CV)
             continue;
 
         const uint32 numIns = node->getNumPorts (portType, true);
@@ -655,6 +754,21 @@ void GraphBuilder::createRenderingOpsForNode (Processor* const node,
             {
                 case PortType::Control: {
                     const int bufIndex = getFreeBuffer (portType);
+                    markBufferAsContaining (bufIndex, portType, node->nodeId, port);
+                    break;
+                }
+
+                case PortType::CV: {
+                    // Per-direction channels: ALWAYS allocate a CV output
+                    // buffer (no in-place reuse of input channels).
+                    const int outputChan = node->getChannelPort (port);
+                    const int bufIndex = getFreeBuffer (portType);
+                    jassert (bufIndex != 0);
+                    // Declaration order must be ascending per direction so the
+                    // [ins..., outs...] rc.cv assembly lines up with channels.
+                    jassert (outputChan == cvOutChannels.size());
+                    juce::ignoreUnused (outputChan);
+                    cvOutChannels.add (bufIndex);
                     markBufferAsContaining (bufIndex, portType, node->nodeId, port);
                     break;
                 }
@@ -700,7 +814,10 @@ void GraphBuilder::createRenderingOpsForNode (Processor* const node,
         if (sourceNodes.size() == 0)
         {
             // unconnected input channel
-            if (portType == PortType::Audio && inputChan >= (int) numOuts)
+            // CV: inputs are read-only to the node (outputs live on their own
+            // per-direction channels), so the shared zero buffer is safe.
+            if ((portType == PortType::Audio && inputChan >= (int) numOuts)
+                || portType == PortType::CV)
             {
                 bufIndex = getReadOnlyEmptyBuffer();
                 jassert (bufIndex >= 0);
@@ -744,10 +861,13 @@ void GraphBuilder::createRenderingOpsForNode (Processor* const node,
                     src->getParameter ((int) srcPort),
                     node->getParameter ((int) port)));
             }
-            else if (bufNeededLater && (inputChan < (int) numOuts || portType == PortType::Midi))
+            else if (portType != PortType::CV
+                     && bufNeededLater && (inputChan < (int) numOuts || portType == PortType::Midi))
             {
                 // can't mess up this channel because it's needed later by another node, so we
                 // need to use a copy of it..
+                // (CV never needs this: a node only READS its CV input
+                // channels — outputs are separate per-direction buffers.)
                 const int newFreeBuffer = getFreeBuffer (portType);
                 markBufferAsContaining (newFreeBuffer, portType, anonymousNodeID, 0);
                 switch (portType.id())
@@ -820,6 +940,8 @@ void GraphBuilder::createRenderingOpsForNode (Processor* const node,
                         renderingOps.add (new ClearChannelOp (bufIndex));
                     else if (portType == PortType::Midi)
                         renderingOps.add (new ClearMidiBufferOp (bufIndex));
+                    else if (portType == PortType::CV)
+                        renderingOps.add (new CvClearChannelOp (bufIndex));
                 }
                 else
                 {
@@ -827,6 +949,8 @@ void GraphBuilder::createRenderingOpsForNode (Processor* const node,
                         renderingOps.add (new CopyChannelOp (srcIndex, bufIndex));
                     else if (portType == PortType::Midi)
                         renderingOps.add (new CopyMidiBufferOp (srcIndex, bufIndex));
+                    else if (portType == PortType::CV)
+                        renderingOps.add (new CvCopyChannelOp (srcIndex, bufIndex));
                 }
 
                 reusableInputIndex = 0;
@@ -871,12 +995,29 @@ void GraphBuilder::createRenderingOpsForNode (Processor* const node,
                         {
                             renderingOps.add (new AddMidiBufferOp (srcIndex, bufIndex));
                         }
+                        else if (portType == PortType::CV)
+                        {
+                            // Summed CV inputs (no PDC for CV in v1).
+                            renderingOps.add (new CvAddChannelOp (srcIndex, bufIndex));
+                        }
                     }
                 }
             }
         }
 
         jassert (bufIndex >= 0);
+
+        if (portType == PortType::CV)
+        {
+            // Per-direction bookkeeping: rc.cv assembly is [ins..., outs...],
+            // so input declaration order must be ascending by channel.
+            jassert (inputChan == cvInChannels.size());
+            cvInChannels.add (bufIndex);
+            // No in-place output marking for CV — every CV output has its own
+            // buffer allocated in the output branch above.
+            continue;
+        }
+
         channelsToUse[portType.id()].add (bufIndex);
 
         if (inputChan < (int) numOuts)
@@ -893,7 +1034,7 @@ void GraphBuilder::createRenderingOpsForNode (Processor* const node,
 
     int totalChans = jmax (node->getNumPorts (PortType::Audio, true),
                            node->getNumPorts (PortType::Audio, false));
-    renderingOps.add (new ProcessBufferOp (node, channelsToUse[PortType::Audio], totalChans, 0, channelsToUse));
+    renderingOps.add (new ProcessBufferOp (node, channelsToUse[PortType::Audio], totalChans, 0, channelsToUse, cvInChannels, cvOutChannels));
 }
 
 int GraphBuilder::getFreeBuffer (PortType type)

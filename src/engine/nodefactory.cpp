@@ -29,6 +29,11 @@
 #include "nodes/triggernode.hpp"
 #include "nodes/readoutnode.hpp"
 
+// Conditional / logic routing family (plan: logic-routing-flow-debug)
+#include "nodes/logicnodes.hpp"
+#include "nodes/envfollowernode.hpp"
+#include "nodes/gatenodes.hpp"
+
 #include "engine/audioprocessorfactory.hpp"
 #include "engine/internalformat.hpp"
 
@@ -146,6 +151,14 @@ NodeFactory::NodeFactory()
     add (new SingleNodeProvider<DivideNode>            ("element.divide"));
     add (new SingleNodeProvider<TriggerNode>           ("element.trigger"));
     add (new SingleNodeProvider<ReadoutNode>           ("element.readout"));
+
+    // Conditional / logic routing family
+    add (new SingleNodeProvider<ComparatorNode>        ("element.compare"));
+    add (new SingleNodeProvider<LogicGateNode>         ("element.logic"));
+    add (new SingleNodeProvider<EnvelopeFollowerNode>  ("element.envFollower"));
+    add (new SingleNodeProvider<AudioGateNode>         ("element.audioGate"));
+    add (new SingleNodeProvider<MidiGateNode>          ("element.midiGate"));
+    add (new SingleNodeProvider<AudioSwitchNode>       ("element.audioSwitch"));
 }
 
 NodeFactory::~NodeFactory()

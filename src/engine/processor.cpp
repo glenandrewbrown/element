@@ -206,6 +206,12 @@ void Processor::setOutputRMS (int chan, float val)
         outRMS.getUnchecked (chan)->set (val);
 }
 
+void Processor::setOutputCV (int chan, float val)
+{
+    if (chan < outCV.size())
+        outCV.getUnchecked (chan)->set (val);
+}
+
 bool Processor::isSuspended() const
 {
     return bypassed.get() == 1;
@@ -342,6 +348,17 @@ void Processor::prepare (const double newSampleRate,
             outRMS.add (avf);
         }
 
+        // CV-output last-sample latches (flow-debug). Sized from the CV OUTPUT
+        // port count — NEVER from audio outputs (a CV-only node has zero audio
+        // outputs but real CV values). Written lock-free in graphbuilder.cpp.
+        outCV.clearQuick (true);
+        for (int i = 0; i < (int) ports.size (PortType::CV, false); ++i)
+        {
+            AtomicValue<float>* avf = new AtomicValue<float>();
+            avf->set (0);
+            outCV.add (avf);
+        }
+
         // Per-node FFT analyser (G3-B item 1). Allocate the FFT object, window,
         // ring + scratch ONCE here (prepare-time), so the audio-thread tap is
         // allocation-free. Only meaningful when the node has audio output; a
@@ -364,6 +381,7 @@ void Processor::unprepare()
         oversampler->reset();
         inRMS.clear (true);
         outRMS.clear (true);
+        outCV.clear (true);
         spectrum.reset();
     }
 }
