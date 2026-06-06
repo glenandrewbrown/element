@@ -594,7 +594,14 @@ namespace meterlanegate
 
 struct LaneSnapshots
 {
-    std::vector<float> cable, node, channel;
+    std::vector<float> cable, node, channel, master;
+    // §0.2 telemetry divider tick. Incremented once per 60 Hz timerCallback;
+    // the telemetry lanes (meters/master/spectrum-reassert/log) run only on
+    // even ticks ⇒ effective 30 Hz. Lives here (not the header) so all
+    // message-thread bridge state stays file-static + instance-keyed; reset to
+    // 0 on graph push / teardown with the rest of this struct (harmless — it is
+    // just a parity counter).
+    unsigned telemetryTick = 0;
 };
 
 static std::unordered_map<const void*, LaneSnapshots> snapshots;
@@ -659,7 +666,73 @@ static void collectChannelLane (const Graph& G, std::vector<float>& out)
     }
 }
 
+/** §0.1 — mirror buildMasterLevelsJson's three reads (outL/outR/input) as raw
+    floats so the master-levels lane joins the idle gate. No engine ⇒ no values
+    (matches buildMasterLevelsJson returning an empty object). */
+static void collectMasterLane (Context& ctx, std::vector<float>& out)
+{
+    auto e = ctx.audio();
+    if (e == nullptr)
+        return;
+    auto channelLevel = [&e] (int channel, bool input) -> float {
+        if (auto m = e->getLevelMeter (channel, input))
+            return (float) jlimit (0.0, 1.0, m->level());
+        return 0.0f;
+    };
+    const int numOut = e->getNumChannels (false);
+    const float outL = numOut > 0 ? channelLevel (0, false) : 0.0f;
+    const float outR = numOut > 1 ? channelLevel (1, false) : outL;
+    out.push_back (outL);
+    out.push_back (outR);
+    const int numIn = e->getNumChannels (true);
+    float input = 0.0f;
+    for (int c = 0; c < numIn; ++c)
+        input = jmax (input, channelLevel (c, true));
+    out.push_back (input);
+}
+
 } // namespace meterlanegate
+
+// ── §2.3 change-sentinel replies for the steady-state JSON pollers ──────────
+//
+// elementGetEngineSnapshot (~4 Hz) and elementGetInstances (~2 Hz) reply with a
+// JSON STRING built fresh every poll, even when nothing changed — each idle
+// reply still serialises + escapes on the message thread (the postCompletion
+// callAsync hot path). Cache the last reply string PER HANDLER per host
+// instance; when the new reply is byte-identical, post the literal sentinel "~"
+// instead (1 byte, no escape). The webview side
+// (nativeGetEngineSnapshot/nativeGetInstances) treats raw === "~" as "no change"
+// → returns null / skips the store set, so live state stays correct and the
+// stores' existing snapshot-diffs are untouched.
+//
+// File-static + instance-keyed (keyed by `this`) for the SAME reason as
+// meterlanegate: the host class is declared in the public header (outside this
+// wave's file ownership). Message-thread only (handler lambdas run via
+// invokeForTest / the JUCE bridge on the message thread), so no locking. Cleared
+// in the destructor and on every graph push, alongside meterlanegate::snapshots.
+namespace sentinelcache
+{
+
+constexpr const char* kSentinel = "~";
+
+struct Replies
+{
+    String engineSnapshot, instances;
+};
+
+static std::unordered_map<const void*, Replies> replies;
+
+/** Return `fresh` unless byte-identical to the cached value for `slot`; on a
+    match return the "~" sentinel. Updates the cache to `fresh` either way. */
+static var dedupe (String& slot, const String& fresh)
+{
+    if (slot == fresh)
+        return var (String (kSentinel));
+    slot = fresh;
+    return var (fresh);
+}
+
+} // namespace sentinelcache
 
 static void appendAudioSetupJson (Context& ctx, DynamicObject::Ptr root)
 {
@@ -1218,7 +1291,27 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
 
     // G3-B item 1 — per-node FFT spectrum, on demand by UUID.
     //   Input:  args[0] = nodeUuid: String
-    //   Output: { bins: number[], fftSize: number, sampleRate: number } | null
+    //   Output: a PRE-SERIALISED JSON STRING (var-string, NOT a structured var):
+    //           {"v":2,"fftSize":<int>,"sampleRate":<num>,"binsB64":"<base64>"}
+    //           or null (honest "no spectrum").
+    //
+    // P3/Wave-0 §0.3b+c — payload shape. The handler ships ~1024 magnitude bins
+    // at ~15-30 Hz; returning them as a structured `var` array hits JUCE's
+    // emitCompletionEvent O(n²) String::replace quote-escape hazard documented at
+    // elementGetPluginList above (every element re-walked + escaped on the
+    // message thread). Two stacked cuts kill the hot path:
+    //   (b) PRE-SERIALISE the whole reply to a JSON STRING here via one
+    //       JSON::toString. A var STRING is escaped as a single value (one
+    //       String::replace over the compact body) instead of a 1024-element
+    //       structured walk; nativeNodeSpectrum.ts already accepts a string.
+    //   (c) QUANTISE each bin to a uint8 + base64. The analyser already
+    //       normalises magnitudes to 0..1 (SpectrumAnalyser kNumBins "normalised
+    //       0..1 magnitudes"), so the quantise is a plain LINEAR map with
+    //       range=1, min=0:  q = round(bin * 255).  binsB64 is base64 of one
+    //       uint8 per bin (length = fftSize/2). The JS side reconstructs the SAME
+    //       visual value via  bin ≈ q / 255  (i.e. v/255 * range + min, range=1,
+    //       min=0). 1024 doubles (~8-15 KB) → ~1.4 KB base64. NOTHING-fake: still
+    //       the real FFT, just coarser — a strip is inherently a visual estimate.
     // Polling == subscribing: the first call registers the node in
     // spectrumSubscriptions and flips its atomic spectrumWanted, so the audio
     // thread starts copying samples into the analyser on the NEXT block. The
@@ -1247,16 +1340,23 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
 
                             if (auto frame = proc->popSpectrumFrame())
                             {
-                                Array<var> bins;
-                                bins.ensureStorageAllocated ((int) frame->size());
+                                // Quantise each normalised-0..1 bin to one uint8
+                                // (LINEAR: q = round(bin*255), reconstruct q/255).
+                                juce::MemoryBlock raw ((size_t) frame->size());
+                                auto* bytes = static_cast<juce::uint8*> (raw.getData());
+                                size_t i = 0;
                                 for (float m : *frame)
-                                    bins.add (m);
+                                    bytes[i++] = (juce::uint8) juce::jlimit (
+                                        0, 255, (int) std::lround (m * 255.0f));
 
                                 DynamicObject::Ptr obj (new DynamicObject());
-                                obj->setProperty ("bins", var (bins));
+                                obj->setProperty ("v", 2);
                                 obj->setProperty ("fftSize", proc->getSpectrumFftSize());
                                 obj->setProperty ("sampleRate", proc->getSpectrumSampleRate());
-                                result = var (obj.get());
+                                obj->setProperty ("binsB64",
+                                                  juce::Base64::toBase64 (raw.getData(), raw.getSize()));
+                                // Pre-serialised STRING var (see §0.3b above).
+                                result = var (JSON::toString (var (obj.get())));
                             }
                         }
                     }
@@ -1491,7 +1591,11 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             ts.add (var (tsDen));
             root->setProperty ("timeSig", var (ts));
 
-            postCompletion (completion, JSON::toString (var (root.get())));
+            // §2.3 — "~" sentinel when byte-identical to the last reply (idle
+            // poll ⇒ no re-serialise downstream; JS treats "~" as no-change).
+            postCompletion (completion,
+                            sentinelcache::dedupe (sentinelcache::replies[this].engineSnapshot,
+                                                   JSON::toString (var (root.get()))));
         });
 
     // U11 — Multi-instance: list the live Element plugin instances in this host
@@ -1538,7 +1642,10 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
 
             root->setProperty ("selfId", selfId);
             root->setProperty ("instances", var (arr));
-            postCompletion (completion, JSON::toString (var (root.get())));
+            // §2.3 — "~" sentinel when byte-identical to the last reply.
+            postCompletion (completion,
+                            sentinelcache::dedupe (sentinelcache::replies[this].instances,
+                                                   JSON::toString (var (root.get()))));
         });
 
     // U11 — Multi-instance: read-only graph snapshot of a PEER instance, for
@@ -5159,6 +5266,7 @@ ElementWebViewHost::~ElementWebViewHost()
 {
     stopTimer();
     meterlanegate::snapshots.erase (this); // C4/P3 idle-gate cache (file-static, instance-keyed)
+    sentinelcache::replies.erase (this);   // §2.3 change-sentinel reply cache (same lifetime)
     engineStateChangedConnection.disconnect(); // P1-11
     sandboxEventConnection.disconnect(); // R3
     detachSessionListener();
@@ -5329,19 +5437,33 @@ void ElementWebViewHost::timerCallback()
     if (browser == nullptr)
         return;
 
-    if (auto peak = metering.popLatestPeak())
-    {
-        const String js = "window.__elementNative && window.__elementNative.onMetering("
-                            + String (*peak, 6) + ");";
-        evalInBrowser (js);
-    }
+    // §0.2 — Telemetry divider. The timer stays startTimerHz(60) so interaction-
+    // coupled work (pendingConnectedAdd apply, graph-push debounce, parameter
+    // delta cadence, session-dirty poll — all BELOW) keeps its 60 Hz feel. The
+    // telemetry lanes (metering peak, the three meter lanes, spectrum-subscription
+    // re-assert, master levels, log history) are visually indistinguishable at
+    // 30 Hz on the ballistic meter ladder, so they run only on EVEN ticks
+    // (kTelemetryDivider = 2) — halving both the message-thread JSON build and
+    // the WebContent flush/rerender rate. The 15 Hz parameter channel below keeps
+    // its EFFECTIVE 15 Hz unchanged: it divides BASE ticks (every 4th 60 Hz tick),
+    // NOT telemetry ticks, so it is not coupled to this divider.
+    auto& snaps = meterlanegate::snapshots[this];
+    constexpr unsigned kTelemetryDivider = 2;
+    const bool runTelemetry = (++snaps.telemetryTick % kTelemetryDivider) == 0;
 
+    if (runTelemetry)
     {
+        if (auto peak = metering.popLatestPeak())
+        {
+            const String js = "window.__elementNative && window.__elementNative.onMetering("
+                                + String (*peak, 6) + ");";
+            evalInBrowser (js);
+        }
+
         // C4/P3 idle gating: pre-pass each meter lane with pure atomic reads
         // + epsilon compares (~0.01ms) and skip the JSON build + JS push for
         // any lane whose values are all unchanged — see the meterlanegate
         // block above buildCableLevelsJson for the measured numbers + design.
-        auto& snaps = meterlanegate::snapshots[this];
         auto sessForMeters = context.session();
         const Node boardForMeters (currentBoard());
         const bool haveBoard = sessForMeters != nullptr && boardForMeters.isGraph();
@@ -5370,9 +5492,9 @@ void ElementWebViewHost::timerCallback()
         }
 
         // G3-B item 2: per-node PER-CHANNEL output levels for surround / multi-
-        // channel bus meters. Same 60Hz cadence + calibration as onNodeLevels,
-        // but every output lane (not just the loudest). Consumed by the
-        // BusInspector's per-lane VU columns via useNodeChannelMeterStore.
+        // channel bus meters. Same calibration as onNodeLevels, but every output
+        // lane (not just the loudest). Consumed by the BusInspector's per-lane VU
+        // columns via useNodeChannelMeterStore.
         std::vector<float> freshCh;
         if (haveBoard)
             meterlanegate::collectChannelLane (GM, freshCh);
@@ -5381,6 +5503,21 @@ void ElementWebViewHost::timerCallback()
             const String chJson (buildNodeChannelLevelsJson());
             evalInBrowser ("window.__elementNative && window.__elementNative.onNodeChannelLevels && window.__elementNative.onNodeChannelLevels("
                            + chJson + ");");
+        }
+
+        // §0.1 — master output L/R + audio-input peak (Q-VU-LR / Q-VU-INPUT,
+        // Pillar-2 D2/D3). Previously an UNCONDITIONAL push every tick — the only
+        // un-gated meter lane. Now gated like the others: a pre-pass of three
+        // atomic reads + epsilon compares skips the JSON build + JS push when
+        // outL/outR/input are all unchanged. Honesty preserved — a real level
+        // change still pushes within one telemetry tick.
+        std::vector<float> freshMaster;
+        meterlanegate::collectMasterLane (context, freshMaster);
+        if (meterlanegate::changed (snaps.master, std::move (freshMaster)))
+        {
+            const String masterJson (buildMasterLevelsJson());
+            evalInBrowser ("window.__elementNative && window.__elementNative.onMasterLevels && window.__elementNative.onMasterLevels("
+                           + masterJson + ");");
         }
     }
 
@@ -5412,14 +5549,10 @@ void ElementWebViewHost::timerCallback()
         }
     }
 
-    {
-        // Pillar-2 D2/D3: master output L/R + audio-input peak (Q-VU-LR / Q-VU-INPUT).
-        const String masterJson (buildMasterLevelsJson());
-        evalInBrowser ("window.__elementNative && window.__elementNative.onMasterLevels && window.__elementNative.onMasterLevels("
-                       + masterJson + ");");
-    }
-
-    if (logPushPending && browser != nullptr)
+    // §0.2 — log history rides the telemetry divider (30 Hz). logPushPending
+    // latches between ticks, so a delayed flush still ships every line; the
+    // visible log just updates at 30 Hz instead of 60.
+    if (runTelemetry && logPushPending && browser != nullptr)
     {
         const auto lines = context.logger().getHistory();
         Array<var> logArr;
@@ -5712,6 +5845,10 @@ void ElementWebViewHost::pushGraphSnapshot()
     // idle-gate caches so the next tick resends full level snapshots (the new
     // cable/node ids need fresh rows even if values look numerically equal).
     meterlanegate::snapshots.erase (this);
+    // §2.3: same boundary — a webview reload resets its engine-snapshot /
+    // instances stores to defaults, so the NEXT poll must get a real reply, not
+    // the "~" no-change sentinel. Drop the per-handler reply cache to force it.
+    sentinelcache::replies.erase (this);
     const String json (buildActiveGraphJson());
     evalInBrowser ("window.__elementNative && window.__elementNative.onGraphState(" + json + ");");
     if (auto* ss = context.services().find<SessionService>())

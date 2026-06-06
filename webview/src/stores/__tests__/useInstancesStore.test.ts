@@ -163,6 +163,28 @@ describe("useInstancesStore", () => {
     }
   });
 
+  // ── §2.3 sentinel: host returns "~" when instance list is unchanged ─────────
+  it('sentinel "~": refreshList() returns null → store state unchanged', async () => {
+    // Establish a non-empty state first.
+    mockInvoke.mockResolvedValueOnce(JSON.stringify(TWO_INSTANCES));
+    await useInstancesStore.getState().refreshList();
+    const afterFirst = useInstancesStore.getState().lastUpdated;
+    expect(afterFirst).toBeGreaterThan(0);
+
+    // Sentinel reply — must be a no-op.
+    mockInvoke.mockResolvedValueOnce("~");
+    await useInstancesStore.getState().refreshList();
+    expect(useInstancesStore.getState().lastUpdated).toBe(afterFirst);
+    expect(useInstancesStore.getState().instances).toHaveLength(2);
+  });
+
+  it('sentinel "~" on a fresh store: keeps hasHostData=false (honest empty state)', async () => {
+    mockInvoke.mockResolvedValueOnce("~");
+    await useInstancesStore.getState().refreshList();
+    expect(useInstancesStore.getState().hasHostData).toBe(false);
+    expect(useInstancesStore.getState().instances).toHaveLength(0);
+  });
+
   it("refreshList() drops a mirror target that vanished from the list", async () => {
     // Start mirroring id 2, then poll a list that no longer contains it.
     mockInvoke.mockResolvedValueOnce(JSON.stringify(SNAPSHOT)); // setMirrorTarget fetch

@@ -196,6 +196,22 @@ describe("<Block />", () => {
     expect(screen.queryByText("BYPASSED")).toBeNull();
   });
 
+  // ── Wave-0.4 perf guardrail: NO backdrop-filter on a bypassed Block ─────────
+  // Locks architect-perf-plan §0.4 (and the neumorphic design law banning
+  // backdrop-blur). A bypassed block must use a FLAT dark wash — never a
+  // backdrop-filter, which forces a per-frame WKWebView read-back-blur stall.
+  it("bypassed Block renders NO backdrop-filter (§0.4 + design law)", () => {
+    const { container } = renderBlock({ bypassed: true });
+    // BYPASSED overlay must be present...
+    expect(screen.getByText("BYPASSED")).toBeInTheDocument();
+    // ...but nothing in the rendered markup may carry a backdrop filter (React
+    // serialises `backdropFilter`/`WebkitBackdropFilter` to `backdrop-filter` /
+    // `-webkit-backdrop-filter` in the inline style attribute).
+    const html = container.innerHTML.toLowerCase();
+    expect(html).not.toContain("backdrop-filter");
+    expect(html).not.toContain("backdropfilter");
+  });
+
   // ── Error state ─────────────────────────────────────────────────────────
 
   it("renders error indicator when error=true", () => {

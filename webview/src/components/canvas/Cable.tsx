@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useMemo } from "react";
 import {
   BaseEdge,
   EdgeLabelRenderer,
@@ -31,6 +31,18 @@ const channelWidth: Record<number, number> = {
   2: 3,
   6: 5,
 };
+
+// ── Amp quantisation (architect-perf-plan §1.1) ──
+// The live engine amp (0..1) is bucketed to 9 discrete steps (0..8) so the
+// amp-driven PAINTER styling (glow blur, drop-shadow, opacity — pre-baked into
+// `.cbl-a{n}`/`.cbl-glow-a{n}` in index.css) and the bucket-memoised stroke
+// style object only change on a bucket crossing (a few Hz) instead of every
+// 60Hz meter tick. round() so amp=1 maps to bucket 8, amp=0 to bucket 0.
+export const AMP_BUCKETS = 8;
+export function ampToBucket(amp: number): number {
+  const clamped = Math.min(1, Math.max(0, amp));
+  return Math.round(clamped * AMP_BUCKETS);
+}
 
 // ── Signal pulse animation ──
 // Injected once at module load. Previously a <style> tag was rendered
@@ -77,6 +89,15 @@ if (typeof document !== "undefined") {
  * geometry (bezier — the default since verdict #2 — vs. manhattan, with
  * fan-out for multi-output Blocks) follows `useAppStore.cableRouting`.
  *
+ * PERF (architect-perf-plan §1.1/§1.2): the amp-driven painter properties are
+ * QUANTISED to a 9-step bucket and routed through pre-baked CSS classes
+ * (`.cbl-a{n}` / `.cbl-glow-a{n}` carry the blur/drop-shadow/opacity stops) +
+ * bucket-memoised, identity-stable inline style objects for stroke/width — so
+ * no painter (`filter: blur`/`drop-shadow`) or strokeWidth float mutates on a
+ * 60Hz meter tick, only on a bucket crossing. The flow-pulse march rides the
+ * static `.cable-pulse` class + a `--pd` custom property (retiming without a
+ * keyframe restart) rather than reassigning the `animation` shorthand per tick.
+ *
  * Props are React Flow's injected `EdgeProps`; `data` is cast to `CableData`.
  */
 function CableComponent({
@@ -122,8 +143,17 @@ function CableComponent({
   const busName = useBusStore((s) => s.cableBus[id]);
   const isWireless = Boolean(busName);
   const amp = Math.min(1, Math.max(0, level));
-  const strokeOpacity = selected ? 1 : 0.4 + amp * 0.6;
-  const glowOpacity = 0.05 + amp * 0.4;
+  // Quantise amp → 0..8 bucket (architect-perf-plan §1.1). ALL amp-derived
+  // painter styling is keyed off the bucket (CSS classes `.cbl-a{n}` /
+  // `.cbl-glow-a{n}` carry the blur/drop-shadow/opacity stops; the bucketed
+  // stroke style objects below are identity-stable per bucket) so nothing
+  // mutates a painter inline string on a 60Hz tick — only on a bucket crossing.
+  const ampBucket = ampToBucket(amp);
+  const ampQ = ampBucket / AMP_BUCKETS;
+  // Endpoint plug opacity follows the SAME stops as the main stroke
+  // (selected ⇒ 1, else 0.4 + amp*0.6) but quantised to the bucket so the two
+  // plug circles don't re-paint a fresh opacity float every tick either.
+  const plugOpacity = selected ? 1 : 0.4 + ampQ * 0.6;
   // Unique per-edge marker id (T9b). A shared id would make ALL cables paint
   // with the FIRST mounted cable's marker colour (a known SVG quirk: <marker>
   // is referenced by url(#id), so identical ids collapse to one definition).
@@ -166,6 +196,54 @@ function CableComponent({
             fanOffset !== 0 ? (sourceX + targetX) / 2 + fanOffset : undefined,
         });
 
+  // Bucket-memoised stroke style objects (architect-perf-plan §1.1). Reused by
+  // reference while the bucket/colour/width/state are unchanged, so React/WebKit
+  // see an IDENTITY-STABLE `style` between meter ticks — no per-tick style
+  // recalc. `color` carries the signal hue (full for the line, hue@40% for the
+  // glow/main `currentColor` drop-shadow); the blur/drop-shadow/opacity live in
+  // the `.cbl-*` classes. strokeWidth folds in the small bucketed amp term so
+  // it, too, only changes on a bucket crossing — never a per-frame float
+  // mutation. Hooks run unconditionally (before the wireless early return) so
+  // the hook order stays stable across the wireless branch.
+  const glowStyle = useMemo<React.CSSProperties>(
+    () => ({
+      stroke: color,
+      // 40%-alpha hue drives the (CSS) blur layer's own colour; opacity in class.
+      color: `${color}66`,
+      strokeWidth: width + 8 + ampQ * 6,
+    }),
+    [color, width, ampQ],
+  );
+  const mainStyle = useMemo<React.CSSProperties>(
+    () => ({
+      stroke: color,
+      // hue@40% so the CSS `drop-shadow(... currentColor)` matches the old
+      // `${color}66` glow softness; the line stroke itself stays full hue above.
+      color: `${color}66`,
+      strokeWidth: width + ampQ * 1.2,
+      strokeDasharray: isSidechain ? "6 4" : undefined,
+      strokeLinecap: "round",
+    }),
+    [color, width, ampQ, isSidechain],
+  );
+  // Pulse overlay style — identity-stable per bucket. The march DURATION rides
+  // the `--pd` custom property (consumed by `.cable-pulse` in CSS) so retiming
+  // never restarts the keyframes; opacity is the bucketed 0.3–0.8 band. NO
+  // `animation` shorthand and NO painter filter here.
+  const pulseStyle = useMemo<React.CSSProperties>(
+    () =>
+      ({
+        stroke: color,
+        strokeWidth: width + ampQ * 1.2,
+        strokeDasharray: "8 16",
+        strokeLinecap: "round",
+        opacity: 0.3 + ampQ * 0.5,
+        pointerEvents: "none",
+        ["--pd"]: `${1.6 - ampQ * 1.1}s`,
+      }) as React.CSSProperties,
+    [color, width, ampQ],
+  );
+
   if (isWireless) {
     // Wireless cables stay in the React Flow edge graph (so the engine
     // still routes audio and selection works), but their visual is
@@ -192,15 +270,14 @@ function CableComponent({
   // T9c — pulse overlay: a dashed path stroked ON TOP of the main cable whose
   // dash march speed AND opacity scale with the live engine amp. Below the
   // activity threshold no overlay is rendered at all (idle / -∞ stays a clean
-  // static cable). CSS keyframes drive the march, so there is no per-frame
-  // React re-render — only the amp-derived duration/opacity change on a level
-  // tick. NOTHING-fake: amp is the real RMS/MIDI level from useCableMeterStore.
+  // static cable). CSS keyframes drive the march via the `.cable-pulse` class
+  // (architect-perf-plan §1.2); only the DURATION (`--pd`) and opacity vary —
+  // both QUANTISED to the amp bucket so they change a few Hz, not 60×/s, and
+  // the full `animation` shorthand is NEVER reassigned per tick (which would
+  // restart the keyframe sequence → stutter + style recalc on every
+  // signal-carrying cable). NOTHING-fake: amp is the real RMS/MIDI level.
   const PULSE_THRESHOLD = 0.05;
   const showPulse = amp > PULSE_THRESHOLD;
-  // Faster march at higher amp: 1.6s (just-on) → 0.5s (hot).
-  const pulseDuration = 1.6 - amp * 1.1;
-  // Brighter overlay at higher amp, clamped to the 0.3–0.8 band.
-  const pulseOpacity = 0.3 + amp * 0.5;
 
   return (
     <>
@@ -221,58 +298,50 @@ function CableComponent({
         </marker>
       </defs>
 
-      {/* Selection glow — Section 5.2 Micro-glow */}
+      {/* Selection glow — Section 5.2 Micro-glow. Blur + opacity come from the
+          bucketed `.cbl-glow-a{n}` class (no per-tick `filter: blur()` string);
+          stroke/width from the identity-stable memoised glowStyle. */}
       {(selected || amp > 0.01) && (
         <BaseEdge
           id={`${id}-glow`}
           path={edgePath}
-          style={{
-            stroke: color,
-            strokeWidth: width + 8 + amp * 6,
-            opacity: glowOpacity,
-            filter: `blur(${4 + amp * 4}px)`,
-          }}
+          className={`cbl-glow-a${ampBucket}`}
+          style={glowStyle}
         />
       )}
 
       {/* Main cable path — intensity follows engine RMS / MIDI activity (§2.4).
-          marker-end draws the direction arrowhead in the signal colour. */}
+          marker-end draws the direction arrowhead in the signal colour. The
+          drop-shadow + opacity come from the bucketed `.cbl-a{n}` class (+
+          `.cbl-sel` forcing full opacity when selected) — NO per-tick
+          `drop-shadow()` string; stroke/width/dash from the memoised mainStyle. */}
       <BaseEdge
         id={id}
         path={edgePath}
         markerEnd={`url(#${markerId})`}
-        style={{
-          stroke: color,
-          strokeWidth: width + amp * 1.2,
-          strokeDasharray: isSidechain ? "6 4" : undefined,
-          strokeLinecap: "round",
-          opacity: strokeOpacity,
-          filter: `drop-shadow(0 0 ${2 + amp * 4}px ${color}66)`,
-        }}
+        className={`cbl-a${ampBucket}${selected ? " cbl-sel" : ""}`}
+        style={mainStyle}
       />
 
       {/* Flow-pulse overlay (T9c) — dashed, amp-scaled march + opacity. Only
           mounted while signal is actually flowing; sidechain keeps its own
-          static dash on the main stroke so the overlay sits cleanly on top. */}
+          static dash on the main stroke so the overlay sits cleanly on top.
+          The march is the static `.cable-pulse` class driven by `--pd` (in
+          pulseStyle) — the `animation` shorthand is never reassigned per tick. */}
       {showPulse && !isSidechain && (
         <BaseEdge
           id={`${id}-pulse`}
           path={edgePath}
-          style={{
-            stroke: color,
-            strokeWidth: width + amp * 1.2,
-            strokeDasharray: "8 16",
-            strokeLinecap: "round",
-            opacity: pulseOpacity,
-            animation: `signalPulse ${pulseDuration}s linear infinite`,
-            pointerEvents: "none",
-          }}
+          className="cable-pulse"
+          style={pulseStyle}
         />
       )}
 
       {/* Endpoint plugs (T9b) — small signal-colour discs with a dark neu ring
           press the cable INTO each port (no blur, per the neumorphic system).
-          Drawn at the React-Flow endpoints so they track the live geometry. */}
+          Drawn at the React-Flow endpoints so they track the live geometry.
+          Opacity is bucket-quantised (plugOpacity) so the discs don't repaint a
+          fresh opacity float every tick. */}
       <circle
         cx={sourceX}
         cy={sourceY}
@@ -280,7 +349,7 @@ function CableComponent({
         fill={color}
         stroke="#1A1A1E"
         strokeWidth={1.5}
-        opacity={strokeOpacity}
+        opacity={plugOpacity}
         pointerEvents="none"
         data-testid={`cable-plug-source-${id}`}
       />
@@ -291,7 +360,7 @@ function CableComponent({
         fill={color}
         stroke="#1A1A1E"
         strokeWidth={1.5}
-        opacity={strokeOpacity}
+        opacity={plugOpacity}
         pointerEvents="none"
         data-testid={`cable-plug-target-${id}`}
       />

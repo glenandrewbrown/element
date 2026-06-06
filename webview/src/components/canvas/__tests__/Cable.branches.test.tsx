@@ -339,10 +339,15 @@ describe("Cable branches", () => {
   // (faster march) and its opacity grows with amp.
 
   function pulseOverlay(container: HTMLElement): SVGPathElement | null {
-    // The overlay path carries the signalPulse animation in its inline style.
-    return Array.from(container.querySelectorAll("path")).find((p) =>
-      (p.getAttribute("style") ?? "").includes("signalPulse"),
-    ) as SVGPathElement | null ?? null;
+    // Wave-1 (§1.2): the march is the static `.cable-pulse` class (merged onto
+    // the BaseEdge path's `react-flow__edge-path`); the only inline amp-derived
+    // value is the `--pd` duration custom property. Identify the overlay by its
+    // class, NOT by an inline `animation` shorthand (which no longer exists).
+    return (
+      (Array.from(container.querySelectorAll("path.cable-pulse")).find(
+        (p) => p.classList.contains("react-flow__edge-path"),
+      ) as SVGPathElement | undefined) ?? null
+    );
   }
 
   it("idle cable (amp ≤ threshold) renders NO pulse overlay", () => {
@@ -365,21 +370,22 @@ describe("Cable branches", () => {
     expect(overlay!.getAttribute("style")).toContain("8 16");
   });
 
-  it("pulse march is FASTER (shorter duration) at higher amp", () => {
+  it("pulse march is FASTER (shorter --pd duration) at higher amp", () => {
+    // §1.2: the duration now rides the `--pd` custom property (consumed by the
+    // `.cable-pulse` CSS class) instead of an inline `animation` shorthand.
+    const readPd = (container: HTMLElement): number => {
+      const overlay = pulseOverlay(container)!;
+      // jsdom keeps custom properties on the inline style map.
+      const pd =
+        overlay.style.getPropertyValue("--pd") ||
+        (/--pd:\s*([\d.]+)s/.exec(overlay.getAttribute("style") ?? "")?.[1] ??
+          "");
+      return parseFloat(pd);
+    };
     mockLevel.value = 0.2;
-    const slow = render(<Cable {...base} />);
-    const slowDur = parseFloat(
-      /signalPulse\s+([\d.]+)s/.exec(
-        pulseOverlay(slow.container)!.getAttribute("style") ?? "",
-      )![1],
-    );
+    const slowDur = readPd(render(<Cable {...base} />).container);
     mockLevel.value = 0.9;
-    const fast = render(<Cable {...base} />);
-    const fastDur = parseFloat(
-      /signalPulse\s+([\d.]+)s/.exec(
-        pulseOverlay(fast.container)!.getAttribute("style") ?? "",
-      )![1],
-    );
+    const fastDur = readPd(render(<Cable {...base} />).container);
     expect(fastDur).toBeLessThan(slowDur);
   });
 

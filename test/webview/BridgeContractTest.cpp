@@ -123,11 +123,17 @@ BOOST_AUTO_TEST_CASE (getGraphState_json_shape)
 
     BOOST_REQUIRE (! result.isVoid() && ! result.isUndefined());
 
-    // Result is a JSON string — parse it.
-    const String json (result.toString());
-    var parsed;
-    juce::Result parseResult = JSON::parse (json, parsed);
-    BOOST_REQUIRE_MESSAGE (parseResult.wasOk(), "elementGetGraphState returned invalid JSON: " + json);
+    // Contract: structured var OR a JSON string (consumers accept both — see
+    // useJuceBridge onGraphState). Since ff023feb8 the handler returns a
+    // structured var (avoids JUCE's emitCompletionEvent O(n²) quote-escape on
+    // large sessions), so parse only when a string arrives.
+    var parsed = result;
+    if (result.isString())
+    {
+        const String json (result.toString());
+        juce::Result parseResult = JSON::parse (json, parsed);
+        BOOST_REQUIRE_MESSAGE (parseResult.wasOk(), "elementGetGraphState returned invalid JSON: " + json);
+    }
 
     auto* obj = parsed.getDynamicObject();
     BOOST_REQUIRE (obj != nullptr);
@@ -356,6 +362,38 @@ BOOST_AUTO_TEST_CASE (getInstances_json_shape)
     BOOST_CHECK (obj->getProperty ("instances").isArray());
     // selfId is an int (−1 when the host's Context is not a plugin instance).
     BOOST_CHECK (obj->getProperty ("selfId").isInt());
+}
+
+// ── §2.3 change-sentinel ──────────────────────────────────────────────────────
+// The steady-state JSON pollers (elementGetEngineSnapshot / elementGetInstances)
+// reply with a "~" sentinel when the new reply is byte-identical to the previous
+// one, so an idle poll serialises ~nothing on the message thread. First call on a
+// fresh host MUST be the real JSON (empty cache); an immediate second call with
+// no intervening state change MUST be exactly "~". The webview treats "~" as
+// "no change" (returns null / skips the store set).
+BOOST_AUTO_TEST_CASE (engineSnapshot_and_instances_emit_change_sentinel)
+{
+    auto* ctx = test::context();
+    BOOST_REQUIRE (ctx != nullptr);
+
+    ElementWebViewHost host (*ctx, /*skipBrowser=*/true);
+
+    for (const char* fn : { "elementGetEngineSnapshot", "elementGetInstances" })
+    {
+        const var first = BridgeContractTest::invoke (host, fn);
+        BOOST_REQUIRE (! first.isVoid() && ! first.isUndefined());
+        // First reply is real JSON, never the sentinel.
+        const String firstStr (first.toString());
+        BOOST_CHECK_MESSAGE (firstStr != "~",
+            String (fn) + " first reply must be real JSON, got the sentinel");
+        var parsed;
+        BOOST_CHECK_MESSAGE (JSON::parse (firstStr, parsed).wasOk(),
+            String (fn) + " first reply must parse as JSON: " + firstStr);
+
+        // Second identical-state reply collapses to the literal "~".
+        const var second = BridgeContractTest::invoke (host, fn);
+        BOOST_CHECK_EQUAL (second.toString(), String ("~"));
+    }
 }
 
 // ── Test 7 (U11) ─────────────────────────────────────────────────────────────

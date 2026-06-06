@@ -94,8 +94,6 @@ function PortShape({
   hovered: boolean;
 }) {
   const color = portColor[type] ?? portColor.audio;
-  const scale = hovered ? 1.25 : 1;
-  const glow = hovered ? `0 0 6px ${color}80` : connected ? `0 0 4px ${color}40` : "none";
 
   const sharedProps = {
     fill: connected ? color : "none",
@@ -113,17 +111,26 @@ function PortShape({
     shape = <rect x="1" y="1" width="10" height="10" {...sharedProps} />;
   }
 
+  // Glow + 1.25× hover scale moved to static CSS classes (architect-perf-plan
+  // §1.3) so PortShape no longer writes a fresh inline `filter: drop-shadow()`
+  // string on every Block re-render (× every port). The signal hue — INCLUDING
+  // the per-state alpha (hovered ⇒ 50%, connected ⇒ 25%) — rides the element's
+  // `color`, so the CSS `drop-shadow(... currentColor)` resolves the right tint;
+  // `color` is identity-stable per (type, state). Class precedence: hovered wins.
+  const glowClass = hovered
+    ? "port-hovered"
+    : connected
+      ? "port-connected"
+      : "port-idle";
+  const glowColor = hovered ? `${color}80` : connected ? `${color}40` : undefined;
+
   return (
     <svg
       width="12"
       height="12"
       viewBox="0 0 12 12"
-      style={{
-        transform: `scale(${scale})`,
-        transition: "transform 120ms ease, filter 120ms ease",
-        filter: glow !== "none" ? `drop-shadow(${glow})` : undefined,
-        display: "block",
-      }}
+      className={`port-shape ${glowClass}`}
+      style={glowColor ? { color: glowColor } : undefined}
     >
       {shape}
     </svg>
@@ -361,9 +368,13 @@ function BypassedDim() {
         top: 0,
         bottom: 2, // leave the 2px load bar lit — signal passes through
         borderRadius: "inherit",
-        background: "rgba(20,20,24,0.42)",
-        backdropFilter: "grayscale(0.92) saturate(0.18) brightness(0.8)",
-        WebkitBackdropFilter: "grayscale(0.92) saturate(0.18) brightness(0.8)",
+        // FLAT dark wash — NO backdrop-filter (architect-perf-plan §0.4 +
+        // design law: no backdrop-blur/read-back). A denser opaque-ish dark
+        // wash (0.62) crushes the chassis colour toward the canvas so the block
+        // reads clearly "off / disabled" without a per-frame WKWebView
+        // read-back-blur-recomposite. The lit load bar (below, z-40) + the
+        // BYPASSED label keep "off but flowing" distinct from mute's hard block.
+        background: "rgba(20,20,24,0.62)",
       }}
     >
       <span

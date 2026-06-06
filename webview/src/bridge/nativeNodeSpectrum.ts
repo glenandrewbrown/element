@@ -36,6 +36,34 @@ function toBins(v: unknown): number[] {
 }
 
 /**
+ * Decode a v2 compact payload.
+ *
+ * The host encodes each bin as a uint8 (0–255) mapped linearly onto the
+ * original 0..1 float range: encodedByte = round(floatBin * 255), so
+ * floatBin = byte / 255.  The full payload is a base64 string of the raw
+ * uint8 bytes (one byte per bin), transmitted inside a JSON string:
+ *   `{"v":2,"fftSize":<int>,"sampleRate":<num>,"binsB64":"<base64>"}`
+ *
+ * See the `elementGetNodeSpectrum` handler comment in
+ * src/ui/element_webview_host.cpp for the authoritative encoder spec.
+ * TODO: cross-check native comment once the encoder lands there.
+ */
+function decodeBinsB64(b64: string): number[] {
+  let binary: string;
+  try {
+    binary = atob(b64);
+  } catch {
+    return [];
+  }
+  const len = binary.length;
+  const out: number[] = new Array(len);
+  for (let i = 0; i < len; ++i) {
+    out[i] = binary.charCodeAt(i) / 255;
+  }
+  return out;
+}
+
+/**
  * Fetch the latest spectrum frame for a node by UUID. Polling == subscribing:
  * the host flips the node's opt-in flag on the first call so the audio thread
  * begins copying samples into the analyser. Returns `null` in pure dev (no
@@ -69,6 +97,20 @@ export async function nativeGetNodeSpectrum(
   }
   if (parsed == null) return null;
 
+  // v2 compact payload: bins pre-serialised as base64 uint8 bytes.
+  // Shape: { v: 2, fftSize: number, sampleRate: number, binsB64: string }
+  // Encoding: each float bin → uint8 via round(bin * 255); decode = byte / 255.
+  if (parsed.v === 2 && typeof parsed.binsB64 === "string") {
+    const bins = decodeBinsB64(parsed.binsB64);
+    if (bins.length === 0) return null;
+    return {
+      bins,
+      fftSize: num(parsed.fftSize),
+      sampleRate: num(parsed.sampleRate),
+    };
+  }
+
+  // Legacy shape: { bins: number[], fftSize, sampleRate }
   const bins = toBins(parsed.bins);
   // Empty bins → honest no-data; let the caller fall back to the placeholder.
   if (bins.length === 0) return null;

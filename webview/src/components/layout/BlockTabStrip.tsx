@@ -20,7 +20,7 @@ export function BlockTabStrip() {
   if (openTabs.length === 0) return null;
 
   return (
-    <div className="h-8 bg-[#222226]/80 flex items-center px-4 gap-1 border-b border-white/5 backdrop-blur-sm select-none">
+    <div className="h-8 bg-[#222226] flex items-center px-4 gap-1 border-b border-white/5 select-none">
       {openTabs.map((tabId) => {
         const node = nodes.find((n) => n.id === tabId);
         const name = node?.name ?? tabId;

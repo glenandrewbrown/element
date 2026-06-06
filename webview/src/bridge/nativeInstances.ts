@@ -104,6 +104,10 @@ export async function nativeGetInstances(): Promise<InstancesResult | null> {
   }
   // `raw == null` is the dev-mode no-bridge fallback — don't log it.
   if (raw == null) return null;
+  // §2.3 sentinel: host returns "~" when the instance list is unchanged since
+  // the last reply. Treat as "no change" → return null so the store's
+  // idle-tick diff-skip keeps the consumer render count at zero. Do NOT log.
+  if (raw === "~") return null;
 
   const parsed = parseObjectOrString(raw);
   if (parsed == null) {

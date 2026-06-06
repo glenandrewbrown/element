@@ -96,4 +96,15 @@ describe("BlockTabStrip — with tabs", () => {
     const inactiveTab = screen.getByText("Reverb X").closest("div");
     expect(inactiveTab?.className).not.toContain("text-accent-blue");
   });
+
+  // ── Wave-0.4 perf guardrail: NO backdrop-blur on the tab strip ─────────────
+  // Locks architect-perf-plan §0.4 (+ the design law banning backdrop-blur).
+  // The strip must use a SOLID `#222226` background, never `backdrop-blur-*`.
+  it("uses a solid background — no backdrop-blur utility class (§0.4)", () => {
+    const { container } = render(<BlockTabStrip />);
+    const html = container.innerHTML;
+    expect(html).not.toContain("backdrop-blur");
+    // Solid panel tone present (Tailwind keeps the arbitrary value verbatim).
+    expect(html).toContain("bg-[#222226]");
+  });
 });

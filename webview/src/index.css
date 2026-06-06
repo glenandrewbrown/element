@@ -457,3 +457,73 @@ body {
   transition: box-shadow 200ms cubic-bezier(0.16, 1, 0.3, 1),
     background 200ms cubic-bezier(0.16, 1, 0.3, 1);
 }
+
+/* ============================================================
+   CABLE PAINTER BUCKETS — Wave-1 (architect-perf-plan §1.1/§1.2)
+   The live engine `amp` (0..1) is QUANTISED to 9 buckets in
+   Cable.tsx (ampBucket = round(amp*8)). The expensive PAINTER
+   properties (filter: blur / drop-shadow, opacity) are pre-baked
+   here as `.cbl-a0..a8` (main path) and `.cbl-glow-a0..a8` (glow
+   layer) so they mutate at most a few Hz (on a bucket crossing)
+   instead of every 60Hz meter tick — a painter repaint per frame
+   was the dominant WebContent cost. The signal-hue is carried via
+   the element's `color` (set inline, identity-stable per signal
+   type) so `drop-shadow(... currentColor)` stays in CSS; the
+   inline `color` is hue@40% (#RRGGBB66) to reproduce the old
+   `${color}66` glow softness. stroke / stroke-width / dash are a
+   bucket-memoised inline style object (same object reference per
+   bucket → identity-stable, no per-tick style recalc).
+   Stops mirror the previous inline formulas at amp = bucket/8:
+     main  opacity 0.4 + amp*0.6 ; drop-shadow blur 2 + amp*4
+     glow  opacity 0.05 + amp*0.4; blur            4 + amp*4
+   ============================================================ */
+
+.cbl-a0 { opacity: 0.40; filter: drop-shadow(0 0 2px currentColor); }
+.cbl-a1 { opacity: 0.475; filter: drop-shadow(0 0 2.5px currentColor); }
+.cbl-a2 { opacity: 0.55; filter: drop-shadow(0 0 3px currentColor); }
+.cbl-a3 { opacity: 0.625; filter: drop-shadow(0 0 3.5px currentColor); }
+.cbl-a4 { opacity: 0.70; filter: drop-shadow(0 0 4px currentColor); }
+.cbl-a5 { opacity: 0.775; filter: drop-shadow(0 0 4.5px currentColor); }
+.cbl-a6 { opacity: 0.85; filter: drop-shadow(0 0 5px currentColor); }
+.cbl-a7 { opacity: 0.925; filter: drop-shadow(0 0 5.5px currentColor); }
+.cbl-a8 { opacity: 1; filter: drop-shadow(0 0 6px currentColor); }
+
+/* Selected cable forces full opacity (matches the old
+   `selected ? 1 : 0.4 + amp*0.6`); the filter stop stays bucketed.
+   Listed AFTER `.cbl-a*` so it wins the opacity cascade. */
+.cbl-sel { opacity: 1; }
+
+.cbl-glow-a0 { opacity: 0.05; filter: blur(4px); }
+.cbl-glow-a1 { opacity: 0.10; filter: blur(4.5px); }
+.cbl-glow-a2 { opacity: 0.15; filter: blur(5px); }
+.cbl-glow-a3 { opacity: 0.20; filter: blur(5.5px); }
+.cbl-glow-a4 { opacity: 0.25; filter: blur(6px); }
+.cbl-glow-a5 { opacity: 0.30; filter: blur(6.5px); }
+.cbl-glow-a6 { opacity: 0.35; filter: blur(7px); }
+.cbl-glow-a7 { opacity: 0.40; filter: blur(7.5px); }
+.cbl-glow-a8 { opacity: 0.45; filter: blur(8px); }
+
+/* Flow-pulse march (architect-perf-plan §1.2). The keyframes
+   `signalPulse` are injected by Cable.tsx. Only the DURATION
+   varies with amp — fed via the `--pd` custom property (an
+   animation-timing input, NOT a paint trigger) so retiming never
+   restarts the keyframe sequence (the old per-tick `animation`
+   shorthand reassignment restarted it → visible stutter + style
+   recalc on every signal-carrying cable). */
+.cable-pulse {
+  animation: signalPulse var(--pd, 1.6s) linear infinite;
+}
+
+/* ============================================================
+   PORT PIP GLOW — Wave-1 (architect-perf-plan §1.3)
+   PortShape's signal-colour glow moved off a per-render inline
+   `filter: drop-shadow()` string onto three static classes keyed
+   by the (connected, hovered) booleans. The hue (incl. its alpha)
+   is carried via the element `color` (set inline, stable per port
+   type + state) so the drop-shadow stays in CSS. `.port-hovered`
+   also scales 1.25× (the old inline transform) and both states
+   keep the smooth transition. */
+.port-shape { display: block; transition: transform 120ms ease, filter 120ms ease; }
+.port-idle { filter: none; }
+.port-connected { filter: drop-shadow(0 0 4px currentColor); }
+.port-hovered { filter: drop-shadow(0 0 6px currentColor); transform: scale(1.25); }

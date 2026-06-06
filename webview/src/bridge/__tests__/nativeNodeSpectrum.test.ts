@@ -135,3 +135,82 @@ describe("nativeSetNodeSpectrumWanted", () => {
     );
   });
 });
+
+// ── §0.3b/c v2 compact payload roundtrip ─────────────────────────────────────
+describe("nativeGetNodeSpectrum — v2 compact payload (§0.3b/c)", () => {
+  let bridge: JuceBridgeMock;
+
+  beforeEach(() => {
+    bridge = installJuceBridgeMock();
+    mockLogBridgeError.mockReset();
+  });
+
+  afterEach(() => {
+    bridge.uninstall();
+  });
+
+  function buildV2Payload(
+    floatBins: number[],
+    fftSize: number,
+    sampleRate: number,
+  ): string {
+    const bytes = floatBins.map((b) => Math.round(b * 255));
+    const binary = String.fromCharCode(...bytes);
+    const binsB64 = btoa(binary);
+    return JSON.stringify({ v: 2, fftSize, sampleRate, binsB64 });
+  }
+
+  it("v2 string payload: decodes binsB64 back to float bins within ±1/255 tolerance", async () => {
+    const original = [0.0, 0.25, 0.5, 0.75, 1.0];
+    const payload = buildV2Payload(original, 2048, 48000);
+    bridge.mock.mockResolvedValueOnce(payload);
+    const spec = await nativeGetNodeSpectrum("node-v2");
+    expect(spec).not.toBeNull();
+    expect(spec?.fftSize).toBe(2048);
+    expect(spec?.sampleRate).toBe(48000);
+    expect(spec?.bins).toHaveLength(original.length);
+    const tolerance = 1 / 255 + 1e-9;
+    for (let i = 0; i < original.length; ++i) {
+      expect(Math.abs((spec?.bins[i] ?? 0) - original[i])).toBeLessThanOrEqual(tolerance);
+    }
+  });
+
+  it("v2 payload: 1024-bin roundtrip (realistic FFT frame size)", async () => {
+    const bins = Array.from({ length: 1024 }, (_, i) => (i % 256) / 255);
+    const payload = buildV2Payload(bins, 2048, 44100);
+    bridge.mock.mockResolvedValueOnce(payload);
+    const spec = await nativeGetNodeSpectrum("node-v2-large");
+    expect(spec?.bins).toHaveLength(1024);
+    expect(spec?.bins[0]).toBeCloseTo(0, 5);
+    expect(spec?.bins[255]).toBeCloseTo(1, 1);
+  });
+
+  it("v2 payload: empty binsB64 returns null (honest no-data)", async () => {
+    const payload = JSON.stringify({ v: 2, fftSize: 2048, sampleRate: 48000, binsB64: "" });
+    bridge.mock.mockResolvedValueOnce(payload);
+    const spec = await nativeGetNodeSpectrum("node-v2-empty");
+    expect(spec).toBeNull();
+    expect(mockLogBridgeError).not.toHaveBeenCalled();
+  });
+
+  it("v2 payload: invalid base64 returns null without crashing", async () => {
+    const payload = JSON.stringify({ v: 2, fftSize: 2048, sampleRate: 48000, binsB64: "!!!not-valid-b64!!!" });
+    bridge.mock.mockResolvedValueOnce(payload);
+    const spec = await nativeGetNodeSpectrum("node-v2-bad-b64");
+    expect(spec).toBeNull();
+  });
+
+  it("v2 and legacy shapes both produce the same public NodeSpectrum interface", async () => {
+    bridge.mock.mockResolvedValueOnce({ bins: [0.1, 0.5, 0.9], fftSize: 1024, sampleRate: 44100 });
+    const legacy = await nativeGetNodeSpectrum("node-legacy");
+    bridge.mock.mockResolvedValueOnce(buildV2Payload([0.1, 0.5, 0.9], 1024, 44100));
+    const v2 = await nativeGetNodeSpectrum("node-v2-compat");
+    expect(legacy).toHaveProperty("bins");
+    expect(legacy).toHaveProperty("fftSize");
+    expect(legacy).toHaveProperty("sampleRate");
+    expect(v2).toHaveProperty("bins");
+    expect(v2).toHaveProperty("fftSize");
+    expect(v2).toHaveProperty("sampleRate");
+    expect(v2?.bins).toHaveLength(3);
+  });
+});
