@@ -1,3 +1,6 @@
+<!-- Parent: ../AGENTS.md -->
+<!-- Updated: 2026-06-06 -->
+
 # src/engine/ — Audio engine + processing graph
 
 Realtime audio core. Thread-sensitive. Read [`.cursor/rules/element-audio-path.mdc`](../../.cursor/rules/element-audio-path.mdc) before editing.
@@ -19,7 +22,8 @@ Realtime audio core. Thread-sensitive. Read [`.cursor/rules/element-audio-path.m
 | `Oversampler` | `oversampler.cpp` |
 | `CLAPProvider` | `clapprovider.{cpp,hpp}` |
 | `JackClient` | `jack.{cpp,hpp}` (Linux JACK I/O) |
-| Sandbox host | `sandboxhost.hpp`, `sandboxworker.hpp`, `sandboxipc.hpp`, `sandboxsemaphore.hpp`, `sandboxsharedmemory.hpp` |
+| `SandboxEditorWindow` | `sandboxeditorwindow.{cpp,hpp}`, `sandboxeditorwindow_mac.mm` (out-of-process plugin editor window, macOS CALayerHost) |
+| Sandbox host/IPC | `sandboxhost.hpp`, `sandboxworker.hpp`, `sandboxipc.hpp`, `sandboxsemaphore.hpp`, `sandboxsharedmemory.hpp` |
 
 ## Realtime invariants (audio callback path)
 
@@ -42,6 +46,18 @@ Add `// no-rt-check` with justification on the offending line so reviewers can g
 - **ValueTree** (in parent `src/session.cpp`) is the single source of truth — engine snapshots/syncs at ~60 Hz.
 - **`prepareToRender(double sr, int blockSize)`** is the only safe time to allocate; off the audio thread.
 - Sandboxed plugins: state crosses process boundary via `sandboxsharedmemory` + `sandboxsemaphore`; `sandboxipc.hpp` defines `SharedAudioBuffer` and `SandboxMessageHeader` framing.
+
+## CV signal path (Wave-0 "make CV flow")
+
+`GraphBuilder` allocates a parallel `sharedCvChans` (`AudioSampleBuffer`) alongside the audio buffer pool. Layout: `[inputs..., outputs...]` — CV outputs each get their own buffer (no in-place model). `PortType::CV` is fully handled alongside Audio and MIDI.
+
+Key ops in `graphbuilder.cpp`:
+- `ClearChannelOp` / `CopyChannelOp` / `AddChannelOp` CV variants operate on `sharedCvChans` (lines ~115–149).
+- `ProcessBufferOp::perform()` gathers CV pool pointers into `rc.cv` before calling `Processor::render()`.
+- After render, the last sample of each CV output is latched via `node->setOutputCV(i, val)` — used by the 60Hz UI sync thread to feed the `"v"` field on cable entries sent to the webview.
+- `Processor::getOutputCV(int chan)` / `setOutputCV(int chan, float val)` — atomic float array; defined in `include/element/processor.hpp`.
+
+**Mandatory proof gate:** `test/engine/CVFlowTests.cpp` (`CVFlowTests` suite) — must pass on every CV-path change. `test/engine/LogicNodesTest.cpp` covers the CV logic node family.
 
 ## Anti-patterns
 

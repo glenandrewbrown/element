@@ -1,3 +1,6 @@
+<!-- Parent: ../AGENTS.md -->
+<!-- Updated: 2026-06-06 -->
+
 # src/nodes/ — Built-in processor implementations
 
 All in-process audio/MIDI processors registered into `NodeFactory`. New nodes go here. See the [`add-node` skill](../../.claude/skills/add-node/SKILL.md) for the scaffolding workflow.
@@ -39,7 +42,14 @@ Public node IDs (`EL_NODE_ID_*`) live in [`../../include/element/node.h`](../../
 - **Mixing / routing**: `audiomixer`, `audiorouter`, `channelize`
 - **MIDI**: `MidiFilterNode`-derived (channelize, transpose, panic, programmap, …)
 - **I/O / sources**: `audiofileplayer`, `constantnode`, `colorbars`
+- **CV logic** (Wave-0, header-only): `logicnodes.hpp` — `ComparatorNode` (`element.compare`, 2 CV in / 1 CV out, 6 comparison ops) + `LogicGateNode` (`element.logic`, AND/OR/XOR/NOT/NAND/NOR/XNOR)
+- **CV gates** (Wave-0, header-only): `gatenodes.hpp` — `AudioGateNode` (`element.audioGate`, CV-keyed audio gate with 5ms ramp), `MidiGateNode` (`element.midiGate`), `AudioSwitchNode` (`element.audioSwitch`)
+- **CV analysis** (Wave-0, header-only): `envfollowernode.hpp` — `EnvelopeFollowerNode` (`element.envFollower`, stereo audio → unipolar CV, one-pole attack/release)
 - **Editor primitives**: `genericeditor`, `ionodeeditor`, `knobs`, `compressoreditor`, `eqfiltereditor`, `audioroutereditor`
+
+## CV node conventions
+
+New CV nodes (Gate/Logic/EnvFollower families) are **header-only** — no `.cpp` counterpart. They inherit `Processor` directly (not `BaseProcessor`, which pulls in `juce::AudioPluginInstance` overhead). RT rules still apply: no allocations in `render()`, atomics for runtime-switchable params. Register in `src/engine/nodefactory.cpp` via `SingleNodeProvider<T>`. Test coverage: `test/engine/CVFlowTests.cpp` (built-graph proof gate) + `test/engine/LogicNodesTest.cpp`.
 
 ## Anti-patterns
 

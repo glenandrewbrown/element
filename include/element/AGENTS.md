@@ -1,3 +1,6 @@
+<!-- Parent: ../../AGENTS.md -->
+<!-- Updated: 2026-06-06 -->
+
 # include/element/ — Public API surface
 
 What `kv::element` exports. Plugins, scripts, and downstream code link against these headers only. `src/` is implementation; if it isn't here, it isn't part of the API.
@@ -21,7 +24,7 @@ include/element/
 | `engine.hpp` / `audioengine.hpp` | Engine façade for plugins/scripts |
 | `graph.hpp` / `node.hpp` / `node.h` | Graph + node model + ID macros |
 | `nodefactory.hpp` | Factory façade for built-in + format-loaded nodes |
-| `processor.hpp` / `parameter.hpp` | Audio processor base contract |
+| `processor.hpp` / `parameter.hpp` | Audio processor base contract; `processor.hpp` exposes CV output latches: `setOutputCV(int,float)` / `getOutputCV(int) const` / `getNumOutputCVChannels() const noexcept` — lock-free last-sample CV values written on the audio thread, readable by UI/QA without blocking |
 | `services.hpp` | Service locator (DeviceService, EngineService, GuiService, …) |
 | `session.hpp` | Top-level project model |
 | `controller.hpp` / `devices.hpp` / `midichannels.hpp` | Hardware/MIDI surface contracts |
@@ -38,6 +41,13 @@ include/element/
 - **No `using namespace juce;` in any header** — even `.cpp` should keep usage local.
 - Public types live here; `src/*.hpp` headers are implementation-private even though they share the layout.
 - ABI: do not break public signatures without a parallel migration shim. CLAP/AU/LV2/VST3 wrappers depend on stability.
+
+## Subdirectories
+
+| Directory | Purpose |
+|-----------|---------|
+| `juce/` | Curated JUCE module includes and forward-declaration helpers — thin wrapper layer only |
+| `ui/` | Public UI shell headers: `NavigationPanel`, `Content`, `WebContent`, `MainWindow`, `NodeEditor`, etc. See [ui/AGENTS.md](ui/AGENTS.md) |
 
 ## Anti-patterns
 

@@ -1,3 +1,6 @@
+<!-- Parent: ../AGENTS.md -->
+<!-- Updated: 2026-06-06 -->
+
 # test/ — Boost.Test suites
 
 Single binary `test_element` (a `juce_add_console_app`) running all unit + integration tests. Sources collected via `file(GLOB_RECURSE *.cpp)` from this dir; **adding a test file requires `cmake -B build-merged` reconfigure** (not just `--build`).
@@ -20,14 +23,15 @@ test/
 │   ├── PreparedGraph.h       #   audio graph prepared for DSP tests
 │   ├── AtomTestNode.h, MidiCaptureNode.h, MidiGeneratorNode.h, TestNode.h
 │   └── context.hpp           #   Context helper
-├── engine/                   # Engine-specific (lock-free, fade, MIDI clock, sandbox IPC)
-├── integration/              # Cross-system flows
-├── osc/                      # OSC handling
-├── realtime/                 # Realtime-safety assertions
-├── scripting/                # Lua DSP/UI script tests
-├── services/                 # Service-layer tests (uses ServicesFixture)
-├── snippets/                 # Snippet/Preset roundtrip
-└── webview/                  # Bridge + native-function contract tests
+├── dsp/                      # DSP robustness (extreme inputs, denormals, zero-len buffers) — see dsp/AGENTS.md
+├── engine/                   # Engine-specific (lock-free, fade, MIDI clock, sandbox IPC, CV flow) — see engine/AGENTS.md
+├── integration/              # Cross-system flows — see integration/AGENTS.md
+├── osc/                      # OSC handling; node-client/ = JS reference client — see osc/AGENTS.md
+├── realtime/                 # Realtime-safety assertions (alloc guard) — see realtime/AGENTS.md
+├── scripting/                # Lua DSP/UI script tests — see scripting/AGENTS.md
+├── services/                 # Service-layer tests (uses ServicesFixture) — see services/AGENTS.md
+├── snippets/                 # Lua snippets consumed by scripting tests — see snippets/AGENTS.md
+└── webview/                  # Bridge + native-function contract tests — see webview/AGENTS.md
 ```
 
 ## CTest registration pattern
@@ -57,6 +61,28 @@ ctest -R "GraphNodeTests"                  # one suite by regex
 - **Use `PreparedGraph`** for DSP tests needing a prepared `GraphNode`.
 - **Test MIDI** with `MidiGeneratorNode` + `MidiCaptureNode` — assert on captured buffer.
 - **Realtime-safety assertions** live under `realtime/` — they instrument allocator/lock to fail on RT violations.
+
+## Notable suites
+
+| Suite | File | What it guards |
+|-------|------|----------------|
+| `CVFlowTests` | `engine/CVFlowTests.cpp` | **THE built-graph CV proof gate.** Wires real nodes through real `GraphManager`/`GraphBuilder` render — hand-built `RenderContext` unit tests are NOT sufficient (the live CV path was dead for years while unit tests stayed green). New graph-level CV signal claims must extend this suite, not add isolated unit tests. |
+| `LogicNodesTest` | `engine/LogicNodesTest.cpp` | Comparator, logic, envelope-follower, gate nodes; direct-render unit tests. Complements CVFlowTests — both must pass. |
+| `InternalNodeNamingTests` | `engine/InternalNodeNamingTests.cpp` | Naming QA guard: every browsable internal node has a human, unique, non-ID name; MIDI device directions are distinct; `Placeholder` is not browsable. |
+| `BlockCategoryMapTests` | `engine/BlockCategoryMapTest.cpp` | Keyword-matching helper that maps plugin description strings to the 4-category taxonomy (instrument/audiofx/midieffect/modulator). |
+| `AudioThreadAllocationTests` | `realtime/AudioThreadAllocationTest.cpp` | RT allocation guard — global `new`/`delete` interposer fails the test if audio-thread `render()` allocates. |
+| `BridgeContractTests` | `webview/BridgeContractTest.cpp` | C++ side of the JS→native bridge: JSON shape contracts for 5 representative native functions, no live WebView needed. |
+| `ContainerDiveTests` | `webview/ContainerDiveTest.cpp` | End-to-end `elementEnterContainer`/`elementExitContainer` through real `SessionService` + real nested `Graph` child. |
+
+## Env-flaky suites (excluded from QA runs)
+
+`SandboxStressTests` and `SandboxOrderedShutdownTests` hang or produce 406 errors in constrained CI environments (POSIX shm limits, process-spawn timing). Exclude via:
+
+```bash
+ctest --output-on-failure -E "SandboxStress|SandboxOrderedShutdown"
+```
+
+These suites are **not broken** — run them locally when working on sandbox IPC.
 
 ## Anti-patterns
 

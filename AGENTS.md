@@ -1,3 +1,5 @@
+<!-- Generated: 2026-05-08 | Updated: 2026-06-06 -->
+
 # Agent / IDE quick start
 
 ## Read first (order matters)
@@ -39,7 +41,8 @@ See [`docs/REPOMIX.md`](docs/REPOMIX.md) and [`repomix.config.json`](repomix.con
 
 ## Hierarchical AGENTS.md (children)
 
-Drill into a subsystem; each child is intentionally narrower than this index.
+Drill into a subsystem; each child is intentionally narrower than this index and links its own
+children (50 AGENTS.md repo-wide — every doc carries a `<!-- Parent: -->` tag back up the tree).
 
 | Path | Domain |
 |---|---|
@@ -47,9 +50,21 @@ Drill into a subsystem; each child is intentionally narrower than this index.
 | [`src/engine/AGENTS.md`](src/engine/AGENTS.md) | Audio engine, processing graph, realtime invariants |
 | [`src/nodes/AGENTS.md`](src/nodes/AGENTS.md) | Built-in processor nodes, NodeFactory registration |
 | [`src/ui/AGENTS.md`](src/ui/AGENTS.md) | Hybrid UI (Web shell canonical, StandardContent fallback) |
-| [`include/element/AGENTS.md`](include/element/AGENTS.md) | Public API surface (`element/*.hpp`) |
-| [`webview/AGENTS.md`](webview/AGENTS.md) | React 19 + Vite 8 + Tailwind 4 frontend |
-| [`test/AGENTS.md`](test/AGENTS.md) | Boost.Test suite, fixtures, CTest registration |
+| [`src/services/AGENTS.md`](src/services/AGENTS.md) | App services (engine/session/gui/osc/device/mapping/preset) |
+| [`src/el/AGENTS.md`](src/el/AGENTS.md) | Lua binding implementations (sol2) |
+| [`src/scripting/AGENTS.md`](src/scripting/AGENTS.md) | Scripting engine internals |
+| [`src/plugins/AGENTS.md`](src/plugins/AGENTS.md) | VST3/AU/CLAP plugin-target entry points + init/teardown gotchas |
+| [`include/element/AGENTS.md`](include/element/AGENTS.md) | Public API surface (`element/*.hpp`, + `ui/` headers) |
+| [`webview/AGENTS.md`](webview/AGENTS.md) | React 19 + Vite 8 + Tailwind 4 frontend (full subtree: components/stores/hooks/bridge/.storybook) |
+| [`test/AGENTS.md`](test/AGENTS.md) | Boost.Test suite, fixtures, CTest registration (per-suite-dir children) |
+| [`docs/AGENTS.md`](docs/AGENTS.md) | Doc map: blueprint, policies, [`adr/`](docs/adr/AGENTS.md) decision records |
+| [`tools/AGENTS.md`](tools/AGENTS.md) | AX UI verification + reliability proof scripts |
+| [`agent-harness/AGENTS.md`](agent-harness/AGENTS.md) | `cli-anything-element` headless OSC QA/debug bridge |
+| [`scripts/AGENTS.md`](scripts/AGENTS.md) | Signing/notarization shell + runtime Lua scripts |
+| [`installer/AGENTS.md`](installer/AGENTS.md) | PKG/DMG pipeline (`build_pkg.sh`, build-number flow) |
+| [`cmake/AGENTS.md`](cmake/AGENTS.md) | CMake modules + macOS entitlements |
+| [`data/AGENTS.md`](data/AGENTS.md) | Bundled resources (fonts/images/demo sessions) |
+| [`.github/AGENTS.md`](.github/AGENTS.md) | CI workflows, issue templates |
 
 ## Code map (entry points)
 
@@ -90,7 +105,8 @@ Build / packaging:
 
 ## Generated facts (snapshot)
 
-- **Generated:** 2026-05-08T04:10:19Z · **Branch:** `local-enhancements` · **Commit:** `0e67448b`
+- **Updated:** 2026-06-06 · **Branch:** `chromatic-ui-review` (baseline: `local-enhancements`, NOT `main`) · **Commit:** `0327943f`
+- **CV is live:** `GraphBuilder` routes `PortType::CV` through a parallel CV buffer pool; `Processor::setOutputCV/getOutputCV` latches feed UI + `/element/query dumpcv`. Proof gate: `test/engine/CVFlowTests.cpp` (built-graph render, not hand-built contexts).
 - **C++ standard:** C++20 · **JUCE:** 8.0.12 · **CMake min:** 3.26.0 · **Boost:** ≥1.74.0
 - **Test framework:** Boost.Test (header-only), single binary `test_element`, per-suite CTest entries.
 - **Webview stack:** React 19.2.4, Vite 8.0.1, Tailwind 4.2.2, `@xyflow/react` 12.10.2, Zustand 5, framer-motion 12, Vitest 4 + Playwright.

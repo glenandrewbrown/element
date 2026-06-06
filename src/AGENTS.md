@@ -1,22 +1,25 @@
+<!-- Parent: ../AGENTS.md -->
+<!-- Updated: 2026-06-06 -->
+
 # src/ — C++ source dispatch
 
 Top-level Element C++ implementation. All files compile into `kv::element` library + standalone app + plugin targets via `juce_add_*`.
 
-## Subsystem dispatch
+## Subdirectories
 
-| Subdir | Role | Has own AGENTS.md |
+| Subdir | Role | AGENTS.md |
 |---|---|---|
-| [`engine/`](engine/AGENTS.md) | Audio/MIDI engine, processing graph, sandbox host/worker | yes |
-| [`nodes/`](nodes/AGENTS.md) | Built-in processor implementations (compressor, EQ, mixer, router, …) | yes |
-| [`ui/`](ui/AGENTS.md) | Hybrid UI (Web shell + classic JUCE fallback) | yes |
-| `el/` | Lua-bound Element core: graphics, widgets, AudioBuffer, Context, Session | no |
-| `services/` | App services: Device, Engine, GUI, Mapping, OSC, Preset, Session | no |
-| `scripting/` | Lua DSP/UI script manager, sol2 bindings | no |
-| `lua/` | Vendored Lua interpreter source + Element Lua modules | no — vendored |
-| `plugins/` | Plugin format entry points (`instrument.cc`, `effect.cc`, `midi_effect.cc`, `plugin_updater.cc`) | no |
-| `juce/` | Internal JUCE module integrations | no |
-| `experimental/` | Pre-merge work; not built unless flagged | no |
-| `res/` | Embedded resources | no |
+| [`engine/`](engine/AGENTS.md) | Audio/MIDI engine, processing graph, CV pool, sandbox host/worker | [yes](engine/AGENTS.md) |
+| [`nodes/`](nodes/AGENTS.md) | Built-in processor implementations (compressor, EQ, mixer, router, gate, logic, …) | [yes](nodes/AGENTS.md) |
+| [`ui/`](ui/AGENTS.md) | Hybrid UI: WebContent (canonical V3) + StandardContent (classic JUCE fallback) | [yes](ui/AGENTS.md) |
+| [`services/`](services/AGENTS.md) | App services: Device, Engine, GUI, Mapping, OSC, Preset, Session | [yes](services/AGENTS.md) |
+| [`el/`](el/AGENTS.md) | Lua C++ binding impls (sol2): Context, Session, Node, Graph, AudioBuffer, widgets | [yes](el/AGENTS.md) |
+| [`scripting/`](scripting/AGENTS.md) | Script manager, DSP/UI script instances, sol2 state, script loader | [yes](scripting/AGENTS.md) |
+| [`plugins/`](plugins/AGENTS.md) | Plugin-format entry points (`effect.cc`, `instrument.cc`, `midieffect.cc`, `pluginupdater.cc`) | [yes](plugins/AGENTS.md) |
+| `lua/` | **Vendored** Lua 5.4 interpreter + sol2 headers — do not edit; tracked via FetchContent | no |
+| `juce/` | Single internal JUCE integration header (`juce.cpp`) — do not fork; track upstream | no |
+| `experimental/` | Pre-merge work; not compiled unless explicitly flagged in CMake | no |
+| `res/` | Embedded binary resources (fonts, icons) baked in at link time | no |
 
 ## Top-level files
 
