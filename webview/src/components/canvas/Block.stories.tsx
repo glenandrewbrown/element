@@ -140,6 +140,24 @@ export const Modulator: Story = story(
   makeBlock({ name: "LFO Tool", category: "modulator", format: "CLAP" }),
   "Modulator Block — purple ⬡ accent. CV/modulation sources like LFOs, envelopes, automation curves.",
 );
+export const MidiInputDevice: Story = story(
+  makeBlock({
+    name: "KeyLab 61 In",
+    category: "instrument", // deliberately miscategorised, as blockcategory.hpp's "input" heuristic does
+    format: "INT",
+    ports: [{ id: "out-m", type: "midi", direction: "output", label: "MIDI", connected: true }],
+  }),
+  "MIDI input device Block — PORT-derived meter gating (Glen QA 2026-06-06): even when the host's name heuristic miscategorises a hardware MIDI input as 'instrument', a block with no audio outputs renders the status row, never a VU. The output-RMS feed has no data for it — a meter here would be fake.",
+);
+export const MidiOutputDevice: Story = story(
+  makeBlock({
+    name: "MIDI Out",
+    category: "midifx",
+    format: "INT",
+    ports: [{ id: "in-m", type: "midi", direction: "input", label: "MIDI", connected: true }],
+  }),
+  "MIDI output device Block — MIDI-only ports → status row + activity dot, no VU (port-derived gating).",
+);
 export const Bypassed: Story = story(
   makeBlock({ name: "Reverb", category: "audiofx", bypassed: true }),
   "Bypassed Block — diagonal-stripe overlay + dimmed header signals the engine is passing signal through untouched.",

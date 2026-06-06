@@ -632,6 +632,7 @@ function RmsMeter({
   const lit = stale ? 0 : clip ? SEG : Math.round(level * SEG);
   return (
     <div
+      data-testid="rms-meter"
       className="flex gap-[1.5px] h-[7px] items-stretch"
       style={{
         padding: "1.5px",
@@ -1163,7 +1164,17 @@ function BlockComponent({ data, selected }: NodeProps) {
   // REPLACES the category hue on the header gradient — the visible change the
   // user asked for (previously it only tinted the 1px border, i.e. invisible).
   const headerHex = hostOutline ?? cat.hex;
-  const isAudioBearing = d.category === "instrument" || d.category === "audiofx";
+  // Meters are PORT-derived, not category-derived (Glen QA 2026-06-06): the
+  // ballistic feed reads the node's real audio OUTPUT RMS, so a block with no
+  // audio outputs (e.g. a MIDI input device the name heuristic in
+  // blockcategory.hpp miscategorises as "instrument") must never render a VU —
+  // it would be structurally fake. Category keeps driving icon/colour/status.
+  // Note: the Audio Output device node (audio INS only) also loses its meter —
+  // honest, since the output-RMS feed carries no data for it; an input-side
+  // RMS bridge is the named follow-up.
+  const hasAudioOut = d.ports.some(
+    (p) => p.type === "audio" && p.direction === "output",
+  );
   const active = !d.bypassed && !d.muted;
   const accentHsl = `hsl(var(--cat-${d.category}))`;
   // Header LED + load-bar use status hsl (scoped tokens). Bypassed reads as a
@@ -1330,13 +1341,16 @@ function BlockComponent({ data, selected }: NodeProps) {
               ))}
               {/* RMS strip fills remaining width — stacked L/R (mockup). Both
                   channels read the Block's real output level (max over its
-                  outgoing cables) until a true per-channel L/R bridge lands. */}
-              <div className="flex-1 flex flex-col gap-px ml-1 min-w-0">
-                <RmsMeter level={meterLevel} active={active} clip={d.error} accent={accentHsl} stale={meterState === "stale"} />
-                <RmsMeter level={meterLevel} active={active} clip={d.error} accent={accentHsl} stale={meterState === "stale"} />
-              </div>
+                  outgoing cables) until a true per-channel L/R bridge lands.
+                  Port-gated: no audio outputs → no VU (the feed has no data). */}
+              {hasAudioOut && (
+                <div className="flex-1 flex flex-col gap-px ml-1 min-w-0">
+                  <RmsMeter level={meterLevel} active={active} clip={d.error} accent={accentHsl} stale={meterState === "stale"} />
+                  <RmsMeter level={meterLevel} active={active} clip={d.error} accent={accentHsl} stale={meterState === "stale"} />
+                </div>
+              )}
             </>
-          ) : isAudioBearing ? (
+          ) : hasAudioOut ? (
             // Audio Block with no exposed knobs → the meter strip becomes the
             // whole deck, filling the space (no dead middle).
             <div className="flex-1 flex flex-col gap-1 min-w-0 justify-center">

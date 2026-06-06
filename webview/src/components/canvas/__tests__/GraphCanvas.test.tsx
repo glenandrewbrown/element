@@ -206,25 +206,26 @@ describe("GraphCanvas", () => {
     expect(screen.getByTestId("rf-minimap")).toBeInTheDocument();
   });
 
-  // ── Context menu: pane right-click (A2/F3 speed-first mode split) ──────────
-  // Plain right-click on the EMPTY canvas = QuickAdd directly at the cursor.
-  // Shift+right-click = the fuller board context menu (Comment/Paste/zoom…).
-  it("shows QuickAddPopup directly on plain pane right-click in edit mode", () => {
+  // ── Context menu: pane right-click (Glen QA 2026-06-06, reverses A2) ───────
+  // Plain right-click on the EMPTY canvas = FULL board context menu
+  // (Comment/Paste/zoom… with "Add Block…" as its top item).
+  // Shift+right-click = QuickAdd directly at the cursor (speed path).
+  it("shows the board CanvasContextMenu on plain pane right-click in edit mode", () => {
     render(<GraphCanvas />);
     const pane = screen.getByTestId("react-flow");
     fireEvent.contextMenu(pane, { clientX: 100, clientY: 200 });
+    expect(screen.getByTestId("canvas-context-menu")).toBeInTheDocument();
+    expect(screen.queryByTestId("quick-add-popup")).not.toBeInTheDocument();
+  });
+
+  it("shows QuickAddPopup directly on SHIFT+right-click (not the board menu)", () => {
+    render(<GraphCanvas />);
+    const pane = screen.getByTestId("react-flow");
+    fireEvent.contextMenu(pane, { clientX: 100, clientY: 200, shiftKey: true });
     expect(screen.getByTestId("quick-add-popup")).toBeInTheDocument();
     expect(
       screen.queryByTestId("canvas-context-menu"),
     ).not.toBeInTheDocument();
-  });
-
-  it("shows the board CanvasContextMenu on SHIFT+right-click (not QuickAdd)", () => {
-    render(<GraphCanvas />);
-    const pane = screen.getByTestId("react-flow");
-    fireEvent.contextMenu(pane, { clientX: 100, clientY: 200, shiftKey: true });
-    expect(screen.getByTestId("canvas-context-menu")).toBeInTheDocument();
-    expect(screen.queryByTestId("quick-add-popup")).not.toBeInTheDocument();
   });
 
   it("does NOT show QuickAddPopup in perform mode", () => {

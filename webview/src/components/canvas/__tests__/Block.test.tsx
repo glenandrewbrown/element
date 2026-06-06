@@ -121,6 +121,56 @@ describe("<Block />", () => {
     expect(screen.getByTestId("handle-out-0")).toBeInTheDocument();
   });
 
+  // ── Meter gating is PORT-derived, not category-derived (Glen QA 2026-06-06) ──
+  // The ballistic feed reads audio OUTPUT RMS, so only blocks with ≥1 audio
+  // output may show a VU. Covers the MIDI-input-device-as-"instrument"
+  // miscategorisation from blockcategory.hpp's name heuristic.
+
+  it("never shows a VU on a MIDI-only node, even when categorised instrument", () => {
+    renderBlock({
+      category: "instrument", // miscategorised hardware MIDI input
+      ports: [
+        { id: "out-m", label: "MIDI", direction: "output", type: "midi", connected: false },
+      ],
+    });
+    expect(screen.queryAllByTestId("rms-meter")).toHaveLength(0);
+  });
+
+  it("shows VU meters when the block has an audio output", () => {
+    renderBlock({
+      category: "instrument",
+      ports: [
+        { id: "out-0", label: "L", direction: "output", type: "audio", connected: false },
+      ],
+    });
+    expect(screen.getAllByTestId("rms-meter").length).toBeGreaterThan(0);
+  });
+
+  it("never shows a VU on an audio-output-device shape (audio INPUTS only)", () => {
+    // Output device: audio ins, no audio outs — the output-RMS feed has no
+    // data for it, so an honest face shows no meter (input-side RMS bridge is
+    // the named follow-up).
+    renderBlock({
+      category: "audiofx",
+      ports: [
+        { id: "in-0", label: "L", direction: "input", type: "audio", connected: true },
+        { id: "in-1", label: "R", direction: "input", type: "audio", connected: true },
+      ],
+    });
+    expect(screen.queryAllByTestId("rms-meter")).toHaveLength(0);
+  });
+
+  it("MIDI-only node renders the status row instead of meters", () => {
+    renderBlock({
+      category: "midifx",
+      ports: [
+        { id: "out-m", label: "MIDI", direction: "output", type: "midi", connected: false },
+      ],
+    });
+    expect(screen.getByText("Pass-through")).toBeInTheDocument();
+    expect(screen.queryAllByTestId("rms-meter")).toHaveLength(0);
+  });
+
   // ── Bypass / mute states ────────────────────────────────────────────────
 
   it("shows BYPASSED overlay when bypassed=true", () => {

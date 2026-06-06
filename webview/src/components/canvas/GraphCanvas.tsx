@@ -365,15 +365,15 @@ export function GraphCanvas() {
   const onPaneContextMenu = useCallback(
     (event: MouseEvent | globalThis.MouseEvent) => {
       event.preventDefault();
+      event.stopPropagation();
       if (!isEdit) return;
       const clientX = (event as MouseEvent).clientX;
       const clientY = (event as MouseEvent).clientY;
-      // A2/F3 (speed-first spec): plain right-click on the EMPTY Board opens
-      // QuickAdd directly at the cursor — the fastest add-a-Block path. The
-      // fuller board context menu (Comment Box / Paste / Select All / zoom /
-      // snap / layout) moves to SHIFT+right-click. Node/cable context menus
-      // are unchanged.
-      if (!(event as MouseEvent).shiftKey) {
+      // Glen QA 2026-06-06 (reverses A2): plain right-click on the EMPTY Board
+      // opens the FULL canvas menu — "Add Block…" is its top item and routes to
+      // QuickAdd at this same cursor. SHIFT+right-click keeps the speed path
+      // (QuickAdd directly). Node/cable context menus are unchanged.
+      if ((event as MouseEvent).shiftKey) {
         setContextMenu({ x: clientX, y: clientY });
         setCanvasMenu(null);
         setNodeContextMenu(null);
@@ -783,7 +783,7 @@ export function GraphCanvas() {
                 Empty Board
               </div>
               <div className="text-[11px] text-text-dim mt-1">
-                Right-click to add a Block · Shift+right-click for Board actions
+                Right-click for Board actions · Shift+right-click to quick-add a Block
               </div>
             </div>
           </div>

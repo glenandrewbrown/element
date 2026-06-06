@@ -281,12 +281,12 @@ describe("GraphCanvas (gaps)", () => {
 
   // ── onPaneClick dismiss ──────────────────────────────────────────────────────
 
-  // UN-QUARANTINED (A2/F3): plain right-click opens QuickAddPopup DIRECTLY
-  // again (board menu moved to Shift+right-click), so this flow is current.
+  // Glen QA 2026-06-06 (reverses A2): QuickAdd direct = SHIFT+right-click now
+  // (plain right-click opens the full board CanvasContextMenu instead).
   it("paneClick dismisses open context menu and calls clearSelection", () => {
     render(<GraphCanvas />);
-    // Open the context menu first
-    fireEvent.contextMenu(screen.getByTestId("react-flow"), { clientX: 10, clientY: 10 });
+    // Open the QuickAdd context menu first (Shift+RC = speed path)
+    fireEvent.contextMenu(screen.getByTestId("react-flow"), { clientX: 10, clientY: 10, shiftKey: true });
     expect(screen.getByTestId("quick-add-popup")).toBeInTheDocument();
     // Click to dismiss
     act(() => (capturedProps.onPaneClick as Function)());
