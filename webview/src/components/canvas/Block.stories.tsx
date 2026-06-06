@@ -568,3 +568,136 @@ export const HiddenParams: Story = {
     await expect(body.queryByText("Width")).toBeNull();
   },
 };
+
+// ── T5 — Bitwig-style curated inline faces on built-in (INT) blocks ──
+
+function comparatorBlock(over: Partial<BlockData> = {}): BlockData {
+  return makeBlock({
+    name: "Comparator",
+    category: "modulator",
+    format: "INT",
+    identifier: "element.compare",
+    intMode: 0,
+    ports: [
+      { id: "cv_in_a", type: "value", direction: "input", label: "A", connected: false },
+      { id: "cv_in_b", type: "value", direction: "input", label: "B", connected: false },
+      { id: "cv_out", type: "value", direction: "output", label: "Out", connected: false },
+    ],
+    ...over,
+  });
+}
+
+function logicBlock(over: Partial<BlockData> = {}): BlockData {
+  return makeBlock({
+    name: "Logic Gate",
+    category: "modulator",
+    format: "INT",
+    identifier: "element.logic",
+    intMode: 0,
+    ports: [
+      { id: "cv_in_a", type: "value", direction: "input", label: "A", connected: false },
+      { id: "cv_in_b", type: "value", direction: "input", label: "B", connected: false },
+      { id: "cv_out", type: "value", direction: "output", label: "Out", connected: false },
+    ],
+    ...over,
+  });
+}
+
+export const InlineCompareFace: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "T5 — built-in `element.compare` Block. Instead of three generic 'P1/P2/P3' knobs, the face shows a Bitwig-style operator chooser (‹ > ›) wired to the engine via `nativeNodeSetIntMode`, rendering the operator from the snapshot's `intMode`. The comparator exposes NO host parameters, so this is chooser-only — nothing fabricated.",
+      },
+    },
+  },
+  render: () => (
+    <MiniFlow nodes={[flowNode(comparatorBlock())]} nodeTypes={nodeTypes} height={320} />
+  ),
+  play: async ({ canvasElement }) => {
+    const body = within(canvasElement.ownerDocument.body);
+    const chooser = await body.findByTestId("inline-chooser");
+    // intMode 0 → ">"
+    await expect(chooser).toHaveAttribute("data-value", "0");
+    await expect(body.getByText(">")).toBeInTheDocument();
+  },
+};
+
+export const InlineCompareFaceEq: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Same comparator face with the engine `intMode` at 4 (==) — the chooser renders engine truth, not a local guess.",
+      },
+    },
+  },
+  render: () => (
+    <MiniFlow
+      nodes={[flowNode(comparatorBlock({ intMode: 4 }))]}
+      nodeTypes={nodeTypes}
+      height={320}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    const body = within(canvasElement.ownerDocument.body);
+    await expect(body.getByText("==")).toBeInTheDocument();
+  },
+};
+
+export const InlineLogicFace: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "T5 — built-in `element.logic` Block: a mode chooser cycling AND/OR/XOR/NAND/NOR/NOT (engine-verified enum, incl. the real NOT mode). Writes via `nativeNodeSetIntMode`; renders `intMode`.",
+      },
+    },
+  },
+  render: () => (
+    <MiniFlow
+      nodes={[flowNode(logicBlock({ intMode: 1 }))]}
+      nodeTypes={nodeTypes}
+      height={320}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    const body = within(canvasElement.ownerDocument.body);
+    await expect(body.getByText("OR")).toBeInTheDocument();
+  },
+};
+
+export const InlineCompareCVConnected: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "T5 — comparator with its CV inputs WIRED. The chooser is unaffected (it drives the operator, not a param port); the wired CV `A`/`B` ports light in the port lane. This demonstrates the curated face coexisting with live CV connections (the Blender CV-swap rule applies to knob entries on param-bearing nodes — the chooser-only compare face has none).",
+      },
+    },
+  },
+  render: () => (
+    <MiniFlow
+      nodes={[
+        flowNode(
+          comparatorBlock({
+            intMode: 2,
+            ports: [
+              { id: "cv_in_a", type: "value", direction: "input", label: "A", connected: true },
+              { id: "cv_in_b", type: "value", direction: "input", label: "B", connected: true },
+              { id: "cv_out", type: "value", direction: "output", label: "Out", connected: true },
+            ],
+          }),
+        ),
+      ]}
+      nodeTypes={nodeTypes}
+      height={320}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    const body = within(canvasElement.ownerDocument.body);
+    await expect(body.getByTestId("inline-face")).toBeInTheDocument();
+    await expect(body.getByText("<")).toBeInTheDocument();
+  },
+};

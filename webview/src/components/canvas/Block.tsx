@@ -20,6 +20,13 @@ import { NeuKnob } from "../neu/NeuKnob";
 import { BlockEmbed } from "./BlockEmbed";
 import { Icon } from "../neu/Icon";
 import { iconForCategory } from "../neu/iconForCategory";
+import {
+  getInlineFaceSpec,
+  validateInlineFace,
+  faceNeedsParamMeta,
+} from "./inlineParams";
+import { useNodeParamMeta } from "./inline/useNodeParamMeta";
+import { InlineFace } from "./inline/InlineFace";
 
 // On-Block knob colour by category (verdict 1 + verdict 8). NeuKnob has no
 // purple tier yet, so modulators borrow blue until verdict 8 adds purple.
@@ -947,6 +954,26 @@ function BlockComponent({ data, selected }: NodeProps) {
     .map((v, i) => ({ i, v }))
     .filter((p) => Number.isFinite(p.v));
 
+  // ── T5 — Bitwig-style curated inline face for built-in (INT) Blocks ──
+  // A registry maps the engine `identifier` (e.g. "element.compare") to a
+  // curated face spec. Resolved + validated here (unconditionally, above the
+  // early returns — hook-order discipline). The metadata fetch is gated to faces
+  // that actually bind params (chooser-only faces skip the round-trip). The face
+  // renders ONLY when validation passes; any name mismatch / missing param falls
+  // back to the generic knob deck below. NOTHING-fake: a control is bound only to
+  // a parameter that really exists on the node.
+  const inlineSpec =
+    d.format === "INT" ? getInlineFaceSpec(d.identifier) : undefined;
+  const needsMeta = inlineSpec ? faceNeedsParamMeta(inlineSpec) : false;
+  const inlineMeta = useNodeParamMeta(d.id, !!inlineSpec && needsMeta);
+  // Chooser-only faces validate without metadata; param faces wait for meta
+  // (null = loading → not yet valid → generic deck for now).
+  const inlineFaceValid =
+    inlineSpec != null &&
+    (!needsMeta
+      ? validateInlineFace(inlineSpec, [])
+      : inlineMeta != null && validateInlineFace(inlineSpec, inlineMeta));
+
   // ── R3 — sandbox crash state ──
   // selectSandboxNeedsAttention returns true when the store has a live
   // crashed/loadFailed/error entry for this block's UUID (= d.id). Nothing is
@@ -1322,7 +1349,11 @@ function BlockComponent({ data, selected }: NodeProps) {
           className="block-body flex items-center gap-1.5 px-2 relative z-[5]"
           style={{ height: 54 }}
         >
-          {knobParams.length > 0 ? (
+          {inlineSpec && inlineFaceValid ? (
+            // T5 — curated inline face (validated). Replaces the generic deck
+            // for built-in INT blocks whose identifier has a registered face.
+            <InlineFace d={d} spec={inlineSpec} meta={inlineMeta ?? []} />
+          ) : knobParams.length > 0 ? (
             <>
               {knobParams.map(({ i, v }) => (
                 <NeuKnob

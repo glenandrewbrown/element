@@ -58,6 +58,17 @@ interface NeuKnobProps {
   compact?: boolean;
   /** Optional className appended to the wrapper. */
   className?: string;
+  /**
+   * T5 — double-click resets to a default value. Called with no args; the
+   * caller supplies the value (it owns the default). Additive: omit to keep the
+   * previous behaviour (no reset). Existing call sites are unaffected.
+   */
+  onReset?: () => void;
+  /**
+   * T5 — Cmd/Ctrl-click requests inline type-in. Called with no args; the caller
+   * opens its own entry UI. Additive + optional.
+   */
+  onTypeValue?: () => void;
 }
 
 /**
@@ -76,30 +87,62 @@ export function NeuKnob({
   onChange,
   compact = false,
   className = "",
+  onReset,
+  onTypeValue,
 }: NeuKnobProps) {
   const hex = colorHex[color];
   const { text, glow } = colorClasses[color];
   const dim = sizeMap[size];
-  const dragRef = useRef<{ startY: number; startValue: number } | null>(null);
+  // T5 — track the live shift state + anchor so engaging Shift MID-DRAG
+  // re-anchors instead of jumping (the old code applied the fine multiplier to
+  // the whole delta-from-startY, so toggling Shift snapped the value).
+  const dragRef = useRef<{
+    anchorY: number;
+    anchorValue: number;
+    shift: boolean;
+  } | null>(null);
+  const valueRef = useRef(value);
+  valueRef.current = value;
   const [dragging, setDragging] = useState(false);
 
   const onPointerDown = useCallback(
     (e: React.PointerEvent) => {
       if (!onChange) return;
+      // T5 — Cmd/Ctrl-click → inline type-in (caller-owned). Takes precedence
+      // over a drag; don't capture the pointer.
+      if ((e.metaKey || e.ctrlKey) && onTypeValue) {
+        e.preventDefault();
+        onTypeValue();
+        return;
+      }
       e.preventDefault();
       (e.target as HTMLElement).setPointerCapture(e.pointerId);
-      dragRef.current = { startY: e.clientY, startValue: value };
+      dragRef.current = {
+        anchorY: e.clientY,
+        anchorValue: valueRef.current,
+        shift: e.shiftKey,
+      };
       setDragging(true);
     },
-    [onChange, value],
+    [onChange, onTypeValue],
   );
 
   const onPointerMove = useCallback(
     (e: React.PointerEvent) => {
-      if (!dragRef.current || !onChange) return;
-      const deltaY = dragRef.current.startY - e.clientY;
-      const sensitivity = e.shiftKey ? 0.2 : 0.6;
-      const newValue = Math.max(0, Math.min(100, dragRef.current.startValue + deltaY * sensitivity));
+      const st = dragRef.current;
+      if (!st || !onChange) return;
+      // Re-anchor on a Shift transition so fine-engage never jumps.
+      if (e.shiftKey !== st.shift) {
+        st.shift = e.shiftKey;
+        st.anchorY = e.clientY;
+        st.anchorValue = valueRef.current;
+      }
+      const deltaY = st.anchorY - e.clientY;
+      const sensitivity = st.shift ? 0.06 : 0.6;
+      const newValue = Math.max(
+        0,
+        Math.min(100, st.anchorValue + deltaY * sensitivity),
+      );
       onChange(Math.round(newValue * 100) / 100);
     },
     [onChange],
@@ -109,6 +152,15 @@ export function NeuKnob({
     dragRef.current = null;
     setDragging(false);
   }, []);
+
+  const onDoubleClick = useCallback(
+    (e: React.MouseEvent) => {
+      if (!onReset) return;
+      e.preventDefault();
+      onReset();
+    },
+    [onReset],
+  );
 
   // Map 0–100 → -135° to +135° (270° sweep)
   const angle = (value / 100) * 270 - 135;
@@ -131,6 +183,7 @@ export function NeuKnob({
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
+        onDoubleClick={onDoubleClick}
       >
         {/* Progress ring (SVG) */}
         <svg

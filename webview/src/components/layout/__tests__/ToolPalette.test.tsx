@@ -380,14 +380,23 @@ describe("<ToolPalette /> — molecules", () => {
     mockCpuLoad = 0;
   });
 
-  it("renders Molecules section when molecules exist", () => {
+  it("renders Molecules section header when molecules exist", () => {
     renderPalette();
-    expect(screen.getByText(/molecules/i)).toBeInTheDocument();
+    // Molecules section defaults to collapsed — the header button is visible
+    expect(screen.getByRole("button", { name: /molecules/i })).toBeInTheDocument();
+  });
+
+  it("expanding Molecules section shows molecule items", () => {
+    renderPalette();
+    // Expand the collapsed Molecules section
+    fireEvent.click(screen.getByRole("button", { name: /molecules/i }));
     expect(screen.getByText("Reverb Chain")).toBeInTheDocument();
   });
 
   it("clicking a molecule calls nativeMoleculeInsert with name and position", async () => {
     renderPalette();
+    // Expand first
+    fireEvent.click(screen.getByRole("button", { name: /molecules/i }));
     fireEvent.click(screen.getByRole("button", { name: "Reverb Chain" }));
     await waitFor(() =>
       expect(mockMoleculeInsert).toHaveBeenCalledWith("Reverb Chain", 140, 140),
@@ -432,21 +441,29 @@ describe("<ToolPalette /> — boards & outline", () => {
     mockCpuLoad = 0;
   });
 
-  it("renders Boards section with session graph names", () => {
+  it("renders Boards section header", () => {
     renderPalette();
-    expect(screen.getByText("Boards")).toBeInTheDocument();
+    // Boards section defaults to collapsed — header button is always visible
+    expect(screen.getByRole("button", { name: /boards/i })).toBeInTheDocument();
+  });
+
+  it("expanding Boards section shows session graph names", () => {
+    renderPalette();
+    fireEvent.click(screen.getByRole("button", { name: /boards/i }));
     expect(screen.getByText("Main Board")).toBeInTheDocument();
     expect(screen.getByText("FX Chain")).toBeInTheDocument();
   });
 
   it("clicking a Board button calls nativeSessionSetActiveGraph with its index", async () => {
     renderPalette();
+    fireEvent.click(screen.getByRole("button", { name: /boards/i }));
     fireEvent.click(screen.getByRole("button", { name: "FX Chain" }));
     await waitFor(() => expect(mockSetActiveGraph).toHaveBeenCalledWith(1));
   });
 
-  it("renders Board outline nodes", () => {
+  it("renders Board outline nodes after expanding Boards section", () => {
     renderPalette();
+    fireEvent.click(screen.getByRole("button", { name: /boards/i }));
     expect(screen.getByText("Kick")).toBeInTheDocument();
     expect(screen.getByText("FX Group")).toBeInTheDocument();
     expect(screen.getByText("Reverb")).toBeInTheDocument();
@@ -454,12 +471,14 @@ describe("<ToolPalette /> — boards & outline", () => {
 
   it("calls nativeSessionImportGraph when Import .elg clicked", async () => {
     renderPalette();
+    fireEvent.click(screen.getByRole("button", { name: /boards/i }));
     fireEvent.click(screen.getByRole("button", { name: /import/i }));
     await waitFor(() => expect(mockImportGraph).toHaveBeenCalled());
   });
 
   it("calls nativeSessionExportGraph when Export .elg clicked", async () => {
     renderPalette();
+    fireEvent.click(screen.getByRole("button", { name: /boards/i }));
     fireEvent.click(screen.getByRole("button", { name: /export/i }));
     await waitFor(() => expect(mockExportGraph).toHaveBeenCalled());
   });
@@ -547,7 +566,7 @@ describe("<ToolPalette /> — projects tab", () => {
   });
 });
 
-describe("<ToolPalette /> — recent files footer", () => {
+describe("<ToolPalette /> — recent projects (Projects tab)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockPluginBrowserState = {
@@ -565,17 +584,25 @@ describe("<ToolPalette /> — recent files footer", () => {
     };
     mockHostExtrasState = { molecules: [], activeGraphOutline: [] };
     mockCpuLoad = 0;
+    // Projects tab fetches files from the host
+    mockListFiles.mockResolvedValue([]);
   });
 
-  it("renders RECENT SESSIONS section when recentFiles is non-empty", () => {
+  it("renders Recent Projects section in the Projects tab when recentFiles is non-empty", async () => {
     renderPalette();
-    expect(screen.getByText("RECENT SESSIONS")).toBeInTheDocument();
+    // Switch to Projects tab to see recent files (moved from footer)
+    fireEvent.click(screen.getByRole("button", { name: /projects/i }));
+    await waitFor(() =>
+      expect(screen.getByText(/recent projects/i)).toBeInTheDocument(),
+    );
     expect(screen.getByText("TrackA.els")).toBeInTheDocument();
     expect(screen.getByText("TrackB.els")).toBeInTheDocument();
   });
 
-  it("clicking a recent file calls nativeSessionOpenPath with its full path", async () => {
+  it("clicking a recent file in Projects tab calls nativeSessionOpenPath", async () => {
     renderPalette();
+    fireEvent.click(screen.getByRole("button", { name: /projects/i }));
+    await waitFor(() => screen.getByText("TrackA.els"));
     fireEvent.click(screen.getByText("TrackA.els"));
     await waitFor(() =>
       expect(mockOpenPath).toHaveBeenCalledWith(
@@ -584,9 +611,17 @@ describe("<ToolPalette /> — recent files footer", () => {
     );
   });
 
-  it("does NOT render RECENT SESSIONS when recentFiles is empty", () => {
+  it("does NOT render Recent Projects section when recentFiles is empty", async () => {
     mockSessionState.recentFiles = [];
     renderPalette();
+    fireEvent.click(screen.getByRole("button", { name: /projects/i }));
+    await waitFor(() => expect(mockListFiles).toHaveBeenCalled());
+    expect(screen.queryByText(/recent projects/i)).not.toBeInTheDocument();
+  });
+
+  it("does NOT render RECENT SESSIONS in the Plugins tab (terminology fixed)", () => {
+    renderPalette();
+    // The old footer text must not appear anywhere in the Plugins tab
     expect(screen.queryByText("RECENT SESSIONS")).not.toBeInTheDocument();
   });
 });

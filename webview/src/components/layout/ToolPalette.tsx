@@ -1,52 +1,23 @@
-import { useEffect, useMemo, useState } from "react";
-import { useShallow } from "zustand/react/shallow";
-import { NeuInput, EmptyState } from "../neu";
+import { useEffect, useState } from "react";
 import { Icon } from "../neu/Icon";
 import { categoryIconName } from "../neu/iconForCategory";
 import type { BlockCategory } from "../../data/types";
 import { usePluginBrowserStore } from "../../stores/usePluginBrowserStore";
-import { usePluginScanStore } from "../../stores/usePluginScanStore";
-import type { ScanPluginFormat } from "../../bridge/nativePluginScan";
-import {
-  nativeGraphAddPlugin,
-  nativeMoleculeInsert,
-} from "../../bridge/nativeGraph";
-import {
-  nativeSessionExportGraph,
-  nativeSessionImportGraph,
-  nativeSessionListFiles,
-  nativeSessionOpenPath,
-  nativeSessionSetActiveGraph,
-  type SessionFileEntry,
-} from "../../bridge/nativeSession";
 import { useSessionStore } from "../../stores/useSessionStore";
-import { usePerformStore } from "../../stores/usePerformStore";
-import {
-  useHostExtrasStore,
-  type GraphOutlineNode,
-} from "../../stores/useHostExtrasStore";
-import { EV_OPEN_PREFERENCES } from "../../events";
+import { nativeSessionListFiles, nativeSessionOpenPath, type SessionFileEntry } from "../../bridge/nativeSession";
+import { PaletteSearch } from "./palette/PaletteSearch";
+import { CategoryChips, CATEGORY_FILTERS } from "./palette/CategoryChips";
+import { ScanControls } from "./palette/ScanControls";
+import { FavouritesSection } from "./palette/FavouritesSection";
+import { RecentsSection } from "./palette/RecentsSection";
+import { MoleculesSection } from "./palette/MoleculesSection";
+import { BoardsSection } from "./palette/BoardsSection";
+import { PluginList } from "./palette/PluginList";
+import { PaletteFooter } from "./palette/PaletteFooter";
+import { usePaletteFilters } from "./palette/usePaletteFilters";
+import { useHostExtrasStore } from "../../stores/useHostExtrasStore";
 
-// ── Category icon components (meaningful icons, colour-blind safe) ──
-//
-// Previously used geometric shapes (●◆▲⬡) which Glen flagged as meaningless.
-// Now uses meaningful Lucide icons via iconForCategory — the single source of
-// truth. Colour is still applied (category hue) for the dopamine micro-glow;
-// the icon carries the semantic load.
-
-function CategoryShape({ category }: { category: BlockCategory }) {
-  const color = `hsl(var(--cat-${category}))`;
-  const iconName = categoryIconName(category);
-  return (
-    <span className="inline-flex shrink-0" style={{ color }}>
-      <Icon name={iconName} size={12} strokeWidth={1.75} aria-hidden />
-    </span>
-  );
-}
-
-// Collapsed-rail icons per category — meaningful Lucide glyphs replace the
-// old Unicode geometric shapes (●▲◆⬡). Rendered via CategoryShape so the
-// single source (iconForCategory.ts) drives all surfaces.
+// ── Collapsed-rail category icon ─────────────────────────────────────────────
 function RailCategoryIcon({ category, active }: { category: BlockCategory; active: boolean }) {
   const color = `hsl(var(--cat-${category}))`;
   const iconName = categoryIconName(category);
@@ -60,416 +31,24 @@ function RailCategoryIcon({ category, active }: { category: BlockCategory; activ
   );
 }
 
-// Inline glyphs not in the Icon allowlist (Icon.tsx is out of scope this wave).
-// 1.5px stroke / 24-grid to match the canonical <Icon /> grammar.
-function StarGlyph({ size = 9, filled = true }: { size?: number; filled?: boolean }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill={filled ? "currentColor" : "none"}
-      stroke="currentColor"
-      strokeWidth={1.5}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14l-5-4.87 6.91-1.01L12 2z" />
-    </svg>
-  );
-}
-
-// ── Format badge ──
-// Real scanned plugins report formats like VST3 / AU / CLAP / LV2 / INT. The
-// `--color-badge-*` tokens are frozen in @theme; unknown formats fall back to
-// the neutral LV2 grey rather than inventing a colour.
-function formatBadgeColor(format: string): string {
-  const f = format.toUpperCase();
-  if (f === "VST3" || f === "VST") return "var(--color-badge-vst3)";
-  if (f === "AU" || f === "AUDIOUNIT") return "var(--color-badge-au)";
-  if (f === "CLAP") return "var(--color-badge-clap)";
-  return "var(--color-badge-lv2)"; // LV2, INT, unknown → neutral
-}
-
-function FormatBadge({ format }: { format: string }) {
-  if (!format) return null;
-  const c = formatBadgeColor(format);
-  return (
-    <span
-      className="text-[8px] font-bold leading-none px-1 py-[2px] rounded-sm tabular tracking-wide"
-      style={{ color: c, background: "color-mix(in srgb, var(--color-pressed) 70%, transparent)" }}
-    >
-      {format}
-    </span>
-  );
-}
-
-interface PluginEntry {
-  id: string;
-  name: string;
-  category: BlockCategory;
-  format: string;
-}
-
-function OutlineRow({ node, depth }: { node: GraphOutlineNode; depth: number }) {
-  return (
-    <div className="pl-1">
-      <div
-        className={`text-[10px] truncate ${node.isContainer ? "text-accent-teal font-bold" : "text-text-dim"}`}
-        style={{ paddingLeft: depth * 10 }}
-        title={node.id}
-      >
-        {node.name || "—"}
-      </div>
-      {node.children?.map((c) => (
-        <OutlineRow key={c.id} node={c} depth={depth + 1} />
-      ))}
-    </div>
-  );
-}
-
-// ── Reusable plugin card (search-first flat list + grid). Raised neu on
-//    hover/active, recessed when idle. Star toggles favourite (local-only —
-//    favourites persist via the host's GetPluginList payload, not yet writable
-//    from the webview; see scan-bridge report). ──
-function PluginCard({
-  plugin,
-  view,
-  selected,
-  isFavourite,
-  onSelect,
-  onAdd,
-}: {
-  plugin: PluginEntry;
-  view: "grid" | "list";
-  selected: boolean;
-  isFavourite: boolean;
-  onSelect: () => void;
-  onAdd: () => void;
-}) {
-  const accent = `hsl(var(--cat-${plugin.category}))`;
-  const base =
-    "group relative cursor-grab select-none rounded-md transition-[box-shadow,background-color,transform] duration-150 ease-out outline-none focus-visible:ring-1 focus-visible:ring-[hsl(var(--cat-instrument))]";
-  const surface = selected
-    ? "bg-surface neu-raised"
-    : "bg-panel hover:bg-elevated hover:neu-raised";
-
-  if (view === "grid") {
-    return (
-      <div
-        role="button"
-        tabIndex={0}
-        aria-pressed={selected}
-        aria-label={`${plugin.name} (${plugin.format || "plugin"})`}
-        onClick={onSelect}
-        onDoubleClick={onAdd}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") onAdd();
-        }}
-        className={`${base} ${surface} p-2 flex flex-col gap-1.5 h-[58px]`}
-      >
-        <div className="flex items-center justify-between">
-          <CategoryShape category={plugin.category} />
-          <FormatBadge format={plugin.format} />
-        </div>
-        <span
-          className={`text-[10px] font-medium leading-tight line-clamp-2 ${selected ? "text-text-primary" : "text-text-secondary group-hover:text-text-primary"}`}
-          style={selected ? { color: accent } : undefined}
-          title={plugin.name}
-        >
-          {plugin.name}
-        </span>
-      </div>
-    );
-  }
-
-  return (
-    <div
-      role="button"
-      tabIndex={0}
-      aria-pressed={selected}
-      aria-label={`${plugin.name} (${plugin.format || "plugin"})`}
-      onClick={onSelect}
-      onDoubleClick={onAdd}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") onAdd();
-      }}
-      className={`${base} ${surface} pl-2 pr-2 py-1.5 flex items-center gap-2`}
-    >
-      <CategoryShape category={plugin.category} />
-      <span
-        className={`text-[11px] font-medium truncate flex-1 ${selected ? "" : "text-text-secondary group-hover:text-text-primary"}`}
-        style={selected ? { color: accent } : undefined}
-        title={plugin.name}
-      >
-        {plugin.name}
-      </span>
-      {isFavourite ? (
-        <span className="text-accent-orange shrink-0" aria-label="Favourite" role="img">
-          <StarGlyph size={9} />
-        </span>
-      ) : null}
-      <FormatBadge format={plugin.format} />
-    </div>
-  );
-}
-
-// ── Scan / rescan / paths / format-toggles (REAL — Pillar-2 bridge) ──
-// Wired to usePluginScanStore → nativePluginScan bridge → PluginManager's
-// out-of-process scanner + persisted scan-path / format-enabled settings.
-// Scan progress is honest-indeterminate (spinner + current plugin name; the
-// scanner exposes no total, so NO fake percentage). "Open Preferences" remains
-// as a secondary affordance for the full native plugin-manager table.
-const PLUGIN_FORMATS: ScanPluginFormat[] = ["VST3", "AU", "CLAP", "LV2"];
-
-function ScanControls() {
-  const scanning = usePluginScanStore((s) => s.scanning);
-  const currentPlugin = usePluginScanStore((s) => s.currentPlugin);
-  const pluginCount = usePluginScanStore((s) => s.pluginCount);
-  const paths = usePluginScanStore(useShallow((s) => s.paths));
-  const enabled = usePluginScanStore(useShallow((s) => s.enabled));
-  const supportedFormats = usePluginScanStore(useShallow((s) => s.formats));
-  const pathsLoaded = usePluginScanStore((s) => s.pathsLoaded);
-  const refreshPaths = usePluginScanStore((s) => s.refreshPaths);
-  const refreshStatus = usePluginScanStore((s) => s.refreshStatus);
-  const scan = usePluginScanStore((s) => s.scan);
-  const rescan = usePluginScanStore((s) => s.rescan);
-  const addPath = usePluginScanStore((s) => s.addPath);
-  const removePath = usePluginScanStore((s) => s.removePath);
-  const setFormatEnabled = usePluginScanStore((s) => s.setFormatEnabled);
-
-  // Which format the "add path" input is currently targeting (null = closed).
-  const [addTarget, setAddTarget] = useState<ScanPluginFormat | null>(null);
-  const [addValue, setAddValue] = useState("");
-  const [addError, setAddError] = useState(false);
-
-  // Load persisted paths/flags once when the panel first expands; also poll the
-  // scan status once so a scan already running (e.g. started from Preferences)
-  // is reflected immediately.
-  useEffect(() => {
-    if (!pathsLoaded) void refreshPaths();
-    void refreshStatus();
-  }, [pathsLoaded, refreshPaths, refreshStatus]);
-
-  // Only render toggles/paths for formats the host actually supports; before
-  // the snapshot loads, fall back to the canonical four so the row isn't empty.
-  const formats = supportedFormats.length > 0 ? supportedFormats : PLUGIN_FORMATS;
-
-  const submitAddPath = async () => {
-    if (addTarget == null) return;
-    const ok = await addPath(addTarget, addValue.trim());
-    if (ok) {
-      setAddValue("");
-      setAddTarget(null);
-      setAddError(false);
-    } else {
-      setAddError(true);
-    }
-  };
-
-  return (
-    <div className="mb-3 pb-3 border-b border-white/5 space-y-2">
-      <div className="flex items-center justify-between">
-        <span className="text-[9px] font-bold text-text-secondary tracking-widest uppercase">
-          Plugin Scan
-        </span>
-        <span className="text-[8px] font-bold text-text-dim tabular tracking-wider">
-          {pluginCount > 0 ? `${pluginCount} plugins` : ""}
-        </span>
-      </div>
-
-      {/* Scan + Rescan — REAL. Disabled while a scan is in flight. */}
-      <div className="flex gap-1.5">
-        <button
-          type="button"
-          disabled={scanning}
-          onClick={() => void scan()}
-          className="flex-1 flex items-center justify-center gap-1 text-[9px] font-bold uppercase tracking-wider py-1.5 rounded-md bg-pressed neu-inset text-accent-blue hover:bg-elevated hover:neu-raised transition-[box-shadow,background-color] duration-150 ease-out disabled:opacity-60 disabled:cursor-not-allowed disabled:text-text-dim"
-          title="Scan all enabled plugin formats (elementScanPlugins)"
-        >
-          <Icon name="Search" size={10} aria-hidden />
-          Scan
-        </button>
-        <button
-          type="button"
-          disabled={scanning}
-          onClick={() => void rescan()}
-          className="flex-1 flex items-center justify-center gap-1 text-[9px] font-bold uppercase tracking-wider py-1.5 rounded-md bg-pressed neu-inset text-text-secondary hover:bg-elevated hover:neu-raised hover:text-text-primary transition-[box-shadow,background-color] duration-150 ease-out disabled:opacity-60 disabled:cursor-not-allowed disabled:text-text-dim"
-          title="Rescan all enabled plugin formats (elementRescanPlugins)"
-        >
-          <Icon name="RefreshCw" size={10} aria-hidden />
-          Rescan
-        </button>
-      </div>
-
-      {/* Live scan status — honest indeterminate (spinner + current plugin). */}
-      {scanning ? (
-        <div className="flex items-center gap-1.5 text-[9px] text-accent-blue px-1">
-          <Icon name="RefreshCw" size={10} aria-hidden className="animate-spin" />
-          <span className="truncate" title={currentPlugin}>
-            Scanning{currentPlugin ? `: ${currentPlugin}` : "…"}
-          </span>
-        </div>
-      ) : null}
-
-      {/* Format enable toggles — REAL. */}
-      <div>
-        <div className="text-[8px] font-bold text-text-dim tracking-widest uppercase mb-1">
-          Formats
-        </div>
-        <div className="flex flex-wrap gap-1">
-          {formats.map((f) => {
-            const isOn = enabled[f] ?? true;
-            return (
-              <button
-                key={f}
-                type="button"
-                disabled={scanning}
-                aria-pressed={isOn}
-                onClick={() => void setFormatEnabled(f, !isOn)}
-                className={`text-[8px] font-bold uppercase tracking-wider px-1.5 py-[3px] rounded-sm neu-inset transition-colors disabled:cursor-not-allowed ${
-                  isOn ? "bg-pressed" : "bg-pressed opacity-40"
-                }`}
-                title={`${isOn ? "Disable" : "Enable"} ${f} scanning (elementSetPluginFormatEnabled)`}
-                style={{
-                  color: isOn
-                    ? formatBadgeColor(f)
-                    : `color-mix(in srgb, ${formatBadgeColor(f)} 45%, var(--color-text-dim))`,
-                }}
-              >
-                {f}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Search paths — REAL per-format directory list + add/remove. The webview
-          has no native folder picker, so the user types an absolute path; the
-          host validates it exists before accepting (no fake add). */}
-      <div className="space-y-2">
-        {formats.map((f) => {
-          const dirs = paths[f] ?? [];
-          return (
-            <div key={f}>
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-[8px] font-bold text-text-dim tracking-widest uppercase flex items-center gap-1">
-                  <Icon name="Folder" size={9} aria-hidden />
-                  {f} paths
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAddTarget(addTarget === f ? null : f);
-                    setAddValue("");
-                    setAddError(false);
-                  }}
-                  className="text-[8px] font-bold uppercase tracking-wider text-accent-blue hover:text-accent-teal transition-colors flex items-center gap-0.5"
-                  title={`Add a scan directory for ${f} (elementAddPluginPath)`}
-                >
-                  <Icon name="Plus" size={9} aria-hidden />
-                  Add
-                </button>
-              </div>
-
-              {dirs.length === 0 ? (
-                <div className="text-[9px] text-text-dim px-2 py-1 rounded-md bg-pressed neu-inset">
-                  Default locations.
-                </div>
-              ) : (
-                <div className="space-y-0.5">
-                  {dirs.map((dir) => (
-                    <div
-                      key={dir}
-                      className="group flex items-center gap-1 text-[9px] text-text-secondary px-2 py-1 rounded-md bg-pressed neu-inset"
-                      title={dir}
-                    >
-                      <span className="truncate flex-1">{dir}</span>
-                      <button
-                        type="button"
-                        onClick={() => void removePath(f, dir)}
-                        className="shrink-0 text-text-dim hover:text-error transition-colors opacity-0 group-hover:opacity-100"
-                        aria-label={`Remove ${dir}`}
-                        title={`Remove this ${f} scan path (elementRemovePluginPath)`}
-                      >
-                        <Icon name="Trash2" size={10} aria-hidden />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {addTarget === f ? (
-                <div className="flex gap-1 mt-1">
-                  <input
-                    type="text"
-                    autoFocus
-                    value={addValue}
-                    onChange={(e) => {
-                      setAddValue(e.target.value);
-                      setAddError(false);
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") void submitAddPath();
-                      if (e.key === "Escape") setAddTarget(null);
-                    }}
-                    placeholder="/absolute/path/to/folder"
-                    className={`flex-1 bg-pressed neu-inset rounded px-2 py-1 text-[9px] text-text-primary border focus:outline-none transition-colors ${
-                      addError ? "border-error/60" : "border-white/5 focus:border-accent-blue/40"
-                    }`}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => void submitAddPath()}
-                    className="px-2 py-1 rounded text-[8px] font-bold uppercase tracking-wider bg-pressed neu-inset text-accent-blue hover:bg-elevated transition-colors"
-                  >
-                    Add
-                  </button>
-                </div>
-              ) : null}
-              {addTarget === f && addError ? (
-                <div className="text-[8px] text-error mt-0.5 px-1">
-                  Not a directory on this system.
-                </div>
-              ) : null}
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Secondary affordance — the full native plugin-manager table. */}
-      <button
-        type="button"
-        className="w-full text-[9px] font-bold uppercase tracking-widest py-1.5 rounded-md bg-pressed text-text-secondary hover:bg-elevated hover:neu-raised hover:text-text-primary transition-[box-shadow,background-color,color] duration-150 ease-out"
-        onClick={() => window.dispatchEvent(new Event(EV_OPEN_PREFERENCES))}
-      >
-        Advanced (Preferences)
-      </button>
-    </div>
-  );
-}
-
-const CATEGORY_FILTERS = [
-  { cat: "instrument" as const, label: "INST" },
-  { cat: "audiofx" as const, label: "FX" },
-  { cat: "midifx" as const, label: "MIDI" },
-  { cat: "modulator" as const, label: "MOD" },
-];
-
-// ── ToolPalette ──
+// ── ToolPalette ───────────────────────────────────────────────────────────────
 
 /**
- * Edit-mode left browser panel for adding Blocks to the Board. Search-first:
- * a single search field + category quick-filter chips drive a flat, scannable
- * plugin list (grid or list view) of the real host-scanned AU/VST3/CLAP/LV2
- * plugins, each a raised neumorphic card with a format badge. Tabs between this
- * Plugins view (favourites, recents, molecules, Boards, .elg import/export) and
- * a Projects view (host-scanned session files). Includes a plugin-scan control
- * group (currently routed to Preferences — no native scan bridge yet), the
- * active Board outline, recent sessions, a collapsible rail, and a live CPU
- * meter. Primary source for dragging/double-clicking instruments and effects
- * onto the canvas.
+ * Edit-mode left browser panel. Tabs: Plugins | Projects.
+ *
+ * Plugins tab IA (top → bottom):
+ *   1. Tab row
+ *   2. Search input + gear disclosure → ScanControls
+ *   3. Category filter chips
+ *   4. Favourites (collapsible, default open, hidden when empty)
+ *   5. Recent plugins (collapsible, default open, hidden when empty)
+ *   6. ALL PLUGINS — virtualized flat list (list mode) / grid
+ *   7. Molecules (collapsible, default collapsed, hidden when empty)
+ *   8. Boards (collapsible, default collapsed)
+ *
+ * Projects tab: search + Project files (host scan) + Recent Projects.
+ *
+ * Footer: CPU meter only.
  */
 export function ToolPalette({
   collapsed = false,
@@ -486,15 +65,14 @@ export function ToolPalette({
   const [showScan, setShowScan] = useState(false);
   const [sessionFiles, setSessionFiles] = useState<SessionFileEntry[]>([]);
 
-  const nativePlugins = usePluginBrowserStore((s) => s.plugins);
-  const favoriteIds = usePluginBrowserStore((s) => s.favoriteIdentifiers);
-  const recentPluginIds = usePluginBrowserStore((s) => s.recentIdentifiers);
   const refreshPlugins = usePluginBrowserStore((s) => s.refresh);
   const recentFiles = useSessionStore((s) => s.recentFiles);
   const sessionGraphs = useSessionStore((s) => s.graphs);
   const molecules = useHostExtrasStore((s) => s.molecules);
   const activeGraphOutline = useHostExtrasStore((s) => s.activeGraphOutline);
-  const cpuLoad = usePerformStore((s) => s.liveHealth.cpu);
+
+  const { plugins, favPlugins, recentPlugins, filtered, favoriteIds } =
+    usePaletteFilters(search, activeCategory);
 
   useEffect(() => {
     void refreshPlugins();
@@ -511,51 +89,13 @@ export function ToolPalette({
     };
   }, [browseTab]);
 
-  const plugins = useMemo(
-    (): PluginEntry[] =>
-      nativePlugins.map((p) => ({
-        id: p.identifier,
-        name: p.name,
-        category: p.blockCategory,
-        format: p.format,
-      })),
-    [nativePlugins],
-  );
-
-  const favPlugins = useMemo(() => {
-    if (favoriteIds.size === 0) return [];
-    return nativePlugins.filter((p) => favoriteIds.has(p.identifier));
-  }, [nativePlugins, favoriteIds]);
-
-  const recentPlugins = useMemo(() => {
-    if (recentPluginIds.length === 0) return [];
-    const map = new Map(nativePlugins.map((p) => [p.identifier, p] as const));
-    return recentPluginIds
-      .map((id) => map.get(id))
-      .filter((p): p is (typeof nativePlugins)[0] => p != null);
-  }, [nativePlugins, recentPluginIds]);
-
-  const filtered = useMemo(
-    () =>
-      plugins.filter((p) => {
-        if (activeCategory && p.category !== activeCategory) return false;
-        if (search) {
-          const q = search.toLowerCase();
-          if (!p.name.toLowerCase().includes(q) && !p.id.toLowerCase().includes(q))
-            return false;
-        }
-        return true;
-      }),
-    [plugins, activeCategory, search],
-  );
-
   const filteredSessions = sessionFiles.filter((e) => {
     if (!search) return true;
     const q = search.toLowerCase();
     return e.name.toLowerCase().includes(q) || e.path.toLowerCase().includes(q);
   });
 
-  // ── Collapsed rail ──
+  // ── Collapsed rail ──────────────────────────────────────────────────────────
   if (collapsed) {
     return (
       <div className="w-10 shrink-0 flex flex-col items-center py-2 gap-2 bg-panel border-r border-panel-border h-full">
@@ -591,11 +131,13 @@ export function ToolPalette({
     );
   }
 
+  // ── Expanded panel ──────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="p-3 space-y-3">
+      {/* ── Header: tabs + view controls ── */}
+      <div className="p-3 pb-2 space-y-2 shrink-0">
         <div className="flex items-center justify-between gap-2">
+          {/* Tab row */}
           <div className="flex rounded overflow-hidden border border-white/10 text-[9px] font-bold uppercase">
             <button
               type="button"
@@ -620,6 +162,8 @@ export function ToolPalette({
               Projects
             </button>
           </div>
+
+          {/* View controls */}
           <div className="flex gap-1 items-center">
             <button
               type="button"
@@ -665,340 +209,130 @@ export function ToolPalette({
           </div>
         </div>
 
-        {/* Search — primary affordance */}
-        <div className="relative">
-          <NeuInput
-            placeholder={
-              browseTab === "plugins" ? "Search plugins…" : "Search project files…"
-            }
-            value={search}
-            onChange={setSearch}
-            className="pl-8"
-          />
-          <span className="absolute left-2 top-1.5 text-text-secondary">
-            <Icon name="Search" size={16} aria-hidden />
-          </span>
-        </div>
+        {/* Search row + gear disclosure */}
+        <PaletteSearch
+          tab={browseTab}
+          value={search}
+          onChange={setSearch}
+          showScan={showScan}
+          onToggleScan={() => setShowScan((v) => !v)}
+        />
 
-        {/* Category quick-filter chips (Plugins only) */}
+        {/* Category chips (Plugins tab only) */}
         {browseTab === "plugins" ? (
-          <div className="flex flex-wrap gap-1">
-            <button
-              type="button"
-              onClick={() => setActiveCategory(null)}
-              aria-pressed={activeCategory === null}
-              className={[
-                "text-[9px] font-bold uppercase tracking-wider px-2 py-[3px] rounded-sm transition-colors",
-                activeCategory === null
-                  ? "bg-elevated text-text-primary neu-inset"
-                  : "bg-pressed text-text-secondary neu-inset hover:text-text-primary",
-              ].join(" ")}
-            >
-              All
-            </button>
-            {CATEGORY_FILTERS.map(({ cat, label }) => {
-              const isActive = activeCategory === cat;
-              const accent = `hsl(var(--cat-${cat}))`;
-              return (
-                <button
-                  key={cat}
-                  type="button"
-                  onClick={() => setActiveCategory(isActive ? null : cat)}
-                  aria-pressed={isActive}
-                  className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider px-2 py-[3px] rounded-sm neu-inset transition-colors bg-pressed"
-                  style={
-                    isActive
-                      ? {
-                          color: accent,
-                          background: `color-mix(in srgb, ${accent} 18%, transparent)`,
-                          boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${accent} 50%, transparent)`,
-                        }
-                      : undefined
-                  }
-                  title={`Filter: ${label}`}
-                >
-                  <CategoryShape category={cat} />
-                  {label}
-                </button>
-              );
-            })}
-          </div>
+          <CategoryChips
+            activeCategory={activeCategory}
+            onSelect={setActiveCategory}
+          />
         ) : null}
       </div>
 
-      {/* Plugin / project list */}
-      <nav className="flex-1 overflow-y-auto px-2 py-1 space-y-1">
-        {browseTab === "projects" ? (
-          <div className="mb-3 space-y-1">
-            <div className="text-[9px] font-bold text-text-secondary tracking-widest uppercase px-1">
-              Session files (host scan)
-            </div>
-            {filteredSessions.length === 0 ? (
-              <div className="text-[10px] text-text-dim py-2 px-1">
-                No matches or host returned an empty list.
-              </div>
-            ) : (
-              filteredSessions.map((e) => (
-                <button
-                  key={e.path}
-                  type="button"
-                  className="w-full text-left text-[10px] px-2 py-1.5 rounded-md text-text-secondary hover:bg-elevated hover:neu-raised hover:text-accent-blue truncate transition-[box-shadow,background-color,color] duration-150 ease-out"
-                  title={e.path}
-                  onClick={() => void nativeSessionOpenPath(e.path)}
-                  onDoubleClick={() => void nativeSessionOpenPath(e.path)}
-                >
-                  {e.name}
-                </button>
-              ))
-            )}
-          </div>
+      {/* ── Scrollable body ── */}
+      <div className="flex-1 overflow-y-auto px-2 py-1 space-y-1 min-h-0">
+        {/* Scan controls disclosure (Plugins tab, gear button toggles) */}
+        {browseTab === "plugins" && showScan ? (
+          <ScanControls />
         ) : null}
 
-        {browseTab === "plugins" ? (
+        {/* ── Projects tab ── */}
+        {browseTab === "projects" ? (
           <>
-            {/* Scan controls — collapsible (#1 native gap). */}
-            <div className="mb-2">
-              <button
-                type="button"
-                onClick={() => setShowScan((v) => !v)}
-                aria-expanded={showScan}
-                className="w-full flex items-center gap-1.5 px-1 py-1 text-[9px] font-bold text-text-secondary tracking-widest uppercase hover:text-text-primary transition-colors"
-              >
-                <Icon
-                  name="ChevronRight"
-                  size={11}
-                  aria-hidden
-                  className={`transition-transform duration-150 ${showScan ? "rotate-90" : ""}`}
-                />
-                Plugin Scan &amp; Paths
-              </button>
-              {showScan ? <ScanControls /> : null}
-            </div>
-
-            <div className="mb-3 pb-2 border-b border-white/5 space-y-1">
-              {sessionGraphs.length > 0 && (
-                <>
-                  <div className="text-[9px] font-bold text-text-secondary tracking-widest uppercase px-1">
-                    Boards
-                  </div>
-                  {sessionGraphs.map((g) => (
-                    <button
-                      key={g.id}
-                      type="button"
-                      className={`w-full text-left text-[10px] px-2 py-1 rounded-md truncate transition-colors ${
-                        g.active
-                          ? "bg-accent-blue/20 text-accent-blue"
-                          : "text-text-secondary hover:bg-white/5"
-                      }`}
-                      onClick={() => void nativeSessionSetActiveGraph(g.index)}
-                    >
-                      {g.name}
-                    </button>
-                  ))}
-                </>
-              )}
-              {activeGraphOutline.length > 0 ? (
-                <div className="text-[9px] font-bold text-text-secondary tracking-widest uppercase pt-2 px-1">
-                  Board outline
-                </div>
-              ) : null}
-              {activeGraphOutline.map((n) => (
-                <OutlineRow key={n.id} node={n} depth={0} />
-              ))}
-              <div className="flex gap-1 pt-1">
-                <button
-                  type="button"
-                  className="flex-1 text-[9px] py-1.5 rounded-md bg-pressed text-text-secondary uppercase tracking-wider hover:bg-elevated hover:text-text-primary transition-colors"
-                  onClick={() => void nativeSessionImportGraph()}
-                >
-                  Import .elg
-                </button>
-                <button
-                  type="button"
-                  className="flex-1 text-[9px] py-1.5 rounded-md bg-pressed text-text-secondary uppercase tracking-wider hover:bg-elevated hover:text-text-primary transition-colors"
-                  onClick={() => void nativeSessionExportGraph()}
-                >
-                  Export .elg
-                </button>
+            <div className="mb-3 space-y-1">
+              <div className="text-[9px] font-bold text-text-secondary tracking-widest uppercase px-1">
+                Project files (host scan)
               </div>
-            </div>
-
-            {favPlugins.length > 0 && (
-              <div className="mb-3 pb-2 border-b border-white/5 space-y-1">
-                <div className="text-[9px] font-bold text-accent-orange tracking-widest uppercase px-1 flex items-center gap-1">
-                  <StarGlyph size={9} />
-                  Favourites
+              {filteredSessions.length === 0 ? (
+                <div className="text-[10px] text-text-dim py-2 px-1">
+                  No matches or host returned an empty list.
                 </div>
-                {favPlugins.map((p) => (
-                  <PluginCard
-                    key={p.identifier}
-                    plugin={{
-                      id: p.identifier,
-                      name: p.name,
-                      category: p.blockCategory,
-                      format: p.format,
-                    }}
-                    view="list"
-                    selected={p.identifier === selectedId}
-                    isFavourite
-                    onSelect={() => setSelectedId(p.identifier)}
-                    onAdd={() => void nativeGraphAddPlugin(p.identifier)}
-                  />
-                ))}
-              </div>
-            )}
-
-            {recentPlugins.length > 0 && (
-              <div className="mb-3 pb-2 border-b border-white/5 space-y-1">
-                <div className="text-[9px] font-bold text-accent-teal tracking-widest uppercase px-1">
-                  Recent plugins
-                </div>
-                {recentPlugins.map((p) => (
-                  <PluginCard
-                    key={p.identifier}
-                    plugin={{
-                      id: p.identifier,
-                      name: p.name,
-                      category: p.blockCategory,
-                      format: p.format,
-                    }}
-                    view="list"
-                    selected={p.identifier === selectedId}
-                    isFavourite={favoriteIds.has(p.identifier)}
-                    onSelect={() => setSelectedId(p.identifier)}
-                    onAdd={() => void nativeGraphAddPlugin(p.identifier)}
-                  />
-                ))}
-              </div>
-            )}
-
-            {molecules.length > 0 && (
-              <div className="mb-3 pb-2 border-b border-white/5 space-y-1">
-                <div className="text-[9px] font-bold text-text-secondary tracking-widest uppercase px-1">
-                  Molecules
-                </div>
-                {molecules.map((m) => (
+              ) : (
+                filteredSessions.map((e) => (
                   <button
-                    key={m.name}
+                    key={e.path}
                     type="button"
                     className="w-full text-left text-[10px] px-2 py-1.5 rounded-md text-text-secondary hover:bg-elevated hover:neu-raised hover:text-accent-blue truncate transition-[box-shadow,background-color,color] duration-150 ease-out"
-                    title={m.description || "Insert molecule at default position"}
-                    onClick={() => void nativeMoleculeInsert(m.name, 140, 140)}
+                    title={e.path}
+                    onClick={() => void nativeSessionOpenPath(e.path)}
+                    onDoubleClick={() => void nativeSessionOpenPath(e.path)}
                   >
-                    {m.name || "Untitled"}
+                    {e.name}
                   </button>
-                ))}
-              </div>
-            )}
-
-            {/* Section heading for the main list */}
-            <div className="text-[9px] font-bold text-text-secondary tracking-widest uppercase px-1 pt-1 pb-1 flex items-center justify-between">
-              <span>{activeCategory ? CATEGORY_FILTERS.find((c) => c.cat === activeCategory)?.label : "All"} plugins</span>
-              {filtered.length > 0 ? (
-                <span className="text-text-dim tabular font-bold">{filtered.length}</span>
-              ) : null}
+                ))
+              )}
             </div>
 
-            {/* Plugin items — search-first flat list / grid */}
-            {plugins.length === 0 ? (
-              <div className="px-2 py-4">
-                <EmptyState
-                  illustration="no-plugins"
-                  size="sm"
-                  tone="audio"
-                  title="No plugins scanned"
-                  description="Open Preferences to scan AU/VST3/CLAP/LV2 plugins on this system."
-                  action={
-                    <button
-                      type="button"
-                      className="px-3 py-1 rounded bg-pressed text-[11px] uppercase tracking-widest text-accent-blue hover:bg-elevated transition-colors"
-                      onClick={() => window.dispatchEvent(new Event(EV_OPEN_PREFERENCES))}
-                    >
-                      Open Preferences
-                    </button>
-                  }
-                />
+            {/* Recent Projects (moved from footer into Projects tab) */}
+            {recentFiles.length > 0 ? (
+              <div className="border-t border-white/5 pt-2 space-y-0.5">
+                <span className="text-[9px] font-bold tracking-widest text-text-secondary block mb-1 px-1 uppercase">
+                  Recent Projects
+                </span>
+                <ul className="space-y-0.5">
+                  {recentFiles.map((path) => {
+                    const label = path.replace(/^.*[/\\]/, "");
+                    return (
+                      <li key={path}>
+                        <button
+                          type="button"
+                          className="text-left w-full text-[10px] text-text-secondary hover:text-accent-blue truncate transition-colors px-1"
+                          title={path}
+                          onClick={() => void nativeSessionOpenPath(path)}
+                        >
+                          {label}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
               </div>
-            ) : filtered.length === 0 ? (
-              <div className="px-2 py-3 text-[10px] text-text-dim text-center">
-                No plugins match the current filter.
-              </div>
-            ) : viewMode === "grid" ? (
-              <div className="grid grid-cols-2 gap-1.5 px-1">
-                {filtered.map((plugin) => (
-                  <PluginCard
-                    key={plugin.id}
-                    plugin={plugin}
-                    view="grid"
-                    selected={plugin.id === selectedId}
-                    isFavourite={favoriteIds.has(plugin.id)}
-                    onSelect={() => setSelectedId(plugin.id)}
-                    onAdd={() => void nativeGraphAddPlugin(plugin.id)}
-                  />
-                ))}
-              </div>
-            ) : (
-              filtered.map((plugin) => (
-                <PluginCard
-                  key={plugin.id}
-                  plugin={plugin}
-                  view="list"
-                  selected={plugin.id === selectedId}
-                  isFavourite={favoriteIds.has(plugin.id)}
-                  onSelect={() => setSelectedId(plugin.id)}
-                  onAdd={() => void nativeGraphAddPlugin(plugin.id)}
-                />
-              ))
-            )}
+            ) : null}
           </>
         ) : null}
-      </nav>
 
-      {recentFiles.length > 0 ? (
-        <div className="px-3 py-2 border-t border-white/5 max-h-28 overflow-y-auto">
-          <span className="text-[10px] font-bold tracking-widest text-text-secondary block mb-1">
-            RECENT SESSIONS
-          </span>
-          <ul className="space-y-0.5">
-            {recentFiles.map((path) => {
-              const label = path.replace(/^.*[/\\]/, "");
-              return (
-                <li key={path}>
-                  <button
-                    type="button"
-                    className="text-left w-full text-[10px] text-text-secondary hover:text-accent-blue truncate transition-colors"
-                    title={path}
-                    onClick={() => void nativeSessionOpenPath(path)}
-                  >
-                    {label}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      ) : null}
-
-      {/* CPU Load footer */}
-      <div className="p-4 border-t border-white/5 bg-pressed">
-        <div className="flex flex-col gap-2">
-          <div className="flex justify-between items-end">
-            <span className="text-[10px] text-text-secondary">CPU LOAD</span>
-            <span className="text-[10px] text-accent-teal font-bold tabular">
-              {cpuLoad.toFixed(1)}%
-            </span>
-          </div>
-          <div className="w-full h-1.5 bg-[#131317] rounded-full neu-inset overflow-hidden">
-            <div
-              className="h-full bg-accent-teal rounded-full"
-              style={{
-                width: `${Math.min(100, Math.max(0, cpuLoad))}%`,
-                boxShadow: "0 0 8px rgba(43, 196, 196, 0.4)",
-              }}
+        {/* ── Plugins tab ── */}
+        {browseTab === "plugins" ? (
+          <>
+            {/* 4. Favourites — collapsible, default open */}
+            <FavouritesSection
+              favPlugins={favPlugins}
+              favoriteIds={favoriteIds}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
             />
-          </div>
-        </div>
+
+            {/* 5. Recent plugins — collapsible, default open */}
+            <RecentsSection
+              recentPlugins={recentPlugins}
+              favoriteIds={favoriteIds}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+            />
+
+            {/* 6. ALL PLUGINS — primary surface, virtualized list / grid */}
+            <PluginList
+              plugins={plugins}
+              filtered={filtered}
+              favoriteIds={favoriteIds}
+              selectedId={selectedId}
+              viewMode={viewMode}
+              activeCategory={activeCategory}
+              onSelect={setSelectedId}
+            />
+
+            {/* 7. Molecules — collapsible, default collapsed */}
+            <MoleculesSection molecules={molecules} />
+
+            {/* 8. Boards — collapsible, default collapsed */}
+            <BoardsSection
+              sessionGraphs={sessionGraphs}
+              activeGraphOutline={activeGraphOutline}
+            />
+          </>
+        ) : null}
       </div>
+
+      {/* ── Footer: CPU meter only ── */}
+      <PaletteFooter />
     </div>
   );
 }

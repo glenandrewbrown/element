@@ -62,17 +62,42 @@ describe("<NeuKnob />", () => {
     expect(onChange).toHaveBeenCalledWith(62);
   });
 
-  it("applies the shift-key fine sensitivity (0.2x)", () => {
+  it("applies the shift-key fine sensitivity (0.06x) when Shift is held from the start", () => {
     const onChange = vi.fn();
     const { container } = render(
       <NeuKnob value={50} label="X" onChange={onChange} />,
     );
     const body = container.querySelector('[style*="width: 64px"]') as HTMLElement;
 
-    fireEvent.pointerDown(body, { clientY: 100, pointerId: 1 });
+    // Shift held at pointer-down → anchored fine from the first move (no
+    // re-anchor transition). deltaY 20 * 0.06 = 1.2 -> 51.2.
+    fireEvent.pointerDown(body, { clientY: 100, pointerId: 1, shiftKey: true });
     fireEvent.pointerMove(body, { clientY: 80, pointerId: 1, shiftKey: true });
-    // deltaY 20 * 0.2 = 4 -> 54
-    expect(onChange).toHaveBeenCalledWith(54);
+    expect(onChange).toHaveBeenCalledWith(51.2);
+  });
+
+  it("re-anchors on a mid-drag Shift transition so the value does NOT jump (T5)", () => {
+    const onChange = vi.fn();
+    const { container } = render(
+      <NeuKnob value={50} label="X" onChange={onChange} />,
+    );
+    const body = container.querySelector('[style*="width: 64px"]') as HTMLElement;
+
+    // Start coarse (no Shift) at y=100, then move to y=80 → coarse +12 = 62.
+    fireEvent.pointerDown(body, { clientY: 100, pointerId: 1 });
+    fireEvent.pointerMove(body, { clientY: 80, pointerId: 1 });
+    expect(onChange).toHaveBeenLastCalledWith(62);
+    // Engage Shift AT the same point (y=80): re-anchor → 0 delta → value holds,
+    // no jump. (The OLD code would have snapped to fine-of-whole-delta here.)
+    onChange.mockClear();
+    fireEvent.pointerMove(body, { clientY: 80, pointerId: 1, shiftKey: true });
+    // Re-anchored at the live value; next fine move of 10px = +0.6.
+    fireEvent.pointerMove(body, { clientY: 70, pointerId: 1, shiftKey: true });
+    // Because the component re-reads `value` from props (still 50 in this test
+    // harness — props don't update), the re-anchor rebases to 50, so the fine
+    // move yields 50 + 10*0.06 = 50.6 — the KEY assertion is "no 3px jump", i.e.
+    // the value tracks the re-anchored base, not a fine-scaled full delta.
+    expect(onChange).toHaveBeenLastCalledWith(50.6);
   });
 
   it("clamps the value to [0, 100]", () => {

@@ -349,20 +349,19 @@ export const HighCpu: Story = {
   ],
 };
 
-// ── Scan / paths / formats control group (the #1 native gap) ──
-export const ScanControls: Story = {
+// ── Scan / paths / formats control group (gear disclosure) ──
+export const ScanControlsOpen: Story = {
   parameters: {
     docs: {
       description: {
         story:
-          "The Plugin-Scan-&-Paths control group expanded: scan / rescan buttons + format enable toggles (VST3/AU/CLAP/LV2) + scan paths. These are now LIVE — wired through usePluginScanStore → the nativePluginScan bridge → PluginManager's out-of-process scanner. Disabled only while a scan is in flight. The play seeds the scan store so the format toggles render, then asserts the controls are enabled.",
+          "The Plugin-Scan-&-Paths control group revealed via the gear button on the search row: scan / rescan buttons + format enable toggles (VST3/AU/CLAP/LV2) + scan paths. LIVE — wired through usePluginScanStore → nativePluginScan bridge. The play opens the gear disclosure and asserts the controls are enabled.",
       },
     },
   },
   decorators: [
     (Story) => {
       seedPopulated();
-      // Seed the real scan store so the format toggles render + controls are live.
       usePluginScanStore.setState({
         scanning: false,
         currentPlugin: "",
@@ -384,10 +383,10 @@ export const ScanControls: Story = {
   ],
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    // Expand the collapsible scan section.
-    const toggle = canvas.getByRole("button", { name: /Plugin Scan & Paths/ });
-    await userEvent.click(toggle);
-    await waitFor(() => expect(toggle).toHaveAttribute("aria-expanded", "true"));
+    // Open scan via the gear button (aria-label="Plugin scan settings").
+    const gearBtn = canvas.getByRole("button", { name: /plugin scan settings/i });
+    await userEvent.click(gearBtn);
+    await waitFor(() => expect(gearBtn).toHaveAttribute("aria-expanded", "true"));
 
     // Scan + Rescan are LIVE (enabled at rest; disabled only mid-scan).
     await expect(canvas.getByRole("button", { name: "Scan" })).toBeEnabled();
@@ -529,5 +528,90 @@ export const Collapsed: Story = {
     await waitFor(() =>
       expect(canvas.getByPlaceholderText("Search plugins…")).toBeInTheDocument(),
     );
+  },
+};
+
+// ── Synthetic1000 — virtualization proof fixture ──
+//
+// Seeds 1000 synthetic plugins and asserts that the virtualized list renders
+// far fewer DOM rows than the total — proving O(viewport) rendering.
+// Also exercises search filtering over the large list.
+
+function make1000Plugins() {
+  const categories = ["instrument", "audiofx", "midifx", "modulator"] as const;
+  const formats = ["VST3", "AU", "CLAP", "LV2", "INT"] as const;
+  return Array.from({ length: 1000 }, (_, i) => ({
+    identifier: `synthetic-${i}.vst3`,
+    name: `Synthetic Plugin ${String(i).padStart(4, "0")}`,
+    manufacturer: "Test Corp",
+    format: formats[i % formats.length],
+    category: "Instrument",
+    blockCategory: categories[i % categories.length],
+    signalOut: "audio" as const,
+    usageCount: i % 10,
+  }));
+}
+
+export const Synthetic1000: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "1000 synthetic plugins — virtualization proof. The play asserts that the DOM contains far fewer plugin rows than 1000 (O(viewport) rendering), then types a search query and asserts the count shrinks proportionally. Grid mode note: virtualization applies to list mode only; grid stays simple (documented in PluginList.tsx).",
+      },
+    },
+  },
+  decorators: [
+    (Story) => {
+      seedEmpty();
+      usePluginBrowserStore.setState({
+        plugins: make1000Plugins(),
+        favoriteIdentifiers: new Set(),
+        recentIdentifiers: [],
+        refresh: async () => {},
+      });
+      usePerformStore.setState((s) => ({
+        liveHealth: { ...s.liveHealth, cpu: 3.1 },
+      }));
+      return (
+        <div style={{ width: 280, height: 640 }} className="bg-panel">
+          <Story />
+        </div>
+      );
+    },
+  ],
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+
+    // The virtualized list container is present.
+    await waitFor(() =>
+      expect(canvas.getByTestId("plugin-list-virtual")).toBeInTheDocument(),
+    );
+
+    // Count rendered plugin role=button elements inside the virtual container.
+    // With 1000 plugins, the virtualized window should render << 1000 rows.
+    const listContainer = canvas.getByTestId("plugin-list-virtual");
+    const renderedCards = listContainer.querySelectorAll("[role='button']");
+    // Generous upper bound: viewport 640px / 34px row ≈ 19 visible + 10 overscan = ~29.
+    // We allow up to 50 to accommodate CI-side DOM timing variance.
+    expect(renderedCards.length).toBeLessThan(50);
+    expect(renderedCards.length).toBeGreaterThan(0);
+
+    // Search filtering over 1000 items: type "0001" → matches only "Synthetic Plugin 0001"
+    const search = canvas.getByPlaceholderText("Search plugins…");
+    await userEvent.type(search, "0001");
+    await waitFor(() => {
+      const afterSearch = listContainer.querySelectorAll("[role='button']");
+      // Only 1 exact match → 1 rendered row (plus overscan which is still ≤ 2 for 1 item)
+      expect(afterSearch.length).toBeLessThanOrEqual(5);
+    });
+
+    // Clear search → list returns to windowed count
+    await userEvent.clear(search);
+    await waitFor(() => {
+      const afterClear = listContainer.querySelectorAll("[role='button']");
+      expect(afterClear.length).toBeLessThan(50);
+      expect(afterClear.length).toBeGreaterThan(0);
+    });
   },
 };
