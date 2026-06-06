@@ -7,7 +7,7 @@
 namespace element {
 
 SessionDocument::SessionDocument (SessionPtr s)
-    : FileBasedDocument (".els", "*.els", "Open Session", "Save Session"),
+    : FileBasedDocument (".els", "*.els", "Open Project", "Save Project"),
       session (s)
 {
     if (session)

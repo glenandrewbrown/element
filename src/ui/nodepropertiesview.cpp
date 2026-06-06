@@ -342,7 +342,7 @@ void NodePropertiesView::updateProperties()
         }
         else
         {
-            String nodeName = "Node";
+            String nodeName = "Block";
             if (_node.getPluginName().isNotEmpty())
                 nodeName << " - " << _node.getPluginName();
             props.addSection (nodeName, NodeProperties (_node, true, false));

@@ -109,9 +109,9 @@ void MainWindow::nameChangedSession()
     }
 
     if (sessionName.isEmpty())
-        sessionName = "Untitled Session";
+        sessionName = "Untitled Project";
     if (graphName.isEmpty())
-        graphName = "Untitled Graph";
+        graphName = "Untitled Board";
 
     title << " - " << sessionName << ": " << graphName;
     setName (title);

@@ -56,6 +56,10 @@ type EngineBlock = {
   note?: string;
   /** CSV of hidden param-port ids (persisted "userHiddenParams"). */
   hiddenParams?: string;
+  /** Internal node identifier, e.g. "element.compare" (all blocks). */
+  identifier?: string;
+  /** Engine-truth integer mode for element.compare / element.logic only. */
+  intMode?: number;
   ports?: Array<{
     id: string;
     label?: string;
@@ -268,6 +272,11 @@ function mapBlock(b: EngineBlock): BlockData {
             .map((s) => s.trim())
             .filter((s) => s.length > 0)
         : [],
+    // Internal node identifier (all blocks) + engine-truth integer mode for
+    // the built-in logic/comparator nodes. intMode is left undefined unless the
+    // host actually emitted it (no fake value for non-logic blocks).
+    identifier: typeof b.identifier === "string" ? b.identifier : undefined,
+    intMode: typeof b.intMode === "number" ? b.intMode : undefined,
   };
 }
 

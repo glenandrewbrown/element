@@ -270,7 +270,7 @@ export function EdgeContextMenu({
             className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-text-dim opacity-40 cursor-not-allowed"
             role="menuitem"
             aria-disabled="true"
-            title="Requires el.BusSend / el.BusReceive C++ node types (Pillar-2 backlog)"
+            title="Requires el.BusSend / el.BusReceive C++ block types (Pillar-2 backlog)"
           >
             <Icon name="GitBranch" size={13} aria-hidden />
             <span className="flex-1 text-left leading-none">Insert Bus Blocks…</span>

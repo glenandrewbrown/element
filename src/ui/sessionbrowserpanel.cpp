@@ -214,9 +214,9 @@ void SessionBrowserPanel::paint (Graphics& g)
 
         String emptyText;
         if (viewMode == ViewMode::Recent)
-            emptyText = "No recently opened sessions.";
+            emptyText = "No recently opened projects.";
         else
-            emptyText = "No sessions found.\nCreate one from File > Save Session.";
+            emptyText = "No projects found.\nCreate one from File > Save Project.";
 
         g.drawFittedText (emptyText, contentArea, Justification::centred, 2);
     }
@@ -600,8 +600,8 @@ String SessionBrowserPanel::categoryLabel (FileCategory cat)
 {
     switch (cat)
     {
-        case FileCategory::Session:    return "Session";
-        case FileCategory::Graph:      return "Graph";
+        case FileCategory::Session:    return "Project";
+        case FileCategory::Graph:      return "Board";
         case FileCategory::Preset:     return "Preset";
         case FileCategory::Controller: return "Controller";
         default:                       return "Other";

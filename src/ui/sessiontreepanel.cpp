@@ -360,7 +360,7 @@ public:
         PopupMenu menu;
         if (node.isGraph())
         {
-            menu.addItem (5, "Add graph...");
+            menu.addItem (5, "Add board...");
             menu.addSeparator();
         }
 
@@ -375,7 +375,7 @@ public:
         PopupMenu menu;
         if (node.isGraph())
         {
-            menu.addItem (5, "Add graph...");
+            menu.addItem (5, "Add board...");
             menu.addSeparator();
         }
 
@@ -792,7 +792,7 @@ public:
         menu.addSubMenu ("Add Script", scripts, true);
 #endif
         menu.addSeparator();
-        menu.addItem (4, "Edit Graph...");
+        menu.addItem (4, "Edit Board...");
         menu.addItem (3, "View Settings...");
         menu.addSeparator();
 
@@ -828,7 +828,7 @@ public:
 
     virtual bool mightContainSubItems() override { return true; }
     virtual String getRenamingName() const override { return getDisplayName(); }
-    virtual String getDisplayName() const override { return "Session"; }
+    virtual String getDisplayName() const override { return "Project"; }
     virtual void setName (const String& newName) override {}
     virtual bool isMissing() override { return false; }
     virtual Icon getIcon() const override { return Icon (getIcons().folder, Colours::red); }

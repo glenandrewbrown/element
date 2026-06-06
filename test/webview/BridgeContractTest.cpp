@@ -16,6 +16,7 @@
 #include <element/session.hpp>
 #include <element/ui/element_webview_host.hpp>
 
+#include "nodes/logicnodes.hpp" // P0 — ComparatorNode for the intMode round-trip
 #include "testutil.hpp"
 
 using namespace element;
@@ -54,6 +55,59 @@ static bool ensureActiveGraph()
 }
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// P0 — splice a live element.compare node (carrying a real ComparatorNode
+// Processor in tags::object) into the active graph's node list, exactly the
+// shape a built-in node Block has on the model tree. Returns the node's uuid
+// and the raw Processor pointer (owned by the ValueTree's ref-counted object
+// property). Empty uuid on failure.
+struct CompareFixture
+{
+    String                                uuid;
+    juce::ReferenceCountedObjectPtr<ComparatorNode> proc;
+};
+
+static CompareFixture installCompareNode()
+{
+    CompareFixture fx;
+    if (! ensureActiveGraph())
+        return fx;
+
+    auto* ctx = test::context();
+    if (ctx == nullptr)
+        return fx;
+    auto sess = ctx->session();
+    if (sess == nullptr)
+        return fx;
+
+    Node active (sess->getActiveGraph());
+    if (! active.isGraph())
+        return fx;
+
+    fx.proc = new ComparatorNode();
+
+    // Build the model node ValueTree the same way createDefaultGraph does for
+    // built-in IO nodes, plus tags::object → the live Processor so the host's
+    // getObject() resolves + casts to ComparatorNode.
+    Node n (types::Node); // stamps a fresh tags::uuid via setMissingProperties
+    n.setProperty (tags::type, "plugin")
+        .setProperty (tags::format, "Internal")
+        .setProperty (tags::identifier, "element.compare")
+        .setProperty (tags::name, "Comparator")
+        .setProperty (tags::object, fx.proc.get());
+
+    ValueTree activeNodes (active.getNodesValueTree());
+    if (! activeNodes.isValid())
+    {
+        fx.proc = nullptr;
+        return fx;
+    }
+    activeNodes.addChild (n.data(), -1, nullptr);
+
+    fx.uuid = n.getUuidString();
+    return fx;
+}
+
 BOOST_AUTO_TEST_SUITE (BridgeContractTests)
 
 // ── Test 1 ──────────────────────────────────────────────────────────────────
@@ -331,6 +385,99 @@ BOOST_AUTO_TEST_CASE (getInstanceSnapshot_unknown_id_is_unavailable)
     BOOST_CHECK_EQUAL ((bool) obj->getProperty ("unavailable"), true);
     BOOST_CHECK (obj->getProperty ("graphs").isArray());
     BOOST_CHECK_EQUAL (obj->getProperty ("graphs").size(), 0);
+}
+
+// ── Test 8 (P0) ──────────────────────────────────────────────────────────────
+// Snapshot blocks carry `identifier`. The spliced element.compare node's block
+// must expose identifier == "element.compare" so the webview can branch its
+// inline controls on the built-in node type.
+BOOST_AUTO_TEST_CASE (snapshot_block_carries_identifier)
+{
+    const CompareFixture fx (installCompareNode());
+    BOOST_REQUIRE_MESSAGE (fx.uuid.isNotEmpty(), "failed to install element.compare node");
+
+    auto* ctx = test::context();
+    ElementWebViewHost host (*ctx, /*skipBrowser=*/true);
+
+    // elementGetGraphState returns a structured var (object), not a JSON string.
+    const var parsed = BridgeContractTest::invoke (host, "elementGetGraphState");
+    auto* obj = parsed.getDynamicObject();
+    BOOST_REQUIRE (obj != nullptr);
+
+    const var blocks (obj->getProperty ("blocks"));
+    BOOST_REQUIRE (blocks.isArray());
+
+    bool foundIdentifier = false;
+    for (const var& item : *blocks.getArray())
+        if (auto* b = item.getDynamicObject())
+            if (b->getProperty ("id").toString() == fx.uuid)
+            {
+                BOOST_CHECK_EQUAL (b->getProperty ("identifier").toString(),
+                                   String ("element.compare"));
+                foundIdentifier = true;
+            }
+
+    BOOST_CHECK_MESSAGE (foundIdentifier, "element.compare block not found in snapshot blocks");
+}
+
+// ── Test 9 (P0) ──────────────────────────────────────────────────────────────
+// elementNodeSetIntMode mutates the ComparatorNode operator, and the NEXT
+// snapshot's `intMode` reflects engine truth. Default op = greater (0); set to
+// notEqual (5) and assert both the processor getter and the snapshot.
+BOOST_AUTO_TEST_CASE (setIntMode_updates_processor_and_snapshot)
+{
+    const CompareFixture fx (installCompareNode());
+    BOOST_REQUIRE_MESSAGE (fx.uuid.isNotEmpty(), "failed to install element.compare node");
+    BOOST_REQUIRE (fx.proc != nullptr);
+
+    // Sanity: starts at the default operator (greater == 0).
+    BOOST_REQUIRE_EQUAL ((int) fx.proc->getOperator(), (int) ComparatorNode::Op::greater);
+
+    auto* ctx = test::context();
+    ElementWebViewHost host (*ctx, /*skipBrowser=*/true);
+
+    const int newMode = (int) ComparatorNode::Op::notEqual; // 5
+    const var setResult = BridgeContractTest::invoke (
+        host, "elementNodeSetIntMode", Array<var> { var (fx.uuid), var (newMode) });
+    BOOST_CHECK_EQUAL ((bool) setResult, true);
+
+    // Engine truth: the processor's atomic operator updated.
+    BOOST_CHECK_EQUAL ((int) fx.proc->getOperator(), newMode);
+
+    // Snapshot truth: the block's intMode reflects the new operator.
+    // elementGetGraphState returns a structured var (object), not a JSON string.
+    const var snap = BridgeContractTest::invoke (host, "elementGetGraphState");
+    auto* snapObj = snap.getDynamicObject();
+    BOOST_REQUIRE (snapObj != nullptr);
+
+    const var blocks (snapObj->getProperty ("blocks"));
+    BOOST_REQUIRE (blocks.isArray());
+
+    bool foundMode = false;
+    for (const var& item : *blocks.getArray())
+        if (auto* b = item.getDynamicObject())
+            if (b->getProperty ("id").toString() == fx.uuid)
+            {
+                BOOST_CHECK_EQUAL ((int) b->getProperty ("intMode"), newMode);
+                foundMode = true;
+            }
+
+    BOOST_CHECK_MESSAGE (foundMode, "element.compare block not found in snapshot for intMode check");
+}
+
+// ── Test 10 (P0) ─────────────────────────────────────────────────────────────
+// elementNodeSetIntMode on an unknown / non-logic node returns false (honest).
+BOOST_AUTO_TEST_CASE (setIntMode_unknown_node_returns_false)
+{
+    auto* ctx = test::context();
+    BOOST_REQUIRE (ctx != nullptr);
+
+    ElementWebViewHost host (*ctx, /*skipBrowser=*/true);
+    const var result = BridgeContractTest::invoke (
+        host, "elementNodeSetIntMode",
+        Array<var> { var (String ("nonexistent-uuid")), var (2) });
+
+    BOOST_CHECK_EQUAL ((bool) result, false);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

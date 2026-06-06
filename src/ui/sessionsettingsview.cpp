@@ -26,7 +26,7 @@ public:
         {
             PropertyArray props;
             getSessionProperties (props, session);
-            addSection ("Session Settings", props);
+            addSection ("Project Settings", props);
         }
     }
 

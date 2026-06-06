@@ -273,9 +273,9 @@ void SessionService::newSession()
     int res = 2;
     if (document->hasChangedSinceSaved())
         res = AlertWindow::showYesNoCancelBox (AlertWindow::InfoIcon,
-                                               "Save Session?",
-                                               "The current session has changes. Would you like to save it?",
-                                               "Save Session",
+                                               "Save Project?",
+                                               "The current project has changes. Would you like to save it?",
+                                               "Save Project",
                                                "Don't Save",
                                                "Cancel");
     if (res == 1)
@@ -316,7 +316,7 @@ void SessionService::loadNewSessionData()
         int numOut = engine != nullptr ? engine->getNumChannels (false) : fallbackCount;
         currentSession->clear();
         currentSession->addGraph (
-            Graph::create ("Graph", numIn, numOut, true, true),
+            Graph::create ("Board", numIn, numOut, true, true),
             true);
     }
 }

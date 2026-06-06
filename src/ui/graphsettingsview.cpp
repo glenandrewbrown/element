@@ -455,7 +455,7 @@ public:
             PropertyArray props;
             getSessionProperties (props, graph);
             if (useHeader)
-                addSection ("Graph Settings", props);
+                addSection ("Board Settings", props);
             else
                 addProperties (props);
         }
@@ -505,7 +505,7 @@ GraphSettingsView::GraphSettingsView()
     props = std::make_unique<GraphPropertyPanel>();
     addAndMakeVisible (props.get());
     addAndMakeVisible (graphButton);
-    graphButton.setTooltip ("Show graph editor");
+    graphButton.setTooltip ("Show board editor");
     graphButton.addListener (this);
     setEscapeTriggersClose (true);
 

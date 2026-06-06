@@ -1,0 +1,33 @@
+# Terminology allowlist for check_terminology.py
+# Format: [path/]"exact quoted string" # reason
+# Path prefix is optional. When present it is matched as a suffix of the file path.
+# Lines beginning with # are comments.
+
+# ---------- Preset (plugin-format term, NOT Element Snippet) ----------
+
+"Open FXB/FXP Preset"
+# contextmenus.hpp: plugin-format dialog title for loading Steinberg FXB/FXP preset files.
+# "Preset" here is a Steinberg-defined file format name, not Element's own Snippet concept.
+
+"Save FXB/FXP Preset"
+# contextmenus.hpp: plugin-format dialog title for saving Steinberg FXB/FXP preset files.
+# Same rationale as above.
+
+"Preset"
+# presetservice.cpp:57 TRANS("Preset") — dialog title for the plugin preset save error alert.
+# sessionbrowserpanel.cpp:605 FileCategory::Preset return — labels actual plugin-preset files
+# in the file browser; the category name matches the file type, not the Element Snippet concept.
+
+# ---------- Graph (fallback file basename, not a UI label) ----------
+
+"Graph"
+# element_webview_host.cpp:2881 — fallback string used as a file system basename when the
+# node has no name (node.getName().isNotEmpty() ? node.getName() : "Graph"). This value is
+# never displayed in the UI; it is only used to construct a default save-file path.
+
+# ---------- Session (internal component/debug identity, not displayed) ----------
+
+"Session Tree Pannel"
+# sessiontreepanel.cpp:877 — Component debug name passed to Component("...") ctor.
+# JUCE Component names are used for AX/automation identity, not displayed to end users.
+# Note: also contains a pre-existing typo ("Pannel") — not fixing to avoid AX regressions.

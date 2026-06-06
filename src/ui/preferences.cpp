@@ -379,7 +379,7 @@ public:
 
     GeneralSettingsPage (Context& world, GuiService& g)
         : pluginSettings (world),
-          defaultSessionFile ("Default Session", File(), true, false,
+          defaultSessionFile ("Default Project", File(), true, false,
                               false, // bool isForSaving,
                               "*.els", //const String& fileBrowserWildcard,
                               "", //const String& enforcedSuffix,
@@ -440,9 +440,9 @@ public:
         addAndMakeVisible (openLastSessionLabel);
 
 #if ! ELEMENT_SE
-        const String sessionStr = "session";
+        const String sessionStr = "project";
 #else
-        const String sessionStr = "graph";
+        const String sessionStr = "board";
 #endif
 
         openLastSessionLabel.setText (String ("Open last used XXX").replace ("XXX", sessionStr),
@@ -500,7 +500,7 @@ public:
         legacyCtl.getToggleStateValue().addListener (this);
 
         addAndMakeVisible (defaultSessionFileLabel);
-        defaultSessionFileLabel.setText ("Default new Session", dontSendNotification);
+        defaultSessionFileLabel.setText ("Default new Project", dontSendNotification);
         defaultSessionFileLabel.setFont (Font (FontOptions (12.0, Font::bold)));
         addAndMakeVisible (defaultSessionFile);
         defaultSessionFile.setCurrentFile (settings.getDefaultNewSessionFile(), dontSendNotification);

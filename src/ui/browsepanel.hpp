@@ -65,7 +65,7 @@ public:
 
 private:
     juce::TextButton btnPlugins { "Plugins" };
-    juce::TextButton btnSessions { "Sessions" };
+    juce::TextButton btnSessions { "Projects" };
     std::unique_ptr<PluginsPanelView> pluginsPanel;
     std::unique_ptr<SessionBrowserPanel> sessionsPanel;
     int activeTab = 0;

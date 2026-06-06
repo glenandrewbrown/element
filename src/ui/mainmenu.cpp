@@ -264,18 +264,18 @@ void MainMenu::buildFileMenu (PopupMenu& menu)
 #endif
     if (! webShell)
     {
-        menu.addCommandItem (&cmd, Commands::sessionNew, "New Session");
+        menu.addCommandItem (&cmd, Commands::sessionNew, "New Project");
         menu.addSeparator();
     }
-    menu.addCommandItem (&cmd, Commands::sessionOpen, "Open Session...");
+    menu.addCommandItem (&cmd, Commands::sessionOpen, "Open Project...");
     addRecentFiles (menu);
     if (! webShell)
     {
-        menu.addCommandItem (&cmd, Commands::sessionSave, "Save Session");
-        menu.addCommandItem (&cmd, Commands::sessionSaveAs, "Save Session As...");
+        menu.addCommandItem (&cmd, Commands::sessionSave, "Save Project");
+        menu.addCommandItem (&cmd, Commands::sessionSaveAs, "Save Project As...");
         menu.addSeparator();
         menu.addCommandItem (&cmd, Commands::importGraph, "Import...");
-        menu.addCommandItem (&cmd, Commands::exportGraph, "Export graph...");
+        menu.addCommandItem (&cmd, Commands::exportGraph, "Export board...");
     }
 
 #if ! JUCE_MAC
@@ -377,12 +377,12 @@ void MainMenu::buildHelpMenu (PopupMenu& menu)
 
 void MainMenu::buildSessionMenu (Commands& cmd, PopupMenu& menu)
 {
-    menu.addCommandItem (&cmd, Commands::sessionNew, "New Session");
+    menu.addCommandItem (&cmd, Commands::sessionNew, "New Project");
     menu.addSeparator();
 
-    menu.addCommandItem (&cmd, Commands::sessionOpen, "Open Session...");
-    menu.addCommandItem (&cmd, Commands::sessionSave, "Save Session");
-    menu.addCommandItem (&cmd, Commands::sessionSaveAs, "Save Session As...");
+    menu.addCommandItem (&cmd, Commands::sessionOpen, "Open Project...");
+    menu.addCommandItem (&cmd, Commands::sessionSave, "Save Project");
+    menu.addCommandItem (&cmd, Commands::sessionSaveAs, "Save Project As...");
 
     menu.addSeparator();
     menu.addCommandItem (&cmd, Commands::importGraph, "Import...");
@@ -391,9 +391,9 @@ void MainMenu::buildSessionMenu (Commands& cmd, PopupMenu& menu)
 
 void MainMenu::buildEditMenu (Commands& cmd, PopupMenu& menu)
 {
-    menu.addCommandItem (&cmd, Commands::sessionAddGraph, "New graph");
-    menu.addCommandItem (&cmd, Commands::sessionDuplicateGraph, "Duplicate current graph");
-    menu.addCommandItem (&cmd, Commands::sessionDeleteGraph, "Delete current graph");
+    menu.addCommandItem (&cmd, Commands::sessionAddGraph, "New board");
+    menu.addCommandItem (&cmd, Commands::sessionDuplicateGraph, "Duplicate current board");
+    menu.addCommandItem (&cmd, Commands::sessionDeleteGraph, "Delete current board");
     menu.addSeparator();
     menu.addCommandItem (&cmd, Commands::undo, "Undo");
     menu.addCommandItem (&cmd, Commands::redo, "Redo");
@@ -408,9 +408,9 @@ void MainMenu::buildEditMenu (Commands& cmd, PopupMenu& menu)
 void MainMenu::buildViewMenu (Commands& cmd, PopupMenu& menu)
 {
     menu.addCommandItem (&cmd, Commands::showPatchBay, "Patch Bay");
-    menu.addCommandItem (&cmd, Commands::showGraphEditor, "Graph Editor");
+    menu.addCommandItem (&cmd, Commands::showGraphEditor, "Board Editor");
     menu.addSeparator();
-    menu.addCommandItem (&cmd, Commands::showGraphMixer, "Graph Mixer");
+    menu.addCommandItem (&cmd, Commands::showGraphMixer, "Board Mixer");
     menu.addCommandItem (&cmd, Commands::showConsole, "Console");
     menu.addSeparator();
     menu.addCommandItem (&cmd, Commands::rotateContentView, "Rotate View...");
@@ -419,7 +419,7 @@ void MainMenu::buildViewMenu (Commands& cmd, PopupMenu& menu)
     menu.addCommandItem (&cmd, Commands::toggleVirtualKeyboard, "Virtual Keyboard");
     menu.addCommandItem (&cmd, Commands::toggleMeterBridge, "Meter Bridge");
     menu.addSeparator();
-    menu.addCommandItem (&cmd, Commands::showSessionConfig, "Session Properties");
+    menu.addCommandItem (&cmd, Commands::showSessionConfig, "Project Properties");
     menu.addSeparator();
     menu.addCommandItem (&cmd, Commands::showPluginManager, "Plugin Manager");
     menu.addCommandItem (&cmd, Commands::showKeymapEditor, "Key Mappings");

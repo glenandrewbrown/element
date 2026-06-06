@@ -716,8 +716,8 @@ void StandardContent::filesDropped (const StringArray& files, int x, int y)
             else
             {
                 AlertWindow::showMessageBox (AlertWindow::InfoIcon,
-                                             TRANS ("Node"),
-                                             TRANS ("Error adding node from file"));
+                                             TRANS ("Block"),
+                                             TRANS ("Error adding block from file"));
             }
         }
         else if ((file.hasFileExtension ("dll") || file.hasFileExtension ("vst") || file.hasFileExtension ("vst3")) && (getMainViewName() == EL_VIEW_GRAPH_EDITOR || getMainViewName() == "PatchBay" || getMainViewName() == EL_VIEW_PLUGIN_MANAGER))
@@ -987,7 +987,7 @@ void StandardContent::getCommandInfo (CommandID commandID, ApplicationCommandInf
             int flags = 0;
             if (getMainViewName() == EL_VIEW_CONTROLLERS)
                 flags |= Info::isTicked;
-            result.setInfo ("Controllers", "Show the session's controllers", "UI", flags);
+            result.setInfo ("Controllers", "Show the project's controllers", "UI", flags);
             result.addDefaultKeypress ('m', ModifierKeys::commandModifier | ModifierKeys::shiftModifier);
             break;
         }
@@ -995,14 +995,14 @@ void StandardContent::getCommandInfo (CommandID commandID, ApplicationCommandInf
             int flags = 0;
             if (getMainViewName() == EL_VIEW_KEYMAP_EDITOR)
                 flags |= Info::isTicked;
-            result.setInfo ("Keymappings", "Show the session's controllers", "UI", flags);
+            result.setInfo ("Keymappings", "Show the project's key mappings", "UI", flags);
             break;
         }
         case Commands::showPluginManager: {
             int flags = 0;
             if (getMainViewName() == EL_VIEW_PLUGIN_MANAGER)
                 flags |= Info::isTicked;
-            result.setInfo ("Plugin Manager", "Show the session's controllers", "UI", flags);
+            result.setInfo ("Plugin Manager", "Show the plugin manager", "UI", flags);
             break;
         }
         //=====
@@ -1010,7 +1010,7 @@ void StandardContent::getCommandInfo (CommandID commandID, ApplicationCommandInf
             int flags = 0;
             if (getMainViewName() == EL_VIEW_SESSION_SETTINGS)
                 flags |= Info::isTicked;
-            result.setInfo ("Session Settings", "Session Settings", "Session", flags);
+            result.setInfo ("Project Settings", "Project Settings", "Project", flags);
             break;
         }
         //=====
@@ -1018,7 +1018,7 @@ void StandardContent::getCommandInfo (CommandID commandID, ApplicationCommandInf
             int flags = 0;
             if (getMainViewName() == "GraphSettings")
                 flags |= Info::isTicked;
-            result.setInfo ("Graph Settings", "Graph Settings", "Graph", flags);
+            result.setInfo ("Board Settings", "Board Settings", "Board", flags);
             break;
         }
         //===
@@ -1036,7 +1036,7 @@ void StandardContent::getCommandInfo (CommandID commandID, ApplicationCommandInf
             if (getMainViewName() == EL_VIEW_GRAPH_EDITOR)
                 flags |= Info::isTicked;
             result.addDefaultKeypress (KeyPress::F2Key, 0);
-            result.setInfo ("Graph Editor", "Show the graph editor", "UI", flags);
+            result.setInfo ("Board Editor", "Show the board editor", "UI", flags);
         }
         break;
             //===
@@ -1044,7 +1044,7 @@ void StandardContent::getCommandInfo (CommandID commandID, ApplicationCommandInf
             int flags = (showAccessoryView() && getAccessoryViewName() == EL_VIEW_GRAPH_MIXER)
                             ? Info::isTicked
                             : 0;
-            result.setInfo ("Graph Mixer", "Show/hide the graph mixer", "UI", flags);
+            result.setInfo ("Board Mixer", "Show/hide the board mixer", "UI", flags);
             break;
         }
         //======================================================================
@@ -1099,7 +1099,7 @@ void StandardContent::getCommandInfo (CommandID commandID, ApplicationCommandInf
             int flags = 0;
             if (nav && nav->getActivePanel() == 0)
                 flags |= Info::isTicked;
-            result.setInfo ("Show Session Panel", "Switch sidebar to Session panel", "UI", flags);
+            result.setInfo ("Show Project Panel", "Switch sidebar to Project panel", "UI", flags);
             result.addDefaultKeypress ('1', ModifierKeys::commandModifier);
             break;
         }
@@ -1123,24 +1123,24 @@ void StandardContent::getCommandInfo (CommandID commandID, ApplicationCommandInf
             int flags = 0;
             if (nav && nav->getActivePanel() == 3)
                 flags |= Info::isTicked;
-            result.setInfo ("Show Node Editor Panel", "Switch sidebar to Node Editor panel", "UI", flags);
+            result.setInfo ("Show Block Editor Panel", "Switch sidebar to Block Editor panel", "UI", flags);
             result.addDefaultKeypress ('4', ModifierKeys::commandModifier);
             break;
         }
 
         // Graph zoom shortcuts
         case Commands::graphZoomIn: {
-            result.setInfo ("Zoom In", "Zoom into the graph editor", "Graph", 0);
+            result.setInfo ("Zoom In", "Zoom into the board editor", "Board", 0);
             result.addDefaultKeypress ('=', ModifierKeys::commandModifier);
             break;
         }
         case Commands::graphZoomOut: {
-            result.setInfo ("Zoom Out", "Zoom out of the graph editor", "Graph", 0);
+            result.setInfo ("Zoom Out", "Zoom out of the board editor", "Board", 0);
             result.addDefaultKeypress ('-', ModifierKeys::commandModifier);
             break;
         }
         case Commands::graphFitToView: {
-            result.setInfo ("Fit to View", "Fit the graph to the visible area", "Graph", 0);
+            result.setInfo ("Fit to View", "Fit the board to the visible area", "Board", 0);
             result.addDefaultKeypress ('0', ModifierKeys::commandModifier);
             break;
         }

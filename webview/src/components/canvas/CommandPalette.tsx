@@ -316,7 +316,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
       },
       {
         id: "set-graph-mixer",
-        label: "Open Graph Mixer",
+        label: "Open Board Mixer",
         category: "setting",
         hint: "Native panel",
         onSelect: runAndClose(() => nativeOpenGraphMixer()),

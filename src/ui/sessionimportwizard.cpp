@@ -75,7 +75,7 @@ public:
         addAndMakeVisible (instructions);
         instructions.setFont (Font (FontOptions (12.f)));
         instructions.setColour (Label::textColourId, Colors::textColor);
-        instructions.setText ("Chose a graph to import", dontSendNotification);
+        instructions.setText ("Choose a board to import", dontSendNotification);
         instructions.setJustificationType (Justification::centred);
         addAndMakeVisible (graphsList);
         addAndMakeVisible (cancelButton);
@@ -193,7 +193,7 @@ const String& name,
                   bool addToDesktop = true);
                   */
 SessionImportWizardDialog::SessionImportWizardDialog (std::unique_ptr<Component>& h, const File& file)
-    : DialogWindow ("Import Session", Colors::widgetBackgroundColor.darker(), true, true),
+    : DialogWindow ("Import Project", Colors::widgetBackgroundColor.darker(), true, true),
       holder (h)
 {
     holder.reset (this);

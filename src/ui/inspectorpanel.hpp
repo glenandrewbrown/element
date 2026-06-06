@@ -89,8 +89,8 @@ public:
 private:
     std::unique_ptr<NodePropertiesView> nodeProps;
     std::unique_ptr<GraphSettingsView> graphSettings;
-    juce::TextButton btnNode { "Node" };
-    juce::TextButton btnGraph { "Graph" };
+    juce::TextButton btnNode { "Block" };
+    juce::TextButton btnGraph { "Board" };
     int activeTab = 0;
     bool userNavigatedAway = false;
 

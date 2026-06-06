@@ -175,10 +175,10 @@ NavigationPanel::NavigationPanel (Context& g)
         icons.add (btn);
     };
 
-    addIcon (0, createTreeIcon(), "Session Tree");
-    addIcon (1, createSearchIcon(), "Browse Plugins & Sessions");
+    addIcon (0, createTreeIcon(), "Project Tree");
+    addIcon (1, createSearchIcon(), "Browse Plugins & Projects");
     addIcon (2, createSlidersIcon(), "Inspector");
-    addIcon (3, createPencilIcon(), "Node Editor");
+    addIcon (3, createPencilIcon(), "Block Editor");
 
     // Create panels
     sessionPanel = std::make_unique<SessionTreePanel>();

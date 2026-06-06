@@ -30,7 +30,7 @@ public:
         setModel (this);
         const int flags = TableHeaderComponent::notSortable;
         // getHeader().addColumn ("Device", Device, 100, 30, -1, flags);
-        getHeader().addColumn ("Node", ColumnNode, 100, 30, -1, flags);
+        getHeader().addColumn ("Block", ColumnNode, 100, 30, -1, flags);
         getHeader().addColumn ("Control", ColumnControl, 100, 30, -1, flags);
         getHeader().addColumn ("Parameter", ColumnParameter, 100, 30, -1, flags);
         setHeaderHeight (22);

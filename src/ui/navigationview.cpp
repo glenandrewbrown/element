@@ -39,7 +39,7 @@ public:
     static const String& getRootItemName (const int t)
     {
         jassert (t < numRootTypes);
-        static const String _names[numRootTypes] = { "Plugins", "Session" };
+        static const String _names[numRootTypes] = { "Plugins", "Project" };
         return _names[t];
     }
 
@@ -88,7 +88,7 @@ public:
                 return "Available system plugins";
                 break;
             case sessionItem:
-                return "Current session resources";
+                return "Current project resources";
                 break;
         }
         return "Invalid Item";
@@ -167,8 +167,8 @@ public:
     SessionNavigationItem() {}
     ~SessionNavigationItem() {}
     bool mightContainSubItems() override { return true; }
-    String getRenamingName() const override { return "Session"; }
-    String getDisplayName() const override { return "Session"; }
+    String getRenamingName() const override { return "Project"; }
+    String getDisplayName() const override { return "Project"; }
     virtual void setName (const String&) override {}
     virtual bool isMissing() override { return false; }
     virtual Icon getIcon() const override { return Icon (getIcons().document, Colors::elemental); }

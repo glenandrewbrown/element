@@ -75,6 +75,11 @@ set_tests_properties(BridgeContractTests PROPERTIES DISABLED TRUE)
 # elementEnterContainer/elementExitContainer natives via invokeForTest — no JS
 # bridge needed, so (unlike BridgeContractTests) it runs in the headless harness.
 add_test(NAME "ContainerDiveTests" COMMAND test_element --run_test=ContainerDiveTests)
+# T10 — "Group selection into a Container" END-TO-END test. Engine-backed
+# (EngineService::groupNodes against the attached RootGraphManager). Serial: it
+# deactivates/reactivates the shared EngineService between cases.
+add_test(NAME "GroupNodesTests" COMMAND test_element --run_test=GroupNodesTests)
+set_tests_properties(GroupNodesTests PROPERTIES RUN_SERIAL TRUE)
 add_test(NAME "RootGraphMissingNodeTests" COMMAND test_element --run_test=RootGraphMissingNodeTests)
 add_test(NAME "SandboxIsolationTests" COMMAND test_element --run_test=SandboxIsolationTests)
 add_test(NAME "LuaBoundsTests" COMMAND test_element --run_test=LuaBoundsTests)
@@ -312,6 +317,11 @@ add_test(NAME "SandboxCVTransportTests" COMMAND test_element --run_test=SandboxC
 set_tests_properties(SandboxCVTransportTests PROPERTIES DISABLED TRUE)
 
 option(ELEMENT_RT_STRESS_TEST "Build and register the audio-thread stress test" OFF)
+# Terminology guard: scans src/ui/** and src/services/** for legacy UI terms.
+# Runs without a build — requires only python3 on the host.
+add_test(NAME "terminology-guard"
+         COMMAND python3 ${CMAKE_SOURCE_DIR}/util/check_terminology.py)
+
 if (ELEMENT_RT_STRESS_TEST)
     target_compile_definitions(test_element PRIVATE ELEMENT_RT_STRESS_TEST=1)
     add_test(NAME "AudioThreadAllocationStressTests" COMMAND test_element --run_test=AudioThreadAllocationStressTests)

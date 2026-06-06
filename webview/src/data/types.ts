@@ -50,6 +50,17 @@ export interface BlockData {
    * Default/empty = [] → all params present (current behaviour preserved).
    */
   hiddenParams?: string[];
+  /**
+   * Internal node identifier from the engine snapshot (e.g. "element.compare").
+   * Present for all blocks; lets inline Block controls branch on built-in type.
+   */
+  identifier?: string;
+  /**
+   * Engine-truth integer mode for built-in logic/comparator nodes
+   * (element.compare → operator, element.logic → mode). Absent for all other
+   * blocks (the host emits nothing when the processor cast misses — no fake value).
+   */
+  intMode?: number;
 }
 
 export interface CableData {

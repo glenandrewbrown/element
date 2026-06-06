@@ -250,6 +250,33 @@ describe("mapBlock field mapping", () => {
       "p-decay",
     ]);
   });
+
+  // ── identifier + intMode (P0 — inline logic/comparator controls) ──
+  it("maps the internal identifier through for all blocks", () => {
+    mountHook();
+    pushSnapshot({
+      blocks: [{ id: "b1", name: "Cmp", identifier: "element.compare" }],
+      cables: [],
+    });
+    expect(useGraphStore.getState().nodes[0]?.identifier).toBe("element.compare");
+  });
+
+  it("maps intMode through when the host emits it", () => {
+    mountHook();
+    pushSnapshot({
+      blocks: [
+        { id: "b1", name: "Cmp", identifier: "element.compare", intMode: 3 },
+      ],
+      cables: [],
+    });
+    expect(useGraphStore.getState().nodes[0]?.intMode).toBe(3);
+  });
+
+  it("leaves intMode undefined when the host omits it (no fake value)", () => {
+    mountHook();
+    pushSnapshot({ blocks: [{ id: "b1", name: "X" }], cables: [] });
+    expect(useGraphStore.getState().nodes[0]?.intMode).toBeUndefined();
+  });
 });
 
 // ── mapCable ──────────────────────────────────────────────────────────────────

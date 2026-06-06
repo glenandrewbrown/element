@@ -93,7 +93,7 @@ export const Empty: Story = {
     docs: {
       description: {
         story:
-          "Untitled Project with no Boards: shows the 'No graphs in session' placeholder and the Untitled header.",
+          "Untitled Project with no Boards: shows the 'No Boards in this Project' placeholder and the Untitled header.",
       },
     },
   },
@@ -115,7 +115,7 @@ export const SingleGraph: Story = {
     docs: {
       description: {
         story:
-          "One Board with no nested outline: verifies the singular 'graph' header label and a flat root Board with no expander.",
+          "One Board with no nested outline: verifies the singular 'board' header label and a flat root Board with no expander.",
       },
     },
   },

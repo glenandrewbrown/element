@@ -47,14 +47,14 @@ afterEach(() => vi.restoreAllMocks());
 // ── empty state ───────────────────────────────────────────────────────────────
 
 describe("empty state", () => {
-  it("shows 'No graphs in session.' when graphs array is empty", () => {
+  it("shows 'No Boards in this Project.' when graphs array is empty", () => {
     render(<SessionTree />);
-    expect(screen.getByText("No graphs in session.")).toBeInTheDocument();
+    expect(screen.getByText("No Boards in this Project.")).toBeInTheDocument();
   });
 
-  it("shows '0 graphs' in header when empty", () => {
+  it("shows '0 boards' in header when empty", () => {
     render(<SessionTree />);
-    expect(screen.getByText("0 graphs")).toBeInTheDocument();
+    expect(screen.getByText("0 boards")).toBeInTheDocument();
   });
 
   it("shows 'Untitled' when filePath is empty", () => {
@@ -106,18 +106,18 @@ describe("graph list", () => {
     expect(screen.getByText("FX Board")).toBeInTheDocument();
   });
 
-  it("shows '2 graphs' count in header", () => {
+  it("shows '2 boards' count in header", () => {
     render(<SessionTree />);
-    expect(screen.getByText("2 graphs")).toBeInTheDocument();
+    expect(screen.getByText("2 boards")).toBeInTheDocument();
   });
 
-  it("shows '1 graph' (singular) for single graph", () => {
+  it("shows '1 board' (singular) for single graph", () => {
     useSessionStore.setState((s) => ({
       ...s,
       graphs: [{ id: "g1", name: "Root", index: 0, active: true }],
     }));
     render(<SessionTree />);
-    expect(screen.getByText("1 graph")).toBeInTheDocument();
+    expect(screen.getByText("1 board")).toBeInTheDocument();
   });
 
   it("shows 'Open' button for inactive graphs", () => {

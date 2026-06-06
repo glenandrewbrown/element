@@ -156,7 +156,7 @@ function GraphRow({ graph, outline, onActivate }: GraphRowProps) {
               e.stopPropagation();
               onActivate(graph.index);
             }}
-            title="Activate this graph"
+            title="Activate this board"
           >
             Open
           </button>
@@ -209,7 +209,7 @@ function SessionTreeComponent() {
   return (
     <section
       className="flex-1 flex flex-col overflow-hidden"
-      aria-label="Session tree"
+      aria-label="Project tree"
     >
       {/* Header */}
       <div
@@ -224,7 +224,7 @@ function SessionTreeComponent() {
           {dirty ? <span className="text-accent-orange ml-1">•</span> : null}
         </span>
         <span className="text-[9px] tabular-nums text-text-dim">
-          {graphs.length} graph{graphs.length === 1 ? "" : "s"}
+          {graphs.length} board{graphs.length === 1 ? "" : "s"}
         </span>
       </div>
 
@@ -235,7 +235,7 @@ function SessionTreeComponent() {
       >
         {graphs.length === 0 ? (
           <div className="px-3 py-2 text-[10px] text-text-dim italic">
-            No graphs in session.
+            No Boards in this Project.
           </div>
         ) : (
           graphs.map((g) => (

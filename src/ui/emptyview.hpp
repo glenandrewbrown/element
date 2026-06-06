@@ -23,9 +23,9 @@ public:
         g.setFont (16.f);
 
 #if JUCE_MAC
-        const String msg ("Session is empty.\nPress Shift+Cmd+N to add a graph.");
+        const String msg ("Project is empty.\nPress Shift+Cmd+N to add a board.");
 #else
-        const String msg ("Session is empty.\nPress Shift+Ctl+N to add a graph.");
+        const String msg ("Project is empty.\nPress Shift+Ctl+N to add a board.");
 #endif
         g.drawFittedText (msg, 0, 0, getWidth(), getHeight(), Justification::centred, 2);
     }

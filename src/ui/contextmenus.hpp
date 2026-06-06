@@ -380,7 +380,7 @@ public:
             return;
 
         const String format = node.getProperty (tags::format).toString();
-        addItemInternal (menu, TRANS ("Save node..."), new AddPresetOp (node));
+        addItemInternal (menu, TRANS ("Save block..."), new AddPresetOp (node));
         addItemInternal (menu, "Save as default...", new SaveDefaultNodeOp (node));
         addItemInternal (menu, "Reset default...", new ResetDefaultNodeOp (node));
         menu.addSeparator();
@@ -700,7 +700,7 @@ private:
         Node node;
         bool perform() override
         {
-            AlertWindow win ("Rename Node", "Enter a new node name:", AlertWindow::NoIcon, nullptr);
+            AlertWindow win ("Rename Block", "Enter a new block name:", AlertWindow::NoIcon, nullptr);
             win.addTextEditor ("name", node.getName(), "", false);
             win.addButton ("Rename", 1, KeyPress (KeyPress::returnKey));
             win.addButton ("Cancel", 0, KeyPress (KeyPress::escapeKey));

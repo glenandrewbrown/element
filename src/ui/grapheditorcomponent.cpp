@@ -1165,7 +1165,7 @@ void GraphEditorComponent::mouseDown (const MouseEvent& e)
         if (graph.isGraph())
         {
 #if 1
-            menu.addSectionHeader ("Graph I/O");
+            menu.addSectionHeader ("Board I/O");
             menu.addItem (1, "Audio Inputs", true, graph.hasAudioInputNode());
             menu.addItem (2, "Audio Outputs", true, graph.hasAudioOutputNode());
             menu.addItem (3, "MIDI Input", true, graph.hasMidiInputNode());
@@ -2093,9 +2093,9 @@ void GraphEditorComponent::renameSelectedNodes()
         return;
 
     // Show rename dialog
-    auto* aw = new AlertWindow ("Rename Node",
+    auto* aw = new AlertWindow ("Rename Block",
                                  selectedNodes.getNumSelected() > 1
-                                     ? "Enter a new name for the selected nodes:"
+                                     ? "Enter a new name for the selected blocks:"
                                      : "Enter a new name:",
                                  MessageBoxIconType::QuestionIcon);
     aw->addTextEditor ("name", defaultName, "Name:");

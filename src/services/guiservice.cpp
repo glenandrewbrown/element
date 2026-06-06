@@ -728,11 +728,11 @@ void GuiService::getCommandInfo (CommandID commandID, ApplicationCommandInfo& re
             break;
         case Commands::showAllPluginWindows:
             result.addDefaultKeypress ('w', ModifierKeys::commandModifier | ModifierKeys::altModifier | ModifierKeys::shiftModifier);
-            result.setInfo ("Show all plugin windows", "Show all plugins for the current graph.", "Session", 0);
+            result.setInfo ("Show all plugin windows", "Show all plugins for the current board.", "Project", 0);
             break;
         case Commands::hideAllPluginWindows:
             result.addDefaultKeypress ('w', ModifierKeys::commandModifier | ModifierKeys::altModifier);
-            result.setInfo ("Hide all plugin windows", "Hides all plugins on the current graph.", "Session", 0);
+            result.setInfo ("Hide all plugin windows", "Hides all plugins on the current board.", "Project", 0);
             break;
         case Commands::toggleUserInterface:
             result.setInfo ("Show UI", "Show the main UI", "UI", 0);
@@ -740,45 +740,45 @@ void GuiService::getCommandInfo (CommandID commandID, ApplicationCommandInfo& re
         //======================================================================
         case Commands::sessionOpen:
             result.addDefaultKeypress ('o', ModifierKeys::commandModifier);
-            result.setInfo ("Open Session", "Open an existing session", "Session", 0);
+            result.setInfo ("Open Project", "Open an existing project", "Project", 0);
             break;
         case Commands::sessionClose:
-            result.setInfo ("Close Session", "Close the current session", "Session", 0);
+            result.setInfo ("Close Project", "Close the current project", "Project", 0);
             break;
         case Commands::sessionNew:
             result.addDefaultKeypress ('n', ModifierKeys::commandModifier);
-            result.setInfo ("New Session", "Create a new session", "Session", 0);
+            result.setInfo ("New Project", "Create a new project", "Project", 0);
             break;
         case Commands::sessionSave:
             result.addDefaultKeypress ('s', ModifierKeys::commandModifier);
-            result.setInfo ("Save Session", "Save the current session", "Session", 0);
+            result.setInfo ("Save Project", "Save the current project", "Project", 0);
             break;
         case Commands::sessionSaveAs:
             result.addDefaultKeypress ('s', ModifierKeys::commandModifier | ModifierKeys::shiftModifier);
-            result.setInfo ("Save Session As", "Save the current session with a new name", "Session", 0);
+            result.setInfo ("Save Project As", "Save the current project with a new name", "Project", 0);
             break;
         case Commands::sessionAddGraph:
             result.addDefaultKeypress ('n', ModifierKeys::shiftModifier | ModifierKeys::commandModifier);
-            result.setInfo ("Add graph", "Add a new graph to the session", "Session", 0);
+            result.setInfo ("Add board", "Add a new board to the project", "Project", 0);
             break;
         case Commands::sessionDuplicateGraph:
             result.addDefaultKeypress ('d', ModifierKeys::shiftModifier | ModifierKeys::commandModifier);
-            result.setInfo ("Duplicate current graph", "Duplicates the currently active graph", "Session", 0);
+            result.setInfo ("Duplicate current board", "Duplicates the currently active board", "Project", 0);
             break;
         case Commands::sessionDeleteGraph:
             result.addDefaultKeypress (KeyPress::backspaceKey, ModifierKeys::commandModifier);
-            result.setInfo ("Delete current graph", "Deletes the current graph", "Session", 0);
+            result.setInfo ("Delete current board", "Deletes the current board", "Project", 0);
             break;
         case Commands::sessionInsertPlugin:
             result.addDefaultKeypress ('p', ModifierKeys::commandModifier);
-            result.setInfo ("Insert plugin", "Add a plugin in the current graph", "Session", Info::isDisabled);
+            result.setInfo ("Insert plugin", "Add a plugin in the current board", "Project", Info::isDisabled);
             break;
         //======================================================================
         case Commands::importGraph:
-            result.setInfo ("Import graph", "Import a graph into current session", "Session", 0);
+            result.setInfo ("Import board", "Import a board into current project", "Project", 0);
             break;
         case Commands::exportGraph:
-            result.setInfo ("Export current graph", "Export the current graph to file", "Session", 0);
+            result.setInfo ("Export current board", "Export the current board to file", "Project", 0);
             break;
         //======================================================================
         case Commands::panic:
@@ -836,7 +836,7 @@ void GuiService::getCommandInfo (CommandID commandID, ApplicationCommandInfo& re
 
         case Commands::rotateContentView:
             result.addDefaultKeypress ('r', ModifierKeys::commandModifier | ModifierKeys::altModifier);
-            result.setInfo ("Rotate View", "Show the graph editor", "Session", 0);
+            result.setInfo ("Rotate View", "Show the board editor", "Project", 0);
             break;
         case Commands::showKeymapEditor:
             // result.addDefaultKeypress ('w', ModifierKeys::commandModifier | ModifierKeys::altModifier | ModifierKeys::shiftModifier);
@@ -925,7 +925,7 @@ bool GuiService::perform (const InvocationInfo& info)
         }
         //======================================================================
         case Commands::sessionOpen: {
-            FileChooser chooser ("Open Session", impl->lastSavedFile, "*.els", true, false);
+            FileChooser chooser ("Open Project", impl->lastSavedFile, "*.els", true, false);
             if (chooser.browseForFileToOpen())
             {
                 sibling<SessionService>()->openFile (chooser.getResult());
@@ -961,7 +961,7 @@ bool GuiService::perform (const InvocationInfo& info)
             break;
         //======================================================================
         case Commands::importGraph: {
-            FileChooser chooser ("Import Graph", impl->lastExportedGraph, "*.elg");
+            FileChooser chooser ("Import Board", impl->lastExportedGraph, "*.elg");
             if (chooser.browseForFileToOpen())
                 sibling<SessionService>()->importGraph (chooser.getResult());
             break;
@@ -980,7 +980,7 @@ bool GuiService::perform (const InvocationInfo& info)
             }
 
             {
-                FileChooser chooser (TRANS ("Export Graph"), impl->lastExportedGraph, "*.elg");
+                FileChooser chooser (TRANS ("Export Board"), impl->lastExportedGraph, "*.elg");
                 if (chooser.browseForFileToSave (true))
                     sibling<SessionService>()->exportGraph (node, chooser.getResult());
                 if (auto* gui = sibling<GuiService>())
