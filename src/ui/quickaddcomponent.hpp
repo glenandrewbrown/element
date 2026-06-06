@@ -34,7 +34,7 @@ public:
         searchBox.setColour (TextEditor::outlineColourId, juce::Colour (0xFF444444));
         searchBox.setColour (TextEditor::focusedOutlineColourId, juce::Colour (0xFF4765a0));
         searchBox.setColour (TextEditor::textColourId, juce::Colours::white);
-        searchBox.setTextToShowWhenEmpty ("Add node...", juce::Colours::grey);
+        searchBox.setTextToShowWhenEmpty ("Add block...", juce::Colours::grey);
         searchBox.addListener (this);
         addAndMakeVisible (searchBox);
 

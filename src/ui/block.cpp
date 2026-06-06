@@ -1010,7 +1010,7 @@ void BlockComponent::makeEditorActive()
     }
     else if (node.hasProperty (tags::missing))
     {
-        String message = "This node is unavailable and running as a Placeholder.\n";
+        String message = "This block is unavailable and running as a Placeholder.\n";
         message << node.getName() << " (" << node.getFormat().toString()
                 << ") could not be found for loading.";
         AlertWindow::showMessageBoxAsync (AlertWindow::InfoIcon,

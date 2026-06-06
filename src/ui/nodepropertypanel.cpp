@@ -11,7 +11,7 @@ namespace element {
 void NodePropertyPanel::initialize()
 {
     setName ("NodePropertyPanel");
-    setMessageWhenEmpty ("Empty node");
+    setMessageWhenEmpty ("Empty block");
 }
 
 void NodePropertyPanel::addProperties (const Node& node, int extraSpace)
@@ -28,7 +28,7 @@ void NodePropertyPanel::addProperties (const Node& node, int extraSpace)
     }
     else
     {
-        setMessageWhenEmpty ("Invalid node");
+        setMessageWhenEmpty ("Invalid block");
     }
 
     refreshAll();

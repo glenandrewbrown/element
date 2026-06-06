@@ -14,7 +14,7 @@ public:
     NodeListComboBox()
     {
         setTextWhenNoChoicesAvailable ("<empty>");
-        setTextWhenNothingSelected ("<select node>");
+        setTextWhenNothingSelected ("<select block>");
     }
 
     using FilterFunction = std::function<bool (const Node&)>;
