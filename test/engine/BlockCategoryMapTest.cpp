@@ -59,4 +59,41 @@ BOOST_AUTO_TEST_CASE (SequencerIsMidiFx)
     BOOST_CHECK_EQUAL (mapBlockCategoryFromStrings ("Step Sequencer", ""), "midifx");
 }
 
+// ── Conditional/logic routing family (logic-routing-flow-debug plan W4) ──
+// Comparator / Logic Gate / Audio Gate / Audio Switch → "modulator" (purple ⬡,
+// "routing logic" per the D1 taxonomy). MIDI Gate → "midifx" (it IS a MIDI
+// processor). Envelope Follower already covered above.
+
+BOOST_AUTO_TEST_CASE (ComparatorIsModulator)
+{
+    BOOST_CHECK_EQUAL (mapBlockCategoryFromStrings ("Comparator", ""), "modulator");
+}
+
+BOOST_AUTO_TEST_CASE (LogicGateIsModulator)
+{
+    BOOST_CHECK_EQUAL (mapBlockCategoryFromStrings ("Logic Gate", ""), "modulator");
+}
+
+BOOST_AUTO_TEST_CASE (AudioGateIsModulator)
+{
+    BOOST_CHECK_EQUAL (mapBlockCategoryFromStrings ("Audio Gate", ""), "modulator");
+}
+
+BOOST_AUTO_TEST_CASE (AudioSwitchIsModulator)
+{
+    BOOST_CHECK_EQUAL (mapBlockCategoryFromStrings ("Audio Switch", ""), "modulator");
+}
+
+BOOST_AUTO_TEST_CASE (MidiGateIsMidiFx)
+{
+    BOOST_CHECK_EQUAL (mapBlockCategoryFromStrings ("MIDI Gate", ""), "midifx");
+}
+
+// A vendor "Noise Gate" dynamics plugin must STAY audiofx — the family above
+// matches full phrases ("audio gate"), never the bare word "gate".
+BOOST_AUTO_TEST_CASE (VendorNoiseGateStaysAudioFx)
+{
+    BOOST_CHECK_EQUAL (mapBlockCategoryFromStrings ("Noise Gate", "Dynamics"), "audiofx");
+}
+
 BOOST_AUTO_TEST_SUITE_END()

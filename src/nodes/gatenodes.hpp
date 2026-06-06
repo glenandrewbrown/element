@@ -90,6 +90,7 @@ public:
         desc.fileOrIdentifier   = "element.audioGate";
         desc.uniqueId           = 0x656c6167; // 'elag'
         desc.name               = "Audio Gate";
+        desc.category           = "Utility";
         desc.descriptiveName    = "Passes audio while the open CV is high (click-free)";
         desc.pluginFormatName   = EL_NODE_FORMAT_NAME;
         desc.manufacturerName   = EL_NODE_FORMAT_AUTHOR;
@@ -217,6 +218,7 @@ public:
         desc.fileOrIdentifier   = "element.midiGate";
         desc.uniqueId           = 0x656c6d67; // 'elmg'
         desc.name               = "MIDI Gate";
+        desc.category           = "MIDI"; // -> webview signalOut "midi" (no audio outs)
         desc.descriptiveName    = "Passes MIDI while the open CV is high (panic on close)";
         desc.pluginFormatName   = EL_NODE_FORMAT_NAME;
         desc.manufacturerName   = EL_NODE_FORMAT_AUTHOR;
@@ -323,6 +325,7 @@ public:
         desc.fileOrIdentifier   = "element.audioSwitch";
         desc.uniqueId           = 0x656c7377; // 'elsw'
         desc.name               = "Audio Switch";
+        desc.category           = "Utility";
         desc.descriptiveName    = "CV-keyed A/B audio selector with crossfade";
         desc.pluginFormatName   = EL_NODE_FORMAT_NAME;
         desc.manufacturerName   = EL_NODE_FORMAT_AUTHOR;

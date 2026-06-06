@@ -101,6 +101,7 @@ public:
         desc.fileOrIdentifier   = "element.compare";
         desc.uniqueId           = 0x656c6370; // 'elcp'
         desc.name               = "Comparator";
+        desc.category           = "Utility";
         desc.descriptiveName    = "Compares two CV signals -> boolean CV (1/0)";
         desc.pluginFormatName   = EL_NODE_FORMAT_NAME;
         desc.manufacturerName   = EL_NODE_FORMAT_AUTHOR;
@@ -244,6 +245,7 @@ public:
         desc.fileOrIdentifier   = "element.logic";
         desc.uniqueId           = 0x656c6c67; // 'ellg'
         desc.name               = "Logic Gate";
+        desc.category           = "Utility";
         desc.descriptiveName    = "Boolean logic (AND/OR/XOR/NAND/NOR/NOT) on CV";
         desc.pluginFormatName   = EL_NODE_FORMAT_NAME;
         desc.manufacturerName   = EL_NODE_FORMAT_AUTHOR;

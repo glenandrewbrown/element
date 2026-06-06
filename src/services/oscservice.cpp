@@ -15,6 +15,7 @@
 
 #define EL_OSC_ADDRESS_COMMAND "/element/command"
 #define EL_OSC_ADDRESS_ENGINE "/element/engine"
+#define EL_OSC_ADDRESS_QUERY "/element/query"
 
 using namespace juce;
 
@@ -111,6 +112,77 @@ private:
             setup.sampleRate = sampleRate;
             devs.setAudioDeviceSetup (setup, true);
         }
+    }
+};
+
+//=============================================================================
+/** QA/flow-debug query surface (logic-routing plan W2).
+
+    "/element/query dumpcv [path]" — walk the active graph and write every
+    node's CV-output latches as JSON:
+      { "<nodeUuid>": { "name": "...", "cv": [v0, v1, ...] }, ... }
+    Default path: the system temp dir + "element-cvdump.json". Gives
+    cli-anything-element a scriptable LIVE assertion that CV actually flows
+    in the installed app (the non-fallback-able Wave-5 verification gate).
+*/
+struct QueryOSCListener final : OSCReceiver::ListenerWithOSCAddress<>
+{
+    QueryOSCListener (Context& g) : globals (g) {}
+
+    void oscMessageReceived (const juce::OSCMessage& message) override
+    {
+        if (message.size() < 1 || ! message[0].isString())
+            return;
+        const auto slug = message[0].getString().toLowerCase().trim();
+        if (slug != "dumpcv")
+            return;
+
+        juce::File out = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                             .getChildFile ("element-cvdump.json");
+        if (message.size() >= 2 && message[1].isString())
+        {
+            const auto p = message[1].getString().trim();
+            if (p.isNotEmpty())
+                out = juce::File (p);
+        }
+
+        writeDump (out);
+    }
+
+private:
+    Context& globals;
+
+    void writeDump (const juce::File& out)
+    {
+        DynamicObject::Ptr root (new DynamicObject());
+        auto sess = globals.session();
+        if (sess != nullptr)
+        {
+            const Graph G (sess->getActiveGraph());
+            for (int i = 0; i < G.getNumNodes(); ++i)
+            {
+                const Node n (G.getNode (i));
+                auto* proc = n.getObject();
+                if (proc == nullptr)
+                    continue;
+
+                const int numCv = proc->getNumOutputCVChannels();
+                if (numCv <= 0)
+                    continue;
+
+                Array<var> values;
+                for (int c = 0; c < numCv; ++c)
+                    values.add (var (proc->getOutputCV (c)));
+
+                DynamicObject::Ptr row (new DynamicObject());
+                row->setProperty ("name", n.getName());
+                row->setProperty ("cv", var (values));
+                root->setProperty (n.getUuidString(), var (row.get()));
+            }
+        }
+
+        out.replaceWithText (JSON::toString (var (root.get())));
+        Logger::writeToLog ("OSCService: dumpcv -> " + out.getFullPathName());
     }
 };
 
@@ -235,6 +307,9 @@ public:
         application.reset (new CommandOSCListener (owner.context()));
         receiver.addListener (application.get(), EL_OSC_ADDRESS_COMMAND);
 
+        query.reset (new QueryOSCListener (owner.context()));
+        receiver.addListener (query.get(), EL_OSC_ADDRESS_QUERY);
+
         // Per-command addresses: /element/command/<name> for every command
         // (e.g. /element/command/transportPlay).  One listener, many addresses.
         for (const auto& addy : Commands::getOSCAddresses())
@@ -253,9 +328,11 @@ public:
         listenersReady = false;
 
         receiver.removeListener (application.get());
+        receiver.removeListener (query.get());
         receiver.removeListener (engine.get());
 
         application.reset();
+        query.reset();
         engine.reset();
     }
 
@@ -286,6 +363,7 @@ private:
     juce::int64 firstFailureTime { 0 };
 
     std::unique_ptr<CommandOSCListener> application;
+    std::unique_ptr<QueryOSCListener> query;
     std::unique_ptr<EngineOSCListener> engine;
 };
 

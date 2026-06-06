@@ -493,7 +493,17 @@ static float cableSignalLevelForArc (const Graph& G, const ValueTree& a)
     const Port srcPort = srcNode.getPort (spi);
     const PortType pt = srcPort.getType();
 
-    if (pt.isAudio() || pt.isCv())
+    if (pt.isCv())
+    {
+        // Wave-0/2: CV presence comes from the per-port last-sample latch
+        // (Processor::getOutputCV) — NOT the audio RMS array, which is sized
+        // off audio outputs and reads 0 forever for CV-only nodes.
+        const int channel = srcPort.channel();
+        const float v = proc->getOutputCV (channel);
+        return jmin (1.0f, std::fabs (v));
+    }
+
+    if (pt.isAudio())
     {
         const int channel = srcPort.channel();
         const int numOutputs = proc->getNumAudioOutputs();
@@ -524,6 +534,31 @@ static float cableSignalLevelForArc (const Graph& G, const ValueTree& a)
     }
 
     return 0.f;
+}
+
+/** Wave-2 flow-debug: signed CV value for a CV-sourced arc. Returns true and
+    fills `outValue` (the source port's last rendered sample, lock-free) when
+    the arc's source port is CV; false otherwise (audio/MIDI/Control arcs). */
+static bool cableCvValueForArc (const Graph& G, const ValueTree& a, float& outValue)
+{
+    const auto sn = (uint32_t) (int64) a.getProperty (tags::sourceNode);
+    const int spi = (int) a.getProperty (tags::sourcePort, 0);
+
+    const Node srcNode = G.getNodeById (sn);
+    if (! srcNode.isValid())
+        return false;
+    auto* proc = srcNode.getObject();
+    if (proc == nullptr)
+        return false;
+    if (! isPositiveAndBelow (spi, srcNode.getNumPorts()))
+        return false;
+
+    const Port srcPort = srcNode.getPort (spi);
+    if (! srcPort.getType().isCv())
+        return false;
+
+    outValue = proc->getOutputCV (srcPort.channel());
+    return true;
 }
 
 static void appendAudioSetupJson (Context& ctx, DynamicObject::Ptr root)
@@ -5744,6 +5779,13 @@ String ElementWebViewHost::buildCableLevelsJson() const
         DynamicObject::Ptr row (new DynamicObject());
         row->setProperty ("id", cableId);
         row->setProperty ("level", cableSignalLevelForArc (G, a));
+
+        // Flow-debug: CV arcs additionally carry the SIGNED value so the UI
+        // can show a numeric readout (level is unsigned presence only).
+        float cvValue = 0.f;
+        if (cableCvValueForArc (G, a, cvValue))
+            row->setProperty ("v", cvValue);
+
         items.add (var (row.get()));
     }
 
@@ -5777,6 +5819,15 @@ static float nodeOutputLevel (const Node& n)
     // MIDI out nodes) so they are not falsely dark while passing events.
     if (proc->hasMidiOutputActivity())
         return 0.75f;
+
+    // CV-only nodes (Constant, Comparator, Logic, ...): use the loudest CV
+    // output latch so they are not falsely dark while emitting values.
+    const int numCvOuts = proc->getNumOutputCVChannels();
+    float maxCv = 0.f;
+    for (int i = 0; i < numCvOuts; ++i)
+        maxCv = jmax (maxCv, std::fabs (proc->getOutputCV (i)));
+    if (maxCv > 0.f)
+        return jmin (1.0f, maxCv);
 
     return 0.f;
 }

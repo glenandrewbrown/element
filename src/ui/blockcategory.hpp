@@ -35,7 +35,10 @@ inline juce::String mapBlockCategoryFromStrings (const juce::String& nodeName,
         || (haystack.contains ("router") && haystack.contains ("midi")))
         return "midifx";
 
-    // modulator — LFO, envelope, CV, automation, macro, analysis, utility
+    // modulator — LFO, envelope, CV, automation, macro, analysis, utility,
+    // and the conditional/logic routing family ("routing logic" per the D1
+    // 4-category taxonomy). Full-phrase matches for the gate/switch nodes so
+    // a vendor "Noise Gate" dynamics plugin still lands in audiofx.
     if (haystack.contains ("lfo")
         || haystack.contains ("envelope")
         || haystack.contains ("modulat")
@@ -43,7 +46,11 @@ inline juce::String mapBlockCategoryFromStrings (const juce::String& nodeName,
         || haystack.contains ("automation")
         || haystack.contains ("macro")
         || haystack.contains ("analy")
-        || haystack.contains ("utility"))
+        || haystack.contains ("utility")
+        || haystack.contains ("comparator")
+        || haystack.contains ("logic gate")
+        || haystack.contains ("audio gate")
+        || haystack.contains ("audio switch"))
         return "modulator";
 
     // instrument — synths, samplers, audio input, oscillators, drums, keys

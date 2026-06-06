@@ -110,6 +110,7 @@ public:
         desc.fileOrIdentifier   = "element.envFollower";
         desc.uniqueId           = 0x656c6566; // 'elef'
         desc.name               = "Envelope Follower";
+        desc.category           = "Modulation";
         desc.descriptiveName    = "Audio level -> CV envelope (signal-presence detector)";
         desc.pluginFormatName   = EL_NODE_FORMAT_NAME;
         desc.manufacturerName   = EL_NODE_FORMAT_AUTHOR;
