@@ -37,7 +37,10 @@
 
 import type { BlockData, CableData, SignalType } from "../../data/types";
 
-/** Proximity radius in flow-space px (mirrors the JUCE 150px threshold). */
+/**
+ * Proximity radius in flow-space px — the maximum EDGE-to-edge gap between
+ * two Block bounding boxes for a suggestion to fire (see blockDistance).
+ */
 export const PROXIMITY_THRESHOLD = 150;
 
 /**
@@ -69,11 +72,6 @@ export interface BlockBounds {
   height: number;
 }
 
-/** Compute the centre point of a Block's bounds. */
-function centre(b: BlockBounds): { cx: number; cy: number } {
-  return { cx: b.x + b.width / 2, cy: b.y + b.height / 2 };
-}
-
 /**
  * Resolve a Block's bounds from its model position plus an optional measured
  * size map (React Flow's `node.measured`). Falls back to the reference block
@@ -92,12 +90,18 @@ export function boundsOf(
   };
 }
 
-/** Euclidean centre-to-centre distance between two Block bounds. */
+/**
+ * Euclidean EDGE-to-edge gap between two Block AABBs (0 when overlapping).
+ *
+ * Was centre-to-centre — live QA (2026-06-06, T8) proved that made the
+ * 150px threshold physically unreachable: Blocks are ~200-260 flow-px wide,
+ * so two non-overlapping blocks' centres are ALWAYS further apart than the
+ * threshold and ghosts only ever fired when blocks fully overlapped. The
+ * gap between bounding-box edges is what "dragged near" actually means.
+ */
 export function blockDistance(a: BlockBounds, b: BlockBounds): number {
-  const ca = centre(a);
-  const cb = centre(b);
-  const dx = ca.cx - cb.cx;
-  const dy = ca.cy - cb.cy;
+  const dx = Math.max(0, Math.max(a.x, b.x) - Math.min(a.x + a.width, b.x + b.width));
+  const dy = Math.max(0, Math.max(a.y, b.y) - Math.min(a.y + a.height, b.y + b.height));
   return Math.sqrt(dx * dx + dy * dy);
 }
 

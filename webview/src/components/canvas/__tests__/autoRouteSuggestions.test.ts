@@ -111,11 +111,41 @@ describe("boundsOf", () => {
   });
 });
 
-describe("blockDistance", () => {
-  it("is centre-to-centre", () => {
-    const a = { x: 0, y: 0, width: 100, height: 100 }; // centre (50,50)
-    const b = { x: 100, y: 0, width: 100, height: 100 }; // centre (150,50)
-    expect(blockDistance(a, b)).toBe(100);
+describe("blockDistance (edge-to-edge gap — T8 live QA 2026-06-06)", () => {
+  // Centre-to-centre made the 150px threshold unreachable for non-overlapping
+  // ~200-260px-wide blocks (ghosts only fired on full overlap). The distance
+  // is now the gap between bounding-box edges.
+  it("is the horizontal gap between edges", () => {
+    const a = { x: 0, y: 0, width: 100, height: 100 };
+    const b = { x: 180, y: 0, width: 100, height: 100 }; // 80px gap
+    expect(blockDistance(a, b)).toBe(80);
+  });
+
+  it("is zero when blocks touch", () => {
+    const a = { x: 0, y: 0, width: 100, height: 100 };
+    const b = { x: 100, y: 0, width: 100, height: 100 };
+    expect(blockDistance(a, b)).toBe(0);
+  });
+
+  it("is zero when blocks overlap", () => {
+    const a = { x: 0, y: 0, width: 100, height: 100 };
+    const b = { x: 50, y: 20, width: 100, height: 100 };
+    expect(blockDistance(a, b)).toBe(0);
+  });
+
+  it("is the diagonal gap when separated on both axes", () => {
+    const a = { x: 0, y: 0, width: 100, height: 100 };
+    const b = { x: 130, y: 140, width: 100, height: 100 }; // gaps 30, 40
+    expect(blockDistance(a, b)).toBe(50);
+  });
+
+  it("two adjacent full-size blocks within the threshold now suggest (regression)", () => {
+    // The live-QA repro shape: two ~200px blocks side by side, 100px apart —
+    // centre-to-centre this was 300px (> threshold, never fired); edge-gap
+    // it is 100px (< 150 threshold).
+    const a = { x: 0, y: 0, width: 200, height: 100 };
+    const b = { x: 300, y: 0, width: 200, height: 100 };
+    expect(blockDistance(a, b)).toBeLessThan(150);
   });
 
   it("is zero for coincident bounds", () => {

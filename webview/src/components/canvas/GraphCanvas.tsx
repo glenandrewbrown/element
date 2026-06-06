@@ -154,6 +154,11 @@ function toGhostEdges(
     selectable: false,
     deletable: false,
     focusable: false,
+    // Paint ABOVE node chassis (T8 live QA 2026-06-06): React Flow edges
+    // default under nodes, which left the ghost a barely-visible stub hidden
+    // beneath the dragged Block. Suggestions are transient drag feedback —
+    // they must read instantly.
+    zIndex: 2000,
     data: {
       signalType: s.signalType,
       top: i === 0,
@@ -465,6 +470,9 @@ export function GraphCanvas() {
   const clearSuggestions = useCallback(() => {
     lastSuggestRef.current = 0;
     setSuggestions((prev) => (prev.length === 0 ? prev : []));
+    // Drop the T8 discoverability hint with the ghosts (only if it's ours).
+    const app = useAppStore.getState();
+    if (app.canvasHint?.startsWith("⌘-drop")) app.setCanvasHint(null);
   }, []);
 
   // Promote a single ghost suggestion to a real Cable via the existing bridge.
@@ -523,6 +531,17 @@ export function GraphCanvas() {
         measured,
       );
       setSuggestions(next);
+      // Discoverability (T8): advertise the accept gestures in the status
+      // footer while ghosts are live; clear when they vanish mid-drag.
+      const app = useAppStore.getState();
+      if (next.length > 0) {
+        app.setCanvasHint("⌘-drop to auto-connect · Tab/Enter accept · Esc dismiss");
+      } else if (
+        suggestionsRef.current.length > 0 &&
+        app.canvasHint?.startsWith("⌘-drop")
+      ) {
+        app.setCanvasHint(null);
+      }
     },
     [isEdit, reactFlow, clearSuggestions],
   );
