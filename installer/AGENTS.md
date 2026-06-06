@@ -33,7 +33,12 @@ bash installer/build_pkg.sh 1.2.0 build-release installer/output
 Output naming convention: `Element-<version>.<build>.pkg` and
 `Element-<version>.<build>.dmg` (e.g. `Element-1.2.0.3.dmg`).
 
-**Pending TODO:** `element_sandbox_host` helper binary (bundle ID
-`net.kushview.Element.sandbox`) must be wired into the `Element.app`
-bundle payload inside `build_pkg.sh` before sandbox isolation works in
-shipped builds. This is not yet implemented.
+**Helper packaging (done 2026-06-06, commit 2dabb814):** `build_pkg.sh` nests
+`Element Sandbox Host.app` (bundle ID `net.kushview.Element.sandbox`) into
+`Element.app/Contents/Helpers/` and HARD-ERRORS if the helper artefact is
+missing and not already nested. Root `CMakeLists.txt` POST_BUILD mirrors the
+same layout in dev builds (dev layout == ship layout). Signing:
+`scripts/codesign-macos.sh` uses `--deep`, which covers the nested helper.
+Runtime discovery order lives in `src/engine/sandboxhost.hpp`
+(`EL_SANDBOX_HELPER` env → owning-bundle `Contents/Helpers` → executable-adjacent
+→ honest fail; never re-execs the host).
