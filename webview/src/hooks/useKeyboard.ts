@@ -25,6 +25,10 @@ import {
   nativeSessionSaveAs,
 } from "../bridge/nativeSession";
 import { nativePluginEditorClose } from "../bridge/nativePluginEditor";
+import {
+  groupSelectedBlocks,
+  GROUP_REFUSAL_COPY,
+} from "../components/canvas/groupSelection";
 import { EV_START_RENAME } from "../events";
 
 // ── Signal-chain order (G6/P5) ───────────────────────────────────────────────
@@ -166,6 +170,30 @@ export function useKeyboard({
       // and Cmd+Shift+V (which would otherwise hit the plain "v" paste case).
       if (meta && shift) {
         const lower = key.toLowerCase();
+        // ── Cmd+Shift+D — group selection into a Container (T10, Glen QA
+        // 2026-06-06). Engine-driven: the snapshot push replaces the selected
+        // blocks with the new Container; refusals surface in the status bar.
+        if (lower === "d") {
+          const selected = reactFlow
+            .getNodes()
+            .filter((n) => n.selected && n.type === "block")
+            .map((n) => n.id);
+          if (selected.length > 0) e.preventDefault();
+          if (selected.length < 2) return; // chord consumed, no-op
+          void groupSelectedBlocks(selected).then((res) => {
+            if (!res.ok) {
+              const app = useAppStore.getState();
+              app.setCanvasHint(
+                GROUP_REFUSAL_COPY[res.reason] ?? "Couldn't group selection",
+              );
+              window.setTimeout(() => {
+                if (useAppStore.getState().canvasHint != null)
+                  useAppStore.getState().setCanvasHint(null);
+              }, 3000);
+            }
+          });
+          return;
+        }
         if (
           lower === "l" ||
           lower === "r" ||

@@ -81,6 +81,20 @@ public:
     /** Ads a specific new graph */
     void duplicateGraph (const Node& graph);
 
+    /** Group a set of sibling Blocks on a parent Board into a new nested
+        Container (a Graph Block), moving the selected Blocks inside it and
+        re-wiring internal + boundary cables.
+
+        @param parentGraph The Board (graph Node) that currently owns the
+                           selected nodes.
+        @param nodeIds     The tags::uuid of each Block to absorb.
+
+        @returns the new Container Node on success, or an invalid Node when the
+                 operation is refused (see eligibility rules in the .cpp). A CV
+                 cable crossing the selection boundary, an IO/graph/Portal node in
+                 the selection, or fewer than two resolvable nodes all refuse. */
+    Node groupNodes (const Node& parentGraph, const juce::Array<juce::Uuid>& nodeIds);
+
     /** Add a connection on the active root graph */
     void addConnection (const uint32, const uint32, const uint32, const uint32);
 

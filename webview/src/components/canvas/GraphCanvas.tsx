@@ -19,6 +19,8 @@ import {
   type NodeMouseHandler,
   type OnNodeDrag,
   type Connection,
+  type OnConnectStart,
+  type OnConnectEnd,
   type Viewport,
   BackgroundVariant,
   SelectionMode,
@@ -34,6 +36,7 @@ import {
   nativeGraphCommentAdd,
   nativeGraphCommentUpsert,
   nativeGraphConnect,
+  nativeGraphAddPluginConnected,
   nativeGraphDisconnect,
   nativeGraphMoveNodes,
   nativeGraphRenameNode,
@@ -56,7 +59,12 @@ import {
   computeRouteSuggestions,
   type RouteSuggestion,
 } from "./autoRouteSuggestions";
-import type { BlockData, CableData, CommentBoxData } from "../../data/types";
+import type {
+  BlockData,
+  CableData,
+  CommentBoxData,
+  SignalType,
+} from "../../data/types";
 import { EV_FIT_BOARD, EV_CREATE_COMMENT, EV_START_RENAME } from "../../events";
 
 // ── Custom node/edge type registrations (stable references) ──
@@ -180,6 +188,34 @@ interface CanvasContextMenuState extends ContextMenuPos {
   flowY: number;
 }
 
+/**
+ * T3 — pending port-typed QuickAdd opened by an ⌥(Alt)+drop of a cable onto
+ * empty canvas. Carries the origin port the cable was dragged off plus the
+ * flow-space drop point, so the chosen Block is added AT the drop and atomically
+ * auto-connected to the origin port (one undoable host action).
+ */
+interface PendingConnect {
+  originNodeId: string;
+  originPortId: string;
+  /** True when the dragged origin port was an OUTPUT (source) handle. */
+  originIsSource: boolean;
+  /** Resolved signal type of the origin port → drives the port-typed QuickAdd. */
+  originSignalType?: SignalType;
+  /** Flow-space drop coords for the new Block (reactFlow.screenToFlowPosition). */
+  flowX: number;
+  flowY: number;
+}
+
+/** The in-flight cable-drag origin, stashed on connect-start for connect-end. */
+interface DragOrigin {
+  nodeId: string;
+  handleId: string;
+  /** "source" (output) or "target" (input) — RF FinalConnectionState.fromHandle.type. */
+  handleType: "source" | "target";
+  /** Resolved signal type of the dragged port (for the port-typed QuickAdd). */
+  signalType?: SignalType;
+}
+
 // ── GraphCanvas ──
 
 /**
@@ -207,6 +243,7 @@ export function GraphCanvas() {
   const mode = useAppStore((s) => s.mode);
   const openBlockTab = useAppStore((s) => s.openBlockTab);
   const embeddedEditorNodeId = useAppStore((s) => s.embeddedEditorNodeId);
+  const setCanvasHint = useAppStore((s) => s.setCanvasHint);
 
   const isEdit = mode === "edit";
 
@@ -218,6 +255,20 @@ export function GraphCanvas() {
     useState<NodeContextMenuState | null>(null);
   const [edgeContextMenu, setEdgeContextMenu] =
     useState<EdgeContextMenuState | null>(null);
+
+  // ── T3: ⌥+drop-to-add wiring ──
+  // `pendingConnect` (when set) makes the QuickAdd popup port-typed AND routes
+  // its pick to a positioned add+auto-connect instead of a plain add. The
+  // dragged origin is stashed in a ref on connect-start so connect-end (which
+  // RF fires AFTER the drag) can read it without a re-render. A single hint
+  // timer auto-clears the transient "hold ⌥" StatusBar nudge.
+  const [pendingConnect, setPendingConnect] = useState<PendingConnect | null>(
+    null,
+  );
+  const dragOriginRef = useRef<DragOrigin | null>(null);
+  const hintTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
 
   // ── Inline rename overlay (triggered by element:start-rename event) ──
   const [renameOverlay, setRenameOverlay] = useState<{
@@ -577,6 +628,107 @@ export function GraphCanvas() {
     void nativeGraphConnect(conn.source, sh, conn.target, th);
   }, []);
 
+  // ── T3: ⌥+drop a cable on empty canvas → port-typed QuickAdd → add+connect ──
+
+  // Show a transient StatusBar nudge that auto-clears after `ms`. Any newer hint
+  // (or an explicit clear) cancels the pending timer so they never stack.
+  const showTransientHint = useCallback(
+    (hint: string, ms: number) => {
+      if (hintTimerRef.current !== undefined) clearTimeout(hintTimerRef.current);
+      setCanvasHint(hint);
+      hintTimerRef.current = setTimeout(() => {
+        setCanvasHint(null);
+        hintTimerRef.current = undefined;
+      }, ms);
+    },
+    [setCanvasHint],
+  );
+
+  // connect-start: stash the dragged origin (node + handle + resolved signal
+  // type) and surface the live drag affordance. The signal type is read from the
+  // origin Block's real port data so the QuickAdd can filter to compatible
+  // Blocks (NOTHING fake — the port type comes from the engine snapshot).
+  const onConnectStart: OnConnectStart = useCallback(
+    (_event, params) => {
+      if (hintTimerRef.current !== undefined) {
+        clearTimeout(hintTimerRef.current);
+        hintTimerRef.current = undefined;
+      }
+      const nodeId = params.nodeId ?? undefined;
+      const handleId = params.handleId ?? undefined;
+      const handleType = params.handleType ?? undefined;
+      if (!nodeId || !handleId || !handleType) {
+        dragOriginRef.current = null;
+        return;
+      }
+      const block = useGraphStore
+        .getState()
+        .nodes.find((n) => n.id === nodeId);
+      const signalType = block?.ports.find((p) => p.id === handleId)?.type;
+      dragOriginRef.current = { nodeId, handleId, handleType, signalType };
+      setCanvasHint(
+        "Drop on a port to connect · hold ⌥ and release to add a block",
+      );
+    },
+    [setCanvasHint],
+  );
+
+  // connect-end: RF reports whether the drag landed on a valid handle. On a
+  // valid drop we do nothing (RF fires onConnect → nativeGraphConnect). On an
+  // empty-canvas release WITH ⌥ held we open a port-typed QuickAdd at the cursor
+  // and stash the pending add+connect; without ⌥ we just nudge. The live
+  // drag hint is always cleared on end.
+  const onConnectEnd: OnConnectEnd = useCallback(
+    (event, connectionState) => {
+      const origin = dragOriginRef.current;
+      dragOriginRef.current = null;
+
+      if (connectionState.isValid === true) {
+        setCanvasHint(null);
+        return; // RF will fire onConnect for the real cable.
+      }
+
+      const altHeld = Boolean(
+        (event as MouseEvent | TouchEvent & { altKey?: boolean }).altKey,
+      );
+
+      if (altHeld && origin) {
+        const clientX =
+          "clientX" in event
+            ? event.clientX
+            : (event.changedTouches?.[0]?.clientX ?? 0);
+        const clientY =
+          "clientY" in event
+            ? event.clientY
+            : (event.changedTouches?.[0]?.clientY ?? 0);
+        const flow = reactFlow.screenToFlowPosition({ x: clientX, y: clientY });
+        setPendingConnect({
+          originNodeId: origin.nodeId,
+          originPortId: origin.handleId,
+          originIsSource: origin.handleType === "source",
+          originSignalType: origin.signalType,
+          flowX: flow.x,
+          flowY: flow.y,
+        });
+        setContextMenu({ x: clientX, y: clientY });
+        setCanvasHint(null);
+        return;
+      }
+
+      // Plain empty-canvas release — teach the ⌥ affordance, then auto-clear.
+      showTransientHint("Hold ⌥ next time to add a block here", 2500);
+    },
+    [reactFlow, setCanvasHint, showTransientHint],
+  );
+
+  // Clear any pending hint timer on unmount.
+  useEffect(
+    () => () => {
+      if (hintTimerRef.current !== undefined) clearTimeout(hintTimerRef.current);
+    },
+    [],
+  );
+
   const onEdgesDelete = useCallback((deleted: Edge[]) => {
     for (const e of deleted) {
       const sh = e.sourceHandle ?? "out-0";
@@ -722,6 +874,8 @@ export function GraphCanvas() {
         onPaneContextMenu={onPaneContextMenu}
         onNodeContextMenu={onNodeContextMenu}
         onConnect={isEdit ? onConnect : undefined}
+        onConnectStart={isEdit ? onConnectStart : undefined}
+        onConnectEnd={isEdit ? onConnectEnd : undefined}
         onEdgesDelete={isEdit ? onEdgesDelete : undefined}
         nodesDraggable={isEdit}
         nodesConnectable={isEdit}
@@ -828,12 +982,35 @@ export function GraphCanvas() {
         />
       )}
 
-      {/* QuickAdd context menu (opened from the canvas menu's "Add Block…") */}
+      {/* QuickAdd context menu. Opened either from the canvas menu's "Add
+          Block…" (generic) OR from a T3 ⌥+drop of a cable (port-typed: filtered
+          to compatible Blocks, and its pick routes to a positioned add +
+          auto-connect via `onPick`). */}
       {contextMenu && (
         <QuickAddPopup
           x={contextMenu.x}
           y={contextMenu.y}
-          onClose={() => setContextMenu(null)}
+          portType={pendingConnect?.originSignalType}
+          onPick={
+            pendingConnect
+              ? (pluginId) => {
+                  void nativeGraphAddPluginConnected(
+                    pluginId,
+                    pendingConnect.flowX,
+                    pendingConnect.flowY,
+                    pendingConnect.originNodeId,
+                    pendingConnect.originPortId,
+                    pendingConnect.originIsSource,
+                  );
+                  setPendingConnect(null);
+                  setContextMenu(null);
+                }
+              : undefined
+          }
+          onClose={() => {
+            setContextMenu(null);
+            setPendingConnect(null);
+          }}
         />
       )}
 

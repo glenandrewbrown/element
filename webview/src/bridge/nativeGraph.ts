@@ -9,6 +9,45 @@ export async function nativeGraphAddPlugin(
 }
 
 /**
+ * T3 — Opt(Alt)+drop a cable on empty canvas: add a Block AT the flow-space
+ * drop point (x,y) and atomically auto-connect it to the port the cable was
+ * dragged off. One undoable host action (AddPluginMessage carrying a populated
+ * ConnectionBuilder); the new node is positioned to (x,y) and re-pushed via the
+ * authoritative snapshot — never fabricated client-side.
+ *
+ *   identifier   — real BrowserPlugin.identifier (PluginDescription id string)
+ *   x, y         — FLOW-space coords for the new Block (reactFlow.screenToFlow)
+ *   originNodeId — UUID of the Block the cable was dragged off
+ *   originPortId — webview port id on the origin ("out-N" / "in-N")
+ *   originIsSource — true when the dragged origin port was an OUTPUT (source):
+ *                    origin output → new Block input. false → new Block output →
+ *                    origin input.
+ *
+ * Returns false (honest) on any host-side resolution failure (unknown plugin,
+ * origin node/port not found, no compatible port on the new Block).
+ *
+ * C++ bridge: elementGraphAddPluginConnected
+ */
+export async function nativeGraphAddPluginConnected(
+  identifier: string,
+  x: number,
+  y: number,
+  originNodeId: string,
+  originPortId: string,
+  originIsSource: boolean,
+): Promise<boolean> {
+  const r = await invokeElementNative("elementGraphAddPluginConnected", [
+    identifier,
+    x,
+    y,
+    originNodeId,
+    originPortId,
+    originIsSource,
+  ]);
+  return r === true;
+}
+
+/**
  * I4-B — toggle a plugin's persistent favourite status WITHOUT inserting a
  * Block. `identifier` is the real BrowserPlugin.identifier
  * (PluginDescription.createIdentifierString). The host flips + persists it on
@@ -205,6 +244,35 @@ export async function nativeEnterContainer(nodeUuid: string): Promise<boolean> {
 export async function nativeExitContainer(): Promise<boolean> {
   const r = await invokeElementNative("elementExitContainer", []);
   return r === true;
+}
+
+/**
+ * T10 — group the given Blocks (by uuid) on the CURRENT board into a new nested
+ * Container, moving them inside and re-wiring internal + boundary cables. The
+ * host re-pushes the parent snapshot on success (the grouped Blocks are gone +
+ * a Container Block appears). Refused (no Block change) when the selection
+ * contains an IO/graph/Portal Block, resolves to fewer than two Blocks, or a
+ * Value/CV cable crosses the selection boundary (default Containers have no CV
+ * ports). On refusal `ok` is false and `reason` names the cause.
+ *
+ * C++ bridge: elementGroupNodes
+ */
+export async function nativeGroupNodes(
+  nodeIds: string[],
+): Promise<{ ok: true; containerId: string } | { ok: false; reason: string }> {
+  const r = await invokeElementNative("elementGroupNodes", [nodeIds]);
+  const o = (typeof r === "string" ? JSON.parse(r) : r) as {
+    ok?: unknown;
+    containerId?: unknown;
+    reason?: unknown;
+  };
+  if (o && o.ok === true && typeof o.containerId === "string") {
+    return { ok: true, containerId: o.containerId };
+  }
+  return {
+    ok: false,
+    reason: typeof o?.reason === "string" ? o.reason : "ineligible",
+  };
 }
 
 export async function nativeGraphSetCanvasOptions(
@@ -447,6 +515,19 @@ export async function nativeSetNodeParameter(
     paramIndex,
     value,
   ]);
+  return r === true;
+}
+
+/**
+ * Set the integer "mode" of a built-in logic/comparator node
+ * (element.compare → operator, element.logic → mode). Returns true when the
+ * host found the node and applied the mode (and pushed a fresh snapshot).
+ */
+export async function nativeNodeSetIntMode(
+  nodeId: string,
+  mode: number,
+): Promise<boolean> {
+  const r = await invokeElementNative("elementNodeSetIntMode", [nodeId, mode]);
   return r === true;
 }
 

@@ -420,6 +420,15 @@ export interface QuickAddPopupProps {
    * like generic mode — they are filtered by portType like everything else.
    */
   portType?: SignalType;
+  /**
+   * Optional pick override (T3 ⌥+drop add-and-connect). When provided it
+   * REPLACES the default `nativeGraphAddPlugin(id)` insert — the caller takes
+   * full responsibility for what happens on selection (e.g. a positioned add +
+   * auto-connect to the dragged-off port). `onClose` is NOT called automatically
+   * in this mode; the override owns dismissal. When omitted, selection performs
+   * the default plain add then closes.
+   */
+  onPick?: (pluginId: string) => void;
   /** Called to dismiss the popup (backdrop click, Escape, or after a Block is inserted). */
   onClose: () => void;
 }
@@ -457,7 +466,13 @@ export interface QuickAddPopupProps {
  *    Both modes show Favorites → Recents → Others in browse, and both use
  *    the same fuzzy search in search mode.
  */
-export function QuickAddPopup({ x, y, portType, onClose }: QuickAddPopupProps) {
+export function QuickAddPopup({
+  x,
+  y,
+  portType,
+  onPick,
+  onClose,
+}: QuickAddPopupProps) {
   const [search, setSearch]           = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const [overflowCount, setOverflowCount] = useState(0);
@@ -702,10 +717,17 @@ export function QuickAddPopup({ x, y, portType, onClose }: QuickAddPopupProps) {
 
   const handleSelect = useCallback(
     (id: string) => {
+      // T3: when an `onPick` override is supplied (⌥+drop add-and-connect), it
+      // fully owns the selection — both the add and the dismissal. Otherwise the
+      // default plain add fires and we close.
+      if (onPick) {
+        onPick(id);
+        return;
+      }
       void nativeGraphAddPlugin(id);
       onClose();
     },
-    [onClose],
+    [onPick, onClose],
   );
 
   const handleKeyDown = useCallback(

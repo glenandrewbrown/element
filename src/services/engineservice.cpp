@@ -291,7 +291,7 @@ void EngineService::addGraph()
     auto engine = world.audio();
     auto session = world.session();
 
-    Node node (Graph::create ("Graph " + String (session->getNumGraphs() + 1),
+    Node node (Graph::create ("Board " + String (session->getNumGraphs() + 1),
                               engine->getNumChannels (true),
                               engine->getNumChannels (false),
                               true,
@@ -366,6 +366,289 @@ void EngineService::duplicateGraph()
     auto session = world.session();
     const Node current (session->getCurrentGraph());
     duplicateGraph (current);
+}
+
+namespace detail {
+
+// A single parent-graph arc captured by node id + port index, pre-classified by
+// whether each end is inside the selection. Port type/channel are resolved off
+// the parent-graph model (G.getNodeById(n).getPort(p)) — the proven classifier
+// used by element_webview_host.cpp:480 (cableSignalLevelForArc).
+struct GroupArc
+{
+    uint32   srcNode = 0, dstNode = 0;
+    int      srcPort = 0, dstPort = 0;
+    PortType srcType { PortType::Unknown };
+    int      srcChannel = -1, dstChannel = -1;
+    bool     srcInside = false, dstInside = false;
+};
+
+// Resolve a parent-graph port's PortType from the model (object-independent:
+// reads the Port ValueTree's "type" slug, present on every port child).
+static PortType portTypeFor (const Node& parent, uint32 nodeId, int portIndex)
+{
+    const Node n (parent.getNodeById (nodeId));
+    if (! n.isValid() || ! isPositiveAndBelow (portIndex, n.getNumPorts()))
+        return PortType (PortType::Unknown);
+    return n.getPort (portIndex).getType();
+}
+
+} // namespace detail
+
+Node EngineService::groupNodes (const Node& parentGraph, const juce::Array<juce::Uuid>& nodeIds)
+{
+    using detail::GroupArc;
+
+    if (! parentGraph.isGraph())
+        return Node();
+
+    // --- (1) Resolve + ELIGIBILITY GUARD ------------------------------------
+    // Map the requested uuids to live child Nodes of the parent board. Refuse on
+    // any IO device node, nested graph/Container, or fewer than 2 resolved. (A
+    // Portal would be a graph node too → covered by the isGraph refusal.)
+    juce::Array<Node>   selected;
+    juce::Array<uint32> selectedIds;
+    for (const auto& uuid : nodeIds)
+    {
+        const Node n (parentGraph.getNodeByUuid (uuid, false));
+        if (! n.isValid())
+            continue;
+        if (n.isIONode() || n.isGraph())
+            return Node(); // ineligible member in the selection
+        selected.add (n);
+        selectedIds.add (n.getNodeId());
+    }
+
+    if (selected.size() < 2)
+        return Node();
+
+    auto isSelected = [&selectedIds] (uint32 id) { return selectedIds.contains (id); };
+
+    auto* parentMgr = graphs->findGraphManagerFor (parentGraph);
+    if (parentMgr == nullptr)
+        return Node();
+
+    // --- (2) Partition arcs + CV-boundary refusal ---------------------------
+    const ValueTree arcs (parentGraph.getArcsValueTree());
+    juce::Array<GroupArc> internalArcs, boundaryArcs;
+    for (int i = 0; i < arcs.getNumChildren(); ++i)
+    {
+        const ValueTree a (arcs.getChild (i));
+        GroupArc ga;
+        ga.srcNode = (uint32) (int64) a.getProperty (tags::sourceNode);
+        ga.dstNode = (uint32) (int64) a.getProperty (tags::destNode);
+        ga.srcPort = (int) a.getProperty (tags::sourcePort, 0);
+        ga.dstPort = (int) a.getProperty (tags::destPort, 0);
+        ga.srcInside = isSelected (ga.srcNode);
+        ga.dstInside = isSelected (ga.dstNode);
+
+        if (! ga.srcInside && ! ga.dstInside)
+            continue; // unrelated to the selection
+
+        ga.srcType = detail::portTypeFor (parentGraph, ga.srcNode, ga.srcPort);
+        {
+            const Node sn (parentGraph.getNodeById (ga.srcNode));
+            const Node dn (parentGraph.getNodeById (ga.dstNode));
+            if (sn.isValid() && isPositiveAndBelow (ga.srcPort, sn.getNumPorts()))
+                ga.srcChannel = sn.getPort (ga.srcPort).channel();
+            if (dn.isValid() && isPositiveAndBelow (ga.dstPort, dn.getNumPorts()))
+                ga.dstChannel = dn.getPort (ga.dstPort).channel();
+        }
+
+        if (ga.srcInside && ga.dstInside)
+        {
+            internalArcs.add (ga); // recreated inside the container (CV fine here)
+        }
+        else
+        {
+            // CRITIC: default containers have no CV ports (Node::createDefaultGraph
+            // — node.cpp:179). Silently dropping a boundary CV cable is unacceptable.
+            if (ga.srcType.isCv())
+                return Node();
+            boundaryArcs.add (ga);
+        }
+    }
+
+    // --- (3) Build relocatable copies of each selected node ------------------
+    // savePluginState (objects alive) → createCopy → sanitizeRuntimeProperties →
+    // strip tags::id (collision = silent delete in GraphNode::addNode,
+    // graphnode.cpp:90) → reset uuids (the proven duplicateGraph recipe,
+    // engineservice.cpp:351). Capture each node's original absolute position +
+    // its (pre-uuid-reset) uuid so we can map old→new after re-adding.
+    struct Pending
+    {
+        ValueTree copy;
+        uint32    oldId = 0;
+        double    x = 0.0, y = 0.0;
+        uint32    newId = EL_INVALID_NODE;
+    };
+
+    juce::Array<Pending> pending;
+    double centroidX = 0.0, centroidY = 0.0;
+    for (const auto& n : selected)
+    {
+        Node src (n);
+        src.savePluginState();
+
+        Pending p;
+        p.oldId = n.getNodeId();
+        n.getPosition (p.x, p.y);
+        centroidX += p.x;
+        centroidY += p.y;
+
+        p.copy = n.data().createCopy();
+        Node::sanitizeRuntimeProperties (p.copy);
+        p.copy.removeProperty (tags::id, nullptr);
+        // reset uuids on the copy + every descendant Node (mirrors duplicateGraph)
+        Node (p.copy, false).forEach ([] (const ValueTree& tree) {
+            if (! tree.hasType (types::Node))
+                return;
+            auto ref = tree;
+            ref.setProperty (tags::uuid, Uuid().toString(), nullptr);
+        });
+        pending.add (p);
+    }
+    centroidX /= (double) selected.size();
+    centroidY /= (double) selected.size();
+
+    // --- (4) Create the container (internal graph node) at the centroid -----
+    // Mirror node.cpp:30 — a graph-type Internal description. addNode(desc,rx,ry)
+    // builds the GraphNode + its 4 IO children + 6 graph ports + the subgraph
+    // Binding (graphmanager.cpp:443/483).
+    PluginDescription graphDesc;
+    graphDesc.name = "Container";
+    graphDesc.fileOrIdentifier = EL_NODE_ID_GRAPH;
+    graphDesc.pluginFormatName = EL_NODE_FORMAT_NAME;
+
+    const uint32 containerId = parentMgr->addNode (&graphDesc, 0.0, 0.0);
+    if (containerId == EL_INVALID_NODE)
+        return Node();
+
+    Node container (parentMgr->getNodeModelForId (containerId));
+    if (! container.isValid() || ! container.isGraph())
+        return Node();
+    container.setPosition (centroidX, centroidY);
+
+    // --- (5) Locate the container's sub-manager -----------------------------
+    auto* subMgr = parentMgr->findGraphManagerForGraph (container);
+    if (subMgr == nullptr)
+        return Node();
+
+    // --- (6) Add the copies inside; re-apply normalized positions -----------
+    // addNode strips coordinates (removeCoordinatesProperties — graphmanager.cpp:407);
+    // re-apply each node's original x/y normalized to the centroid so the inner
+    // layout preserves the selection's relative geometry.
+    for (auto& p : pending)
+    {
+        const uint32 newId = subMgr->addNode (Node (p.copy, false));
+        p.newId = newId;
+        if (newId != EL_INVALID_NODE)
+        {
+            Node inner (subMgr->getNodeModelForId (newId));
+            if (inner.isValid())
+                inner.setPosition (p.x - centroidX, p.y - centroidY);
+        }
+    }
+
+    auto mapOldToNew = [&pending] (uint32 oldId) -> uint32 {
+        for (const auto& p : pending)
+            if (p.oldId == oldId)
+                return p.newId;
+        return EL_INVALID_NODE;
+    };
+
+    // --- (7) Recreate internal arcs inside the container --------------------
+    // Same description rebuilds the same port list → port indices are stable.
+    for (const auto& ga : internalArcs)
+    {
+        const uint32 s = mapOldToNew (ga.srcNode);
+        const uint32 d = mapOldToNew (ga.dstNode);
+        if (s != EL_INVALID_NODE && d != EL_INVALID_NODE)
+            subMgr->addConnection (s, ga.srcPort, d, ga.dstPort);
+    }
+
+    // --- (8) Rewire boundary arcs through the container's IO + graph ports ---
+    // The container's 6 graph ports (createDefaultGraph order): [0,1]=Audio In,
+    // [2]=MIDI In, [3,4]=Audio Out, [5]=MIDI Out. Inner side wires through the
+    // 4 IO child nodes located BY identifier (never by assumed ids).
+    const Node audioInIO  (container.getIONode (PortType::Audio, true));
+    const Node audioOutIO (container.getIONode (PortType::Audio, false));
+    const Node midiInIO   (container.getIONode (PortType::Midi, true));
+    const Node midiOutIO  (container.getIONode (PortType::Midi, false));
+
+    constexpr int kAudioInGraphPort[2]  = { 0, 1 };
+    constexpr int kMidiInGraphPort      = 2;
+    constexpr int kAudioOutGraphPort[2] = { 3, 4 };
+    constexpr int kMidiOutGraphPort     = 5;
+
+    // First-use channel allocation. v1 LIMIT: a container exposes only 2 audio
+    // channels per direction + 1 MIDI per direction; >2 distinct boundary audio
+    // channels in one direction fold round-robin onto [0,1] (documented loss of
+    // 1:1 mapping, but no silently-dropped cable).
+    int nextAudioInCh = 0, nextAudioOutCh = 0;
+    juce::HashMap<int, int> audioInChMap, audioOutChMap; // ext channel → container channel
+
+    for (const auto& ga : boundaryArcs)
+    {
+        const bool inbound = ! ga.srcInside && ga.dstInside; // ext → moved
+        if (inbound)
+        {
+            const uint32 movedNew = mapOldToNew (ga.dstNode);
+            if (movedNew == EL_INVALID_NODE)
+                continue;
+
+            if (ga.srcType.isAudio())
+            {
+                const int extCh = ga.dstChannel >= 0 ? ga.dstChannel : 0;
+                if (! audioInChMap.contains (extCh))
+                    audioInChMap.set (extCh, (nextAudioInCh++) % 2);
+                const int cCh = audioInChMap[extCh];
+                // parent side: ext.out → container audio-in graph port
+                // parent side: ext.out → container audio-in graph port
+                parentMgr->addConnection (ga.srcNode, ga.srcPort, containerId, kAudioInGraphPort[cCh]);
+                // sub side: Audio-In IO node out → moved node in
+                if (audioInIO.isValid())
+                    subMgr->addConnection (audioInIO.getNodeId(), cCh, movedNew, ga.dstPort);
+            }
+            else if (ga.srcType.isMidi())
+            {
+                parentMgr->addConnection (ga.srcNode, ga.srcPort, containerId, kMidiInGraphPort);
+                if (midiInIO.isValid())
+                    subMgr->addConnection (midiInIO.getNodeId(), 0, movedNew, ga.dstPort);
+            }
+        }
+        else // outbound: moved → ext
+        {
+            const uint32 movedNew = mapOldToNew (ga.srcNode);
+            if (movedNew == EL_INVALID_NODE)
+                continue;
+
+            if (ga.srcType.isAudio())
+            {
+                const int extCh = ga.srcChannel >= 0 ? ga.srcChannel : 0;
+                if (! audioOutChMap.contains (extCh))
+                    audioOutChMap.set (extCh, (nextAudioOutCh++) % 2);
+                const int cCh = audioOutChMap[extCh];
+                // sub side: moved node out → Audio-Out IO node in
+                if (audioOutIO.isValid())
+                    subMgr->addConnection (movedNew, ga.srcPort, audioOutIO.getNodeId(), cCh);
+                // parent side: container audio-out graph port → ext.in
+                parentMgr->addConnection (containerId, kAudioOutGraphPort[cCh], ga.dstNode, ga.dstPort);
+            }
+            else if (ga.srcType.isMidi())
+            {
+                if (midiOutIO.isValid())
+                    subMgr->addConnection (movedNew, ga.srcPort, midiOutIO.getNodeId(), 0);
+                parentMgr->addConnection (containerId, kMidiOutGraphPort, ga.dstNode, ga.dstPort);
+            }
+        }
+    }
+
+    // --- (9) Remove the originals from the parent AFTER rewiring ------------
+    for (uint32 id : selectedIds)
+        parentMgr->removeNode (id);
+
+    return container;
 }
 
 void EngineService::removeGraph (int index)
@@ -567,7 +850,7 @@ void EngineService::addNode (const Node& _node)
         }
         else
         {
-            AlertWindow::showMessageBoxAsync (AlertWindow::WarningIcon, "Error adding node", error);
+            AlertWindow::showMessageBoxAsync (AlertWindow::WarningIcon, "Error adding block", error);
             return;
         }
     }
@@ -585,7 +868,7 @@ void EngineService::addNode (const Node& _node)
     {
         AlertWindow::showMessageBox (AlertWindow::InfoIcon,
                                      "Audio Engine",
-                                     String ("Could not add node: ") + node.getName());
+                                     String ("Could not add block: ") + node.getName());
     }
 }
 

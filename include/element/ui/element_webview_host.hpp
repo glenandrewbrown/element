@@ -141,6 +141,12 @@ private:
     juce::String buildNodeParametersJson (const juce::String& nodeUuid) const;
     bool setNodeParameterValue (const juce::String& nodeUuid, int paramIndex, float value);
 
+    /** Set the integer "mode" of a built-in logic/comparator node (element.compare /
+        element.logic). Resolves nodeUuid → Node → Processor, casts to ComparatorNode
+        (setOperator) or LogicGateNode (setMode), both thread-safe relaxed-atomic stores.
+        Returns true when the node was found and the mode applied, false otherwise. */
+    bool setNodeIntMode (const juce::String& nodeUuid, int mode);
+
     /** Push 15Hz delta of changed AudioProcessorParameter values to the WebView.
         Walks the active graph, polls all node parameters, diffs against the cached
         last-pushed value (epsilon 1e-4f), and emits a compact JSON array via
@@ -160,6 +166,22 @@ private:
     juce::ValueTree attachedSessionRoot;
     bool listenerAttached = false;
     int graphPushPendingMs = 0;
+
+    /** T3 (⌥+drop add-and-connect): a deferred absolute-position apply for the
+        node a just-posted AddPluginMessage is about to create. The add is async
+        (postMessage), so we record the drop coords + the set of node UUIDs that
+        existed BEFORE the add; on a later timer tick we find the single new UUID
+        on the same board and setPosition() it to the drop point, then push. */
+    struct PendingConnectedAdd
+    {
+        bool active = false;
+        double flowX = 0.0;
+        double flowY = 0.0;
+        juce::StringArray preExistingUuids;
+        juce::Array<juce::String> boardPathSnapshot;
+        int waitedTicks = 0;
+    };
+    PendingConnectedAdd pendingConnectedAdd;
 
     /** UUIDs last stored by `elementGraphCopyNodes` for `elementGraphPasteNodes` (host-side pasteboard). */
     juce::StringArray graphCopyPasteboard;

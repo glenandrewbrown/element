@@ -15,6 +15,11 @@ import {
 import { Icon, NeuInput } from "../neu";
 import { iconForCategory } from "../neu/iconForCategory";
 import { ParamConfigPopover } from "./ParamConfigPopover";
+import { useAppStore } from "../../stores/useAppStore";
+import {
+  groupSelectedBlocks,
+  GROUP_REFUSAL_COPY,
+} from "./groupSelection";
 
 interface NodeContextMenuProps {
   /** Id of the right-clicked Block. Looked up in `useGraphStore.nodes`; the menu renders nothing if the id is absent. */
@@ -167,6 +172,24 @@ export function NodeContextMenu({
     void nativeGraphDuplicateNodes([nodeId]);
     onClose();
   }, [nodeId, onClose]);
+
+  // T10 — group the multi-selection into a Container; refusals surface in the
+  // status bar via the shared canvasHint channel (engine-driven refresh).
+  const handleGroup = useCallback(() => {
+    void groupSelectedBlocks(selectedBlockIds).then((res) => {
+      if (!res.ok) {
+        const app = useAppStore.getState();
+        app.setCanvasHint(
+          GROUP_REFUSAL_COPY[res.reason] ?? "Couldn't group selection",
+        );
+        window.setTimeout(() => {
+          if (useAppStore.getState().canvasHint != null)
+            useAppStore.getState().setCanvasHint(null);
+        }, 3000);
+      }
+    });
+    onClose();
+  }, [selectedBlockIds, onClose]);
 
   const handleCopy = useCallback(() => {
     void nativeGraphCopyNodes(selectedBlockIds.length >= 2 ? selectedBlockIds : [nodeId]);
@@ -433,6 +456,17 @@ export function NodeContextMenu({
               accent={accent}
               onClick={handleDuplicate}
             />
+            {/* T10 (Glen QA 2026-06-06): wrap the selection in a nested
+                Container, auto-rewiring boundary cables through its IO. */}
+            {multiSelect && (
+              <MenuItem
+                iconName="BoxSelect"
+                label={`Group ${selectedBlockIds.length} into Container`}
+                shortcut="⌘⇧D"
+                accent={accent}
+                onClick={handleGroup}
+              />
+            )}
           </MenuSection>
           <MenuItem
             iconName="Trash2"

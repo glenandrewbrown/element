@@ -3,6 +3,7 @@ import {
   useEngineSnapshotStore,
   selectEngineRunning,
 } from "../../stores/useEngineSnapshotStore";
+import { useAppStore } from "../../stores/useAppStore";
 import { Icon } from "../neu";
 
 /**
@@ -25,6 +26,11 @@ export function StatusBar() {
   // received a push yet (fixes inconsistency with Perform header ENGINE: LIVE).
   const engineRunning = useEngineSnapshotStore(selectEngineRunning) || isPlaying;
 
+  // T3 — transient canvas coaching hint (cable-drag affordance / alt-drop nudge).
+  // When set it temporarily REPLACES the left vitals cluster (device + engine
+  // state) so the contextual instruction reads cleanly without crowding the bar.
+  const canvasHint = useAppStore((s) => s.canvasHint);
+
   const deviceName =
     health.clock && health.clock !== "—" ? health.clock : "Default Device";
   const sampleRate = health.sampleRateLabel || "—";
@@ -40,6 +46,17 @@ export function StatusBar() {
 
   return (
     <div className="h-6 bg-pressed border-t border-white/5 flex items-center justify-between px-4 text-[10px] select-none">
+      {canvasHint ? (
+        <div className="flex items-center gap-2 min-w-0" role="status" aria-live="polite">
+          <span
+            className="w-2 h-2 rounded-full bg-accent-blue shadow-[0_0_6px_rgba(74,144,217,0.5)] shrink-0"
+            aria-hidden
+          />
+          <span className="font-medium text-text-primary truncate">
+            {canvasHint}
+          </span>
+        </div>
+      ) : (
       <div className="flex items-center gap-4 min-w-0">
         <div className="flex items-center gap-2 text-text-secondary min-w-0">
           <Icon name="Volume2" size={12} aria-hidden />
@@ -70,6 +87,7 @@ export function StatusBar() {
           </span>
         </div>
       </div>
+      )}
 
       <div className="flex items-center gap-6">
         <div className="flex items-center gap-1.5 text-text-secondary">

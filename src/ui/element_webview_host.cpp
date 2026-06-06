@@ -40,6 +40,7 @@
 #include "presetmanager.hpp"
 #include "appinfo.hpp"
 #include "nodes/scriptnode.hpp"
+#include "nodes/logicnodes.hpp" // P0 — ComparatorNode / LogicGateNode intMode snapshot + setter
 
 #include "verbose_log.hpp"
 
@@ -1194,6 +1195,27 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             postCompletion (completion, ok);
         });
 
+    // P0 — set the integer mode of a built-in logic/comparator node.
+    //   Input:  args[0] = nodeUuid: String, args[1] = mode: int
+    //   Output: bool — true when the node was an element.compare / element.logic
+    //                  and the operator/mode was applied.
+    // On success, schedule a snapshot push so the UI reflects engine truth (the
+    // next buildActiveGraphJson re-reads intMode off the processor getter).
+    registerFn (
+        Identifier ("elementNodeSetIntMode"),
+        [this, postCompletion] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 2)
+            {
+                const String uuid (args[0].toString());
+                const int mode = (int) args[1];
+                ok = setNodeIntMode (uuid, mode);
+                if (ok)
+                    scheduleGraphPush (40);
+            }
+            postCompletion (completion, ok);
+        });
+
     // G3-B item 1 — per-node FFT spectrum, on demand by UUID.
     //   Input:  args[0] = nodeUuid: String
     //   Output: { bins: number[], fftSize: number, sampleRate: number } | null
@@ -1820,6 +1842,118 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                     {
                         context.services().postMessage (new AddPluginMessage (graph, *desc, true));
                         ok = true;
+                    }
+                }
+            }
+            postCompletion (completion, ok);
+        });
+
+    // T3 — ⌥(Alt)+drop a cable on empty canvas: add a Block AT the flow-space
+    // drop point and atomically auto-connect it to the port the cable was
+    // dragged off. ONE undoable engine action (AddPluginMessage carrying a
+    // populated ConnectionBuilder — the same atomic add+connect prior art used
+    // by grapheditorcomponent.cpp:1843 and the molecule insert). The new node's
+    // absolute position is applied deferred (the add is async / postMessage) via
+    // pendingConnectedAdd, consumed in timerCallback before the snapshot push —
+    // this honours the drop coords end-to-end (buildActiveGraphJson reads
+    // Node::getPosition() = tags::x/y), sidestepping the dead AddPluginMessage
+    // x/y plumbing AND the GraphManager grid re-seed.
+    //   args[0] = pluginIdentifier : String
+    //   args[1] = x                : double (flow-space)
+    //   args[2] = y                : double (flow-space)
+    //   args[3] = originNodeUuid   : String
+    //   args[4] = originPortId     : String ("out-N" / "in-N")
+    //   args[5] = originIsSource   : bool (origin port was an OUTPUT)
+    //   → bool. Honest false on ANY resolution failure.
+    registerFn (
+        Identifier ("elementGraphAddPluginConnected"),
+        [this, postCompletion] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 6)
+            {
+                const String identifier (args[0].toString());
+                const double flowX = (double) args[1];
+                const double flowY = (double) args[2];
+                const String originUuid (args[3].toString());
+                const String originPortId (args[4].toString());
+                const bool originIsSource = (bool) args[5];
+
+                auto sess = context.session();
+                const Node graph (sess != nullptr ? currentBoard() : Node());
+                const Graph G (graph);
+                if (G.isGraph())
+                {
+                    if (const auto* desc = findKnownPluginByIdentifier (context.plugins().getKnownPlugins(), identifier))
+                    {
+                        const Node origin = findNodeByUuidInGraph (G, originUuid);
+                        // The dragged origin port id is "out-N" / "in-N" where N is
+                        // the RAW port index (see snapshot buildActiveGraphJson). We
+                        // resolve that to the port's PortType + channel-within-type so
+                        // the ConnectionBuilder can re-resolve the matching channel on
+                        // the freshly-added node at perform time.
+                        const int rawPortIndex = parsePortHandleIndex (
+                            originPortId, originIsSource ? "out-" : "in-");
+                        if (origin.isValid() && rawPortIndex >= 0
+                            && isPositiveAndBelow (rawPortIndex, origin.getNumPorts()))
+                        {
+                            const Port originPort (origin.getPort (rawPortIndex));
+                            const PortType portType (originPort.getType());
+                            const int originChannel = originPort.channel();
+
+                            // Only audio/MIDI cables carry an auto-connect (the
+                            // engine connection model). Value/CV/etc. fall through to
+                            // an honest false — no fabricated connection.
+                            if ((portType.isAudio() || portType.isMidi()) && originChannel >= 0)
+                            {
+                                std::unique_ptr<AddPluginMessage> message (
+                                    new AddPluginMessage (graph, *desc, true));
+                                auto& builder (message->builder);
+
+                                // ConnectionBuilder::addChannel(node, type, srcChan,
+                                // tgtChan, isInput) semantics (see node.cpp:1243):
+                                //   isInput=false → `node` output → new node input
+                                //                   (new node is DOWNSTREAM / dest)
+                                //   isInput=true  → new node output → `node` input
+                                //                   (new node is UPSTREAM / source)
+                                // originIsSource ⇒ origin output feeds the new Block
+                                // ⇒ isInput=false. Else the new Block feeds origin's
+                                // input ⇒ isInput=true.
+                                const bool builderIsInput = ! originIsSource;
+                                builder.addChannel (origin, portType, originChannel, 0, builderIsInput);
+
+                                // Stereo: if audio and the origin has an adjacent
+                                // same-type, same-direction port, wire the second
+                                // lane too — mirrors grapheditorcomponent.cpp:1843's
+                                // raw-index stereo add (srcNode.getPort(srcPort+1)).
+                                if (portType.isAudio()
+                                    && isPositiveAndBelow (rawPortIndex + 1, origin.getNumPorts()))
+                                {
+                                    const Port adjPort (origin.getPort (rawPortIndex + 1));
+                                    if (adjPort.data().isValid()
+                                        && adjPort.getType().isAudio()
+                                        && adjPort.isInput() == originPort.isInput())
+                                    {
+                                        builder.addChannel (origin, PortType::Audio, originChannel + 1, 1, builderIsInput);
+                                    }
+                                }
+
+                                // Record the deferred absolute-position apply BEFORE
+                                // posting (the add is async). preExistingUuids lets the
+                                // timer find the single new node to position.
+                                pendingConnectedAdd.active = true;
+                                pendingConnectedAdd.flowX = flowX;
+                                pendingConnectedAdd.flowY = flowY;
+                                pendingConnectedAdd.waitedTicks = 0;
+                                pendingConnectedAdd.boardPathSnapshot = boardPath;
+                                pendingConnectedAdd.preExistingUuids.clearQuick();
+                                for (int i = 0; i < G.getNumNodes(); ++i)
+                                    pendingConnectedAdd.preExistingUuids.add (G.getNode (i).getUuidString());
+
+                                context.services().postMessage (message.release());
+                                scheduleGraphPush (40);
+                                ok = true;
+                            }
+                        }
                     }
                 }
             }
@@ -2535,6 +2669,78 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             postCompletion (completion, count);
         });
 
+    // T10 — Group selection into a Container. Resolves the selected uuids on the
+    // CURRENT board and calls EngineService::groupNodes, which runs fully
+    // synchronously on this (message) thread: the coalesced graph push is a
+    // scheduled message-thread timer and cannot fire mid-operation, so no extra
+    // snapshot-suppression is needed — the FIRST push the webview sees is the
+    // post-group one scheduled below.
+    //   args[0] = nodeUuids : String[]
+    //   → { ok:true, containerId:String } | { ok:false, reason:String }
+    //     reason ∈ { "no-session","no-board","cv-boundary","ineligible" }.
+    //     groupNodes returns an invalid Node for BOTH the CV-boundary refusal
+    //     and the ineligible/<2 refusals; we cannot distinguish them post-hoc,
+    //     so the generic refusal reports "ineligible". (The webview gates CV
+    //     boundaries up front; this is the honest C++ backstop.)
+    registerFn (
+        Identifier ("elementGroupNodes"),
+        [this, postCompletion] (const Array<var>& args, auto completion) {
+            DynamicObject::Ptr res (new DynamicObject());
+            res->setProperty ("ok", false);
+
+            auto fail = [&] (const char* reason) {
+                res->setProperty ("reason", String (reason));
+                postCompletion (completion, var (res.get()));
+            };
+
+            if (args.size() < 1 || ! args[0].isArray())
+            {
+                fail ("ineligible");
+                return;
+            }
+
+            auto sess = context.session();
+            if (sess == nullptr)
+            {
+                fail ("no-session");
+                return;
+            }
+
+            const Node board (currentBoard());
+            if (! board.isGraph())
+            {
+                fail ("no-board");
+                return;
+            }
+
+            auto* es = context.services().find<EngineService>();
+            if (es == nullptr)
+            {
+                fail ("ineligible");
+                return;
+            }
+
+            Array<Uuid> uuids;
+            for (const auto& idVar : *args[0].getArray())
+            {
+                const String s (idVar.toString());
+                if (s.isNotEmpty())
+                    uuids.add (Uuid (s));
+            }
+
+            const Node container (es->groupNodes (board, uuids));
+            if (! container.isValid())
+            {
+                fail ("ineligible");
+                return;
+            }
+
+            res->setProperty ("ok", true);
+            res->setProperty ("containerId", container.getUuidString());
+            scheduleGraphPush (40);
+            postCompletion (completion, var (res.get()));
+        });
+
     registerFn (
         Identifier ("elementGraphCopyNodes"),
         [this, postCompletion] (const Array<var>& args, auto completion) {
@@ -2756,7 +2962,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                 File startDir (ss->getSessionFile().getParentDirectory());
                 if (! startDir.isDirectory())
                     startDir = File();
-                FileChooser chooser ("Open Session", startDir, "*.els", true, false);
+                FileChooser chooser ("Open Project", startDir, "*.els", true, false);
                 if (chooser.browseForFileToOpen())
                 {
                     const File f (chooser.getResult());
@@ -2832,7 +3038,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             bool ok = false;
             if (auto* ss = context.services().find<SessionService>())
             {
-                FileChooser chooser ("Import Graph", File(), "*.elg", true, false);
+                FileChooser chooser ("Import Board", File(), "*.elg", true, false);
                 if (chooser.browseForFileToOpen())
                 {
                     ss->importGraph (chooser.getResult());
@@ -2859,7 +3065,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                                     .getChildFile (node.getName().isNotEmpty() ? node.getName() : "Graph")
                                     .withFileExtension ("elg"));
                     start = start.getNonexistentSibling();
-                    FileChooser chooser (TRANS ("Export Graph"), start, "*.elg");
+                    FileChooser chooser (TRANS ("Export Board"), start, "*.elg");
                     if (chooser.browseForFileToSave (true))
                     {
                         ss->exportGraph (node, chooser.getResult());
@@ -5225,6 +5431,49 @@ void ElementWebViewHost::timerCallback()
         lastLogHistorySize = lines.size();
     }
 
+    // T3 — apply the deferred absolute position of a ⌥+drop add-and-connect.
+    // The AddPluginMessage posted by elementGraphAddPluginConnected is async, so
+    // we poll the board for the single node UUID that did NOT exist before the
+    // add and setPosition() it to the recorded drop coords. Bounded wait so a
+    // failed/cancelled add can't leave this armed forever.
+    if (pendingConnectedAdd.active)
+    {
+        bool done = false;       // stop polling (positioned, abandoned, or timed out)
+        bool didPosition = false; // actually set the new node's position
+        if (auto sessForPos = context.session())
+        {
+            const Graph G (currentBoard());
+            // Only act while still on the board the drop happened on.
+            if (G.isGraph() && boardPath == pendingConnectedAdd.boardPathSnapshot)
+            {
+                for (int i = 0; i < G.getNumNodes(); ++i)
+                {
+                    Node n (G.getNode (i));
+                    const String uuid (n.getUuidString());
+                    if (! pendingConnectedAdd.preExistingUuids.contains (uuid))
+                    {
+                        n.setPosition (pendingConnectedAdd.flowX, pendingConnectedAdd.flowY);
+                        done = true;
+                        didPosition = true;
+                        break;
+                    }
+                }
+            }
+            else
+            {
+                // Navigated away from the drop board — abandon the apply.
+                done = true;
+            }
+        }
+        if (done || ++pendingConnectedAdd.waitedTicks > 30)
+        {
+            pendingConnectedAdd.active = false;
+            pendingConnectedAdd.preExistingUuids.clearQuick();
+            if (didPosition)
+                pushGraphSnapshot(); // surface the corrected position now.
+        }
+    }
+
     if (graphPushPendingMs > 0)
     {
         graphPushPendingMs -= (1000 / 60);
@@ -5701,6 +5950,29 @@ String ElementWebViewHost::buildActiveGraphJson() const
         DynamicObject::Ptr b (new DynamicObject());
         b->setProperty ("id", n.getUuidString());
         b->setProperty ("name", n.getName());
+
+        // P0 — internal node identifier (e.g. "element.compare"). Emitted for ALL
+        // blocks (harmless for third-party — just the file/identifier string). Lets
+        // the webview branch its inline controls on built-in node type.
+        const String nodeIdentifier (n.getIdentifier().toString());
+        b->setProperty ("identifier", nodeIdentifier);
+
+        // P0 — for the built-in logic/comparator nodes, surface the engine-truth
+        // integer mode so the React Block can render the active op without a fake
+        // default. Read message-thread-side off the resolved Processor (relaxed
+        // atomic load via the const getter). Cast-miss → emit nothing (no fake value).
+        if (nodeIdentifier == "element.compare")
+        {
+            if (auto* proc = n.getObject())
+                if (auto* cmp = dynamic_cast<ComparatorNode*> (proc))
+                    b->setProperty ("intMode", (int) cmp->getOperator());
+        }
+        else if (nodeIdentifier == "element.logic")
+        {
+            if (auto* proc = n.getObject())
+                if (auto* lg = dynamic_cast<LogicGateNode*> (proc))
+                    b->setProperty ("intMode", (int) lg->getMode());
+        }
 
         // Block plugin format + category for the React badge / colour-coding.
         // Additive: `mapBlock` reads these when present and only falls back to
@@ -6311,6 +6583,37 @@ bool ElementWebViewHost::setNodeParameterValue (const String& nodeUuid, int para
                     return true;
                 }
         }
+
+    return false;
+}
+
+bool ElementWebViewHost::setNodeIntMode (const String& nodeUuid, int mode)
+{
+    auto sess = context.session();
+    if (sess == nullptr || nodeUuid.isEmpty())
+        return false;
+
+    const Graph G (currentBoard());
+    if (! G.isGraph())
+        return false;
+
+    const Node n = findNodeByUuidInGraph (G, nodeUuid);
+    if (! n.isValid())
+        return false;
+
+    if (auto* proc = n.getObject())
+    {
+        if (auto* cmp = dynamic_cast<ComparatorNode*> (proc))
+        {
+            cmp->setOperator ((ComparatorNode::Op) mode);
+            return true;
+        }
+        if (auto* lg = dynamic_cast<LogicGateNode*> (proc))
+        {
+            lg->setMode ((LogicGateNode::Mode) mode);
+            return true;
+        }
+    }
 
     return false;
 }

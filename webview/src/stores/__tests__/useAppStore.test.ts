@@ -133,4 +133,26 @@ describe("useAppStore", () => {
     expect(selectIsEditMode(useAppStore.getState())).toBe(false);
     expect(selectIsPerformMode(useAppStore.getState())).toBe(true);
   });
+
+  // ── canvasHint (T3 — transient StatusBar coaching hint) ────────────────────
+
+  it("canvasHint defaults to null", () => {
+    expect(useAppStore.getState().canvasHint).toBeNull();
+  });
+
+  it("setCanvasHint sets a hint string, then clears it back to null", () => {
+    useAppStore.getState().setCanvasHint("Drop on a port to connect");
+    expect(useAppStore.getState().canvasHint).toBe(
+      "Drop on a port to connect",
+    );
+    useAppStore.getState().setCanvasHint(null);
+    expect(useAppStore.getState().canvasHint).toBeNull();
+  });
+
+  it("setCanvasHint replaces an existing hint without touching mode", () => {
+    useAppStore.getState().setCanvasHint("first");
+    useAppStore.getState().setCanvasHint("second");
+    expect(useAppStore.getState().canvasHint).toBe("second");
+    expect(useAppStore.getState().mode).toBe("edit");
+  });
 });

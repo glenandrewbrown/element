@@ -12,7 +12,7 @@
  */
 
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 
 // ── Mock @xyflow/react ──────────────────────────────────────────────────────
 // We capture onNodeDoubleClick / onDoubleClick so dive-gesture tests can invoke
@@ -22,22 +22,34 @@ type RFProps = {
   onPaneContextMenu?: (e: React.MouseEvent) => void;
   onNodeDoubleClick?: (e: unknown, node: unknown) => void;
   onDoubleClick?: (e: React.MouseEvent) => void;
+  onConnectStart?: (e: unknown, params: unknown) => void;
+  onConnectEnd?: (e: unknown, state: unknown) => void;
   minZoom?: number;
   maxZoom?: number;
 };
 const rfHandlers: {
   onNodeDoubleClick?: RFProps["onNodeDoubleClick"];
   onDoubleClick?: RFProps["onDoubleClick"];
+  onConnectStart?: RFProps["onConnectStart"];
+  onConnectEnd?: RFProps["onConnectEnd"];
 } = {};
 // Last full prop bag passed to <ReactFlow> — for asserting config (zoom range).
 let rfLastProps: RFProps = {};
 
 vi.mock("@xyflow/react", () => {
   const ReactFlow = (props: RFProps) => {
-    const { children, onPaneContextMenu, onNodeDoubleClick, onDoubleClick } =
-      props;
+    const {
+      children,
+      onPaneContextMenu,
+      onNodeDoubleClick,
+      onDoubleClick,
+      onConnectStart,
+      onConnectEnd,
+    } = props;
     rfHandlers.onNodeDoubleClick = onNodeDoubleClick;
     rfHandlers.onDoubleClick = onDoubleClick;
+    rfHandlers.onConnectStart = onConnectStart;
+    rfHandlers.onConnectEnd = onConnectEnd;
     rfLastProps = props;
     return (
       <div
@@ -58,8 +70,14 @@ vi.mock("@xyflow/react", () => {
     useEdgesState: vi.fn(() => [[], vi.fn(), vi.fn()]),
     useReactFlow: vi.fn(() => ({
       fitView: vi.fn(),
-      screenToFlowPosition: vi.fn(() => ({ x: 0, y: 0 })),
+      // Echo a deterministic flow transform of the screen point so add-and-
+      // connect tests can assert the flow coords handed to the bridge.
+      screenToFlowPosition: vi.fn((p: { x: number; y: number }) => ({
+        x: p.x + 1000,
+        y: p.y + 2000,
+      })),
       getViewport: vi.fn(() => ({ x: 0, y: 0, zoom: 1 })),
+      getNodes: vi.fn(() => []),
     })),
     BackgroundVariant: { Dots: "dots" },
     SelectionMode: { Partial: "partial" },
@@ -74,7 +92,7 @@ vi.mock("@xyflow/react/dist/style.css", () => ({}));
 // and the store-mock fn must be created inside `vi.hoisted()` to exist when
 // the hoisted factory runs (avoids the
 // "Cannot access 'useGraphStoreMock' before initialization" ReferenceError).
-const { useGraphStoreMock } = vi.hoisted(() => {
+const { useGraphStoreMock, mockGraphStore } = vi.hoisted(() => {
   const store = {
     nodes: [] as unknown[],
     edges: [] as unknown[],
@@ -108,6 +126,10 @@ const mockAppStore = {
   setMode: vi.fn(),
   openBlockTab: vi.fn(),
   embeddedEditorNodeId: null as string | null,
+  canvasHint: null as string | null,
+  setCanvasHint: vi.fn((hint: string | null) => {
+    mockAppStore.canvasHint = hint;
+  }),
 };
 
 vi.mock("../../../stores/useAppStore", () => {
@@ -141,6 +163,7 @@ vi.mock("../../../bridge/nativeGraph", () => ({
   nativeGraphCommentAdd: vi.fn(),
   nativeGraphCommentUpsert: vi.fn(),
   nativeGraphConnect: vi.fn(),
+  nativeGraphAddPluginConnected: vi.fn(async () => true),
   nativeGraphDisconnect: vi.fn(),
   nativeGraphMoveNodes: vi.fn(),
   nativeGraphRenameNode: vi.fn(),
@@ -160,7 +183,23 @@ vi.mock("../CommentFrame", () => ({ CommentFrame: () => null }));
 // (`{contextMenu && <QuickAddPopup .../>}`, GraphCanvas.tsx:532) — there is no
 // `open` prop, so the mock renders whenever it is mounted.
 vi.mock("../QuickAddPopup", () => ({
-  QuickAddPopup: () => <div data-testid="quick-add-popup" />,
+  // Surface the port-type + a "pick" trigger so ⌥+drop tests can assert the
+  // popup is port-typed and that picking routes through the onPick override.
+  QuickAddPopup: ({
+    portType,
+    onPick,
+  }: {
+    portType?: string;
+    onPick?: (id: string) => void;
+  }) => (
+    <div data-testid="quick-add-popup" data-port-type={portType ?? ""}>
+      <button
+        type="button"
+        data-testid="quick-add-pick"
+        onClick={() => onPick?.("com.vendor.Reverb")}
+      />
+    </div>
+  ),
 }));
 vi.mock("../CanvasContextMenu", () => ({
   CanvasContextMenu: () => <div data-testid="canvas-context-menu" />,
@@ -178,6 +217,7 @@ import { GraphCanvas } from "../GraphCanvas";
 import {
   nativeEnterContainer,
   nativeExitContainer,
+  nativeGraphAddPluginConnected,
 } from "../../../bridge/nativeGraph";
 import { nativePluginEditorOpen } from "../../../bridge/nativePluginEditor";
 
@@ -188,6 +228,11 @@ describe("GraphCanvas", () => {
     vi.clearAllMocks();
     mockAppStore.mode = "edit";
     mockAppStore.embeddedEditorNodeId = null;
+    mockAppStore.canvasHint = null;
+    // Reset the graph store nodes to a single Block with real ports for the
+    // ⌥+drop signal-type resolution tests; other tests use mockGraphStore.nodes
+    // = [] (Block is mocked so a stray node never renders a real component).
+    mockGraphStore.nodes = [];
   });
 
   // ── Happy path ────────────────────────────────────────────────────────────
@@ -237,6 +282,103 @@ describe("GraphCanvas", () => {
     expect(
       screen.queryByTestId("canvas-context-menu"),
     ).not.toBeInTheDocument();
+  });
+
+  // ── T3: ⌥(Alt)+drop a cable on empty canvas → port-typed QuickAdd ──────────
+  // RF fires onConnectStart (stash origin) then onConnectEnd (isValid===null
+  // for an empty-canvas release). With ⌥ held we open a PORT-TYPED QuickAdd and
+  // route its pick to a positioned add+connect; without ⌥ we just nudge.
+
+  const startDragOffOutputPort = () => {
+    // A Block carrying real ports so signal-type resolves to "audio".
+    mockGraphStore.nodes = [
+      {
+        id: "n-src",
+        ports: [
+          { id: "out-0", type: "audio" },
+          { id: "in-0", type: "audio" },
+        ],
+      },
+    ];
+    act(() => {
+      rfHandlers.onConnectStart?.(
+        { type: "mousedown" },
+        { nodeId: "n-src", handleId: "out-0", handleType: "source" },
+      );
+    });
+  };
+
+  const endDrag = (state: unknown, event: Record<string, unknown>) => {
+    act(() => {
+      rfHandlers.onConnectEnd?.(event, state);
+    });
+  };
+
+  it("⌥+drop on empty canvas opens a PORT-TYPED QuickAdd at the flow drop point", () => {
+    render(<GraphCanvas />);
+    startDragOffOutputPort();
+    // Empty-canvas release WITH ⌥: isValid === null (RF's "no valid handle").
+    endDrag(
+      { isValid: null, fromHandle: { type: "source" } },
+      { altKey: true, clientX: 120, clientY: 90 },
+    );
+    const popup = screen.getByTestId("quick-add-popup");
+    expect(popup).toBeInTheDocument();
+    // Origin port type "audio" flowed through to the popup's portType filter.
+    expect(popup.getAttribute("data-port-type")).toBe("audio");
+  });
+
+  it("picking in the ⌥+drop QuickAdd routes to nativeGraphAddPluginConnected with flow coords + origin port", () => {
+    render(<GraphCanvas />);
+    startDragOffOutputPort();
+    endDrag(
+      { isValid: null, fromHandle: { type: "source" } },
+      { altKey: true, clientX: 120, clientY: 90 },
+    );
+    fireEvent.click(screen.getByTestId("quick-add-pick"));
+    // screenToFlowPosition echoes (clientX+1000, clientY+2000).
+    expect(nativeGraphAddPluginConnected).toHaveBeenCalledWith(
+      "com.vendor.Reverb",
+      1120,
+      2090,
+      "n-src",
+      "out-0",
+      true, // origin handle was a "source" (output)
+    );
+  });
+
+  it("plain drop (no ⌥) does NOT mutate and sets a transient hint", () => {
+    render(<GraphCanvas />);
+    startDragOffOutputPort();
+    endDrag(
+      { isValid: null, fromHandle: { type: "source" } },
+      { altKey: false, clientX: 120, clientY: 90 },
+    );
+    expect(screen.queryByTestId("quick-add-popup")).not.toBeInTheDocument();
+    expect(nativeGraphAddPluginConnected).not.toHaveBeenCalled();
+    expect(mockAppStore.setCanvasHint).toHaveBeenCalledWith(
+      "Hold ⌥ next time to add a block here",
+    );
+  });
+
+  it("a VALID drop is left untouched (RF owns the real connect via onConnect)", () => {
+    render(<GraphCanvas />);
+    startDragOffOutputPort();
+    endDrag(
+      { isValid: true, fromHandle: { type: "source" } },
+      { altKey: true, clientX: 120, clientY: 90 },
+    );
+    // No QuickAdd, no add-and-connect, no nudge — onConnect handles the cable.
+    expect(screen.queryByTestId("quick-add-popup")).not.toBeInTheDocument();
+    expect(nativeGraphAddPluginConnected).not.toHaveBeenCalled();
+  });
+
+  it("connect-start sets the live cable-drag affordance hint", () => {
+    render(<GraphCanvas />);
+    startDragOffOutputPort();
+    expect(mockAppStore.setCanvasHint).toHaveBeenCalledWith(
+      "Drop on a port to connect · hold ⌥ and release to add a block",
+    );
   });
 
   // ── Zoom range (A3/F2 — surgical zoom) ─────────────────────────────────────

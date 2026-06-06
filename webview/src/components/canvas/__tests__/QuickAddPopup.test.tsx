@@ -207,6 +207,27 @@ describe("<QuickAddPopup />", () => {
     expect(onClose).toHaveBeenCalledOnce();
   });
 
+  // ── onPick override (T3 ⌥+drop add-and-connect) ────────────────────────────
+
+  it("invokes onPick override INSTEAD of the default add when provided", async () => {
+    const onPick = vi.fn();
+    render(<QuickAddPopup {...defaultProps} onPick={onPick} />);
+    await waitFor(() => screen.getByText("Surge XT"));
+    fireEvent.click(screen.getByText("Surge XT").closest("button")!);
+    // The override fully owns selection — default add must NOT fire.
+    expect(onPick).toHaveBeenCalledWith("com.vendor.SurgeXT");
+    expect(nativeGraphAddPlugin).not.toHaveBeenCalled();
+  });
+
+  it("does NOT auto-call onClose when onPick override is provided", async () => {
+    const onPick = vi.fn();
+    render(<QuickAddPopup {...defaultProps} onPick={onPick} />);
+    await waitFor(() => screen.getByText("Surge XT"));
+    fireEvent.click(screen.getByText("Surge XT").closest("button")!);
+    // The override owns dismissal; QuickAddPopup must not close on its own.
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   // ── Keyboard navigation ───────────────────────────────────────────────────
 
   it("closes on Escape key", () => {

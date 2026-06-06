@@ -11,7 +11,15 @@ interface SpatialBookmark {
   zoom: number;
 }
 
-/** Cable routing style — blueprint §7.2 calls for Manhattan by default with bezier toggle. */
+/**
+ * Cable routing style. Blueprint §7.2 originally called for Manhattan by
+ * default, but the locked bake-off verdict #2 (T9a) flips the default to
+ * `bezier` — Glen's QA: "cabling hard angles are not conducive to a clean
+ * workflow". Manhattan (orthogonal/`step`) stays explicitly selectable via the
+ * Toolbar / Preferences routing toggle; cable routing is session-only (not
+ * persisted, see `partialize` below) so this is a pure default flip with no
+ * board migration — anyone who picks Manhattan keeps it for the session.
+ */
 export type CableRouting = "manhattan" | "bezier";
 
 interface AppState {
@@ -58,6 +66,14 @@ interface AppState {
    * Session-only; never persisted.
    */
   flowDebug: boolean;
+  /**
+   * Transient one-line canvas coaching hint shown in the StatusBar's left
+   * cluster — e.g. the live cable-drag affordance ("Drop on a port to connect ·
+   * hold ⌥ and release to add a block") or the post-drop nudge ("Hold ⌥ next
+   * time to add a block here"). `null` when nothing to show. The caller owns the
+   * auto-clear timeout (T3). Session-only; never persisted.
+   */
+  canvasHint: string | null;
 }
 
 interface AppActions {
@@ -75,6 +91,7 @@ interface AppActions {
   markHostReady: () => void;
   requestGraphStateRefresh: () => void;
   setEmbeddedEditorNodeId: (nodeId: string | null) => void;
+  setCanvasHint: (hint: string | null) => void;
 }
 
 type AppStore = AppState & AppActions;
@@ -90,13 +107,16 @@ export const useAppStore = create<AppStore>()(
   activeScene: 0,
   openBlockTabs: [],
   spatialBookmarks: {},
-  cableRouting: "manhattan",
+  cableRouting: "bezier",
   hostReady: false,
   refreshNonce: 0,
   embeddedEditorNodeId: null,
   flowDebug: false,
+  canvasHint: null,
 
   markHostReady: () => set({ hostReady: true }),
+
+  setCanvasHint: (hint) => set({ canvasHint: hint }),
 
   setEmbeddedEditorNodeId: (nodeId) => set({ embeddedEditorNodeId: nodeId }),
 

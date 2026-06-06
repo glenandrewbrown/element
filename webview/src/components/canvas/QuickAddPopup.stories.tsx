@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, userEvent, within } from "storybook/test";
+import { expect, fn, userEvent, within } from "storybook/test";
 import { QuickAddPopup } from "./QuickAddPopup";
 import {
   usePluginBrowserStore,
@@ -186,6 +186,54 @@ export const PortTypeAudio: Story = {
     // …MIDI-fx + modulator filtered out.
     await expect(body.queryByText("Stepic")).toBeNull(); // midifx → midi
     await expect(body.queryByText("LFOTool")).toBeNull(); // modulator → value
+  },
+};
+
+/**
+ * PortTypeAddAndConnect — T3 ⌥(Alt)+drop add-and-connect mode.
+ * Same port-typed AUDIO filter as PortTypeAudio, but an `onPick` override is
+ * supplied: selecting a Block routes to a positioned add + auto-connect instead
+ * of the default plain insert, and the override (not the popup) owns dismissal.
+ * The play test proves picking calls the override with the chosen plugin id and
+ * does NOT auto-close.
+ */
+export const PortTypeAddAndConnect: Story = {
+  args: {
+    x: 80,
+    y: 60,
+    portType: "audio",
+    onClose: fn(),
+    onPick: fn(),
+  },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "T3 — opened by an ⌥(Alt)+drop of a Cable on empty canvas. Port-typed " +
+          "to the dragged port's signal (AUDIO here); the chosen Block is added " +
+          "AT the drop point and atomically auto-connected via the `onPick` " +
+          "override (positioned add+connect), bypassing the default plain insert.",
+      },
+    },
+  },
+  decorators: [
+    (Story) => {
+      seed(demoPlugins);
+      return (
+        <div className="bg-canvas" style={{ height: 480 }}>
+          <Story />
+        </div>
+      );
+    },
+  ],
+  play: async ({ args, canvasElement }) => {
+    const body = within(canvasElement.ownerDocument.body);
+    await expect(body.getByText("AUDIO")).toBeVisible();
+    const row = body.getByText("Surge XT").closest("button")!;
+    row.click();
+    // The override fires with the picked id; the popup does NOT auto-close.
+    await expect(args.onPick).toHaveBeenCalledWith("com.vendor.SurgeXT");
+    await expect(args.onClose).not.toHaveBeenCalled();
   },
 };
 

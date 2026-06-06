@@ -23,6 +23,7 @@ import {
   nativePresetSnapshot,
   nativeSessionGetGraphTree,
   nativeGraphAddPlugin,
+  nativeGraphAddPluginConnected,
   nativeGraphRemoveNode,
   nativeGraphConnect,
   nativeGraphDisconnect,
@@ -262,6 +263,23 @@ const booleanCases: BoolCase[] = [
     call: () => nativeGraphConnect("a", "out", "b", "in"),
     nativeName: "elementGraphConnect",
     args: ["a", "out", "b", "in"],
+  },
+  // T3 — ⌥+drop add-and-connect: positional add + auto-connect to origin port.
+  // Marshalls identifier, flow x/y, origin uuid, origin port id, and the
+  // origin-is-source flag in order.
+  {
+    name: "nativeGraphAddPluginConnected (origin is source/output)",
+    call: () =>
+      nativeGraphAddPluginConnected("vst3:reverb", 320, 180, "n-src", "out-0", true),
+    nativeName: "elementGraphAddPluginConnected",
+    args: ["vst3:reverb", 320, 180, "n-src", "out-0", true],
+  },
+  {
+    name: "nativeGraphAddPluginConnected (origin is target/input)",
+    call: () =>
+      nativeGraphAddPluginConnected("vst3:synth", -40, 12.5, "n-dst", "in-1", false),
+    nativeName: "elementGraphAddPluginConnected",
+    args: ["vst3:synth", -40, 12.5, "n-dst", "in-1", false],
   },
   {
     name: "nativeGraphDisconnect",

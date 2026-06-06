@@ -8,6 +8,7 @@ import { render, screen } from "@testing-library/react";
 import { StatusBar } from "../StatusBar";
 import { usePerformStore } from "../../../stores/usePerformStore";
 import { useEngineSnapshotStore } from "../../../stores/useEngineSnapshotStore";
+import { useAppStore } from "../../../stores/useAppStore";
 
 // Icon renders lucide SVG — stub it out so tests are shape-agnostic.
 vi.mock("../../neu", () => ({
@@ -35,6 +36,7 @@ function resetStores() {
     engineRunning: false,
     hasHostData: false,
   }));
+  useAppStore.setState({ canvasHint: null });
 }
 
 beforeEach(resetStores);
@@ -232,5 +234,31 @@ describe("timecode", () => {
     }));
     render(<StatusBar />);
     expect(screen.getByText("01:02:03:04")).toBeInTheDocument();
+  });
+});
+
+// ── canvasHint (T3 — transient cable-drag coaching hint) ──────────────────────
+
+describe("canvasHint", () => {
+  it("renders the hint and HIDES the engine cluster when canvasHint is set", () => {
+    useAppStore.setState({
+      canvasHint: "Drop on a port to connect · hold ⌥ and release to add a block",
+    });
+    render(<StatusBar />);
+    expect(
+      screen.getByText(
+        "Drop on a port to connect · hold ⌥ and release to add a block",
+      ),
+    ).toBeInTheDocument();
+    // The left vitals cluster (engine RUNNING/STOPPED) is replaced while a hint
+    // is showing.
+    expect(screen.queryByText("STOPPED")).not.toBeInTheDocument();
+    expect(screen.queryByText("RUNNING")).not.toBeInTheDocument();
+  });
+
+  it("shows the normal engine cluster when canvasHint is null", () => {
+    useAppStore.setState({ canvasHint: null });
+    render(<StatusBar />);
+    expect(screen.getByText("STOPPED")).toBeInTheDocument();
   });
 });
