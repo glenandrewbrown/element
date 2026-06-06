@@ -1344,7 +1344,13 @@ function BlockComponent({ data, selected }: NodeProps) {
           • knobs present  → knob bank + a flex-1 stacked L/R RMS strip
           • no knobs, audio → flex-1 stacked L/R RMS meters fill the deck
           • no knobs, midi/mod → status text + activity dot (mockup) */}
-      {zoomTier !== "expanded" && (
+      {/* The deck renders at standard tier; at EXPANDED tier (the DEFAULT —
+          zoom > 0.9, i.e. how Glen actually sees a board) it normally yields
+          to the BlockEmbed — but a curated inline face is the block's primary
+          control surface (T5, "controls directly on the block GUI"), so it
+          stays visible at expanded too. Live QA 2026-06-06: the chooser was
+          invisible at default zoom without this. Compact stays bare. */}
+      {(zoomTier !== "expanded" || (inlineSpec && inlineFaceValid)) && (
         <div
           className="block-body flex items-center gap-1.5 px-2 relative z-[5]"
           style={{ height: 54 }}

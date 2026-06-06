@@ -762,7 +762,11 @@ void GuiService::getCommandInfo (CommandID commandID, ApplicationCommandInfo& re
             result.setInfo ("Add board", "Add a new board to the project", "Project", 0);
             break;
         case Commands::sessionDuplicateGraph:
-            result.addDefaultKeypress ('d', ModifierKeys::shiftModifier | ModifierKeys::commandModifier);
+            // Cmd+Shift+D now belongs to the webview "Group selection into
+            // Container" gesture (Glen QA 2026-06-06) — the native default
+            // keypress here was eating the chord before the webview saw it.
+            // Duplicate-board moves to Cmd+Alt+D (also in the Edit menu).
+            result.addDefaultKeypress ('d', ModifierKeys::altModifier | ModifierKeys::commandModifier);
             result.setInfo ("Duplicate current board", "Duplicates the currently active board", "Project", 0);
             break;
         case Commands::sessionDeleteGraph:
