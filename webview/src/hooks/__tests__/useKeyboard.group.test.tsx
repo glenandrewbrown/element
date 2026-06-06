@@ -55,8 +55,7 @@ vi.mock("@xyflow/react", () => ({
 }));
 
 vi.mock("../../components/canvas/groupSelection", () => ({
-  groupSelectedBlocks: mockGroup,
-  GROUP_REFUSAL_COPY: { "cv-boundary": "CV crosses the selection edge" },
+  groupSelectionWithFeedback: mockGroup,
 }));
 
 vi.mock("../../bridge/nativeGraph", () => ({
@@ -155,18 +154,9 @@ describe("useKeyboard — Cmd+Shift+D group chord", () => {
     expect(mockGroup).not.toHaveBeenCalled();
   });
 
-  it("refusal surfaces via canvasHint", async () => {
-    mockGroup.mockResolvedValueOnce({ ok: false, reason: "cv-boundary" });
-    mockGetNodes.mockReturnValue([flow("a"), flow("b")]);
-    mount();
-    await act(async () => {
-      fireKey("d", { metaKey: true, shiftKey: true });
-      await Promise.resolve();
-    });
-    expect(appState.setCanvasHint).toHaveBeenCalledWith(
-      "CV crosses the selection edge",
-    );
-  });
+  // Refusal → canvasHint feedback lives inside groupSelectionWithFeedback and
+  // is covered by groupSelection.test.ts; the chord's contract is just to call
+  // it with the eligible selection.
 
   it("comment nodes are not counted as selection", async () => {
     mockGetNodes.mockReturnValue([

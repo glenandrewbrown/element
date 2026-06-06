@@ -25,10 +25,7 @@ import {
   nativeSessionSaveAs,
 } from "../bridge/nativeSession";
 import { nativePluginEditorClose } from "../bridge/nativePluginEditor";
-import {
-  groupSelectedBlocks,
-  GROUP_REFUSAL_COPY,
-} from "../components/canvas/groupSelection";
+import { groupSelectionWithFeedback } from "../components/canvas/groupSelection";
 import { EV_START_RENAME } from "../events";
 
 // ── Signal-chain order (G6/P5) ───────────────────────────────────────────────
@@ -180,18 +177,7 @@ export function useKeyboard({
             .map((n) => n.id);
           if (selected.length > 0) e.preventDefault();
           if (selected.length < 2) return; // chord consumed, no-op
-          void groupSelectedBlocks(selected).then((res) => {
-            if (!res.ok) {
-              const app = useAppStore.getState();
-              app.setCanvasHint(
-                GROUP_REFUSAL_COPY[res.reason] ?? "Couldn't group selection",
-              );
-              window.setTimeout(() => {
-                if (useAppStore.getState().canvasHint != null)
-                  useAppStore.getState().setCanvasHint(null);
-              }, 3000);
-            }
-          });
+          groupSelectionWithFeedback(selected);
           return;
         }
         if (

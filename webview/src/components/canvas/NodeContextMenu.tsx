@@ -15,11 +15,7 @@ import {
 import { Icon, NeuInput } from "../neu";
 import { iconForCategory } from "../neu/iconForCategory";
 import { ParamConfigPopover } from "./ParamConfigPopover";
-import { useAppStore } from "../../stores/useAppStore";
-import {
-  groupSelectedBlocks,
-  GROUP_REFUSAL_COPY,
-} from "./groupSelection";
+import { groupSelectionWithFeedback } from "./groupSelection";
 
 interface NodeContextMenuProps {
   /** Id of the right-clicked Block. Looked up in `useGraphStore.nodes`; the menu renders nothing if the id is absent. */
@@ -176,18 +172,7 @@ export function NodeContextMenu({
   // T10 — group the multi-selection into a Container; refusals surface in the
   // status bar via the shared canvasHint channel (engine-driven refresh).
   const handleGroup = useCallback(() => {
-    void groupSelectedBlocks(selectedBlockIds).then((res) => {
-      if (!res.ok) {
-        const app = useAppStore.getState();
-        app.setCanvasHint(
-          GROUP_REFUSAL_COPY[res.reason] ?? "Couldn't group selection",
-        );
-        window.setTimeout(() => {
-          if (useAppStore.getState().canvasHint != null)
-            useAppStore.getState().setCanvasHint(null);
-        }, 3000);
-      }
-    });
+    groupSelectionWithFeedback(selectedBlockIds);
     onClose();
   }, [selectedBlockIds, onClose]);
 

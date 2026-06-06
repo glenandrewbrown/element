@@ -11,7 +11,12 @@ vi.mock("../../../bridge/nativeGraph", () => ({
 
 import { nativeGroupNodes } from "../../../bridge/nativeGraph";
 import { useGraphStore } from "../../../stores/useGraphStore";
-import { groupSelectedBlocks, isGroupEligible } from "../groupSelection";
+import { useAppStore } from "../../../stores/useAppStore";
+import {
+  groupSelectedBlocks,
+  groupSelectionWithFeedback,
+  isGroupEligible,
+} from "../groupSelection";
 
 function block(over: Partial<BlockData>): BlockData {
   return {
@@ -130,5 +135,32 @@ describe("groupSelectedBlocks", () => {
       ok: false,
       reason: "ineligible",
     });
+  });
+});
+
+describe("groupSelectionWithFeedback (shared chord/menu feedback)", () => {
+  it("surfaces a refusal in the status footer, then clears it", async () => {
+    vi.useFakeTimers();
+    try {
+      seed([block({ id: "a" })]); // 1 selected → "need-2" refusal
+      groupSelectionWithFeedback(["a"]);
+      await vi.advanceTimersByTimeAsync(0); // flush the promise chain
+      expect(useAppStore.getState().canvasHint).toBe(
+        "Select at least 2 blocks to group",
+      );
+      await vi.advanceTimersByTimeAsync(3000);
+      expect(useAppStore.getState().canvasHint).toBeNull();
+    } finally {
+      vi.useRealTimers();
+      useAppStore.getState().setCanvasHint(null);
+    }
+  });
+
+  it("sets no hint on success", async () => {
+    seed([block({ id: "a" }), block({ id: "b" })]);
+    groupSelectionWithFeedback(["a", "b"]);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(useAppStore.getState().canvasHint).toBeNull();
   });
 });

@@ -9,6 +9,7 @@
  * selection boundary has no rewiring path — refuse rather than silently drop).
  */
 import { useGraphStore } from "../../stores/useGraphStore";
+import { useAppStore } from "../../stores/useAppStore";
 import { nativeGroupNodes } from "../../bridge/nativeGraph";
 import type { BlockData } from "../../data/types";
 
@@ -68,4 +69,25 @@ export async function groupSelectedBlocks(
   if (cvBoundary) return { ok: false, reason: "cv-boundary" };
 
   return nativeGroupNodes(selectedIds);
+}
+
+/** How long a group-refusal message stays in the status footer. */
+const REFUSAL_HINT_MS = 3000;
+
+/**
+ * Group the selection and surface any refusal in the status footer
+ * (shared by the Cmd+Shift+D chord and the block context-menu item).
+ */
+export function groupSelectionWithFeedback(selectedIds: string[]): void {
+  void groupSelectedBlocks(selectedIds).then((res) => {
+    if (res.ok) return;
+    const app = useAppStore.getState();
+    app.setCanvasHint(
+      GROUP_REFUSAL_COPY[res.reason] ?? "Couldn't group selection",
+    );
+    window.setTimeout(() => {
+      if (useAppStore.getState().canvasHint != null)
+        useAppStore.getState().setCanvasHint(null);
+    }, REFUSAL_HINT_MS);
+  });
 }
