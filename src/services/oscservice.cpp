@@ -7,7 +7,11 @@
 
 #include <element/context.hpp>
 #include <element/devices.hpp>
+#include <element/graph.hpp>
+#include <element/node.hpp>
+#include <element/processor.hpp>
 #include <element/services.hpp>
+#include <element/session.hpp>
 #include <element/settings.hpp>
 #include <element/ui.hpp>
 
