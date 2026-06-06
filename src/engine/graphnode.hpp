@@ -3,6 +3,10 @@
 
 #pragma once
 
+#include <atomic>
+#include <cstdint>
+#include <vector>
+
 #include "ElementApp.h"
 #include <element/processor.hpp>
 #include "engine/velocitycurve.hpp"
@@ -237,8 +241,32 @@ private:
 
     /** Active rendering ops, swapped atomically.
         Audio thread reads via acquire load. Message thread writes via exchange.
-        The old ops array is deleted on the message thread after swap. */
+        The old ops array is NEVER deleted at swap time — see the deferred
+        reclamation notes on renderGeneration below. */
     std::atomic<juce::Array<void*>*> activeRenderingOps { nullptr };
+
+    /** Deferred reclamation of superseded render-op arrays (C1 lifetime fix).
+
+        The audio thread acquire-loads activeRenderingOps at render entry and
+        may still be iterating that array while the message thread swaps in a
+        replacement (the swap happens OUTSIDE the property lock the engine
+        holds around render). Deleting the old array at swap time is therefore
+        a use-after-free. Instead, swapped-out arrays are RETIRED: each entry
+        records the render generation observed at swap time and is only freed
+        on a LATER rebuild/clear once the audio thread has incremented
+        renderGeneration past it — proving the render pass that could have
+        held the stale pointer has exited. Renders of one GraphNode are
+        serialized on the audio thread, so generation-advance is sufficient.
+        DO NOT "simplify" this back to delete-at-swap. */
+    std::atomic<uint64_t> renderGeneration { 0 };
+    struct RetiredRenderOps
+    {
+        juce::Array<void*>* ops = nullptr;
+        uint64_t gen = 0;
+    };
+    std::vector<RetiredRenderOps> retiredRenderOps; // message thread only
+    void retireRenderOps (juce::Array<void*>* oldOps);
+    void freeRetiredRenderOps (bool force);
     friend class ScriptNode; // workaround so parameter connections work when params change.
     void handleAsyncUpdate() override;
     void clearRenderingSequence();

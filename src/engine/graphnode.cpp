@@ -43,6 +43,9 @@ GraphNode::~GraphNode()
     renderingSequenceChanged.disconnect_all_slots();
     clearRenderingSequence();
     clear();
+    // Nothing can be rendering this graph during destruction: reclaim every
+    // retired op array unconditionally.
+    freeRetiredRenderOps (true);
 }
 
 void GraphNode::clear()
@@ -365,10 +368,39 @@ void GraphNode::clearRenderingSequence()
 {
     auto* oldOps = activeRenderingOps.exchange (nullptr, std::memory_order_acq_rel);
 
+    // C1 lifetime fix: the audio thread may still be iterating oldOps (it
+    // acquire-loads the pointer at render entry and no lock is held here).
+    // Never free at swap time — retire and reclaim once the render generation
+    // has advanced. See renderGeneration in graphnode.hpp. DO NOT regress
+    // this to an immediate delete.
     if (oldOps != nullptr)
+        retireRenderOps (oldOps);
+    freeRetiredRenderOps (false);
+}
+
+void GraphNode::retireRenderOps (juce::Array<void*>* oldOps)
+{
+    // Message thread only. Records the generation seen AFTER the swap: once
+    // the audio thread increments past it, no render pass can still hold a
+    // reference to these ops (renders are serialized on the audio thread).
+    retiredRenderOps.push_back ({ oldOps, renderGeneration.load (std::memory_order_acquire) });
+}
+
+void GraphNode::freeRetiredRenderOps (const bool force)
+{
+    // Message thread only. force=true is reserved for destruction /
+    // releaseResources, where no render can be in flight (the same
+    // assumption the buffer-pool teardown there already makes).
+    const auto gen = renderGeneration.load (std::memory_order_acquire);
+    for (int i = (int) retiredRenderOps.size(); --i >= 0;)
     {
-        deleteRenderOpArray (*oldOps);
-        delete oldOps;
+        auto& entry = retiredRenderOps[(size_t) i];
+        if (force || gen > entry.gen)
+        {
+            deleteRenderOpArray (*entry.ops);
+            delete entry.ops;
+            retiredRenderOps.erase (retiredRenderOps.begin() + i);
+        }
     }
 }
 
@@ -431,14 +463,20 @@ void GraphNode::buildRenderingSequence()
         // swap over to the new rendering sequence..
         {
             const ScopedLock sl (getPropertyLock());
-            renderingBuffers.setSize (numRenderingBuffersNeeded, 4096);
+
+            // C2 fix: pools must cover the NEGOTIATED max block size, not a
+            // bare 4096 — hosts doing offline bounce can run blocks > 4096
+            // and the ops index these pools with the live sample count.
+            // 4096 stays as the floor so small-block sessions keep headroom.
+            const int poolSamples = jmax (4096, getBlockSize());
+            renderingBuffers.setSize (numRenderingBuffersNeeded, poolSamples);
             renderingBuffers.clear();
 
-            // CV pool: sized HERE (rebuild time, under the property lock) to a
-            // fixed 4096 samples so a buffer-size change never reallocates on
-            // the render thread. Channel 0 stays read-only zeros (cleared now,
-            // ops never write it — getFreeBuffer starts at 1).
-            cvRenderingBuffers.setSize (jmax (1, numCvBuffersNeeded), 4096);
+            // CV pool: sized HERE (rebuild time, under the property lock) so
+            // a buffer-size change never reallocates on the render thread.
+            // Channel 0 stays read-only zeros (cleared now, ops never write
+            // it — getFreeBuffer starts at 1).
+            cvRenderingBuffers.setSize (jmax (1, numCvBuffersNeeded), poolSamples);
             cvRenderingBuffers.clear();
 
             for (int i = midiBuffers.size(); --i >= 0;)
@@ -452,11 +490,16 @@ void GraphNode::buildRenderingSequence()
         published->swapWith (newRenderingOps);
         auto* oldOps = activeRenderingOps.exchange (published, std::memory_order_acq_rel);
 
+        // C1 lifetime fix: the audio thread may still be iterating oldOps —
+        // it acquire-loads activeRenderingOps at render entry, and the
+        // property lock is NOT held at this point. Freeing here is a
+        // use-after-free. Retire instead; reclamation happens on a later
+        // rebuild once the render generation has advanced past this swap.
+        // See renderGeneration in graphnode.hpp. DO NOT regress this to an
+        // immediate delete.
+        freeRetiredRenderOps (false);
         if (oldOps != nullptr)
-        {
-            deleteRenderOpArray (*oldOps);
-            delete oldOps;
-        }
+            retireRenderOps (oldOps);
     }
 
     // newRenderingOps is now empty after swapWith, but clear for safety
@@ -590,13 +633,27 @@ void GraphNode::render (RenderContext& rc)
         auto* ops = activeRenderingOps.load (std::memory_order_acquire);
         if (ops != nullptr)
         {
+            // C2 fix: ops index the shared pools with this count. Pools are
+            // sized at rebuild time to >= the negotiated max block size, so
+            // in-contract hosts always pass untouched; an out-of-contract
+            // oversized block gets clamped (truncated-but-safe render)
+            // instead of writing past the pool allocations. No allocation.
+            const int32 opSamples = jmin (numSamples,
+                                          renderingBuffers.getNumSamples(),
+                                          cvRenderingBuffers.getNumSamples());
+            jassert (opSamples == numSamples);
             for (auto ptr : *ops)
             {
                 GraphOp* const op = static_cast<GraphOp*> (ptr);
-                op->perform (renderingBuffers, cvRenderingBuffers, midiBuffers, numSamples);
+                op->perform (renderingBuffers, cvRenderingBuffers, midiBuffers, opSamples);
             }
         }
     }
+
+    // C1 lifetime fix: signal render exit. buildRenderingSequence() retires
+    // superseded op arrays and only frees them after this counter advances
+    // past the swap — proving no render still references them. Lock-free.
+    renderGeneration.fetch_add (1, std::memory_order_release);
 
     for (int i = 0; i < rc.audio.getNumChannels(); ++i)
         rc.audio.copyFrom (i, 0, currentAudioOutputBuffer, i, 0, numSamples);

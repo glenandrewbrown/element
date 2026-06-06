@@ -236,9 +236,12 @@ add_test(NAME "MidiChannelSplitterTests"    COMMAND test_element --run_test=Midi
 # named MidiChannelSplitterTests exists in any source file.
 set_tests_properties(MidiChannelSplitterTests PROPERTIES DISABLED TRUE)
 add_test(NAME "SandboxedProcessorNodeTests" COMMAND test_element --run_test=SandboxedProcessorNodeTests)
-# QUARANTINE: corrupted 204f5545, unverified — real subprocess spawn; pre-existing flaky
-# (fails at different cycles per run) and test assumptions unverified from 204f5545 batch.
-set_tests_properties(SandboxedProcessorNodeTests PROPERTIES DISABLED TRUE)
+# UN-QUARANTINED 2026-06-06 (P4 Worker 5): 3 consecutive direct runs green
+# (20 cases each) after the helper-discovery + PluginInfo-v2 work. Was
+# "corrupted 204f5545 / real subprocess spawn / flaky at different cycles".
+# RUN_SERIAL because it spawns real worker subprocesses (same as the other
+# Sandbox* process suites); re-quarantine with a cycle log if it flakes in CI.
+set_tests_properties(SandboxedProcessorNodeTests PROPERTIES RUN_SERIAL TRUE TIMEOUT 60)
 add_test(NAME "PortBufferTests"             COMMAND test_element --run_test=PortBufferTests)
 # QUARANTINE: corrupted 204f5545, unverified — test-side authored error; port buffer assumptions
 # not verified against actual PortBuffer implementation.
@@ -291,6 +294,22 @@ add_test(NAME "DspStateRoundTripTests"         COMMAND test_element --run_test=D
 
 # D4 — REAL per-block (per-Processor) CPU. Lock-free render-nanos tap + EMA.
 add_test(NAME "RenderNanosTests"               COMMAND test_element --run_test=RenderNanosTests)
+
+# P0 engine safety (CCG 2026-06-06, C1+C2): render-op swap lifetime under a
+# live render thread + >4096-sample block pool sizing. RUN_SERIAL because the
+# stress case spins a real render loop and is timing-sensitive under load.
+add_test(NAME "GraphNodeRenderSafetyTests" COMMAND test_element --run_test=GraphNodeRenderSafetyTests)
+set_tests_properties(GraphNodeRenderSafetyTests PROPERTIES RUN_SERIAL TRUE TIMEOUT 120)
+
+# P4 sandbox default-on chain (ccg-fix-team-brief-2026-06-06, Worker 5).
+# Helper-binary resolution order: env override -> bundle Contents/Helpers ->
+# executable-adjacent -> honest failure (never re-exec the host in production).
+add_test(NAME "SandboxHelperDiscoveryTests" COMMAND test_element --run_test=SandboxHelperDiscoveryTests)
+# FAILING-BY-DESIGN gap marker: CV is not transported through the sandbox.
+# Registered DISABLED on purpose — un-disable together with the implementation of
+# .omo/plans/sandbox-cv-transport-design-2026-06-06.md (v2 SharedAudioBuffer layout).
+add_test(NAME "SandboxCVTransportTests" COMMAND test_element --run_test=SandboxCVTransportTests)
+set_tests_properties(SandboxCVTransportTests PROPERTIES DISABLED TRUE)
 
 option(ELEMENT_RT_STRESS_TEST "Build and register the audio-thread stress test" OFF)
 if (ELEMENT_RT_STRESS_TEST)
