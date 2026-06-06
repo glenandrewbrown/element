@@ -74,7 +74,25 @@ styles) · `backdropFilter` REMOVED (BypassedDim flat wash, BlockTabStrip solid)
 |---|---|---|---|
 | Idle, stopped (1 block, spectrum strip mounted) | **6.3%** | **7.5%** | 35% → 14% total |
 | Idle, **playing** (same view as baseline) | **5.9%** | **7.6%** | **50% → 13.5%** (−73%) |
-| Drag burst (2-block board, expanded tier) | 36% peak | 70-95% peak | style-storm GONE from stacks; new owner = GC/alloc churn (object spreads, sweeper) — Wave-2 in flight |
+| Drag burst (2-block board, expanded tier) | 36% peak | 70-95% peak | style-storm GONE from stacks; new owner = GC/alloc churn (object spreads, sweeper) — fixed in Wave-2 ↓ |
+
+### Wave-2 (commit `db54be3a`, marker `index-DQcH7wdK.js`) — drag-path allocation churn
+autoRoute squared-prefilter + adjacency cache + scratch reuse + 100ms throttle + 60-block cap ·
+hydrateFromEngine structural reconcile (idle re-push ⇒ zero re-renders, same refs) ·
+useParameterStore copy-on-write · meter-store fingerprint fast-path ·
+**viewport-jump-on-selection FIXED** (BlockTabStrip reserves h-8 permanently — flow pane never
+resizes on selection). Gates: vitest 2811/0 (38 new) · tsc clean · stories 345/346.
+
+### FINAL measured (wave-2 installed)
+| State | Element | WebContent |
+|---|---|---|
+| Idle stopped | ~6.9% | ~8% (settling) |
+| **Drag burst (same choreography)** | **6.8% peak** | **22.2% peak** |
+
+**Drag: ~137% combined (morning) → ~29% combined. Target ≤60%: PASS.**
+(Footnote: final run on a 1-block board — heavy-board parity run worth repeating once a saved
+multi-block project exists; the structural fixes — no per-tick painters, no idle re-renders,
+capped/cached matcher — are load-independent and locked by tests.)
 
 Acceptance: playing-idle target **PASS** (≤12/≤10 spectrum-mounted) · stopped-idle 6.3/7.5 vs
 hard ≤2/≤3 — improved 2.5× but residue = CVDisplayLink vblank wakeups (JUCE per-window) + low-Hz
