@@ -460,7 +460,7 @@ void AudioFilePlayerNode::fillInPluginDescription (PluginDescription& desc) cons
 {
     desc.name = getName();
     desc.fileOrIdentifier = EL_NODE_ID_AUDIO_FILE_PLAYER;
-    desc.descriptiveName = "A single audio file player";
+    desc.descriptiveName = "Plays a single audio file";
     desc.numInputChannels = 0;
     desc.numOutputChannels = 2;
     desc.hasSharedContainer = false;

@@ -636,12 +636,28 @@ export function GraphCanvas() {
     };
   }, [reactFlow]);
 
+  // WKWebView zoom sharpness: promote the viewport to a GPU layer ONLY while a
+  // pan/zoom gesture is in flight, and explicitly demote it when the gesture
+  // ends. The demotion is the important half — it forces WebKit to drop its
+  // cached layer bitmap and re-rasterize the canvas subtree at the FINAL
+  // effective scale, so Blocks/labels are crisp at any zoom. (A permanent
+  // `will-change: transform` made WebKit keep a ~1x bitmap and stretch it —
+  // the "blurry when zoomed" defect. Chrome re-rasterizes per scale, so this
+  // only ever showed in the real JUCE WKWebView host.)
+  const viewportLayerPromotedRef = useRef(false);
+  const setViewportWillChange = useCallback((value: "transform" | "auto") => {
+    const el = document.querySelector<HTMLElement>(".react-flow__viewport");
+    if (el) el.style.willChange = value;
+    viewportLayerPromotedRef.current = value === "transform";
+  }, []);
+
   // ── Debounced zoom-tier update fired during active pan/zoom ──
   const onViewportMove = useCallback(
     (
       _event: globalThis.MouseEvent | globalThis.TouchEvent | null,
       vp: Viewport,
     ) => {
+      if (!viewportLayerPromotedRef.current) setViewportWillChange("transform");
       if (zoomTierTimerRef.current !== undefined) {
         clearTimeout(zoomTierTimerRef.current);
       }
@@ -649,7 +665,7 @@ export function GraphCanvas() {
         setZoomTier(zoomToTier(vp.zoom));
       }, 80);
     },
-    [setZoomTier],
+    [setZoomTier, setViewportWillChange],
   );
 
   const onViewportMoveEnd = useCallback(
@@ -657,6 +673,8 @@ export function GraphCanvas() {
       _event: globalThis.MouseEvent | globalThis.TouchEvent | null,
       vp: Viewport,
     ) => {
+      // Demote the viewport layer → WebKit re-rasterizes crisp at this zoom.
+      setViewportWillChange("auto");
       // Cancel any pending debounced tier update — apply immediately on move-end.
       if (zoomTierTimerRef.current !== undefined) {
         clearTimeout(zoomTierTimerRef.current);

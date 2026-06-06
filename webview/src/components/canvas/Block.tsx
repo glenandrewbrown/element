@@ -1144,6 +1144,10 @@ function BlockComponent({ data, selected }: NodeProps) {
   // ── Standard block ──
 
   const hostOutline = hostColourOutline(d.hostColor);
+  // Per-node custom colour (right-click → Options swatches): when set it
+  // REPLACES the category hue on the header gradient — the visible change the
+  // user asked for (previously it only tinted the 1px border, i.e. invisible).
+  const headerHex = hostOutline ?? cat.hex;
   const isAudioBearing = d.category === "instrument" || d.category === "audiofx";
   const active = !d.bypassed && !d.muted;
   const accentHsl = `hsl(var(--cat-${d.category}))`;
@@ -1196,7 +1200,7 @@ function BlockComponent({ data, selected }: NodeProps) {
         className="flex items-center gap-1.5 px-2 shrink-0 relative z-10"
         style={{
           height: 26,
-          background: `linear-gradient(180deg, ${cat.hex} 0%, ${cat.hex}B8 100%)`,
+          background: `linear-gradient(180deg, ${headerHex} 0%, ${headerHex}B8 100%)`,
           color: "#15151A",
           boxShadow:
             "inset 0 1px 0 rgba(255,255,255,0.18), inset 0 -1px 0 rgba(0,0,0,0.3)",

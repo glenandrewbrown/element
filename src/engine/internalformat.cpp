@@ -182,7 +182,9 @@ StringArray ElementAudioPluginFormat::searchPathsForPlugins (const FileSearchPat
     results.add (EL_NODE_ID_MEDIA_PLAYER);
     results.add (EL_NODE_ID_MIDI_CHANNEL_MAP);
     results.add (EL_NODE_ID_AUDIO_FILE_PLAYER);
-    results.add (EL_NODE_ID_PLACEHOLDER);
+    // NOTE: EL_NODE_ID_PLACEHOLDER is deliberately NOT listed — it is the
+    // internal stand-in for missing/unavailable nodes on session load, never
+    // a user-addable Block (it was showing up in QuickAdd as "Placeholder").
     results.add (EL_NODE_ID_MIDI_INPUT_DEVICE);
     results.add (EL_NODE_ID_MIDI_OUTPUT_DEVICE);
     return results;

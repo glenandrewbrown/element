@@ -152,6 +152,10 @@ export const Container: Story = story(
   makeBlock({ name: "Drum Bus", category: "midifx", containerNodeCount: 6 }),
   "Container Block — inset surface with child slots; double-click dives into the nested Board it represents.",
 );
+export const CustomColour: Story = story(
+  makeBlock({ name: "Pro-Q 4", category: "audiofx", hostColor: "#ff2BC4C4" }),
+  "Custom-coloured Block — the right-click Options swatch REPLACES the category hue on the header gradient (here teal over an audiofx block). Regression-guards the visible recolour path (the colour previously only tinted the 1px border).",
+);
 
 // ── Verdict 1 (pilot) — re-housed mockup affordances on the real engine ──
 

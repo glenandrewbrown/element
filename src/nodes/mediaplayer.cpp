@@ -181,7 +181,7 @@ void MediaPlayerProcessor::fillInPluginDescription (PluginDescription& desc) con
 {
     desc.name = getName();
     desc.fileOrIdentifier = EL_NODE_ID_MEDIA_PLAYER;
-    desc.descriptiveName = EL_NODE_ID_MEDIA_PLAYER;
+    desc.descriptiveName = "Plays audio files with transport controls"; // never leak the raw type ID into UI lists
     desc.numInputChannels = 0;
     desc.numOutputChannels = 2;
     desc.hasSharedContainer = false;

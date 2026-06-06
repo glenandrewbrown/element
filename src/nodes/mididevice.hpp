@@ -31,12 +31,15 @@ public:
 
     void fillInPluginDescription (PluginDescription& desc) const override
     {
-        desc.name = "MIDI I/O Device";
+        // Direction MUST be visible in the browsable name — both directions
+        // previously shared one name and were indistinguishable in QuickAdd.
+        desc.name = inputDevice ? "MIDI Input Device" : "MIDI Output Device";
         desc.fileOrIdentifier = inputDevice ? EL_NODE_ID_MIDI_INPUT_DEVICE
                                             : EL_NODE_ID_MIDI_OUTPUT_DEVICE;
         desc.uniqueId = inputDevice ? EL_NODE_UID_MIDI_INPUT_DEVICE
                                     : EL_NODE_UID_MIDI_OUTPUT_DEVICE;
-        desc.descriptiveName = "MIDI device node";
+        desc.descriptiveName = inputDevice ? "Receives MIDI from a hardware or virtual input device"
+                                           : "Sends MIDI to a hardware or virtual output device";
         desc.numInputChannels = 0;
         desc.numOutputChannels = 0;
         desc.hasSharedContainer = false;

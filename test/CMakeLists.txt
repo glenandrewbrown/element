@@ -257,6 +257,9 @@ add_test(NAME "BlockCategoryMapTests" COMMAND test_element --run_test=BlockCateg
 add_test(NAME "CVFlowTests"     COMMAND test_element --run_test=CVFlowTests)
 add_test(NAME "LogicNodesTest"  COMMAND test_element --run_test=LogicNodesTest)
 
+# Naming QA — every browsable internal node has a human, unique, non-ID name
+add_test(NAME "InternalNodeNamingTests" COMMAND test_element --run_test=InternalNodeNamingTests)
+
 # Phase M — new node coverage: TriggerNode, MidiVelocityAmpNode,
 #           PackMidiNode, UnpackMidiNode, WetDryProcessor
 add_test(NAME "TriggerNodeTests"        COMMAND test_element --run_test=TriggerNodeTests)
