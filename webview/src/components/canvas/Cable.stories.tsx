@@ -43,7 +43,9 @@ const edgeTypes = { cable: Cable };
 function resetStores() {
   useBusStore.setState({ cableBus: {} });
   useCableMeterStore.setState({ levels: {}, values: {} });
-  useAppStore.setState({ flowDebug: false });
+  // Reset routing to the T9a default (bezier) so the matrix/perf stories that
+  // override it don't leak their choice into the single-cable stories.
+  useAppStore.setState({ flowDebug: false, cableRouting: "bezier" });
 }
 
 // Render-only edge stories drive everything through MiniFlow, so the story
@@ -240,6 +242,150 @@ export const FlowDebugControlValueDash: Story = flowDebugStory(
   { signalType: "value" },
   { levels: { "cab-1": 0.75 } },
 );
+
+// ── T9 redesign — variant matrix (routing × state) ──
+// One canvas showing the cable across the locked-verdict #2 surface: bezier vs
+// step (manhattan) routing crossed with idle / hot / sidechain / selected /
+// bus states. Lets a reviewer eyeball plugs + arrowhead + flow-pulse + the
+// soft-curve default in a single frame. NOTHING-fake: the "hot" rows seed a
+// real engine level into useCableMeterStore; idle rows have no level.
+
+type MatrixRow = {
+  label: string;
+  data?: Partial<CableData>;
+  level?: number;
+  selected?: boolean;
+  bus?: string;
+};
+
+const MATRIX_ROWS: MatrixRow[] = [
+  { label: "idle" },
+  { label: "hot", level: 0.8 },
+  { label: "sidechain", data: { isSidechain: true } },
+  { label: "selected", selected: true },
+  { label: "bus (wireless)", bus: "Reverb Send", selected: true },
+];
+
+function matrixStory(routing: "bezier" | "manhattan"): Story {
+  return {
+    parameters: {
+      docs: {
+        description: {
+          story:
+            `Cable variant matrix — ${routing} routing across idle / hot / sidechain / selected / bus states. ` +
+            "Verifies the T9 redesign: endpoint plugs, per-edge direction arrowhead, and the amp-scaled flow-pulse on the hot row, with the soft-curve default (bezier) vs the explicitly-chosen step (manhattan) geometry.",
+        },
+      },
+    },
+    render: () => {
+      const ROW_H = 120;
+      const rowNodes: Node[] = MATRIX_ROWS.flatMap((row, i) => [
+        { id: `src-${i}`, position: { x: 0, y: i * ROW_H + 20 }, data: { label: row.label } },
+        { id: `dst-${i}`, position: { x: 260, y: i * ROW_H + 20 }, data: { label: "" } },
+      ]);
+      const rowEdges: Edge[] = MATRIX_ROWS.map((row, i) => {
+        const data = makeCable({ id: `cab-${i}`, ...(row.data ?? {}) });
+        return {
+          id: `cab-${i}`,
+          source: `src-${i}`,
+          target: `dst-${i}`,
+          type: "cable",
+          data,
+          selected: row.selected ?? false,
+        };
+      });
+      return (
+        <MiniFlow
+          nodes={rowNodes}
+          edges={rowEdges}
+          edgeTypes={edgeTypes}
+          height={MATRIX_ROWS.length * ROW_H + 40}
+        />
+      );
+    },
+    decorators: [
+      (Story) => {
+        resetStores();
+        const levels: Record<string, number> = {};
+        const cableBus: Record<string, string> = {};
+        MATRIX_ROWS.forEach((row, i) => {
+          if (row.level !== undefined) levels[`cab-${i}`] = row.level;
+          if (row.bus) cableBus[`cab-${i}`] = row.bus;
+        });
+        useCableMeterStore.setState({ levels });
+        useBusStore.setState({ cableBus });
+        useAppStore.setState({ cableRouting: routing });
+        return <Story />;
+      },
+    ],
+  };
+}
+
+export const MatrixBezier: Story = matrixStory("bezier");
+export const MatrixStep: Story = matrixStory("manhattan");
+
+// ── Perf board — ~40 live cables ──
+// Eyeball render cost with the redesigned cable (plugs + per-edge marker +
+// pulse overlay) at scale. Half the cables carry a live level so the flow-pulse
+// animation runs on ~20 of them simultaneously.
+
+export const PerfBoardManyCables: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "~40-cable board — perf eyeball for the redesigned cable at scale. Every cable has its own arrowhead marker (unique id, no colour collision) and endpoint plugs; ~half carry a live level so the dashed flow-pulse animates concurrently. Watch for jank / dropped frames.",
+      },
+    },
+  },
+  render: () => {
+    const COUNT = 40;
+    const COLS = 4;
+    const X_GAP = 220;
+    const Y_GAP = 90;
+    const signals: SignalType[] = ["audio", "midi", "value"];
+    const perfNodes: Node[] = [];
+    const perfEdges: Edge[] = [];
+    for (let i = 0; i < COUNT; i++) {
+      const col = i % COLS;
+      const rowIdx = Math.floor(i / COLS);
+      const x = col * X_GAP * 2;
+      const y = rowIdx * Y_GAP + 20;
+      perfNodes.push({ id: `ps-${i}`, position: { x, y }, data: { label: `${i}` } });
+      perfNodes.push({ id: `pd-${i}`, position: { x: x + X_GAP, y }, data: { label: "" } });
+      perfEdges.push({
+        id: `pcab-${i}`,
+        source: `ps-${i}`,
+        target: `pd-${i}`,
+        type: "cable",
+        data: makeCable({
+          id: `pcab-${i}`,
+          signalType: signals[i % signals.length],
+          channelCount: (i % 3 === 0 ? 6 : i % 2 === 0 ? 2 : 1) as 1 | 2 | 6,
+        }),
+      });
+    }
+    return (
+      <MiniFlow
+        nodes={perfNodes}
+        edges={perfEdges}
+        edgeTypes={edgeTypes}
+        height={Math.ceil(COUNT / COLS) * Y_GAP + 60}
+      />
+    );
+  },
+  decorators: [
+    (Story) => {
+      resetStores();
+      // Half the cables live (alternating) so ~20 flow-pulses run at once.
+      const levels: Record<string, number> = {};
+      for (let i = 0; i < 40; i += 2) levels[`pcab-${i}`] = 0.3 + (i % 5) * 0.12;
+      useCableMeterStore.setState({ levels });
+      useAppStore.setState({ cableRouting: "bezier" });
+      return <Story />;
+    },
+  ],
+};
 
 // Wireless cable on a named bus. The badge lives in Block.tsx; the cable
 // itself draws only a faint dotted ghost, and only when selected — so the

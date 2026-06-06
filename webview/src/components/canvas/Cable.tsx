@@ -64,11 +64,17 @@ if (typeof document !== "undefined") {
  * Use it as the visual carrier of signal semantics: stroke colour encodes the
  * signal type (audio = blue, MIDI = teal, value/CV = orange), width encodes
  * channel count (1/2/6), a dashed stroke marks a sidechain, and the cable's
- * brightness + animated signal-pulse track the live engine RMS level from
- * `useCableMeterStore`. When the Cable is assigned to a named bus via
- * `useBusStore` it becomes "wireless" — the curve is hidden (drawn only as a
- * faint dotted ghost while selected) and the connection is represented by
- * per-port bus badges in `Block`. Routing geometry (bezier vs. manhattan, with
+ * brightness + a dashed flow-pulse overlay track the live engine RMS level
+ * from `useCableMeterStore` (the pulse's march speed and opacity both scale
+ * with the real amp, and the overlay is omitted entirely below threshold so an
+ * idle cable stays clean). Endpoint plugs (small signal-colour discs with a
+ * dark neumorphic ring) anchor each port, and a per-edge `marker-end`
+ * arrowhead — with a UNIQUE id per cable so each paints its own colour —
+ * shows signal direction (locked bake-off verdict #2, T9a–c). When the Cable
+ * is assigned to a named bus via `useBusStore` it becomes "wireless" — the
+ * curve is hidden (drawn only as a faint dotted ghost while selected) and the
+ * connection is represented by per-port bus badges in `Block`. Routing
+ * geometry (bezier — the default since verdict #2 — vs. manhattan, with
  * fan-out for multi-output Blocks) follows `useAppStore.cableRouting`.
  *
  * Props are React Flow's injected `EdgeProps`; `data` is cast to `CableData`.
@@ -118,6 +124,10 @@ function CableComponent({
   const amp = Math.min(1, Math.max(0, level));
   const strokeOpacity = selected ? 1 : 0.4 + amp * 0.6;
   const glowOpacity = 0.05 + amp * 0.4;
+  // Unique per-edge marker id (T9b). A shared id would make ALL cables paint
+  // with the FIRST mounted cable's marker colour (a known SVG quirk: <marker>
+  // is referenced by url(#id), so identical ids collapse to one definition).
+  const markerId = `cable-arrow-${id}`;
 
   // Manhattan fan-out: when the source block has multiple output ports, splay
   // each port's cable to a different vertical trunk so they don't overlap on
@@ -179,8 +189,38 @@ function CableComponent({
     );
   }
 
+  // T9c — pulse overlay: a dashed path stroked ON TOP of the main cable whose
+  // dash march speed AND opacity scale with the live engine amp. Below the
+  // activity threshold no overlay is rendered at all (idle / -∞ stays a clean
+  // static cable). CSS keyframes drive the march, so there is no per-frame
+  // React re-render — only the amp-derived duration/opacity change on a level
+  // tick. NOTHING-fake: amp is the real RMS/MIDI level from useCableMeterStore.
+  const PULSE_THRESHOLD = 0.05;
+  const showPulse = amp > PULSE_THRESHOLD;
+  // Faster march at higher amp: 1.6s (just-on) → 0.5s (hot).
+  const pulseDuration = 1.6 - amp * 1.1;
+  // Brighter overlay at higher amp, clamped to the 0.3–0.8 band.
+  const pulseOpacity = 0.3 + amp * 0.5;
+
   return (
     <>
+      {/* Per-edge arrowhead marker (T9b) — UNIQUE id so each cable paints its
+          own signal colour. Lives in the cable's <g>, not a shared layer. */}
+      <defs>
+        <marker
+          id={markerId}
+          viewBox="0 0 8 8"
+          refX="6"
+          refY="4"
+          markerWidth="5"
+          markerHeight="5"
+          orient="auto-start-reverse"
+          markerUnits="userSpaceOnUse"
+        >
+          <path d="M0,0 L8,4 L0,8 Z" fill={color} />
+        </marker>
+      </defs>
+
       {/* Selection glow — Section 5.2 Micro-glow */}
       {(selected || amp > 0.01) && (
         <BaseEdge
@@ -195,19 +235,65 @@ function CableComponent({
         />
       )}
 
-      {/* Main cable path — intensity follows engine RMS / MIDI activity (§2.4) */}
+      {/* Main cable path — intensity follows engine RMS / MIDI activity (§2.4).
+          marker-end draws the direction arrowhead in the signal colour. */}
       <BaseEdge
         id={id}
         path={edgePath}
+        markerEnd={`url(#${markerId})`}
         style={{
           stroke: color,
           strokeWidth: width + amp * 1.2,
-          strokeDasharray: isSidechain ? "6 4" : amp > 0.05 ? "8 16" : undefined,
+          strokeDasharray: isSidechain ? "6 4" : undefined,
           strokeLinecap: "round",
           opacity: strokeOpacity,
           filter: `drop-shadow(0 0 ${2 + amp * 4}px ${color}66)`,
-          animation: amp > 0.05 ? "signalPulse 1s linear infinite" : "none",
         }}
+      />
+
+      {/* Flow-pulse overlay (T9c) — dashed, amp-scaled march + opacity. Only
+          mounted while signal is actually flowing; sidechain keeps its own
+          static dash on the main stroke so the overlay sits cleanly on top. */}
+      {showPulse && !isSidechain && (
+        <BaseEdge
+          id={`${id}-pulse`}
+          path={edgePath}
+          style={{
+            stroke: color,
+            strokeWidth: width + amp * 1.2,
+            strokeDasharray: "8 16",
+            strokeLinecap: "round",
+            opacity: pulseOpacity,
+            animation: `signalPulse ${pulseDuration}s linear infinite`,
+            pointerEvents: "none",
+          }}
+        />
+      )}
+
+      {/* Endpoint plugs (T9b) — small signal-colour discs with a dark neu ring
+          press the cable INTO each port (no blur, per the neumorphic system).
+          Drawn at the React-Flow endpoints so they track the live geometry. */}
+      <circle
+        cx={sourceX}
+        cy={sourceY}
+        r={4}
+        fill={color}
+        stroke="#1A1A1E"
+        strokeWidth={1.5}
+        opacity={strokeOpacity}
+        pointerEvents="none"
+        data-testid={`cable-plug-source-${id}`}
+      />
+      <circle
+        cx={targetX}
+        cy={targetY}
+        r={4}
+        fill={color}
+        stroke="#1A1A1E"
+        strokeWidth={1.5}
+        opacity={strokeOpacity}
+        pointerEvents="none"
+        data-testid={`cable-plug-target-${id}`}
       />
 
       {/* Flow-Debug readout chip (W3) — live engine data ONLY (NOTHING-fake):
