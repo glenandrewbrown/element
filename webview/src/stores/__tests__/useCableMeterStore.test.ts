@@ -60,3 +60,52 @@ describe("useCableMeterStore.setCableLevels", () => {
     expect(useCableMeterStore.getState().levels).toEqual({});
   });
 });
+
+// ── Ledger #5/#6: fingerprint fast-path (skip rebuild on a repeat frame) ──────
+describe("useCableMeterStore.setCableLevels — fingerprint fast-path", () => {
+  beforeEach(() => {
+    useCableMeterStore.setState({ levels: {}, values: {}, peaks: {} });
+  });
+
+  it("an EXACT-repeat frame returns the same level/value/peak references", () => {
+    useCableMeterStore.getState().setCableLevels([
+      { id: "e1", level: 0.5, v: -0.2, pk: 0.6 },
+      { id: "e2", level: 0.3 },
+    ]);
+    const lvl = useCableMeterStore.getState().levels;
+    const val = useCableMeterStore.getState().values;
+    const pk = useCableMeterStore.getState().peaks;
+
+    useCableMeterStore.getState().setCableLevels([
+      { id: "e1", level: 0.5, v: -0.2, pk: 0.6 },
+      { id: "e2", level: 0.3 },
+    ]);
+    expect(useCableMeterStore.getState().levels).toBe(lvl);
+    expect(useCableMeterStore.getState().values).toBe(val);
+    expect(useCableMeterStore.getState().peaks).toBe(pk);
+  });
+
+  it("does NOT mask a change to the signed value v", () => {
+    useCableMeterStore.getState().setCableLevels([{ id: "e1", level: 0.5, v: 0.1 }]);
+    const val1 = useCableMeterStore.getState().values;
+    useCableMeterStore.getState().setCableLevels([{ id: "e1", level: 0.5, v: 0.9 }]);
+    expect(useCableMeterStore.getState().values).not.toBe(val1);
+    expect(useCableMeterStore.getState().values["e1"]).toBeCloseTo(0.9);
+  });
+
+  it("does NOT mask a change to the peak pk", () => {
+    useCableMeterStore.getState().setCableLevels([{ id: "e1", level: 0.5, pk: 0.2 }]);
+    const pk1 = useCableMeterStore.getState().peaks;
+    useCableMeterStore.getState().setCableLevels([{ id: "e1", level: 0.5, pk: 0.95 }]);
+    expect(useCableMeterStore.getState().peaks).not.toBe(pk1);
+    expect(useCableMeterStore.getState().peaks["e1"]).toBeCloseTo(0.95);
+  });
+
+  it("does NOT mask a level change even when v/pk stay the same", () => {
+    useCableMeterStore.getState().setCableLevels([{ id: "e1", level: 0.2 }]);
+    const lvl1 = useCableMeterStore.getState().levels;
+    useCableMeterStore.getState().setCableLevels([{ id: "e1", level: 0.8 }]);
+    expect(useCableMeterStore.getState().levels).not.toBe(lvl1);
+    expect(useCableMeterStore.getState().levels["e1"]).toBeCloseTo(0.8);
+  });
+});

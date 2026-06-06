@@ -676,3 +676,140 @@ describe("selectors", () => {
     expect(selectSelectedEdgeId(s)).toBeNull();
   });
 });
+
+// ── hydrateFromEngine — array/object identity reuse (ledger #17) ──────────────
+// A no-change snapshot must keep the EXISTING array references so downstream
+// useSyncExternalStore subscribers (canvas/meters/inspector) see no slice
+// change and never re-render. Drag-safe: a moved Block is not deep-equal, so
+// its new position is adopted.
+
+describe("hydrateFromEngine — identity reuse on unchanged content", () => {
+  beforeEach(() => {
+    useGraphStore.setState({
+      nodes: [],
+      edges: [],
+      selectedNodeId: null,
+      selectedEdgeId: null,
+      breadcrumbStack: ["Main Project"],
+      currentBoardId: null,
+      commentBoxes: [],
+      minimapVisible: true,
+      zoomTier: "standard",
+    });
+    useBusStore.setState({ cableBus: {} });
+  });
+
+  it("keeps the SAME nodes/edges array references when re-hydrated with equal content", () => {
+    const nodes = [makeBlock("n1", 10, 20), makeBlock("n2", 30, 40)];
+    const edges = [makeCable("e1", "n1", "n2")];
+    useGraphStore.getState().hydrateFromEngine({ nodes, edges });
+    const refNodes = useGraphStore.getState().nodes;
+    const refEdges = useGraphStore.getState().edges;
+
+    // Re-hydrate with a FRESH but content-identical snapshot (new object/array
+    // identities, same values) — the store must reuse its existing references.
+    useGraphStore.getState().hydrateFromEngine({
+      nodes: [makeBlock("n1", 10, 20), makeBlock("n2", 30, 40)],
+      edges: [makeCable("e1", "n1", "n2")],
+    });
+    expect(useGraphStore.getState().nodes).toBe(refNodes);
+    expect(useGraphStore.getState().edges).toBe(refEdges);
+  });
+
+  it("returns the SAME state reference for a true no-change snapshot", () => {
+    const nodes = [makeBlock("n1", 0, 0)];
+    useGraphStore.getState().hydrateFromEngine({ nodes, edges: [] });
+    const before = useGraphStore.getState();
+    useGraphStore.getState().hydrateFromEngine({
+      nodes: [makeBlock("n1", 0, 0)],
+      edges: [],
+    });
+    expect(useGraphStore.getState()).toBe(before);
+  });
+
+  it("reuses unchanged element objects but swaps the array when ONE node moved", () => {
+    const nodes = [makeBlock("n1", 0, 0), makeBlock("n2", 50, 50)];
+    useGraphStore.getState().hydrateFromEngine({ nodes, edges: [] });
+    const prevNodes = useGraphStore.getState().nodes;
+    const prevN2 = prevNodes[1];
+
+    // n1 moves; n2 unchanged. Array ref must change; n2 object ref reused.
+    useGraphStore.getState().hydrateFromEngine({
+      nodes: [makeBlock("n1", 999, 0), makeBlock("n2", 50, 50)],
+      edges: [],
+    });
+    const nextNodes = useGraphStore.getState().nodes;
+    expect(nextNodes).not.toBe(prevNodes);
+    expect(nextNodes[0].position).toEqual({ x: 999, y: 0 }); // moved → adopted
+    expect(nextNodes[1]).toBe(prevN2); // unchanged → reused identity
+  });
+
+  it("swaps references when a deep field (ports) changes even if ids match", () => {
+    const n: BlockData = {
+      ...makeBlock("n1"),
+      ports: [
+        { id: "p0", type: "audio", direction: "output", label: "Out", connected: false },
+      ],
+    };
+    useGraphStore.getState().hydrateFromEngine({ nodes: [n], edges: [] });
+    const prev = useGraphStore.getState().nodes;
+
+    const nMoved: BlockData = {
+      ...makeBlock("n1"),
+      ports: [
+        { id: "p0", type: "audio", direction: "output", label: "Out", connected: true },
+      ],
+    };
+    useGraphStore.getState().hydrateFromEngine({ nodes: [nMoved], edges: [] });
+    expect(useGraphStore.getState().nodes).not.toBe(prev);
+    expect(useGraphStore.getState().nodes[0].ports[0].connected).toBe(true);
+  });
+
+  it("keeps commentBoxes + breadcrumb references stable on a no-change re-hydrate", () => {
+    useGraphStore.getState().hydrateFromEngine({
+      nodes: [],
+      edges: [],
+      commentBoxes: [
+        {
+          id: "cb1",
+          label: "Group",
+          color: "blue",
+          position: { x: 1, y: 2 },
+          size: { width: 100, height: 80 },
+        },
+      ],
+      breadcrumbs: ["Project", "Main", "Container"],
+    });
+    const prevComments = useGraphStore.getState().commentBoxes;
+    const prevCrumbs = useGraphStore.getState().breadcrumbStack;
+
+    useGraphStore.getState().hydrateFromEngine({
+      nodes: [],
+      edges: [],
+      commentBoxes: [
+        {
+          id: "cb1",
+          label: "Group",
+          color: "blue",
+          position: { x: 1, y: 2 },
+          size: { width: 100, height: 80 },
+        },
+      ],
+      breadcrumbs: ["Project", "Main", "Container"],
+    });
+    expect(useGraphStore.getState().commentBoxes).toBe(prevComments);
+    expect(useGraphStore.getState().breadcrumbStack).toBe(prevCrumbs);
+  });
+
+  it("still clears a live selection on hydrate (does NOT short-circuit when selected)", () => {
+    const nodes = [makeBlock("n1", 0, 0)];
+    useGraphStore.getState().hydrateFromEngine({ nodes, edges: [] });
+    useGraphStore.setState({ selectedNodeId: "n1" });
+    // Even content-identical, the selection must be cleared → not a no-op.
+    useGraphStore.getState().hydrateFromEngine({
+      nodes: [makeBlock("n1", 0, 0)],
+      edges: [],
+    });
+    expect(useGraphStore.getState().selectedNodeId).toBeNull();
+  });
+});

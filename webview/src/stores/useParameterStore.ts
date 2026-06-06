@@ -33,8 +33,11 @@ export const useParameterStore = create<ParameterState>()((set) => ({
   applyDeltas: (deltas) =>
     set((st) => {
       if (!Array.isArray(deltas) || deltas.length === 0) return st;
-      const next = { ...st.values };
-      let changed = false;
+      // Defer the map copy until a delta ACTUALLY changes a value (ledger #7).
+      // The host pushes deltas ~15Hz; a no-op/unchanged push must not spread-
+      // copy the whole values map. `next` stays the old reference until the
+      // first real change, then becomes a single fresh copy reused thereafter.
+      let next = st.values;
       for (const d of deltas) {
         if (!d || typeof d.nodeId !== "string" || !Array.isArray(d.params))
           continue;
@@ -42,13 +45,13 @@ export const useParameterStore = create<ParameterState>()((set) => ({
           if (!p || typeof p.i !== "number" || typeof p.v !== "number")
             continue;
           const k = paramKey(d.nodeId, p.i);
-          if (next[k] !== p.v) {
+          if (st.values[k] !== p.v) {
+            if (next === st.values) next = { ...st.values }; // copy once, lazily
             next[k] = p.v;
-            changed = true;
           }
         }
       }
-      return changed ? { values: next } : st;
+      return next === st.values ? st : { values: next };
     }),
 
   pruneNodes: (liveNodeIds) =>

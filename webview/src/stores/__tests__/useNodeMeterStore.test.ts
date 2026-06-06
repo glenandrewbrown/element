@@ -101,3 +101,51 @@ describe("useNodeMeterStore.setNodeLevels — 60Hz epsilon-diff", () => {
     expect(useNodeMeterStore.getState().levels).not.toBe(ref1);
   });
 });
+
+// ── Ledger #5/#6: fingerprint fast-path (skip rebuild on a repeat frame) ──────
+describe("useNodeMeterStore.setNodeLevels — fingerprint fast-path", () => {
+  it("an EXACT-repeat frame returns the same reference (fast-path hit)", () => {
+    act(() => {
+      useNodeMeterStore.getState().setNodeLevels([
+        { id: "a", level: 0.5 },
+        { id: "b", level: 0.25 },
+      ]);
+    });
+    const ref1 = useNodeMeterStore.getState().levels;
+    act(() => {
+      // Identical values + ids → fast-path returns the existing reference.
+      useNodeMeterStore.getState().setNodeLevels([
+        { id: "a", level: 0.5 },
+        { id: "b", level: 0.25 },
+      ]);
+    });
+    expect(useNodeMeterStore.getState().levels).toBe(ref1);
+  });
+
+  it("does NOT mask a real change (fast-path only confirms unchanged)", () => {
+    act(() => {
+      useNodeMeterStore.getState().setNodeLevels([{ id: "a", level: 0.5 }]);
+    });
+    const ref1 = useNodeMeterStore.getState().levels;
+    act(() => {
+      useNodeMeterStore.getState().setNodeLevels([{ id: "a", level: 0.7 }]);
+    });
+    const ref2 = useNodeMeterStore.getState().levels;
+    expect(ref2).not.toBe(ref1);
+    expect(ref2["a"]).toBeCloseTo(0.7);
+  });
+
+  it("self-heals after an out-of-band reset (setState) — next frame still lands", () => {
+    act(() => {
+      useNodeMeterStore.getState().setNodeLevels([{ id: "a", level: 0.42 }]);
+    });
+    // Reset levels out of band WITHOUT touching the fingerprint, then re-push
+    // the same frame: the key-count guard must force the slow path so the value
+    // is rebuilt (never returns the stale empty map).
+    act(() => {
+      useNodeMeterStore.setState({ levels: {} });
+      useNodeMeterStore.getState().setNodeLevels([{ id: "a", level: 0.42 }]);
+    });
+    expect(useNodeMeterStore.getState().levels["a"]).toBeCloseTo(0.42);
+  });
+});

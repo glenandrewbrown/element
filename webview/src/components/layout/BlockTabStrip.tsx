@@ -6,9 +6,16 @@ import { Icon } from "../neu";
  * Horizontal strip of open Block editor tabs above the canvas, mirroring a code
  * editor's tab bar. Use it to keep several Blocks "pinned" for quick switching
  * while working a Board — clicking a tab selects that Block, the X closes it.
- * Renders nothing when no Blocks are open, so it can sit unconditionally in the
- * layout. Reads the open-tab list from the app store and Block names from the
- * graph store.
+ * Reads the open-tab list from the app store and Block names from the graph
+ * store.
+ *
+ * RESERVED HEIGHT (architect-perf-plan §6/C4): the outer `h-8` container is
+ * ALWAYS rendered — even with zero open tabs — so the canvas pane below never
+ * resizes when the first selection opens a tab. Previously this returned `null`
+ * when empty, so the first block-select grew the strip 0→32px, shrank the
+ * React-Flow pane, and triggered an auto-refit that jumped the viewport under
+ * the cursor (the live-confirmed "viewport jumps on first selection" defect).
+ * Only the tab CONTENT is conditional now; the row's footprint is constant.
  */
 export function BlockTabStrip() {
   const openTabs = useAppStore((s) => s.openBlockTabs);
@@ -17,10 +24,8 @@ export function BlockTabStrip() {
   const selectNode = useGraphStore((s) => s.selectNode);
   const nodes = useGraphStore((s) => s.nodes);
 
-  if (openTabs.length === 0) return null;
-
   return (
-    <div className="h-8 bg-[#222226] flex items-center px-4 gap-1 border-b border-white/5 select-none">
+    <div className="h-8 shrink-0 bg-[#222226] flex items-center px-4 gap-1 border-b border-white/5 select-none">
       {openTabs.map((tabId) => {
         const node = nodes.find((n) => n.id === tabId);
         const name = node?.name ?? tabId;

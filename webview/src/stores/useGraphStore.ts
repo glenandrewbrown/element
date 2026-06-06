@@ -35,6 +35,72 @@ export type DistributeAxis = "horizontal" | "vertical";
 import { useBusStore } from "./useBusStore";
 
 /**
+ * Structural deep-equality for the JSON-derived snapshot models (BlockData /
+ * CableData / CommentBoxData). They are plain data — primitives, nested plain
+ * objects (position / size), and arrays of plain objects (ports) — never
+ * functions / Dates / Maps — so a JSON-shaped recursive compare is exact and
+ * survives schema growth without enumerating every field. Used by
+ * {@link GraphActions.hydrateFromEngine} to reuse object identities across a
+ * no-change engine snapshot (ledger #17): an idle re-push then produces ZERO
+ * downstream re-renders because every reused element — and therefore the array
+ * itself — keeps its previous reference.
+ */
+function deepEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== "object" || typeof b !== "object" || a === null || b === null)
+    return false;
+  const aArr = Array.isArray(a);
+  const bArr = Array.isArray(b);
+  if (aArr !== bArr) return false;
+  if (aArr && bArr) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      if (!deepEqual(a[i], b[i])) return false;
+    }
+    return true;
+  }
+  const ao = a as Record<string, unknown>;
+  const bo = b as Record<string, unknown>;
+  const aKeys = Object.keys(ao);
+  const bKeys = Object.keys(bo);
+  if (aKeys.length !== bKeys.length) return false;
+  for (const k of aKeys) {
+    if (!Object.prototype.hasOwnProperty.call(bo, k)) return false;
+    if (!deepEqual(ao[k], bo[k])) return false;
+  }
+  return true;
+}
+
+/**
+ * Reconcile a freshly-parsed snapshot array against the previous one, reusing
+ * object identities wherever content is unchanged (ledger #17). Per element:
+ * if the new item is deep-equal to the OLD item at the same index, keep the old
+ * object reference; otherwise take the new one. If EVERY element was reused and
+ * the length is unchanged, the PREVIOUS array reference is returned verbatim so
+ * an idle snapshot is a true no-op for `useSyncExternalStore` subscribers (the
+ * canvas, meters, inspector) — they never even re-run their selectors.
+ *
+ * Position-aware by construction: a Block whose `position` moved is NOT
+ * deep-equal, so it yields the NEW object at the NEW position — this never
+ * fights a live drag (the snapshot echoes the dragged position back and we
+ * adopt it), it only suppresses churn when nothing actually moved.
+ */
+function reconcileArray<T>(prev: readonly T[], next: readonly T[]): T[] {
+  let allReused = prev.length === next.length;
+  const out: T[] = new Array(next.length);
+  for (let i = 0; i < next.length; i++) {
+    const prevItem = i < prev.length ? prev[i] : undefined;
+    if (prevItem !== undefined && deepEqual(prevItem, next[i])) {
+      out[i] = prevItem;
+    } else {
+      out[i] = next[i];
+      allReused = false;
+    }
+  }
+  return allReused ? (prev as T[]) : out;
+}
+
+/**
  * Standalone Vite: `VITE_USE_DEMO_GRAPH=1 npm run dev` seeds the demo
  * board. Hosted Element starts empty until snapshot arrives.
  *
@@ -549,19 +615,52 @@ export const useGraphStore = create<GraphStore>()((set) => ({
     }
     useBusStore.setState({ cableBus: busSeed });
 
-    set({
-      nodes: data.nodes,
-      edges: data.edges,
-      selectedNodeId: null,
-      selectedEdgeId: null,
-      commentBoxes: data.commentBoxes ?? [],
-      breadcrumbStack:
+    set((s) => {
+      // Ledger #17 — reuse object/array identities for unchanged content so an
+      // idle (no-change) snapshot causes ZERO downstream re-renders. Drag-safe:
+      // a moved Block is not deep-equal → the new position is adopted (the
+      // reconcile never suppresses a real move, only churn).
+      const nextNodes = reconcileArray(s.nodes, data.nodes);
+      const nextEdges = reconcileArray(s.edges, data.edges);
+      const nextComments = reconcileArray(
+        s.commentBoxes,
+        data.commentBoxes ?? [],
+      );
+      const incomingBreadcrumbs =
         data.breadcrumbs && data.breadcrumbs.length > 0
           ? data.breadcrumbs
-          : ["Main Project"],
+          : ["Main Project"];
+      // Keep the previous breadcrumb array reference when its contents match.
+      const nextBreadcrumbs = deepEqual(s.breadcrumbStack, incomingBreadcrumbs)
+        ? s.breadcrumbStack
+        : incomingBreadcrumbs;
       // Snapshot is the SOLE source of dive state. `currentBoardId` is present
       // only when dived; coerce undefined → null so the top level is honest.
-      currentBoardId: data.currentBoardId ?? null,
+      const nextBoardId = data.currentBoardId ?? null;
+
+      // True no-op: every field referentially identical → return `s` so no
+      // subscriber slice changes (the hydrate becomes a zero-render event).
+      if (
+        nextNodes === s.nodes &&
+        nextEdges === s.edges &&
+        nextComments === s.commentBoxes &&
+        nextBreadcrumbs === s.breadcrumbStack &&
+        nextBoardId === s.currentBoardId &&
+        s.selectedNodeId === null &&
+        s.selectedEdgeId === null
+      ) {
+        return s;
+      }
+
+      return {
+        nodes: nextNodes,
+        edges: nextEdges,
+        selectedNodeId: null,
+        selectedEdgeId: null,
+        commentBoxes: nextComments,
+        breadcrumbStack: nextBreadcrumbs,
+        currentBoardId: nextBoardId,
+      };
     });
   },
 

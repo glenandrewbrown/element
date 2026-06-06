@@ -57,7 +57,9 @@ import { CanvasContextMenu } from "./CanvasContextMenu";
 import { NestedChrome } from "./NestedChrome";
 import {
   computeRouteSuggestions,
+  buildRouteSuggestionCache,
   type RouteSuggestion,
+  type RouteSuggestionCache,
 } from "./autoRouteSuggestions";
 import type {
   BlockData,
@@ -73,10 +75,11 @@ const nodeTypes: NodeTypes = { block: Block, comment: CommentFrame };
 const edgeTypes: EdgeTypes = { cable: Cable, ghost: GhostEdge };
 
 // Throttle interval for the auto-route suggestion compute during a drag.
-// The canvas is aggressively memoised, so we recompute at most ~every 60ms
-// (≈16fps) instead of on every pointermove pixel — matching the "keep it
-// performant / don't recompute every pixel" constraint.
-const SUGGEST_THROTTLE_MS = 60;
+// The canvas is aggressively memoised, so we recompute at most ~every 100ms
+// (10Hz) instead of on every pointermove pixel. Raised 60→100ms
+// (architect-perf-plan §2.1a) — a ghost hint still feels instant at 10Hz, and
+// the lower cadence cuts the per-tick matcher work during a heavy drag.
+const SUGGEST_THROTTLE_MS = 100;
 
 // ── Category → minimap colour ──
 
@@ -303,6 +306,11 @@ export function GraphCanvas() {
   // gates how often the compute runs (see SUGGEST_THROTTLE_MS).
   const [suggestions, setSuggestions] = useState<RouteSuggestion[]>([]);
   const lastSuggestRef = useRef(0);
+  // Per-drag memo of the adjacency + used-port Sets (pure fn of the edges
+  // array; topology can't change mid-drag). Reused across throttled ticks and
+  // auto-rebuilt by the matcher when the edges identity changes
+  // (architect-perf-plan §2.1b). Cleared on drag-stop.
+  const suggestCacheRef = useRef<RouteSuggestionCache | null>(null);
   // Keep the latest suggestions in a ref too, so the global key handler and
   // drag-stop can read/accept the top one without being re-created per change.
   const suggestionsRef = useRef<RouteSuggestion[]>([]);
@@ -469,6 +477,7 @@ export function GraphCanvas() {
 
   const clearSuggestions = useCallback(() => {
     lastSuggestRef.current = 0;
+    suggestCacheRef.current = null;
     setSuggestions((prev) => (prev.length === 0 ? prev : []));
     // Drop the T8 discoverability hint with the ghosts (only if it's ours).
     const app = useAppStore.getState();
@@ -524,11 +533,19 @@ export function GraphCanvas() {
           return p ? { ...b, position: p } : b;
         });
 
+      const liveEdges = useGraphStore.getState().edges;
+      // Reuse the adjacency + used-port Sets across the drag — rebuilt only if
+      // the edges identity changed (topology never changes mid-drag).
+      suggestCacheRef.current = buildRouteSuggestionCache(
+        liveEdges,
+        suggestCacheRef.current,
+      );
       const next = computeRouteSuggestions(
         node.id,
         liveBlocks,
-        useGraphStore.getState().edges,
+        liveEdges,
         measured,
+        suggestCacheRef.current,
       );
       setSuggestions(next);
       // Discoverability (T8): advertise the accept gestures in the status

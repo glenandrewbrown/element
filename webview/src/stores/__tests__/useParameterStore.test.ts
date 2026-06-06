@@ -65,6 +65,35 @@ describe("useParameterStore.applyDeltas", () => {
     expect(useParameterStore.getState()).toBe(before);
   });
 
+  // ── Ledger #7: only spread-copy when a delta actually changes a value ──────
+  it("no-op delta over MANY existing params keeps the SAME values reference", () => {
+    const values: Record<string, number> = {};
+    for (let i = 0; i < 50; i++) values[`n1:${i}`] = i / 100;
+    useParameterStore.setState({ values });
+    const beforeValues = useParameterStore.getState().values;
+    // Re-push the identical full snapshot — must not allocate a copy.
+    useParameterStore.getState().applyDeltas([
+      { nodeId: "n1", params: Array.from({ length: 50 }, (_, i) => ({ i, v: i / 100 })) },
+    ]);
+    expect(useParameterStore.getState().values).toBe(beforeValues);
+  });
+
+  it("partial change copies the map exactly ONCE and preserves untouched keys", () => {
+    useParameterStore.setState({ values: { "n1:0": 0.1, "n1:1": 0.2, "n1:2": 0.3 } });
+    const beforeValues = useParameterStore.getState().values;
+    // Only n1:1 changes; n1:0 and n1:2 are re-sent unchanged.
+    useParameterStore.getState().applyDeltas([
+      { nodeId: "n1", params: [{ i: 0, v: 0.1 }, { i: 1, v: 0.9 }, { i: 2, v: 0.3 }] },
+    ]);
+    const afterValues = useParameterStore.getState().values;
+    expect(afterValues).not.toBe(beforeValues); // a real change → one copy
+    expect(afterValues["n1:1"]).toBe(0.9);
+    expect(afterValues["n1:0"]).toBe(0.1);
+    expect(afterValues["n1:2"]).toBe(0.3);
+    // The previous map object is left untouched (copy-on-write, not mutated).
+    expect(beforeValues["n1:1"]).toBe(0.2);
+  });
+
   it("edge: skips null/undefined delta entries", () => {
     // @ts-expect-error intentional bad input
     useParameterStore.getState().applyDeltas([null, undefined]);

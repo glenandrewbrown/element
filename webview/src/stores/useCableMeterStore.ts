@@ -30,12 +30,72 @@ interface CableMeterState {
 /** Below this absolute delta a meter change is visually imperceptible. */
 const LEVEL_EPSILON = 0.001;
 
+/**
+ * One-pass rolling fingerprint of a cable-level snapshot — folds every item's
+ * id, level, and (when present) signed value `v` and peak `pk` into a single
+ * 32-bit FNV-1a-style hash, plus the item count. Used as a fast-path in
+ * {@link useCableMeterStore.setCableLevels} (ledger #5/#6): a frame whose count
+ * AND fingerprint match the last ACCEPTED frame is bit-identical, so the three
+ * record maps are NOT re-allocated and the existing references are returned. A
+ * genuine change to ANY of level/v/pk perturbs the hash and falls through to
+ * the epsilon scan — the fast-path can only confirm "unchanged".
+ */
+function fingerprintCableLevels(items: CableLevelItem[]): number {
+  let h = 0x811c9dc5;
+  const fb = new Float64Array(1);
+  const ib = new Uint32Array(fb.buffer);
+  const fold = (n: number) => {
+    fb[0] = n;
+    h = Math.imul(h ^ ib[0], 0x01000193);
+    h = Math.imul(h ^ ib[1], 0x01000193);
+  };
+  for (const item of items) {
+    for (let i = 0; i < item.id.length; i++) {
+      h = Math.imul(h ^ item.id.charCodeAt(i), 0x01000193);
+    }
+    fold(item.level);
+    // Distinguish "present" from "absent" so adding/removing v|pk perturbs h.
+    h = Math.imul(h ^ (typeof item.v === "number" ? 0x11 : 0x10), 0x01000193);
+    if (typeof item.v === "number") fold(item.v);
+    h = Math.imul(h ^ (typeof item.pk === "number" ? 0x21 : 0x20), 0x01000193);
+    if (typeof item.pk === "number") fold(item.pk);
+    h = Math.imul(h ^ 0x2c, 0x01000193); // record separator
+  }
+  return h >>> 0;
+}
+
+/** Fingerprint + count of the last ACCEPTED cable-levels frame (non-reactive). */
+let lastFingerprint = 0;
+let lastCount = -1;
+
 export const useCableMeterStore = create<CableMeterState>()((set) => ({
   levels: {},
   values: {},
   peaks: {},
   setCableLevels: (items) =>
     set((state) => {
+      // Fast-path (ledger #5/#6): a frame bit-identical to the last ACCEPTED
+      // one (same count + fingerprint) skips building all three record maps and
+      // returns the existing references. Any real change to level/v/pk perturbs
+      // the fingerprint and falls through to the epsilon scan below. The
+      // `state.levels` key-count guard keeps the fingerprint self-healing if
+      // `levels` was ever replaced out-of-band (setState/reset).
+      const count = items.length;
+      const fp = fingerprintCableLevels(items);
+      if (
+        count === lastCount &&
+        fp === lastFingerprint &&
+        Object.keys(state.levels).length === count
+      ) {
+        return {
+          levels: state.levels,
+          values: state.values,
+          peaks: state.peaks,
+        };
+      }
+      lastCount = count;
+      lastFingerprint = fp;
+
       const levels: Record<string, number> = {};
       const values: Record<string, number> = {};
       const peaks: Record<string, number> = {};

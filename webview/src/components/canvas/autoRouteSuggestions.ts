@@ -44,6 +44,22 @@ import type { BlockData, CableData, SignalType } from "../../data/types";
 export const PROXIMITY_THRESHOLD = 150;
 
 /**
+ * Squared proximity threshold — compared against the squared edge-gap BEFORE
+ * any `Math.sqrt`, so the proximity loop short-circuits far blocks without a
+ * sqrt per pair (architect-perf-plan §2.1c). `blockDistance` is only computed
+ * for the survivors that need the real distance for ranking.
+ */
+const PROXIMITY_THRESHOLD_SQ = PROXIMITY_THRESHOLD * PROXIMITY_THRESHOLD;
+
+/**
+ * Above this Block count the whole drag-suggestion compute is skipped
+ * (architect-perf-plan §2.1e). The matcher is O(N²·…) and on a huge Board the
+ * per-tick cost would dominate a drag; the ghost-hint affordance is a nicety,
+ * not load-bearing, so it degrades gracefully to "off" on very large boards.
+ */
+export const SUGGEST_MAX_BLOCKS = 60;
+
+/**
  * Fallback Block dimensions when a node has not yet been measured by React
  * Flow. Matches the alignment reference constants in useGraphStore so centre
  * math is consistent across the codebase.
@@ -100,9 +116,20 @@ export function boundsOf(
  * gap between bounding-box edges is what "dragged near" actually means.
  */
 export function blockDistance(a: BlockBounds, b: BlockBounds): number {
+  return Math.sqrt(blockDistanceSq(a, b));
+}
+
+/**
+ * SQUARED edge-to-edge gap — the sqrt-free core of {@link blockDistance}. The
+ * proximity loop compares this against `PROXIMITY_THRESHOLD_SQ` first and only
+ * pays the `Math.sqrt` (via blockDistance) for the survivors it must rank
+ * (architect-perf-plan §2.1c). Monotonic in the real distance, so the
+ * pre-filter is exactly equivalent to the old `distance > THRESHOLD` test.
+ */
+export function blockDistanceSq(a: BlockBounds, b: BlockBounds): number {
   const dx = Math.max(0, Math.max(a.x, b.x) - Math.min(a.x + a.width, b.x + b.width));
   const dy = Math.max(0, Math.max(a.y, b.y) - Math.min(a.y + a.height, b.y + b.height));
-  return Math.sqrt(dx * dx + dy * dy);
+  return dx * dx + dy * dy;
 }
 
 /**
@@ -230,38 +257,88 @@ function firstFreePortPair(
 }
 
 /**
+ * Per-drag derived state that is a pure function of the `edges` array and never
+ * changes mid-drag (a drag moves Blocks, not topology). Built once per drag and
+ * reused on every throttled tick via {@link computeRouteSuggestions}'s `cache`
+ * arg, so the adjacency map + used-port Sets are NOT rebuilt ~10×/s
+ * (architect-perf-plan §2.1b). Keyed by the `edges` array identity: if the
+ * caller passes a different array (topology changed) the matcher rebuilds.
+ */
+export interface RouteSuggestionCache {
+  /** The `edges` array this cache was built from (identity key). */
+  edges: CableData[];
+  adjacency: Map<string, Set<string>>;
+  used: { outputs: Set<string>; inputs: Set<string> };
+}
+
+/**
+ * Build (or reuse) the per-drag {@link RouteSuggestionCache} for `edges`. When
+ * `cache` was built from the SAME `edges` array it is returned untouched (the
+ * memoised hot path); otherwise the adjacency + used-port Sets are rebuilt and
+ * a fresh cache is returned. Callers stash the returned cache in a ref keyed by
+ * the edges identity and hand it back each tick.
+ */
+export function buildRouteSuggestionCache(
+  edges: CableData[],
+  cache?: RouteSuggestionCache | null,
+): RouteSuggestionCache {
+  if (cache && cache.edges === edges) return cache;
+  return { edges, adjacency: buildAdjacency(edges), used: usedPorts(edges) };
+}
+
+// Module-level scratch for the per-call dedupe set. Reused (cleared, not
+// re-allocated) on every call because computeRouteSuggestions runs ~10Hz during
+// a drag (architect-perf-plan §2.1d). The Set is transient — it holds only the
+// ordered node-pair keys seen during one synchronous compute and is cleared on
+// entry, so reuse is safe (the function is never re-entrant).
+const scratchSeenPairs = new Set<string>();
+
+/**
  * Compute auto-route ghost suggestions for the Block currently being dragged.
  *
  * @param draggedId  id of the Block being moved.
  * @param blocks     all Blocks on the current Board (`useGraphStore.nodes`).
  * @param edges      all Cables on the current Board (`useGraphStore.edges`).
  * @param measured   optional measured node sizes (React Flow `node.measured`).
+ * @param cache      optional per-drag {@link RouteSuggestionCache} (adjacency +
+ *                   used ports) reused across throttled ticks; rebuilt when the
+ *                   `edges` identity differs. Omit to derive it per call.
  * @returns          de-duplicated, acyclic, compatible suggestions, closest
- *                   pair first.
+ *                   pair first. Always a FRESH array (it becomes React state —
+ *                   reusing it would defeat the consumer's reference check).
  */
 export function computeRouteSuggestions(
   draggedId: string,
   blocks: BlockData[],
   edges: CableData[],
   measured?: Map<string, { width: number; height: number }>,
+  cache?: RouteSuggestionCache | null,
 ): RouteSuggestion[] {
+  // Big-board cap (§2.1e): the O(N²·…) matcher is skipped wholesale on very
+  // large Boards — the ghost hint is a nicety, never load-bearing.
+  if (blocks.length > SUGGEST_MAX_BLOCKS) return [];
+
   const dragged = blocks.find((b) => b.id === draggedId);
   if (!dragged) return [];
 
   const draggedBounds = boundsOf(dragged, measured);
-  const adjacency = buildAdjacency(edges);
-  const used = usedPorts(edges);
+  // Reuse the per-drag adjacency + used-port Sets when the topology (edges
+  // identity) is unchanged (§2.1b) — they are pure functions of `edges`.
+  const { adjacency, used } = buildRouteSuggestionCache(edges, cache);
 
-  // One suggestion per ordered node pair (JUCE `suggestedPairs`).
-  const seenPairs = new Set<string>();
+  // One suggestion per ordered node pair (JUCE `suggestedPairs`). Reused
+  // module scratch, cleared per call (§2.1d).
+  scratchSeenPairs.clear();
   const out: RouteSuggestion[] = [];
 
   for (const other of blocks) {
     if (other.id === draggedId) continue;
 
     const otherBounds = boundsOf(other, measured);
-    const distance = blockDistance(draggedBounds, otherBounds);
-    if (distance > PROXIMITY_THRESHOLD) continue;
+    // Squared pre-filter BEFORE any sqrt (§2.1c): reject far blocks without a
+    // sqrt. Only survivors pay `blockDistance` for the ranking distance.
+    const distanceSq = blockDistanceSq(draggedBounds, otherBounds);
+    if (distanceSq > PROXIMITY_THRESHOLD_SQ) continue;
 
     // Signal flows left → right: the upstream (source) Block is the one whose
     // centre is further left. Equal-X pairs are skipped (ambiguous direction,
@@ -275,7 +352,7 @@ export function computeRouteSuggestions(
     const downstream = draggedIsUpstream ? other : dragged;
 
     const pairKey = `${upstream.id}->${downstream.id}`;
-    if (seenPairs.has(pairKey)) continue;
+    if (scratchSeenPairs.has(pairKey)) continue;
 
     const pair = firstFreePortPair(upstream, downstream, used, edges);
     if (!pair) continue;
@@ -283,7 +360,7 @@ export function computeRouteSuggestions(
     // Reject anything that would close a feedback loop.
     if (wouldCreateCycle(adjacency, upstream.id, downstream.id)) continue;
 
-    seenPairs.add(pairKey);
+    scratchSeenPairs.add(pairKey);
     out.push({
       id: `ghost:${upstream.id}:${pair.sourcePort}->${downstream.id}:${pair.targetPort}`,
       source: upstream.id,
@@ -291,7 +368,7 @@ export function computeRouteSuggestions(
       target: downstream.id,
       targetPort: pair.targetPort,
       signalType: pair.signalType,
-      distance,
+      distance: Math.sqrt(distanceSq),
     });
   }
 

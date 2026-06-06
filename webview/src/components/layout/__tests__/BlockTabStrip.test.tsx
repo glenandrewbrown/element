@@ -28,7 +28,7 @@ vi.mock("../../neu", () => ({
 
 import { BlockTabStrip } from "../BlockTabStrip";
 
-describe("BlockTabStrip — empty state", () => {
+describe("BlockTabStrip — empty state (reserved height — §6/C4)", () => {
   beforeEach(() => {
     openTabs = [];
     selectedNodeId = null;
@@ -36,9 +36,24 @@ describe("BlockTabStrip — empty state", () => {
     vi.clearAllMocks();
   });
 
-  it("renders nothing when no tabs open", () => {
+  // C4 viewport-jump fix: the strip must RESERVE its height even with zero
+  // tabs, so the first block-selection (which opens a tab) does NOT grow the
+  // row 0→32px, shrink the canvas pane, and trigger a React-Flow auto-refit
+  // that jumps the viewport. Previously this returned null (no footprint).
+  it("renders a fixed-height container even with no tabs (no reflow on first select)", () => {
     const { container } = render(<BlockTabStrip />);
-    expect(container.firstChild).toBeNull();
+    const strip = container.firstChild as HTMLElement | null;
+    expect(strip).not.toBeNull();
+    // Reserved 32px row (Tailwind h-8) that never collapses.
+    expect(strip?.className).toContain("h-8");
+    // shrink-0 holds the height inside the flex-col canvas column.
+    expect(strip?.className).toContain("shrink-0");
+  });
+
+  it("renders no tab items when no tabs are open", () => {
+    const { container } = render(<BlockTabStrip />);
+    const strip = container.firstChild as HTMLElement;
+    expect(strip.childElementCount).toBe(0);
   });
 });
 

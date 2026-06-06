@@ -19,10 +19,13 @@ import { describe, it, expect } from "vitest";
 import type { BlockData, CableData, Port, SignalType } from "../../../data/types";
 import {
   computeRouteSuggestions,
+  buildRouteSuggestionCache,
   wouldCreateCycle,
   blockDistance,
+  blockDistanceSq,
   boundsOf,
   PROXIMITY_THRESHOLD,
+  SUGGEST_MAX_BLOCKS,
   BLOCK_REF_WIDTH,
   BLOCK_REF_HEIGHT,
 } from "../autoRouteSuggestions";
@@ -424,5 +427,136 @@ describe("computeRouteSuggestions — multiple neighbours", () => {
     expect(out.some((s) => s.source === "l" && s.target === "d")).toBe(true);
     expect(out.some((s) => s.source === "d" && s.target === "r")).toBe(true);
     expect(out).toHaveLength(2);
+  });
+});
+
+// ── Wave-2 §2.1c: squared pre-filter is exactly equivalent to the sqrt test ──
+
+describe("blockDistanceSq — squared-prefilter equivalence (§2.1c)", () => {
+  it("is the exact square of blockDistance", () => {
+    type B = { x: number; y: number; width: number; height: number };
+    const cases: Array<[B, B]> = [
+      [{ x: 0, y: 0, width: 100, height: 100 }, { x: 180, y: 0, width: 100, height: 100 }],
+      [{ x: 0, y: 0, width: 100, height: 100 }, { x: 130, y: 140, width: 100, height: 100 }],
+      [{ x: 0, y: 0, width: 100, height: 100 }, { x: 50, y: 20, width: 100, height: 100 }],
+    ];
+    for (const [a, b] of cases) {
+      const d = blockDistance(a, b);
+      expect(blockDistanceSq(a, b)).toBeCloseTo(d * d, 9);
+    }
+  });
+
+  it("the squared threshold test agrees with the exact-distance test across a sweep", () => {
+    const a = { x: 0, y: 0, width: 200, height: 100 };
+    const TSQ = PROXIMITY_THRESHOLD * PROXIMITY_THRESHOLD;
+    // Sweep b across (and well past) the threshold on both axes.
+    for (let gap = 0; gap <= 400; gap += 7) {
+      const b = { x: a.width + gap, y: 0, width: 200, height: 100 };
+      const exact = blockDistance(a, b) > PROXIMITY_THRESHOLD;
+      const squared = blockDistanceSq(a, b) > TSQ;
+      expect(squared).toBe(exact);
+    }
+  });
+
+  it("produces identical suggestions to a fixture board (pre-filter does not change output)", () => {
+    // A small board: dragged centre with a near upstream + downstream, plus a
+    // far block beyond the threshold that must be filtered out either way.
+    const dragged = block("d", 300, 0, [
+      port("d-out", "audio", "output"),
+      port("d-in", "audio", "input"),
+    ]);
+    const up = block("u", 0, 0, [port("u-out", "audio", "output")]); // gap 100 (< 150)
+    const down = block("dn", 600, 0, [port("dn-in", "audio", "input")]); // gap 100
+    const far = block("f", 2000, 0, [port("f-in", "audio", "input")]); // way past
+    const out = computeRouteSuggestions("d", [dragged, up, down, far], []);
+    // u → d and d → dn; never anything touching the far block.
+    expect(out.map((s) => `${s.source}->${s.target}`).sort()).toEqual([
+      "d->dn",
+      "u->d",
+    ]);
+    expect(out.some((s) => s.source === "f" || s.target === "f")).toBe(false);
+  });
+});
+
+// ── Wave-2 §2.1e: big-board cap ──
+
+describe("computeRouteSuggestions — big-board cap (§2.1e)", () => {
+  function chainBoard(n: number): BlockData[] {
+    // n blocks side by side, each with one out + one in, 50px apart.
+    const blocks: BlockData[] = [];
+    for (let i = 0; i < n; i++) {
+      blocks.push(
+        block(`b${i}`, i * 250, 0, [
+          port(`b${i}-out`, "audio", "output"),
+          port(`b${i}-in`, "audio", "input"),
+        ]),
+      );
+    }
+    return blocks;
+  }
+
+  it("computes suggestions at exactly the cap", () => {
+    const blocks = chainBoard(SUGGEST_MAX_BLOCKS);
+    expect(blocks).toHaveLength(SUGGEST_MAX_BLOCKS);
+    const out = computeRouteSuggestions("b0", blocks, []);
+    // b0 is on the far left; its right neighbour is within range → ≥1 ghost.
+    expect(out.length).toBeGreaterThan(0);
+  });
+
+  it("skips the whole compute above the cap (returns [])", () => {
+    const blocks = chainBoard(SUGGEST_MAX_BLOCKS + 1);
+    const out = computeRouteSuggestions("b0", blocks, []);
+    expect(out).toEqual([]);
+  });
+});
+
+// ── Wave-2 §2.1b: adjacency/used-port cache reuse across drag ticks ──
+
+describe("buildRouteSuggestionCache — reuse across drag ticks (§2.1b)", () => {
+  it("returns the SAME cache when the edges array identity is unchanged", () => {
+    const edges: CableData[] = [cable("c1", "a", "a-out", "b", "b-in")];
+    const c1 = buildRouteSuggestionCache(edges, null);
+    const c2 = buildRouteSuggestionCache(edges, c1);
+    expect(c2).toBe(c1); // memoised — no rebuild
+    expect(c2.adjacency).toBe(c1.adjacency);
+    expect(c2.used).toBe(c1.used);
+  });
+
+  it("rebuilds when a different edges array (topology change) is passed", () => {
+    const edges1: CableData[] = [cable("c1", "a", "a-out", "b", "b-in")];
+    const edges2: CableData[] = [cable("c1", "a", "a-out", "b", "b-in")]; // new identity
+    const c1 = buildRouteSuggestionCache(edges1, null);
+    const c2 = buildRouteSuggestionCache(edges2, c1);
+    expect(c2).not.toBe(c1);
+    expect(c2.edges).toBe(edges2);
+  });
+
+  it("a reused cache yields identical suggestions across repeated calls", () => {
+    const { a, b } = nearbyPair();
+    const edges: CableData[] = [];
+    const cache = buildRouteSuggestionCache(edges, null);
+    const first = computeRouteSuggestions("a", [a, b], edges, undefined, cache);
+    // Second tick: same topology, drag moved nothing → same suggestion set,
+    // and the cache object is reused (identity unchanged).
+    const reused = buildRouteSuggestionCache(edges, cache);
+    expect(reused).toBe(cache);
+    const second = computeRouteSuggestions("a", [a, b], edges, undefined, reused);
+    expect(second).toEqual(first);
+    // Result is a FRESH array each call (it becomes React state).
+    expect(second).not.toBe(first);
+  });
+
+  it("passing a cache produces the same result as deriving it inline", () => {
+    const a = block("a", 0, 0, [port("a-out", "audio", "output")]);
+    const b = block("b", 250, 0, [
+      port("b-in", "audio", "input"),
+      port("b-out", "audio", "output"),
+    ]);
+    const c = block("c", 500, 0, [port("c-in", "audio", "input")]);
+    const edges: CableData[] = [cable("c1", "a", "a-out", "b", "b-in")];
+    const inline = computeRouteSuggestions("c", [a, b, c], edges);
+    const cache = buildRouteSuggestionCache(edges, null);
+    const cached = computeRouteSuggestions("c", [a, b, c], edges, undefined, cache);
+    expect(cached).toEqual(inline);
   });
 });

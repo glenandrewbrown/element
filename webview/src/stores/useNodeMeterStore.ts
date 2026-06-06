@@ -22,6 +22,38 @@ interface NodeMeterState {
 const LEVEL_EPSILON = 0.001;
 
 /**
+ * One-pass rolling fingerprint of an `{id, level}` snapshot (key-count + a
+ * numeric hash folding every id's chars AND each level's value). Used as a
+ * fast-path in {@link useNodeMeterStore.setNodeLevels} (ledger #5/#6): if the
+ * incoming frame's count AND fingerprint both match the last ACCEPTED frame,
+ * the values are bit-identical, so we skip building a fresh `levels` record
+ * map and return the existing reference. A genuine value change perturbs the
+ * hash (FNV-1a-style mix over the IEEE-754 bits), so a real meter move always
+ * falls through to the epsilon scan below — the fast-path can only confirm
+ * "unchanged", never mask a change.
+ */
+function fingerprintLevels(items: Array<{ id: string; level: number }>): number {
+  // 32-bit FNV-1a, seeded; mixes id chars + a 32-bit fold of each float's bits.
+  let h = 0x811c9dc5;
+  const fb = new Float64Array(1);
+  const ib = new Uint32Array(fb.buffer);
+  for (const { id, level } of items) {
+    for (let i = 0; i < id.length; i++) {
+      h = Math.imul(h ^ id.charCodeAt(i), 0x01000193);
+    }
+    fb[0] = level;
+    h = Math.imul(h ^ ib[0], 0x01000193);
+    h = Math.imul(h ^ ib[1], 0x01000193);
+    h = Math.imul(h ^ 0x2c, 0x01000193); // record separator
+  }
+  return h >>> 0;
+}
+
+/** Fingerprint + count of the last ACCEPTED node-levels frame (non-reactive). */
+let lastFingerprint = 0;
+let lastCount = -1;
+
+/**
  * Wall-clock of the LAST host frame, stamped on EVERY `setNodeLevels` call —
  * even the deduped one that returns the unchanged `levels` reference. This is a
  * non-reactive heartbeat (kept OUTSIDE Zustand state so it triggers zero
@@ -44,9 +76,30 @@ export const useNodeMeterStore = create<NodeMeterState>()((set) => ({
   setNodeLevels: (items) =>
     set((state) => {
       // Heartbeat first — a frame ARRIVED, regardless of whether its values
-      // moved past epsilon. Stamped before the dedup early-return below.
+      // moved past epsilon. Stamped before any early-return below.
       lastPushAt =
         typeof performance !== "undefined" ? performance.now() : Date.now();
+
+      // Fast-path (ledger #5/#6): if this frame is bit-identical to the last
+      // ACCEPTED frame (same count + fingerprint), skip building the `levels`
+      // record map entirely and return the existing reference. A real value
+      // change perturbs the fingerprint and falls through to the epsilon scan.
+      // The `state.levels` key-count guard keeps the fingerprint self-healing
+      // if `levels` was ever replaced out-of-band (e.g. setState/reset): a
+      // mismatch there forces the slow path so a stale fingerprint can never
+      // mask a genuine snapshot.
+      const count = items.length;
+      const fp = fingerprintLevels(items);
+      if (
+        count === lastCount &&
+        fp === lastFingerprint &&
+        Object.keys(state.levels).length === count
+      ) {
+        return { levels: state.levels };
+      }
+      lastCount = count;
+      lastFingerprint = fp;
+
       const levels: Record<string, number> = {};
       for (const { id, level } of items) levels[id] = level;
       // Diff before set — identical discipline to useCableMeterStore. The host
