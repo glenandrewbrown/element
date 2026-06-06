@@ -214,11 +214,16 @@ body {
   contain: content;
 }
 
-/* ── will-change on canvas during interaction ── */
-
-.react-flow__viewport {
-  will-change: transform;
-}
+/* ── Canvas zoom sharpness (WKWebView) ──
+   Do NOT put a permanent `will-change: transform` on `.react-flow__viewport`.
+   It promotes the whole canvas to a composited layer; WebKit (the JUCE
+   WKWebView host) rasterizes that layer ONCE near 1x and then bitmap-stretches
+   it as React Flow zooms via transform:scale() — every Block/cable/label goes
+   blurry+pixelated when zoomed in (Chrome re-rasterizes per scale, so the bug
+   only shows in the real app). WebKit already promotes the layer transiently
+   while the transform is actually animating, so the permanent hint bought
+   nothing and cost zoom sharpness. If pan perf ever measurably regresses,
+   apply the hint ONLY for the duration of the gesture — never statically. */
 
 /* ── Zero tooltip delay ── */
 
@@ -328,10 +333,6 @@ body {
   /* Kill Framer Motion spring physics */
   [style*="transform"] {
     transition: none !important;
-  }
-
-  .react-flow__viewport {
-    will-change: auto;
   }
 }
 
