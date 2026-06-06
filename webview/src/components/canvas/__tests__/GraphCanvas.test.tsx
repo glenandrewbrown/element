@@ -22,21 +22,23 @@ type RFProps = {
   onPaneContextMenu?: (e: React.MouseEvent) => void;
   onNodeDoubleClick?: (e: unknown, node: unknown) => void;
   onDoubleClick?: (e: React.MouseEvent) => void;
+  minZoom?: number;
+  maxZoom?: number;
 };
 const rfHandlers: {
   onNodeDoubleClick?: RFProps["onNodeDoubleClick"];
   onDoubleClick?: RFProps["onDoubleClick"];
 } = {};
+// Last full prop bag passed to <ReactFlow> — for asserting config (zoom range).
+let rfLastProps: RFProps = {};
 
 vi.mock("@xyflow/react", () => {
-  const ReactFlow = ({
-    children,
-    onPaneContextMenu,
-    onNodeDoubleClick,
-    onDoubleClick,
-  }: RFProps) => {
+  const ReactFlow = (props: RFProps) => {
+    const { children, onPaneContextMenu, onNodeDoubleClick, onDoubleClick } =
+      props;
     rfHandlers.onNodeDoubleClick = onNodeDoubleClick;
     rfHandlers.onDoubleClick = onDoubleClick;
+    rfLastProps = props;
     return (
       <div
         data-testid="react-flow"
@@ -160,6 +162,9 @@ vi.mock("../CommentFrame", () => ({ CommentFrame: () => null }));
 vi.mock("../QuickAddPopup", () => ({
   QuickAddPopup: () => <div data-testid="quick-add-popup" />,
 }));
+vi.mock("../CanvasContextMenu", () => ({
+  CanvasContextMenu: () => <div data-testid="canvas-context-menu" />,
+}));
 vi.mock("../NodeContextMenu", () => ({
   NodeContextMenu: ({ open }: { open: boolean }) =>
     open ? <div data-testid="node-context-menu" /> : null,
@@ -201,15 +206,25 @@ describe("GraphCanvas", () => {
     expect(screen.getByTestId("rf-minimap")).toBeInTheDocument();
   });
 
-  // ── Context menu: pane right-click ────────────────────────────────────────
-  // QUARANTINE: stale interaction — right-click now opens a canvas context menu
-  // first; QuickAddPopup only opens after clicking "Add Block…" inside it.
-  // Test needs to be updated to follow the new 2-step flow.
-  it.skip("shows QuickAddPopup on pane right-click in edit mode", () => {
+  // ── Context menu: pane right-click (A2/F3 speed-first mode split) ──────────
+  // Plain right-click on the EMPTY canvas = QuickAdd directly at the cursor.
+  // Shift+right-click = the fuller board context menu (Comment/Paste/zoom…).
+  it("shows QuickAddPopup directly on plain pane right-click in edit mode", () => {
     render(<GraphCanvas />);
     const pane = screen.getByTestId("react-flow");
     fireEvent.contextMenu(pane, { clientX: 100, clientY: 200 });
     expect(screen.getByTestId("quick-add-popup")).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("canvas-context-menu"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows the board CanvasContextMenu on SHIFT+right-click (not QuickAdd)", () => {
+    render(<GraphCanvas />);
+    const pane = screen.getByTestId("react-flow");
+    fireEvent.contextMenu(pane, { clientX: 100, clientY: 200, shiftKey: true });
+    expect(screen.getByTestId("canvas-context-menu")).toBeInTheDocument();
+    expect(screen.queryByTestId("quick-add-popup")).not.toBeInTheDocument();
   });
 
   it("does NOT show QuickAddPopup in perform mode", () => {
@@ -218,6 +233,16 @@ describe("GraphCanvas", () => {
     const pane = screen.getByTestId("react-flow");
     fireEvent.contextMenu(pane, { clientX: 100, clientY: 200 });
     expect(screen.queryByTestId("quick-add-popup")).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("canvas-context-menu"),
+    ).not.toBeInTheDocument();
+  });
+
+  // ── Zoom range (A3/F2 — surgical zoom) ─────────────────────────────────────
+  it("configures React Flow with minZoom 0.1 and maxZoom 3.0", () => {
+    render(<GraphCanvas />);
+    expect(rfLastProps.minZoom).toBe(0.1);
+    expect(rfLastProps.maxZoom).toBe(3.0);
   });
 
   // ── Context menus hidden on initial render ────────────────────────────────

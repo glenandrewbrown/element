@@ -6,10 +6,15 @@ import type { CableData } from "../data/types";
 /** One per-cable level row pushed by the host (~60Hz, full snapshot). */
 export interface CableLevelItem {
   id: string;
-  /** Unsigned presence 0–1 (audio RMS / MIDI activity / |CV|). */
+  /** Unsigned presence 0–1 (audio RMS / MIDI activity / CV block |peak|). */
   level: number;
-  /** SIGNED CV value — present only on CV-sourced cables (flow-debug readout). */
+  /** SIGNED CV value (last rendered sample) — present only on CV-sourced
+   *  cables (flow-debug readout). */
   v?: number;
+  /** CV block ABSOLUTE PEAK (A5) — present only on CV-sourced cables. The
+   *  chip's activity gate uses this, not `v`: fast bipolar CV reads ~0 at
+   *  block-end zero crossings and would look idle on last-sample alone. */
+  pk?: number;
 }
 
 /** Per-cable signal level 0–1 from host (audio RMS / MIDI activity), keyed by edge id. */
@@ -17,6 +22,8 @@ interface CableMeterState {
   levels: Record<string, number>;
   /** Signed CV values, keyed by edge id — only CV-sourced cables have an entry. */
   values: Record<string, number>;
+  /** CV block |peak| per cable (A5) — only CV-sourced cables have an entry. */
+  peaks: Record<string, number>;
   setCableLevels: (items: CableLevelItem[]) => void;
 }
 
@@ -26,25 +33,30 @@ const LEVEL_EPSILON = 0.001;
 export const useCableMeterStore = create<CableMeterState>()((set) => ({
   levels: {},
   values: {},
+  peaks: {},
   setCableLevels: (items) =>
     set((state) => {
       const levels: Record<string, number> = {};
       const values: Record<string, number> = {};
+      const peaks: Record<string, number> = {};
       for (const item of items) {
         levels[item.id] = item.level;
         if (typeof item.v === "number") values[item.id] = item.v;
+        if (typeof item.pk === "number") peaks[item.id] = item.pk;
       }
       // Diff before set. The host pushes a FULL snapshot of every cable
       // ~60Hz; without this an idle/steady graph re-notifies every Cable
       // subscriber every frame forever (session-drift perf plan Rank 1).
       // Returning the unchanged references keeps subscriber slices
       // identical, so React skips the re-render. The epsilon-diff covers
-      // BOTH records — a steady CV value must not re-render its chip.
+      // ALL records — a steady CV value/peak must not re-render its chip.
       const prevLevels = state.levels;
       const prevValues = state.values;
+      const prevPeaks = state.peaks ?? {};
       if (
         Object.keys(prevLevels).length === items.length &&
-        Object.keys(prevValues).length === Object.keys(values).length
+        Object.keys(prevValues).length === Object.keys(values).length &&
+        Object.keys(prevPeaks).length === Object.keys(peaks).length
       ) {
         let changed = false;
         for (const key in levels) {
@@ -63,9 +75,18 @@ export const useCableMeterStore = create<CableMeterState>()((set) => ({
             }
           }
         }
-        if (!changed) return { levels: prevLevels, values: prevValues };
+        if (!changed) {
+          for (const key in peaks) {
+            const before = prevPeaks[key];
+            if (before === undefined || Math.abs(before - peaks[key]) > LEVEL_EPSILON) {
+              changed = true;
+              break;
+            }
+          }
+        }
+        if (!changed) return { levels: prevLevels, values: prevValues, peaks: prevPeaks };
       }
-      return { levels, values };
+      return { levels, values, peaks };
     }),
 }));
 

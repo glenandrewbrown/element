@@ -179,7 +179,11 @@ export const ActiveWithSignal: Story = {
 function flowDebugStory(
   doc: string,
   data: Partial<CableData>,
-  meter: { levels?: Record<string, number>; values?: Record<string, number> },
+  meter: {
+    levels?: Record<string, number>;
+    values?: Record<string, number>;
+    peaks?: Record<string, number>;
+  },
 ): Story {
   return {
     parameters: { docs: { description: { story: doc } } },
@@ -192,6 +196,7 @@ function flowDebugStory(
         useCableMeterStore.setState({
           levels: meter.levels ?? {},
           values: meter.values ?? {},
+          peaks: meter.peaks ?? {},
         });
         useAppStore.setState({ flowDebug: true });
         return <Story />;
@@ -207,19 +212,25 @@ export const FlowDebugAudioHot: Story = flowDebugStory(
 );
 
 export const FlowDebugAudioSilent: Story = flowDebugStory(
-  "Flow-Debug on a silent audio Cable — dim '—' chip: the blocked/no-signal state a gated path shows.",
+  "Flow-Debug on a silent audio Cable — dim '-∞ dB' chip (G4): honest silence readout for the blocked/no-signal state a gated path shows.",
   { signalType: "audio" },
   { levels: { "cab-1": 0 } },
 );
 
 export const FlowDebugCvValue: Story = flowDebugStory(
-  "Flow-Debug on a CV Cable — the chip shows the SIGNED live value (here -0.80) in value-orange; this is the conditional-routing readout (a Comparator emitting 0/1 reads as 0.00/1.00).",
+  "Flow-Debug on a CV Cable — the chip shows the ALWAYS-SIGNED live value (here -0.80) in value-orange; this is the conditional-routing readout (a Comparator emitting 0/1 reads as +0.00/+1.00).",
   { signalType: "value" },
-  { levels: { "cab-1": 0.8 }, values: { "cab-1": -0.8 } },
+  { levels: { "cab-1": 0.8 }, values: { "cab-1": -0.8 }, peaks: { "cab-1": 0.8 } },
+);
+
+export const FlowDebugCvZeroCrossingPeak: Story = flowDebugStory(
+  "Flow-Debug on a fast bipolar CV Cable caught at a zero crossing — last sample reads +0.00 but the chip stays LIT because the block's |peak| latch (A5) carries the real activity. Without the peak feed this cable would falsely look idle.",
+  { signalType: "value" },
+  { levels: { "cab-1": 0.9 }, values: { "cab-1": 0 }, peaks: { "cab-1": 0.9 } },
 );
 
 export const FlowDebugMidiActive: Story = flowDebugStory(
-  "Flow-Debug on an active MIDI Cable — '● midi' activity chip in teal while events pass.",
+  "Flow-Debug on an active MIDI Cable — '●' activity dot in teal while events pass (G4: the colour already says MIDI; no redundant word).",
   { signalType: "midi" },
   { levels: { "cab-1": 0.75 } },
 );

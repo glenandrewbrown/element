@@ -270,4 +270,69 @@ describe("<QuickAddPopup />", () => {
     );
     expect(() => render(<QuickAddPopup {...defaultProps} />)).not.toThrow();
   });
+
+  // ── A4/F4 — type-ahead race: sync focus + pre-focus keystroke buffer ──────
+
+  it("focuses the search input SYNCHRONOUSLY on mount (no rAF wait)", () => {
+    render(<QuickAddPopup {...defaultProps} />);
+    // useLayoutEffect focus → input already owns the keyboard at this point.
+    expect(document.activeElement).toBe(screen.getByRole("textbox"));
+  });
+
+  it("buffers keystrokes typed before the input has focus into the search", () => {
+    render(<QuickAddPopup {...defaultProps} />);
+    const input = screen.getByRole("textbox") as HTMLInputElement;
+    // Simulate the WKWebView race: focus has not landed on the input yet.
+    input.blur();
+    expect(document.activeElement).not.toBe(input);
+    // Keystroke hits the window (capture phase) while the input is unfocused →
+    // buffered into the search state AND the input is re-focused, so every
+    // subsequent keystroke flows through the input directly (no further
+    // buffering — verified by the "does not double-append" test below).
+    fireEvent.keyDown(window, { key: "s" });
+    expect(input.value).toBe("s");
+    expect(document.activeElement).toBe(input);
+    // A second pre-focus burst (focus stolen again) buffers again.
+    input.blur();
+    fireEvent.keyDown(window, { key: "u" });
+    expect(input.value).toBe("su");
+    expect(document.activeElement).toBe(input);
+  });
+
+  it("pre-focus Backspace removes the last buffered character", () => {
+    render(<QuickAddPopup {...defaultProps} />);
+    const input = screen.getByRole("textbox") as HTMLInputElement;
+    input.blur();
+    fireEvent.keyDown(window, { key: "s" });
+    input.blur();
+    fireEvent.keyDown(window, { key: "Backspace" });
+    expect(input.value).toBe("");
+  });
+
+  it("pre-focus buffer ignores shortcut chords (meta/ctrl/alt)", () => {
+    render(<QuickAddPopup {...defaultProps} />);
+    const input = screen.getByRole("textbox") as HTMLInputElement;
+    input.blur();
+    fireEvent.keyDown(window, { key: "s", metaKey: true });
+    fireEvent.keyDown(window, { key: "z", ctrlKey: true });
+    expect(input.value).toBe("");
+  });
+
+  it("does not double-append once the input owns focus", () => {
+    render(<QuickAddPopup {...defaultProps} />);
+    const input = screen.getByRole("textbox") as HTMLInputElement;
+    // Input is focused (sync mount focus) — the capture listener must bail.
+    fireEvent.keyDown(input, { key: "s" });
+    // Value only changes via the input's own onChange in real DOM; the buffer
+    // must NOT have injected anything.
+    expect(input.value).toBe("");
+  });
+
+  // ── A7/F6 — result-row hierarchy: NAME is the semibold anchor ─────────────
+
+  it("renders the block name as the semibold primary element", async () => {
+    render(<QuickAddPopup {...defaultProps} />);
+    await waitFor(() => screen.getByText("Surge XT"));
+    expect(screen.getByText("Surge XT").className).toContain("font-semibold");
+  });
 });

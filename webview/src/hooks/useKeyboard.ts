@@ -27,6 +27,78 @@ import {
 import { nativePluginEditorClose } from "../bridge/nativePluginEditor";
 import { EV_START_RENAME } from "../events";
 
+// ── Signal-chain order (G6/P5) ───────────────────────────────────────────────
+//
+// Tab traverses Blocks in SIGNAL-CHAIN order (gesture spec: "jump to next
+// block in signal chain") — i.e. graph-TOPOLOGICAL order following the
+// Cables source→downstream, NOT DOM/array order. The previous implementation
+// sorted globally by in-degree then x-position, which broke chains: in
+// a→b→c, b and c both have in-degree 1, so a c positioned left of b was
+// visited before it despite being DOWNSTREAM of it.
+//
+// Kahn's algorithm with a stable tiebreak (x, then y, then id) when several
+// nodes are simultaneously ready. Nodes left over by a cycle are appended in
+// the same positional order so every Block remains reachable.
+
+export function signalChainOrder(
+  nodes: Array<{ id: string; position: { x: number; y: number } }>,
+  edges: Array<{ source: string; target: string }>,
+): string[] {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const posCmp = (aId: string, bId: string): number => {
+    const a = byId.get(aId)!;
+    const b = byId.get(bId)!;
+    return (
+      a.position.x - b.position.x ||
+      a.position.y - b.position.y ||
+      a.id.localeCompare(b.id)
+    );
+  };
+
+  const inCount = new Map<string, number>();
+  const out = new Map<string, string[]>();
+  nodes.forEach((n) => inCount.set(n.id, 0));
+  for (const e of edges) {
+    // Ignore dangling edges (e.g. mid-snapshot) — only count both-ends-known.
+    if (!byId.has(e.source) || !byId.has(e.target)) continue;
+    inCount.set(e.target, (inCount.get(e.target) ?? 0) + 1);
+    const list = out.get(e.source) ?? [];
+    list.push(e.target);
+    out.set(e.source, list);
+  }
+
+  const ready = nodes
+    .filter((n) => (inCount.get(n.id) ?? 0) === 0)
+    .map((n) => n.id)
+    .sort(posCmp);
+  const order: string[] = [];
+  const visited = new Set<string>();
+
+  while (ready.length > 0) {
+    const id = ready.shift()!;
+    if (visited.has(id)) continue;
+    visited.add(id);
+    order.push(id);
+    for (const t of out.get(id) ?? []) {
+      const c = (inCount.get(t) ?? 0) - 1;
+      inCount.set(t, c);
+      if (c === 0) {
+        // Insert keeping the ready queue positionally sorted (stable tiebreak).
+        let i = 0;
+        while (i < ready.length && posCmp(ready[i]!, t) <= 0) i++;
+        ready.splice(i, 0, t);
+      }
+    }
+  }
+
+  // Cycle leftovers (feedback loops): append in positional order.
+  const leftovers = nodes
+    .filter((n) => !visited.has(n.id))
+    .map((n) => n.id)
+    .sort(posCmp);
+  return [...order, ...leftovers];
+}
+
 interface UseKeyboardOptions {
   onToggleCommandPalette: () => void;
   /**
@@ -359,21 +431,15 @@ export function useKeyboard({
           const { nodes, edges, selectedNodeId } = useGraphStore.getState();
           if (nodes.length === 0) return;
 
-          // Build signal-chain order: nodes with fewer incoming edges first (sources),
-          // then by x-position left-to-right as tiebreaker
-          const inCount = new Map<string, number>();
-          nodes.forEach((n) => inCount.set(n.id, 0));
-          edges.forEach((e) => inCount.set(e.target, (inCount.get(e.target) ?? 0) + 1));
-
-          const sorted = [...nodes].sort((a, b) => {
-            const diff = (inCount.get(a.id) ?? 0) - (inCount.get(b.id) ?? 0);
-            return diff !== 0 ? diff : a.position.x - b.position.x;
-          });
+          // G6/P5 — Tab follows the SIGNAL CHAIN (topological order along the
+          // Cables, source→downstream), not DOM/array order. See
+          // signalChainOrder() above for the algorithm + tiebreak rules.
+          const sorted = signalChainOrder(nodes, edges);
 
           // Find current position in sorted list
-          const currentIdx = sorted.findIndex((n) => n.id === selectedNodeId);
+          const currentIdx = sorted.findIndex((id) => id === selectedNodeId);
           const nextIdx = shift ? (currentIdx - 1 + sorted.length) % sorted.length : (currentIdx + 1) % sorted.length;
-          useGraphStore.getState().selectNode(sorted[nextIdx].id);
+          useGraphStore.getState().selectNode(sorted[nextIdx]!);
           return;
         }
 

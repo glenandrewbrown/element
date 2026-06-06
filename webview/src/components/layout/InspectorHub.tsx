@@ -29,7 +29,7 @@ import {
   selectDeviceLatencyMs,
   selectHasHostData,
 } from "../../stores/useEngineSnapshotStore";
-import { NeuButton, NeuDisplay } from "../neu";
+import { NeuButton, NeuDisplay, NeuInput, NeuSlider } from "../neu";
 import type {
   BlockCategory,
   BlockData,
@@ -329,8 +329,10 @@ function PresetStrip({ nodeId }: { nodeId: string }) {
       ? `Available presets: ${presets.join(", ")}`
       : undefined;
 
+  // G2: active slot = neu-pressed inset + micro-glow (4px accent @ ~25%) —
+  // pressed INTO the chassis, never a flat colored border.
   const activeBtn =
-    "px-2 py-0.5 text-[10px] font-bold rounded border-b-2 border-accent-blue text-accent-blue bg-pressed shadow-[inset_1px_1px_4px_rgba(0,0,0,0.4)]";
+    "px-2 py-0.5 text-[10px] font-bold rounded text-accent-blue bg-pressed shadow-[inset_2px_2px_5px_rgba(0,0,0,0.5),inset_-1px_-1px_3px_rgba(255,255,255,0.04),0_0_4px_rgba(74,144,217,0.25)]";
   const inactiveBtn =
     "px-2 py-0.5 text-[10px] font-bold rounded text-text-secondary bg-surface hover:bg-elevated transition-colors shadow-[-1px_-1px_4px_rgba(255,255,255,0.04),1px_1px_4px_rgba(0,0,0,0.3)]";
   const swapBtn =
@@ -607,7 +609,8 @@ function BlockNoteEditor({ block }: { block: BlockData }) {
       placeholder="Add a note for this block…"
       rows={3}
       aria-label="Block note"
-      className="w-full text-[11px] bg-pressed text-text-primary rounded-md p-2 outline-none border border-white/5 focus:border-accent-blue/40 placeholder-text-secondary/60 resize-y shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)]"
+      // G2: focus = inset well + micro-glow, NOT a flat accent border.
+      className="w-full text-[11px] bg-pressed text-text-primary rounded-md p-2 outline-none border border-white/5 placeholder-text-secondary/60 resize-y shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] focus:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05),0_0_4px_rgba(74,144,217,0.25)]"
       spellCheck={false}
     />
   );
@@ -658,6 +661,171 @@ function useNodeParameters(nodeId: string): NodeParams {
   return { params, loading, setParam, reload };
 }
 
+// ── Parameter naming (A1/F1 — CRITICAL) ──
+//
+// `p.name` is the parameter's DISPLAY NAME; JUCE's `label` is a UNIT string
+// ("dB", "Hz", "%") and is routinely EMPTY. The old `(p.label ?? p.name)`
+// precedence let an empty-string label beat the real name, blanking every
+// param row for plugins that ship empty labels. Name first, always.
+function paramDisplayName(p: NodeParameterRow): string {
+  return (p.name || p.label || `Param ${p.index}`).trim() || `Param ${p.index}`;
+}
+
+// The unit suffix shown muted next to the value — only when the host sent a
+// real unit that isn't just a duplicate of the display name.
+function paramUnit(p: NodeParameterRow): string {
+  const unit = (p.label ?? "").trim();
+  return unit && unit !== paramDisplayName(p) ? unit : "";
+}
+
+// ── G5: group-by-prefix for big plugins ──
+//
+// When a long param list shares name prefixes ("Delay L", "Delay R", "Mod
+// Rate", "Mod Depth"…), fold each prefix family into a collapsible group so
+// an 80-param plugin stays scannable. Prefix = the first token before a
+// separator; only families of ≥ GROUP_MIN members become groups, the rest
+// land in "Other".
+const PARAM_FILTER_THRESHOLD = 8;
+const PARAM_GROUP_THRESHOLD = 12;
+const GROUP_MIN = 3;
+
+function paramPrefix(name: string): string {
+  const m = /^([A-Za-z]+\d*)[\s_\-:./]+\S/.exec(name.trim());
+  return m ? m[1] : "";
+}
+
+function groupParamsByPrefix(
+  params: NodeParameterRow[],
+): { name: string; items: NodeParameterRow[] }[] | null {
+  if (params.length <= PARAM_GROUP_THRESHOLD) return null;
+  const buckets = new Map<string, NodeParameterRow[]>();
+  for (const p of params) {
+    const key = paramPrefix(paramDisplayName(p));
+    const list = buckets.get(key) ?? [];
+    list.push(p);
+    buckets.set(key, list);
+  }
+  const groups: { name: string; items: NodeParameterRow[] }[] = [];
+  const other: NodeParameterRow[] = [];
+  for (const [key, items] of buckets) {
+    if (key && items.length >= GROUP_MIN) groups.push({ name: key, items });
+    else other.push(...items);
+  }
+  if (groups.length === 0) return null;
+  groups.sort((a, b) => a.name.localeCompare(b.name));
+  if (other.length > 0) groups.push({ name: "Other", items: other });
+  return groups;
+}
+
+/** One compact param row: [name ~1/3 | slider flexible | value+unit right]. */
+function ParamRow({
+  p,
+  onChangeNorm,
+}: {
+  p: NodeParameterRow;
+  onChangeNorm: (index: number, value: number) => void;
+}) {
+  const label = paramDisplayName(p);
+  const unit = paramUnit(p);
+
+  if (p.boolean) {
+    const on = p.value >= 0.5;
+    return (
+      <div className="flex items-center gap-2 min-h-[24px]">
+        <span
+          className="text-[10px] text-text-secondary truncate w-1/3 shrink-0"
+          title={label}
+        >
+          {label}
+        </span>
+        <div className="flex-1" />
+        <NeuButton
+          size="sm"
+          variant={on ? "active" : "default"}
+          onClick={() => onChangeNorm(p.index, on ? 0 : 1)}
+        >
+          {on ? "ON" : "OFF"}
+        </NeuButton>
+      </div>
+    );
+  }
+
+  const min = typeof p.min === "number" ? p.min : 0;
+  const max = typeof p.max === "number" ? p.max : 1;
+  const hasRange = max > min;
+  const display = formatParamDisplay(p);
+  // Normalized quantization for stepped params (the old 0–1000 input never
+  // actually snapped); continuous params stay smooth.
+  const stepNorm = p.stepped && hasRange ? 1 / (max - min) : undefined;
+
+  return (
+    <div className="flex items-center gap-2 min-h-[24px]">
+      <span
+        className="text-[10px] text-text-secondary truncate w-1/3 shrink-0"
+        title={hasRange ? `${label} (${String(min)} – ${String(max)})` : label}
+      >
+        {label}
+      </span>
+      <NeuSlider
+        className="flex-1 min-w-0"
+        value={p.value}
+        step={stepNorm}
+        ariaLabel={label}
+        ariaValueText={unit ? `${display} ${unit}` : display}
+        onChange={(v) => onChangeNorm(p.index, v)}
+      />
+      <span className="text-[10px] font-bold text-text-primary tabular-nums shrink-0 text-right min-w-[44px]">
+        {display}
+        {unit && (
+          <span className="ml-0.5 font-normal text-text-dim">{unit}</span>
+        )}
+      </span>
+    </div>
+  );
+}
+
+/** Collapsible prefix group (G5) — header carries the family name + count. */
+function ParamGroup({
+  name,
+  items,
+  onChangeNorm,
+}: {
+  name: string;
+  items: NodeParameterRow[];
+  onChangeNorm: (index: number, value: number) => void;
+}) {
+  const [open, setOpen] = useState(true);
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="w-full flex items-center gap-1.5 py-1 text-[9px] font-bold uppercase tracking-widest text-text-dim hover:text-text-secondary transition-colors cursor-pointer"
+      >
+        <span
+          className="text-[8px] transition-transform shrink-0"
+          style={{ transform: open ? "rotate(90deg)" : "rotate(0deg)" }}
+        >
+          ▶
+        </span>
+        <span className="truncate">{name}</span>
+        <span className="font-mono tabular-nums normal-case tracking-normal">
+          {items.length}
+        </span>
+        <div className="flex-1 border-t border-white/5" />
+      </button>
+      {open && (
+        <div className="space-y-2 pt-1">
+          {items.map((p) => (
+            <ParamRow key={p.index} p={p} onChangeNorm={onChangeNorm} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function BlockParameterList({
   params,
   loading,
@@ -669,6 +837,21 @@ function BlockParameterList({
   onChangeNorm: (index: number, value: number) => void;
   onReload: () => void;
 }) {
+  // G5: text filter for big plugins — sticky so it stays pinned while the
+  // long list scrolls underneath in the tab body.
+  const [query, setQuery] = useState("");
+  const showFilter = params.length > PARAM_FILTER_THRESHOLD;
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!showFilter || q.length === 0) return params;
+    return params.filter((p) =>
+      paramDisplayName(p).toLowerCase().includes(q),
+    );
+  }, [params, query, showFilter]);
+
+  const groups = useMemo(() => groupParamsByPrefix(filtered), [filtered]);
+
   if (loading) {
     return (
       <div className="text-[10px] text-text-secondary py-4 text-center">
@@ -678,67 +861,36 @@ function BlockParameterList({
   }
 
   return (
-    <div className="space-y-3">
-      {params.map((p) => {
-        const label = (p.label ?? p.name).trim() || `Param ${p.index}`;
-        if (p.boolean) {
-          const on = p.value >= 0.5;
-          return (
-            <div
-              key={p.index}
-              className="flex items-center justify-between gap-2"
-            >
-              <span className="text-[10px] text-text-secondary truncate flex-1">
-                {label}
-              </span>
-              <NeuButton
-                size="sm"
-                variant={on ? "active" : "default"}
-                onClick={() => onChangeNorm(p.index, on ? 0 : 1)}
-              >
-                {on ? "ON" : "OFF"}
-              </NeuButton>
-            </div>
-          );
-        }
-
-        const min = typeof p.min === "number" ? p.min : 0;
-        const max = typeof p.max === "number" ? p.max : 1;
-        const hasRange = max > min;
-        const display = formatParamDisplay(p);
-
-        return (
-          <div key={p.index} className="space-y-1">
-            <div className="flex justify-between gap-2">
-              <span className="text-[10px] text-text-secondary truncate">
-                {label}
-              </span>
-              <span className="text-[10px] font-bold text-text-primary tabular shrink-0">
-                {display}
-              </span>
-            </div>
-            <input
-              type="range"
-              min={0}
-              max={1000}
-              step={p.stepped ? 1 : undefined}
-              value={Math.round(p.value * 1000)}
-              onChange={(e) => {
-                const n = Number(e.target.value);
-                onChangeNorm(p.index, n / 1000);
-              }}
-              className="w-full h-1.5 rounded-full appearance-none bg-[#131317] accent-accent-blue cursor-pointer"
-              aria-label={label}
-            />
-            {hasRange && (
-              <div className="flex justify-between text-[9px] text-text-dim tabular">
-                <span>{String(min)}</span>
-                <span>{String(max)}</span>
-              </div>
-            )}
-          </div>
-        );
-      })}
+    <div className="space-y-2">
+      {showFilter && (
+        <div className="sticky top-0 z-10 -mx-1 px-1 py-1 bg-pressed">
+          <NeuInput
+            placeholder={`Filter ${params.length} parameters…`}
+            value={query}
+            onChange={setQuery}
+          />
+        </div>
+      )}
+      {filtered.length === 0 ? (
+        <div className="text-[10px] text-text-dim py-2 text-center">
+          No parameters match “{query.trim()}”.
+        </div>
+      ) : groups ? (
+        groups.map((g) => (
+          <ParamGroup
+            key={g.name}
+            name={g.name}
+            items={g.items}
+            onChangeNorm={onChangeNorm}
+          />
+        ))
+      ) : (
+        <div className="space-y-2">
+          {filtered.map((p) => (
+            <ParamRow key={p.index} p={p} onChangeNorm={onChangeNorm} />
+          ))}
+        </div>
+      )}
       <NeuButton size="sm" className="w-full mt-2" onClick={onReload}>
         Refresh parameters
       </NeuButton>

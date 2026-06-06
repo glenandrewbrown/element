@@ -436,8 +436,10 @@ export type ElementNativeHooks = {
   onMetering?: (peak: number) => void;
   /** Per-cable levels from host (~60 Hz); id matches graph snapshot cable ids.
    *  CV-sourced cables additionally carry `v` = the SIGNED last-rendered CV
-   *  sample (flow-debug numeric readout); other signal types omit it. */
-  onCableLevels?: (items: Array<{ id: string; level: number; v?: number }>) => void;
+   *  sample (flow-debug numeric readout) and `pk` = the block ABSOLUTE PEAK
+   *  (A5 — activity gate; last-sample aliases on fast bipolar CV); other
+   *  signal types omit both. */
+  onCableLevels?: (items: Array<{ id: string; level: number; v?: number; pk?: number }>) => void;
   /** Per-NODE output levels from host (~60 Hz, Q-VU-PER-BLOCK); id = node UUID.
    *  Covers terminal/unconnected blocks the cable-derived path leaves idle. */
   onNodeLevels?: (items: Array<{ id: string; level: number }>) => void;
@@ -487,7 +489,7 @@ export { invokeElementNative } from "../bridge/juceBackend";
 // at most once per animation frame (session-drift perf plan Rank 1). The
 // buffer is REPLACED (not accumulated) each call — every push is a complete
 // snapshot, so an older buffered array would be stale.
-let pendingCableLevels: Array<{ id: string; level: number; v?: number }> | null = null;
+let pendingCableLevels: Array<{ id: string; level: number; v?: number; pk?: number }> | null = null;
 let cableLevelsRaf = 0;
 
 function flushCableLevels(): void {
@@ -497,7 +499,7 @@ function flushCableLevels(): void {
   if (items) useCableMeterStore.getState().setCableLevels(items);
 }
 
-function scheduleCableLevels(items: Array<{ id: string; level: number; v?: number }>): void {
+function scheduleCableLevels(items: Array<{ id: string; level: number; v?: number; pk?: number }>): void {
   pendingCableLevels = items;
   if (cableLevelsRaf !== 0) return;
   if (typeof requestAnimationFrame === "function") {

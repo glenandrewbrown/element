@@ -106,7 +106,7 @@ const meta = {
           "GitBranch/midifx, Waves/modulator). " +
           "Two modes: GENERIC (right-click empty canvas — full plugin list, Favorites then Recents first) " +
           "and PORT-TYPE-AWARE (dragged off a port — only Blocks accepting that signal type, " +
-          "under an 'ADD BLOCK ACCEPTING <TYPE>' header tinted in the signal's hue; " +
+          "under an 'ADD BLOCK ACCEPTING `TYPE`' header tinted in the signal's hue; " +
           "also shows Favorites + Recents pre-filtered to the compatible signal type). " +
           "Fuzzy search (R2) matches across name, manufacturer, raw category, blockCategory, " +
           "and signal-type aliases — 'valhalla', 'reverb', 'Pro q', 'Pro-q', and 'pro q4' all find the right blocks. " +

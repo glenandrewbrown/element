@@ -102,6 +102,15 @@ function CableComponent({
     const v = s.values?.[id];
     return v === undefined ? undefined : Math.round(v * 100) / 100;
   });
+  // CV block-absolute-peak (A5): activity gate for the chip. Last-sample alone
+  // aliases on fast bipolar CV (reads ~0 at zero crossings → looks idle), so
+  // the chip's ACTIVE state keys off the per-block |peak| latch while the
+  // numeric readout stays last-sample. Quantised in-selector (3dp) for the
+  // same Object.is re-render discipline as `cvValue` above.
+  const cvPeak = useCableMeterStore((s) => {
+    const p = s.peaks?.[id];
+    return p === undefined ? undefined : Math.round(p * 1000) / 1000;
+  });
   // Phase 5B — wireless: when this cable is on a named bus, hide the curve
   // and let the port-side bus badges represent the connection visually.
   const busName = useBusStore((s) => s.cableBus[id]);
@@ -214,13 +223,16 @@ function CableComponent({
               transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
               pointerEvents: "none",
               background: "#1A1A1E",
-              border: `1px solid ${chipActive(d?.signalType, amp, cvValue) ? color : "#2A2A2E"}`,
+              border: `1px solid ${chipActive(d?.signalType, amp, cvValue, cvPeak) ? color : "#2A2A2E"}`,
               borderRadius: 4,
               padding: "1px 5px",
               fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+              // G4: fixed-width digits — without this the chip jitters in
+              // width every 60Hz value tick.
+              fontVariantNumeric: "tabular-nums",
               fontSize: 9,
               lineHeight: "12px",
-              color: chipActive(d?.signalType, amp, cvValue) ? color : "#8E8E93",
+              color: chipActive(d?.signalType, amp, cvValue, cvPeak) ? color : "#8E8E93",
               boxShadow:
                 "inset 1px 1px 2px rgba(0,0,0,0.4), inset -1px -1px 2px rgba(255,255,255,0.04)",
               whiteSpace: "nowrap",
@@ -239,17 +251,25 @@ function CableComponent({
 // Pure functions of (signalType, presence amp, quantised CV value) so the chip
 // is trivially unit-testable and never invents data.
 
-/** True when the chip should light in the cable's signal colour. */
+/** True when the chip should light in the cable's signal colour.
+ *  CV cables gate on the per-block |peak| latch (A5) — a fast bipolar CV can
+ *  read ~0 at every block-end zero crossing, so last-sample alone looks idle.
+ *  Falls back to |last-sample| when the host predates the `pk` field. */
 export function chipActive(
   signalType: string | undefined,
   amp: number,
   cvValue: number | undefined,
+  cvPeak?: number,
 ): boolean {
-  if (signalType === "value") return cvValue !== undefined && Math.abs(cvValue) > 0.001;
+  if (signalType === "value") {
+    const presence = cvPeak ?? (cvValue !== undefined ? Math.abs(cvValue) : undefined);
+    return presence !== undefined && presence > 0.001;
+  }
   return amp > 0.001;
 }
 
-/** The chip's text: audio → dB, value → signed 2dp, MIDI → activity, idle → "—". */
+/** The chip's text (G4): audio → dB (silent = "-∞ dB"), value → ALWAYS-signed
+ *  2dp ("+0.50"/"-0.50"), MIDI → activity dot "●" only, no feed → "—". */
 export function chipText(
   signalType: string | undefined,
   amp: number,
@@ -260,13 +280,19 @@ export function chipText(
       // Control-sourced cables have no numeric feed (host folds Control+CV
       // into "value" but only CV carries `v`) — show the idle dash.
       if (cvValue === undefined) return "—";
-      return cvValue.toFixed(2);
+      // ALWAYS signed (G4): polarity is the signal on a CV cable. Normalise
+      // the float "-0.00" artefact so zero always reads "+0.00".
+      const fixed = cvValue.toFixed(2);
+      if (fixed === "-0.00") return "+0.00";
+      return fixed.startsWith("-") ? fixed : `+${fixed}`;
     }
     case "midi":
-      return amp > 0.05 ? "● midi" : "—";
+      // Dot only (G4) — the teal already says "MIDI"; the word was redundant.
+      return amp > 0.05 ? "●" : "—";
     default: {
       // Audio: presence as dBFS-ish readout from the calibrated level.
-      if (amp <= 0.001) return "—";
+      // Silence is honest "-∞ dB" (G4), not an ambiguous dash.
+      if (amp <= 0.001) return "-∞ dB";
       const db = 20 * Math.log10(amp);
       return `${db.toFixed(1)} dB`;
     }

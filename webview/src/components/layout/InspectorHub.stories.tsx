@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { useEffect } from "react";
 import { expect, userEvent, waitFor, within } from "storybook/test";
 import { InspectorHub } from "./InspectorHub";
 import { useGraphStore } from "../../stores/useGraphStore";
@@ -722,5 +723,126 @@ export const EmptyGraph: Story = {
     }
     const tablist = within(canvasElement).getByRole("tablist");
     await expect(tablist).toBeInTheDocument();
+  },
+};
+
+// ── BLOCK tab — BIG plugin: F1 naming + G3 NeuSlider + G5 filter/groups ──
+//
+// Storybook has no JUCE bridge, so this story installs a MINIMAL fake
+// `window.__JUCE__.backend` that answers `elementGetNodeParameters` with a
+// realistic big-plugin parameter set (and resolves every other invoke as
+// `undefined`, exactly the bridgeless contract). This is test plumbing, not
+// fabricated UI data — it exercises the REAL fetch → render path.
+const BIG_PLUGIN_PARAMS = [
+  // F1 regression shape: real `name`, EMPTY JUCE label — the name must win.
+  { index: 0, name: "Mix", label: "", value: 0.35, defaultValue: 0.5 },
+  // Unit-suffix shape: JUCE label is a UNIT ("dB"), shown muted by the value.
+  { index: 1, name: "Threshold", label: "dB", value: 0.6, defaultValue: 0.5, min: -60, max: 0 },
+  // Prefix families (G5 grouping: Delay* / Mod*).
+  { index: 2, name: "Delay Time L", label: "ms", value: 0.25, defaultValue: 0.25, min: 0, max: 2000 },
+  { index: 3, name: "Delay Time R", label: "ms", value: 0.3, defaultValue: 0.25, min: 0, max: 2000 },
+  { index: 4, name: "Delay Feedback", label: "%", value: 0.4, defaultValue: 0.4 },
+  { index: 5, name: "Delay Ducking", label: "", value: 0.0, defaultValue: 0 },
+  { index: 6, name: "Mod Rate", label: "Hz", value: 0.2, defaultValue: 0.2, min: 0, max: 20 },
+  { index: 7, name: "Mod Depth", label: "%", value: 0.55, defaultValue: 0.5 },
+  { index: 8, name: "Mod Shape", label: "", value: 0.5, defaultValue: 0.5, min: 0, max: 4, stepped: true },
+  { index: 9, name: "Width", label: "%", value: 0.8, defaultValue: 1 },
+  { index: 10, name: "LowCut", label: "Hz", value: 0.1, defaultValue: 0, min: 10, max: 1000 },
+  { index: 11, name: "HighCut", label: "Hz", value: 0.9, defaultValue: 1, min: 1000, max: 20000 },
+  { index: 12, name: "Sync", label: "", value: 1, defaultValue: 0, boolean: true },
+];
+
+function installFakeParamsBridge() {
+  // SINGLETON listener array on globalThis: juceBackend wires its
+  // `__juce__complete` listener exactly ONCE per module load, so a re-install
+  // must keep delivering completions through the same array or every later
+  // invoke would dangle to its 15s timeout.
+  const g = globalThis as unknown as {
+    __fakeBridgeListeners?: Array<(p: unknown) => void>;
+  };
+  const listeners = (g.__fakeBridgeListeners ??= []);
+  (window as unknown as { __JUCE__: unknown }).__JUCE__ = {
+    backend: {
+      addEventListener: (_n: string, cb: (p: unknown) => void) => {
+        listeners.push(cb);
+        return 0;
+      },
+      emitEvent: (_n: string, payload: unknown) => {
+        const { name, resultId } = (payload ?? {}) as {
+          name?: string;
+          resultId?: number;
+        };
+        const result =
+          name === "elementGetNodeParameters"
+            ? { parameters: BIG_PLUGIN_PARAMS }
+            : undefined;
+        // Complete asynchronously, like the real host round-trip.
+        setTimeout(() => {
+          for (const cb of listeners)
+            cb({ promiseId: resultId, result });
+        }, 0);
+      },
+    },
+  };
+}
+
+/** Scopes the fake bridge to this story — removes it on unmount so sibling
+ *  stories rendered in the SAME page (vitest browser runs) stay bridgeless. */
+function FakeBridgeScope({ children }: { children: React.ReactNode }) {
+  // Install synchronously during render: the param fetch fires on child mount.
+  installFakeParamsBridge();
+  useEffect(
+    () => () => {
+      delete (window as unknown as { __JUCE__?: unknown }).__JUCE__;
+    },
+    [],
+  );
+  return <>{children}</>;
+}
+
+export const BlockTab_BigPluginParams: Story = {
+  decorators: [
+    (Story) => {
+      seedNodeSelected(selectedModifier);
+      return (
+        <FakeBridgeScope>
+          <div style={PANEL} className="bg-panel">
+            <Story />
+          </div>
+        </FakeBridgeScope>
+      );
+    },
+  ],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "BLOCK tab with a 13-param plugin (fake bridge answers the REAL fetch path). Demonstrates the F1 " +
+          "naming fix (a param with an empty JUCE label renders its real NAME; 'dB'/'Hz' labels render as " +
+          "muted UNIT suffixes next to values), the G3 NeuSlider rows (inset groove + raised thumb — no " +
+          "flat native range styling), and the G5 big-plugin layout: sticky filter (>8 params) and " +
+          "collapsible Delay*/Mod* prefix groups (>12 params).",
+      },
+    },
+  },
+  play: async ({ canvas }) => {
+    // F1: empty-label param renders its real name.
+    await waitFor(() => expect(canvas.getByText("Mix")).toBeInTheDocument());
+    // F1: unit suffix from the JUCE label sits next to the value.
+    await expect(canvas.getByText("dB")).toBeInTheDocument();
+    // G5: sticky filter present above 8 params.
+    await expect(
+      canvas.getByPlaceholderText(/filter 13 parameters/i),
+    ).toBeInTheDocument();
+    // G5: prefix groups exist and collapse.
+    const delayHeader = canvas.getByText("Delay").closest("button")!;
+    await expect(delayHeader).toHaveAttribute("aria-expanded", "true");
+    await userEvent.click(delayHeader);
+    await expect(delayHeader).toHaveAttribute("aria-expanded", "false");
+    await userEvent.click(delayHeader);
+    // G3: rows are accessible NeuSliders, not native range inputs.
+    await expect(
+      canvas.getByRole("slider", { name: "Mod Rate" }),
+    ).toBeInTheDocument();
   },
 };

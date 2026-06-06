@@ -368,11 +368,21 @@ export function GraphCanvas() {
       if (!isEdit) return;
       const clientX = (event as MouseEvent).clientX;
       const clientY = (event as MouseEvent).clientY;
-      // Capture the flow-space cursor so "Add Block…" / "Add Comment Box" /
-      // "Paste" inside the menu can land at the click point, not the origin.
+      // A2/F3 (speed-first spec): plain right-click on the EMPTY Board opens
+      // QuickAdd directly at the cursor — the fastest add-a-Block path. The
+      // fuller board context menu (Comment Box / Paste / Select All / zoom /
+      // snap / layout) moves to SHIFT+right-click. Node/cable context menus
+      // are unchanged.
+      if (!(event as MouseEvent).shiftKey) {
+        setContextMenu({ x: clientX, y: clientY });
+        setCanvasMenu(null);
+        setNodeContextMenu(null);
+        setEdgeContextMenu(null);
+        return;
+      }
+      // Capture the flow-space cursor so "Add Comment Box" / "Paste" inside
+      // the menu can land at the click point, not the origin.
       const flow = reactFlow.screenToFlowPosition({ x: clientX, y: clientY });
-      // Right-clicking the empty Board now opens the fuller contextual menu;
-      // "Add Block…" inside it routes to the QuickAdd popup (setContextMenu).
       setCanvasMenu({ x: clientX, y: clientY, flowX: flow.x, flowY: flow.y });
       setContextMenu(null);
       setNodeContextMenu(null);
@@ -722,8 +732,12 @@ export function GraphCanvas() {
         snapGrid={[gridSize, gridSize]}
         fitView
         fitViewOptions={{ padding: 0.15 }}
-        minZoom={0.2}
-        maxZoom={3}
+        // A3/F2 — surgical zoom range. 0.1 → whole-board overview on huge
+        // boards; 3.0 → port-level close work. The old 1.3-ish feel came from
+        // the WKWebView blur defect, which the promote/demote will-change fix
+        // below resolved — there is no longer a reason to cap viewing zoom.
+        minZoom={0.1}
+        maxZoom={3.0}
         translateExtent={translateExtent}
         onMove={onViewportMove}
         onMoveEnd={onViewportMoveEnd}
@@ -769,7 +783,7 @@ export function GraphCanvas() {
                 Empty Board
               </div>
               <div className="text-[11px] text-text-dim mt-1">
-                Right-click for Board actions · Cmd+K to search
+                Right-click to add a Block · Shift+right-click for Board actions
               </div>
             </div>
           </div>

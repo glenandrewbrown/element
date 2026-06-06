@@ -232,6 +232,29 @@ describe("<Block /> (gaps)", () => {
     expect(toggle).toHaveTextContent(/1 param/i);
   });
 
+  // A6/F5 (Fitts's law): the toggle BUTTON is a ≥30px-tall hit target while
+  // the visible pill (inner span) stays 13px — visual size unchanged.
+  it("param toggle hit target is ≥30px tall while the visible pill stays 13px", () => {
+    renderBlock({
+      ports: [{ id: "in-0", label: "Cutoff", direction: "input", type: "value", connected: false }],
+    });
+    const toggle = screen.getByRole("button", { name: /show 1 parameter port/i });
+    expect(parseFloat(toggle.style.height)).toBeGreaterThanOrEqual(30);
+    // First child = the visual pill span, still 13px.
+    const pill = toggle.firstElementChild as HTMLElement;
+    expect(pill).not.toBeNull();
+    expect(pill.style.height).toBe("13px");
+  });
+
+  it("clicking the expanded (30px) hit area toggles the param lane", () => {
+    renderBlock({
+      ports: [{ id: "in-0", label: "Cutoff", direction: "input", type: "value", connected: false }],
+    });
+    // Click the BUTTON itself (the invisible 30px band), not the inner pill.
+    fireEvent.click(screen.getByRole("button", { name: /show 1 parameter port/i }));
+    expect(screen.getByTestId("handle-in-0")).toBeInTheDocument();
+  });
+
   it("value/CV port Handle reveals after clicking the param toggle", () => {
     renderBlock({
       ports: [{ id: "in-0", label: "Cutoff", direction: "input", type: "value", connected: false }],

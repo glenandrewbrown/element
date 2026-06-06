@@ -825,30 +825,44 @@ function ParamLaneToggle({
       title={expanded ? "Hide parameter ports" : "Show parameter ports"}
       aria-expanded={expanded}
       aria-label={`${expanded ? "Hide" : "Show"} ${count} parameter ${count === 1 ? "port" : "ports"}`}
-      className="nodeblock-param-toggle absolute flex items-center gap-1 px-1.5 leading-none select-none"
+      // A6/F5 (Fitts's law): the BUTTON is a 30px-tall invisible hit target —
+      // the visible 13px pill is the inner span below, visually unchanged.
+      // Clicks anywhere in the 30px band toggle the lane; the chassis around
+      // the pill still LOOKS untouched.
+      className="nodeblock-param-toggle absolute flex items-center justify-center select-none"
       style={{
         top,
         left: "50%",
         transform: "translate(-50%, -50%)",
-        height: 13,
-        borderRadius: 3,
-        // Recessed into the chassis (inset shadow) — pressed, not raised.
-        // Idle keeps a bare recess; hover warms a faint orange tint + a hair
-        // brighter so the affordance surfaces without breaking the "off" rest
-        // state. Same idle/hover grammar as the header StateBtn + port wells.
-        background: hovered
-          ? `linear-gradient(180deg, ${PARAM_ACCENT}14 0%, ${PARAM_ACCENT}0A 100%)`
-          : "linear-gradient(180deg, rgba(26,26,30,0.9) 0%, rgba(20,20,24,0.95) 100%)",
-        boxShadow: hovered
-          ? `inset 1px 1px 2px rgba(0,0,0,0.7), inset -0.5px -0.5px 1px rgba(255,255,255,0.04), 0 0 5px ${PARAM_ACCENT}33`
-          : "inset 1px 1px 2px rgba(0,0,0,0.7), inset -0.5px -0.5px 1px rgba(255,255,255,0.04)",
+        height: 30,
+        minWidth: 44,
+        background: "transparent",
+        border: "none",
+        padding: 0,
         cursor: "pointer",
-        transition: "background 90ms ease, box-shadow 90ms ease",
         // Above the bypass dim (z-20 lane) but the lane itself already sits at
         // z-20; nothing extra needed — it inherits the lane stacking.
         pointerEvents: "auto",
       }}
     >
+      <span
+        className="flex items-center gap-1 px-1.5 leading-none"
+        style={{
+          height: 13,
+          borderRadius: 3,
+          // Recessed into the chassis (inset shadow) — pressed, not raised.
+          // Idle keeps a bare recess; hover warms a faint orange tint + a hair
+          // brighter so the affordance surfaces without breaking the "off" rest
+          // state. Same idle/hover grammar as the header StateBtn + port wells.
+          background: hovered
+            ? `linear-gradient(180deg, ${PARAM_ACCENT}14 0%, ${PARAM_ACCENT}0A 100%)`
+            : "linear-gradient(180deg, rgba(26,26,30,0.9) 0%, rgba(20,20,24,0.95) 100%)",
+          boxShadow: hovered
+            ? `inset 1px 1px 2px rgba(0,0,0,0.7), inset -0.5px -0.5px 1px rgba(255,255,255,0.04), 0 0 5px ${PARAM_ACCENT}33`
+            : "inset 1px 1px 2px rgba(0,0,0,0.7), inset -0.5px -0.5px 1px rgba(255,255,255,0.04)",
+          transition: "background 90ms ease, box-shadow 90ms ease",
+        }}
+      >
       {/* Chevron — flips on expand. Orange so it ties to the Value/CV ports it
           governs. */}
       <span
@@ -877,6 +891,7 @@ function ParamLaneToggle({
         }}
       >
         {count} {count === 1 ? "param" : "params"}
+        </span>
       </span>
     </button>
   );

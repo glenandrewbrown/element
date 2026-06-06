@@ -2,6 +2,7 @@ import {
   useState,
   useRef,
   useEffect,
+  useLayoutEffect,
   useCallback,
   useMemo,
   type KeyboardEvent,
@@ -352,9 +353,15 @@ function PluginRow({
       }
     >
       <CategoryIcon category={plugin.category} name={plugin.name} />
-      <span className="truncate flex-1 min-w-0">{plugin.name}</span>
+      {/* A7/F6 — the block NAME is the visual anchor: semibold, and it
+          truncates LAST (the muted manufacturer gets a much higher flex
+          shrink factor, so it gives way first when the row is tight). Both
+          stay visible when space allows. */}
+      <span className="truncate flex-1 min-w-0 font-semibold">
+        {plugin.name}
+      </span>
       {plugin.manufacturer && (
-        <span className="shrink-0 max-w-[44px] text-[9px] text-text-dim truncate text-right hidden sm:inline">
+        <span className="shrink-[6] min-w-0 max-w-[72px] text-[9px] text-text-dim truncate text-right">
           {plugin.manufacturer}
         </span>
       )}
@@ -405,7 +412,7 @@ export interface QuickAddPopupProps {
   /**
    * Signal type of the port a Cable was dragged off, when opened from a
    * port-drag. When set, the list is filtered to Blocks that accept/pass that
-   * signal type and the header reads "ADD BLOCK ACCEPTING <TYPE>". When
+   * signal type and the header reads "ADD BLOCK ACCEPTING `TYPE`". When
    * omitted (right-click on empty canvas), the full plugin list is shown with
    * favourites pinned — the generic QuickAdd.
    *
@@ -623,8 +630,37 @@ export function QuickAddPopup({ x, y, portType, onClose }: QuickAddPopupProps) {
     return [...favorites, ...recents, ...others];
   }, [isSearching, fuzzyResults, favorites, recents, others]);
 
+  // A4/F4 — type-ahead race fix. Two halves:
+  //  1. SYNCHRONOUS autofocus (useLayoutEffect, no rAF): the input owns the
+  //     keyboard before the browser paints, so the window where keystrokes
+  //     can be lost shrinks to the open-trigger → React-commit gap.
+  //  2. Pre-focus keystroke buffer: a capture-phase window keydown listener
+  //     catches anything typed while the input does NOT yet have focus
+  //     (slow WKWebView focus handoff) and injects it into the search state,
+  //     so the first characters of a fast "right-click + type" gesture are
+  //     never dropped.
+  useLayoutEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
   useEffect(() => {
-    requestAnimationFrame(() => inputRef.current?.focus());
+    const onCaptureKeyDown = (e: globalThis.KeyboardEvent) => {
+      if (document.activeElement === inputRef.current) return; // input owns it
+      if (e.metaKey || e.ctrlKey || e.altKey) return; // leave shortcuts alone
+      if (e.key.length === 1) {
+        e.preventDefault();
+        e.stopPropagation();
+        setSearch((s) => s + e.key);
+        inputRef.current?.focus();
+      } else if (e.key === "Backspace") {
+        e.preventDefault();
+        e.stopPropagation();
+        setSearch((s) => s.slice(0, -1));
+        inputRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", onCaptureKeyDown, true);
+    return () => window.removeEventListener("keydown", onCaptureKeyDown, true);
   }, []);
 
   useEffect(() => {

@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useGraphStore } from "../../stores/useGraphStore";
 import type { Port } from "../../data/types";
-import { Icon, NeuInput, NeuToggle } from "../neu";
+import { Icon, NeuInput } from "../neu";
 
 // Above this many params, surface a text filter so a params-as-ports plugin
 // (a Valhalla reverb can expose 18+ CV inputs) stays navigable.
@@ -170,13 +170,10 @@ export function ParamConfigPopover({ nodeId, accent }: ParamConfigPopoverProps) 
                     <span className="text-[8px] uppercase tracking-wider text-text-dim shrink-0 w-6 text-right">
                       {port.direction === "output" ? "out" : "in"}
                     </span>
-                    <NeuToggle
-                      active={shown}
-                      color="orange"
+                    <ParamLedToggle
+                      shown={shown}
+                      label={port.label}
                       onChange={(next) => setShown(port.id, next)}
-                      className={
-                        shown ? "" : "opacity-90"
-                      }
                     />
                   </div>
                 );
@@ -186,6 +183,54 @@ export function ParamConfigPopover({ nodeId, accent }: ParamConfigPopoverProps) 
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * G1 — square recessed LED toggle (replaces the iOS-style NeuToggle switch).
+ * A 16×16 well pressed INTO the chassis with an LED dot inside: lit amber
+ * (Value/CV signal hue, the same axis these param ports carry) + micro-glow
+ * when the param is SHOWN, near-dark when hidden. `role="switch"` keeps the
+ * semantics of the old control for AT + existing interaction patterns.
+ */
+function ParamLedToggle({
+  shown,
+  label,
+  onChange,
+}: {
+  shown: boolean;
+  label: string;
+  onChange: (next: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={shown}
+      aria-label={`${shown ? "Hide" : "Show"} ${label}`}
+      onClick={() => onChange(!shown)}
+      className="w-4 h-4 rounded-[3px] shrink-0 flex items-center justify-center cursor-pointer transition-colors duration-100"
+      style={{
+        background: "var(--color-pressed, #1A1A1E)",
+        boxShadow:
+          "inset 1.5px 1.5px 3px rgba(0,0,0,0.6), inset -0.5px -0.5px 1.5px rgba(255,255,255,0.04)",
+      }}
+    >
+      <span
+        className="w-1.5 h-1.5 rounded-full transition-all duration-100"
+        style={
+          shown
+            ? {
+                background: "#E8A838",
+                boxShadow: "0 0 4px rgba(232,168,56,0.6)",
+              }
+            : {
+                background: "rgba(255,255,255,0.12)",
+                boxShadow: "inset 0.5px 0.5px 1px rgba(0,0,0,0.6)",
+              }
+        }
+      />
+    </button>
   );
 }
 

@@ -281,9 +281,9 @@ describe("GraphCanvas (gaps)", () => {
 
   // ── onPaneClick dismiss ──────────────────────────────────────────────────────
 
-  // QUARANTINE: stale interaction — right-click no longer opens QuickAddPopup directly;
-  // opens canvas context menu first. Test needs update to follow the new 2-step flow.
-  it.skip("paneClick dismisses open context menu and calls clearSelection", () => {
+  // UN-QUARANTINED (A2/F3): plain right-click opens QuickAddPopup DIRECTLY
+  // again (board menu moved to Shift+right-click), so this flow is current.
+  it("paneClick dismisses open context menu and calls clearSelection", () => {
     render(<GraphCanvas />);
     // Open the context menu first
     fireEvent.contextMenu(screen.getByTestId("react-flow"), { clientX: 10, clientY: 10 });

@@ -14,7 +14,7 @@
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { renderHook, act } from "@testing-library/react";
-import { useKeyboard } from "../useKeyboard";
+import { useKeyboard, signalChainOrder } from "../useKeyboard";
 
 // ── Shared hoisted state (must precede vi.mock calls) ─────────────────────────
 
@@ -259,6 +259,118 @@ describe("useKeyboard — Tab traversal", () => {
     mount();
     act(() => fireKey("Tab"));
     expect(graphState.selectNode).toHaveBeenCalledWith("only");
+  });
+
+  // ── G6/P5 — Tab follows the SIGNAL CHAIN (topological), not array/x order ──
+
+  it("Tab follows the cable chain even when downstream node sits LEFT of its source", () => {
+    // a → b → c, but c is positioned left of b. The old in-degree+x sort
+    // visited a, c, b (b and c both have in-degree 1, c.x < b.x) — WRONG.
+    // Topological order must be a, b, c.
+    graphState.nodes = [
+      { id: "a", position: { x: 0, y: 0 } },
+      { id: "b", position: { x: 200, y: 0 } },
+      { id: "c", position: { x: 100, y: 0 } }, // downstream of b, left of it
+    ];
+    graphState.edges = [
+      { id: "e1", source: "a", target: "b" },
+      { id: "e2", source: "b", target: "c" },
+    ];
+    graphState.selectedNodeId = "a";
+    mount();
+    act(() => fireKey("Tab"));
+    expect(graphState.selectNode).toHaveBeenCalledWith("b");
+  });
+
+  it("Tab from mid-chain advances to the true downstream node", () => {
+    graphState.nodes = [
+      { id: "a", position: { x: 0, y: 0 } },
+      { id: "b", position: { x: 200, y: 0 } },
+      { id: "c", position: { x: 100, y: 0 } },
+    ];
+    graphState.edges = [
+      { id: "e1", source: "a", target: "b" },
+      { id: "e2", source: "b", target: "c" },
+    ];
+    graphState.selectedNodeId = "b";
+    mount();
+    act(() => fireKey("Tab"));
+    expect(graphState.selectNode).toHaveBeenCalledWith("c");
+  });
+
+  it("Shift+Tab walks the chain backward (downstream → its source)", () => {
+    graphState.nodes = [
+      { id: "a", position: { x: 0, y: 0 } },
+      { id: "b", position: { x: 200, y: 0 } },
+      { id: "c", position: { x: 100, y: 0 } },
+    ];
+    graphState.edges = [
+      { id: "e1", source: "a", target: "b" },
+      { id: "e2", source: "b", target: "c" },
+    ];
+    graphState.selectedNodeId = "c";
+    mount();
+    act(() => fireKey("Tab", { shiftKey: true }));
+    expect(graphState.selectNode).toHaveBeenCalledWith("b");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("signalChainOrder (pure)", () => {
+  it("orders a linear chain source→downstream regardless of positions", () => {
+    const nodes = [
+      { id: "c", position: { x: 0, y: 0 } },
+      { id: "a", position: { x: 999, y: 0 } },
+      { id: "b", position: { x: 500, y: 0 } },
+    ];
+    const edges = [
+      { source: "a", target: "b" },
+      { source: "b", target: "c" },
+    ];
+    expect(signalChainOrder(nodes, edges)).toEqual(["a", "b", "c"]);
+  });
+
+  it("breaks ties between simultaneously-ready nodes by x then y position", () => {
+    // One source fans out to two parallel branches.
+    const nodes = [
+      { id: "src", position: { x: 0, y: 0 } },
+      { id: "right", position: { x: 300, y: 0 } },
+      { id: "left", position: { x: 100, y: 0 } },
+    ];
+    const edges = [
+      { source: "src", target: "right" },
+      { source: "src", target: "left" },
+    ];
+    expect(signalChainOrder(nodes, edges)).toEqual(["src", "left", "right"]);
+  });
+
+  it("appends feedback-cycle nodes instead of dropping them", () => {
+    const nodes = [
+      { id: "a", position: { x: 0, y: 0 } },
+      { id: "loop1", position: { x: 100, y: 0 } },
+      { id: "loop2", position: { x: 200, y: 0 } },
+    ];
+    const edges = [
+      { source: "loop1", target: "loop2" },
+      { source: "loop2", target: "loop1" }, // cycle — never in-degree 0
+    ];
+    const order = signalChainOrder(nodes, edges);
+    expect(order).toHaveLength(3);
+    expect(order[0]).toBe("a");
+    expect(new Set(order)).toEqual(new Set(["a", "loop1", "loop2"]));
+  });
+
+  it("ignores dangling edges referencing unknown nodes", () => {
+    const nodes = [
+      { id: "a", position: { x: 0, y: 0 } },
+      { id: "b", position: { x: 100, y: 0 } },
+    ];
+    const edges = [
+      { source: "ghost", target: "b" },
+      { source: "a", target: "ghost2" },
+    ];
+    expect(signalChainOrder(nodes, edges)).toEqual(["a", "b"]);
   });
 });
 
