@@ -271,10 +271,39 @@ struct LatencyPayload
 };
 
 //==============================================================================
+/** Per-parameter metadata carried in the PluginInfo wire payload (v2).
+
+    Mirrors what the worker reads off the live juce::AudioProcessorParameter so
+    the host can build REAL parameter proxies instead of synthesizing 0.5
+    defaults with no ranges/labels/flags. min/max come from
+    juce::RangedAudioParameter::getNormalisableRange() when the parameter is
+    ranged, else the normalized 0..1. The unit label string travels in the
+    trailing meta table (variable length), not in this POD. */
+struct SandboxParamMeta
+{
+    float defaultValue { 0.5f };
+    float minValue { 0.0f };
+    float maxValue { 1.0f };
+    uint8_t stepped { 0 };   ///< parameter is discrete (isDiscrete)
+    uint8_t boolean { 0 };   ///< parameter is a toggle (isBoolean)
+    uint16_t numSteps { 0 }; ///< 0 = continuous / use host default
+};
+
+static_assert (std::is_trivially_copyable_v<SandboxParamMeta>,
+               "SandboxParamMeta crosses the process boundary — must stay POD.");
+static_assert (sizeof (SandboxParamMeta) == 16,
+               "SandboxParamMeta layout changed — coordinate worker+host rebuild.");
+
 /** Plugin metadata payload — sent worker → host immediately after PluginLoaded.
-    Followed in the wire payload by `numParameters` length-prefixed UTF-8 names:
-    each name has a `uint32_t byteLength` followed by `byteLength` bytes.
-    Use createPluginInfoMessage() / parsePluginInfoMessage() to (de)serialize. */
+
+    Wire layout (in order):
+        [PluginInfoPayload struct]
+        [name table: numParameters × (uint32_t byteLength + UTF-8 bytes)]
+        [meta table: numParameters × (SandboxParamMeta + uint32_t labelLength + UTF-8 label bytes)]
+
+    paramMetaLength == 0 means a v1 payload with no meta table — the parser
+    accepts it and the host falls back to synthesized defaults. Use
+    createPluginInfoMessage() / parsePluginInfoMessage() to (de)serialize. */
 struct PluginInfoPayload
 {
     uint32_t numParameters { 0 };
@@ -285,13 +314,19 @@ struct PluginInfoPayload
     uint8_t producesMidi { 0 };
     uint8_t reserved { 0 };
     uint32_t paramNamesLength { 0 };  ///< total bytes of trailing name table
+    uint32_t paramMetaLength { 0 };   ///< total bytes of trailing meta table (0 = v1, no metas)
 };
 
-/** Serialize a PluginInfoPayload + parameter names into a transferable block.
+/** Serialize a PluginInfoPayload + parameter names (+ optional per-parameter
+    metas/labels) into a transferable block.
     Names beyond EL_SANDBOX_MAX_PARAMETERS are silently dropped — the worker is
-    expected to apply the same cap before calling this helper. */
+    expected to apply the same cap before calling this helper. When `metas` is
+    non-null it must hold one entry per (capped) name; `labels` likewise. A null
+    metas pointer emits a v1 payload (paramMetaLength == 0). */
 inline juce::MemoryBlock createPluginInfoMessage (const PluginInfoPayload& info,
-                                                   const juce::StringArray& names)
+                                                   const juce::StringArray& names,
+                                                   const juce::Array<SandboxParamMeta>* metas = nullptr,
+                                                   const juce::StringArray* labels = nullptr)
 {
     // Cap names at EL_SANDBOX_MAX_PARAMETERS — defensive duplicate of the
     // worker-side cap; ensures bounded allocation even if the caller forgot.
@@ -305,11 +340,26 @@ inline juce::MemoryBlock createPluginInfoMessage (const PluginInfoPayload& info,
         namesBytes += (uint32_t) sizeof (uint32_t) + utf8Len;
     }
 
+    // Meta table bytes: per param a fixed POD + length-prefixed label string.
+    const bool haveMetas = metas != nullptr && metas->size() >= safeCount;
+    uint32_t metaBytes = 0;
+    if (haveMetas)
+    {
+        for (int i = 0; i < safeCount; ++i)
+        {
+            const uint32_t labelLen = (labels != nullptr && i < labels->size())
+                                          ? (uint32_t) (*labels)[i].getNumBytesAsUTF8()
+                                          : 0u;
+            metaBytes += (uint32_t) sizeof (SandboxParamMeta) + (uint32_t) sizeof (uint32_t) + labelLen;
+        }
+    }
+
     PluginInfoPayload header = info;
     header.numParameters = (uint32_t) safeCount;
     header.paramNamesLength = namesBytes;
+    header.paramMetaLength = metaBytes;
 
-    juce::MemoryBlock payload (sizeof (PluginInfoPayload) + namesBytes, true);
+    juce::MemoryBlock payload (sizeof (PluginInfoPayload) + namesBytes + metaBytes, true);
     auto* dst = static_cast<uint8_t*> (payload.getData());
     std::memcpy (dst, &header, sizeof (PluginInfoPayload));
 
@@ -324,16 +374,46 @@ inline juce::MemoryBlock createPluginInfoMessage (const PluginInfoPayload& info,
         cursor += len;
     }
 
+    if (haveMetas)
+    {
+        for (int i = 0; i < safeCount; ++i)
+        {
+            const auto& meta = metas->getReference (i);
+            std::memcpy (cursor, &meta, sizeof (SandboxParamMeta));
+            cursor += sizeof (SandboxParamMeta);
+
+            const juce::String label = (labels != nullptr && i < labels->size()) ? (*labels)[i]
+                                                                                  : juce::String();
+            const uint32_t labelLen = (uint32_t) label.getNumBytesAsUTF8();
+            std::memcpy (cursor, &labelLen, sizeof (labelLen));
+            cursor += sizeof (labelLen);
+            if (labelLen > 0)
+            {
+                std::memcpy (cursor, label.toRawUTF8(), labelLen);
+                cursor += labelLen;
+            }
+        }
+    }
+
     return payload;
 }
 
-/** Parse a PluginInfoPayload + names. Returns false on any out-of-bounds read,
-    on a numParameters > EL_SANDBOX_MAX_PARAMETERS, or on a paramNamesLength
-    that doesn't match the actual trailing buffer size. */
+/** Parse a PluginInfoPayload + names (+ optional v2 meta table). Returns false
+    on any out-of-bounds read, on a numParameters > EL_SANDBOX_MAX_PARAMETERS,
+    or on a paramNamesLength/paramMetaLength that doesn't match the actual
+    trailing buffer size. A v1 payload (paramMetaLength == 0) parses fine and
+    leaves `metas`/`labels` empty. */
 inline bool parsePluginInfoMessage (const void* payload, uint32_t payloadSize,
-                                     PluginInfoPayload& out, juce::StringArray& names)
+                                     PluginInfoPayload& out, juce::StringArray& names,
+                                     juce::Array<SandboxParamMeta>* metas = nullptr,
+                                     juce::StringArray* labels = nullptr)
 {
     names.clear();
+    if (metas != nullptr)
+        metas->clearQuick();
+    if (labels != nullptr)
+        labels->clear();
+
     if (payload == nullptr || payloadSize < sizeof (PluginInfoPayload))
         return false;
 
@@ -342,7 +422,11 @@ inline bool parsePluginInfoMessage (const void* payload, uint32_t payloadSize,
     if (out.numParameters > EL_SANDBOX_MAX_PARAMETERS)
         return false;
 
-    if (payloadSize < sizeof (PluginInfoPayload) + out.paramNamesLength)
+    // Guard the additions against overflow before the bounds check.
+    const uint64_t total = (uint64_t) sizeof (PluginInfoPayload)
+                         + (uint64_t) out.paramNamesLength
+                         + (uint64_t) out.paramMetaLength;
+    if ((uint64_t) payloadSize < total)
         return false;
 
     const auto* cursor = static_cast<const uint8_t*> (payload) + sizeof (PluginInfoPayload);
@@ -365,7 +449,42 @@ inline bool parsePluginInfoMessage (const void* payload, uint32_t payloadSize,
     }
 
     // Strict: any leftover bytes in the names region are an encoding error.
-    return cursor == end;
+    if (cursor != end)
+        return false;
+
+    // v2 meta table (optional). Validate the full region even when the caller
+    // didn't ask for metas — a malformed table is a protocol error either way.
+    if (out.paramMetaLength > 0)
+    {
+        const auto* metaEnd = cursor + out.paramMetaLength;
+        for (uint32_t i = 0; i < out.numParameters; ++i)
+        {
+            if (cursor + sizeof (SandboxParamMeta) + sizeof (uint32_t) > metaEnd)
+                return false;
+
+            SandboxParamMeta meta;
+            std::memcpy (&meta, cursor, sizeof (SandboxParamMeta));
+            cursor += sizeof (SandboxParamMeta);
+
+            uint32_t labelLen = 0;
+            std::memcpy (&labelLen, cursor, sizeof (uint32_t));
+            cursor += sizeof (uint32_t);
+
+            if (cursor + labelLen > metaEnd)
+                return false;
+
+            if (metas != nullptr)
+                metas->add (meta);
+            if (labels != nullptr)
+                labels->add (juce::String::fromUTF8 (reinterpret_cast<const char*> (cursor), (int) labelLen));
+            cursor += labelLen;
+        }
+
+        if (cursor != metaEnd)
+            return false;
+    }
+
+    return true;
 }
 
 //==============================================================================

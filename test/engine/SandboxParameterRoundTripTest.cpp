@@ -165,6 +165,110 @@ BOOST_AUTO_TEST_CASE (plugin_info_payload_rejects_overlarge)
 }
 
 //------------------------------------------------------------------------------
+BOOST_AUTO_TEST_CASE (plugin_info_v2_meta_round_trips)
+{
+    PluginInfoPayload info;
+    info.numParameters = 3;
+    info.numInputChannels = 1;
+    info.numOutputChannels = 2;
+
+    juce::StringArray names { "Cutoff", "Mode", "Bypass" };
+
+    juce::Array<SandboxParamMeta> metas;
+    SandboxParamMeta cutoff;
+    cutoff.defaultValue = 0.25f;
+    cutoff.minValue = 20.0f;
+    cutoff.maxValue = 20000.0f;
+    metas.add (cutoff);
+
+    SandboxParamMeta mode;
+    mode.defaultValue = 0.0f;
+    mode.stepped = 1;
+    mode.numSteps = 4;
+    metas.add (mode);
+
+    SandboxParamMeta bypass;
+    bypass.defaultValue = 0.0f;
+    bypass.stepped = 1;
+    bypass.boolean = 1;
+    bypass.numSteps = 2;
+    metas.add (bypass);
+
+    juce::StringArray labels { "Hz", "", "" };
+
+    auto block = createPluginInfoMessage (info, names, &metas, &labels);
+
+    PluginInfoPayload parsed {};
+    juce::StringArray parsedNames;
+    juce::Array<SandboxParamMeta> parsedMetas;
+    juce::StringArray parsedLabels;
+    BOOST_REQUIRE (parsePluginInfoMessage (block.getData(), (uint32_t) block.getSize(),
+                                           parsed, parsedNames, &parsedMetas, &parsedLabels));
+
+    BOOST_CHECK (parsed.paramMetaLength > 0);
+    BOOST_REQUIRE_EQUAL (parsedNames.size(), 3);
+    BOOST_REQUIRE_EQUAL (parsedMetas.size(), 3);
+    BOOST_REQUIRE_EQUAL (parsedLabels.size(), 3);
+
+    BOOST_CHECK_EQUAL (parsedMetas[0].defaultValue, 0.25f);
+    BOOST_CHECK_EQUAL (parsedMetas[0].minValue, 20.0f);
+    BOOST_CHECK_EQUAL (parsedMetas[0].maxValue, 20000.0f);
+    BOOST_CHECK_EQUAL ((int) parsedMetas[0].stepped, 0);
+    BOOST_CHECK_EQUAL (parsedLabels[0].toStdString(), "Hz");
+
+    BOOST_CHECK_EQUAL ((int) parsedMetas[1].stepped, 1);
+    BOOST_CHECK_EQUAL ((int) parsedMetas[1].numSteps, 4);
+    BOOST_CHECK_EQUAL ((int) parsedMetas[1].boolean, 0);
+
+    BOOST_CHECK_EQUAL ((int) parsedMetas[2].boolean, 1);
+    BOOST_CHECK_EQUAL ((int) parsedMetas[2].numSteps, 2);
+    BOOST_CHECK_EQUAL (parsedLabels[2].toStdString(), "");
+}
+
+//------------------------------------------------------------------------------
+BOOST_AUTO_TEST_CASE (plugin_info_v1_payload_still_parses_without_metas)
+{
+    // v1 payload: no meta table (paramMetaLength == 0). Parser must accept it
+    // and leave metas/labels empty so the host degrades to synthesized defaults.
+    PluginInfoPayload info;
+    info.numParameters = 2;
+
+    juce::StringArray names { "A", "B" };
+    auto block = createPluginInfoMessage (info, names); // no metas/labels
+
+    PluginInfoPayload parsed {};
+    juce::StringArray parsedNames;
+    juce::Array<SandboxParamMeta> parsedMetas;
+    juce::StringArray parsedLabels;
+    BOOST_REQUIRE (parsePluginInfoMessage (block.getData(), (uint32_t) block.getSize(),
+                                           parsed, parsedNames, &parsedMetas, &parsedLabels));
+
+    BOOST_CHECK_EQUAL (parsed.paramMetaLength, 0u);
+    BOOST_REQUIRE_EQUAL (parsedNames.size(), 2);
+    BOOST_CHECK_EQUAL (parsedMetas.size(), 0);
+    BOOST_CHECK_EQUAL (parsedLabels.size(), 0);
+}
+
+//------------------------------------------------------------------------------
+BOOST_AUTO_TEST_CASE (plugin_info_v2_rejects_truncated_meta_table)
+{
+    PluginInfoPayload info;
+    info.numParameters = 1;
+    juce::StringArray names { "Gain" };
+    juce::Array<SandboxParamMeta> metas;
+    metas.add (SandboxParamMeta {});
+    juce::StringArray labels { "dB" };
+
+    auto block = createPluginInfoMessage (info, names, &metas, &labels);
+
+    PluginInfoPayload parsed {};
+    juce::StringArray parsedNames;
+    BOOST_CHECK (! parsePluginInfoMessage (block.getData(),
+                                           (uint32_t) (block.getSize() - 1),
+                                           parsed, parsedNames));
+}
+
+//------------------------------------------------------------------------------
 BOOST_AUTO_TEST_CASE (sandbox_parameter_setvalue_emits_one_ipc)
 {
     PluginManager pm;  // construction is enough — we don't need it active.

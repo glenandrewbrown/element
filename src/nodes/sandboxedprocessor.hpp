@@ -13,6 +13,41 @@
 namespace element {
 
 //==============================================================================
+/** SandboxParameter enriched with the v2 PluginInfo metadata (unit label,
+    discrete/boolean flags, step count). The base proxy already carries the
+    real default value via its constructor; this subclass surfaces the rest of
+    the worker-reported metadata to the host UI without changing the wire
+    behavior of setValue()/applyValueFromWorker(). */
+class SandboxParameterWithMeta : public SandboxParameter
+{
+public:
+    SandboxParameterWithMeta (SandboxHost& host, int paramIndex,
+                              juce::String paramName, const SandboxParamMeta& m,
+                              juce::String unitLabel)
+        : SandboxParameter (host, paramIndex, std::move (paramName), m.defaultValue),
+          meta (m),
+          label (std::move (unitLabel))
+    {
+    }
+
+    juce::String getLabel() const override { return label; }
+    bool isDiscrete() const override { return meta.stepped != 0; }
+    bool isBoolean() const override { return meta.boolean != 0; }
+    int getNumSteps() const override
+    {
+        return meta.numSteps > 0 ? (int) meta.numSteps : Parameter::defaultNumSteps();
+    }
+
+    /** Worker-reported (denormalized) range — informational for host UI. */
+    float getMinValue() const noexcept { return meta.minValue; }
+    float getMaxValue() const noexcept { return meta.maxValue; }
+
+private:
+    const SandboxParamMeta meta;
+    const juce::String label;
+};
+
+//==============================================================================
 /**
  * A Processor node that hosts a plugin in an isolated (sandboxed) process.
  *
@@ -333,23 +368,17 @@ inline void SandboxedProcessorNode::setupPorts()
     bool acceptsMidi = true;
     bool producesMidi = true;
 
-    if (sandbox && sandbox->getParameterCount() >= 0)
+    if (sandbox && sandbox->hasReceivedPluginInfo())
     {
+        // HONEST channel counts: propagate the worker plugin's actual bus
+        // layout verbatim — a mono effect gets 1 in/1 out, an instrument gets
+        // 0 audio inputs. The old jmax(2, …) stereo floor advertised phantom
+        // ports that were never backed by plugin channels.
         const auto& info = sandbox->getPluginInfo();
-        if (info.numInputChannels > 0 || info.numOutputChannels > 0)
-        {
-            audioIn = juce::jmax (2, (int) info.numInputChannels);
-            audioOut = juce::jmax (2, (int) info.numOutputChannels);
-        }
-        // Use authoritative MIDI flags only if PluginInfo has been received
-        // (numParameters > 0 OR numInputChannels > 0 — either signal indicates
-        // a non-default payload).
-        if (info.numParameters > 0 || info.numInputChannels > 0
-            || info.numOutputChannels > 0)
-        {
-            acceptsMidi = info.acceptsMidi != 0;
-            producesMidi = info.producesMidi != 0;
-        }
+        audioIn = (int) info.numInputChannels;
+        audioOut = (int) info.numOutputChannels;
+        acceptsMidi = info.acceptsMidi != 0;
+        producesMidi = info.producesMidi != 0;
     }
 
     for (int ch = 0; ch < audioIn; ++ch)
@@ -471,7 +500,10 @@ inline void SandboxedProcessorNode::sandboxPluginInfo (SandboxHost*)
         return;
 
     // Rebuild parameter proxies. Each proxy holds a reference to the host so
-    // setValue() pushes through the existing SetParameter IPC.
+    // setValue() pushes through the existing SetParameter IPC. The v2 wire
+    // format carries real defaults/ranges/flags/labels per parameter
+    // (SandboxParamMeta) — a v1 payload without a meta table degrades to the
+    // synthesized 0.5-midpoint defaults via SandboxHost::getParameterMeta().
     params.clear();
     const int n = sandbox->getParameterCount();
     for (int i = 0; i < n; ++i)
@@ -479,10 +511,9 @@ inline void SandboxedProcessorNode::sandboxPluginInfo (SandboxHost*)
         auto name = sandbox->getParameterName (i);
         if (name.isEmpty())
             name = "Param " + juce::String (i);
-        // Default to 0.5f midpoint — the v1 wire format does not carry the
-        // plugin's reported default. Hosts can update the cache later via
-        // applyValueFromWorker() once the worker reports actual state.
-        params.add (new SandboxParameter (*sandbox, i, name, 0.5f));
+        params.add (new SandboxParameterWithMeta (*sandbox, i, name,
+                                                  sandbox->getParameterMeta (i),
+                                                  sandbox->getParameterLabel (i)));
     }
 
     // Rebuild ports with real I/O config + per-parameter Control ports.

@@ -14,6 +14,10 @@
   #include <immintrin.h>
 #endif
 
+#if ! JUCE_WINDOWS
+  #include <dlfcn.h>  // dladdr — locate the bundle containing this code (helper discovery)
+#endif
+
 #include <condition_variable>
 #include <mutex>
 #include <memory>
@@ -176,6 +180,29 @@ public:
                    : juce::String();
     }
 
+    /** True once a PluginInfo payload has been received from the worker.
+        Until then getPluginInfo() carries zeroed defaults. */
+    bool hasReceivedPluginInfo() const noexcept { return pluginInfoReceived.load(); }
+
+    /** Get per-parameter metadata (default/range/flags) by index. Returns
+        synthesized defaults (0.5 midpoint, 0..1, continuous) when the worker
+        sent a v1 payload without a meta table or the index is out of range. */
+    SandboxParamMeta getParameterMeta (int index) const
+    {
+        return juce::isPositiveAndBelow (index, parameterMetas.size())
+                   ? parameterMetas.getReference (index)
+                   : SandboxParamMeta {};
+    }
+
+    /** Get a parameter's unit label ("dB", "Hz", …) by index. Empty when the
+        plugin reports none or the worker sent a v1 payload. */
+    juce::String getParameterLabel (int index) const
+    {
+        return juce::isPositiveAndBelow (index, parameterLabels.size())
+                   ? parameterLabels[index]
+                   : juce::String();
+    }
+
     //==========================================================================
     /** Save plugin state. Blocking call. */
     juce::MemoryBlock getPluginState();
@@ -255,6 +282,9 @@ private:
     // Cached PluginInfo from worker (populated when PluginInfo IPC arrives).
     PluginInfoPayload pluginInfo {};
     juce::StringArray parameterNames;
+    juce::Array<SandboxParamMeta> parameterMetas;
+    juce::StringArray parameterLabels;
+    std::atomic<bool> pluginInfoReceived { false };
 
     // Audio processing — shared memory backed
     SandboxSharedMemory sharedMemory;
@@ -396,6 +426,11 @@ inline void SandboxHost::loadPlugin (const juce::PluginDescription& desc)
         listeners.call (&Listener::sandboxPluginLoadFailed, this, "Failed to serialize plugin description");
         return;
     }
+
+    // The previous plugin's PluginInfo (params/metas/ports) is stale for the
+    // incoming one — clear the received flag so consumers fall back to safe
+    // defaults until the worker delivers the new payload.
+    pluginInfoReceived.store (false);
 
     auto xmlString = xml->toString();
     sendMessage (SandboxMessageType::LoadPlugin,
@@ -729,14 +764,116 @@ namespace detail {
 // DEDICATED worker binary (element_sandbox_host, bundle id
 // net.kushview.Element.sandbox) rather than re-exec'ing Element.app. A distinct
 // bundle id stops macOS duplicate-instance enforcement from SIGKILLing the host
-// while the worker is alive. This resolves that helper binary from the host's
-// current executable, covering the dev-build and installed-.app layouts. Returns
-// a non-existent File if no helper is found (caller falls back to the host exe so
-// nothing breaks when the helper hasn't been built).
-inline juce::File resolveSandboxHelperExecutable()
-{
-    const auto hostExe = juce::File::getSpecialLocation (juce::File::currentExecutableFile);
+// while the worker is alive.
+//
+// Resolution order (P4 sandbox default-on chain, 2026-06-06):
+//   1. EL_SANDBOX_HELPER env override (explicit path, exact file)
+//   2. <owning bundle>/Contents/Helpers — resolved from the BUNDLE CONTAINING
+//      THIS CODE (dladdr on a symbol in this module), NOT the process
+//      executable. When Element runs as a plugin inside a DAW, the process
+//      executable is the DAW's — only the module path locates Element's own
+//      .vst3/.component/.app bundle.
+//   3. Executable-adjacent layouts (installed .app / dev artefacts) — the
+//      pre-existing behavior, correct for the standalone app.
+// If nothing is found the caller must FAIL with a logged error. Re-exec'ing
+// the host executable as a worker is forbidden in production (duplicate
+// instance risk; nonsensical when the host is a DAW).
 
+/** All inputs to helper resolution, separated from environment/process state
+    so the resolution ORDER is unit-testable (SandboxHelperDiscoveryTests). */
+struct SandboxHelperSearchSpec
+{
+    juce::String envOverride;      ///< value of EL_SANDBOX_HELPER ("" = unset)
+    juce::File bundleContentsDir;  ///< <owning bundle>/Contents (nonexistent = skip)
+    juce::File hostExe;            ///< process executable for adjacent search
+};
+
+/** Path of the binary CONTAINING THIS CODE (app binary, or plugin dylib when
+    Element is loaded inside a DAW). Returns a non-existent File on failure. */
+inline juce::File currentModuleFile()
+{
+   #if JUCE_WINDOWS
+    HMODULE mod = nullptr;
+    if (GetModuleHandleExW (GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS
+                                | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                            reinterpret_cast<LPCWSTR> (&currentModuleFile),
+                            &mod)
+        && mod != nullptr)
+    {
+        WCHAR path[1024] {};
+        if (GetModuleFileNameW (mod, path, 1024) > 0)
+            return juce::File (juce::String (path));
+    }
+    return {};
+   #else
+    Dl_info info {};
+    if (::dladdr (reinterpret_cast<const void*> (&currentModuleFile), &info) != 0
+        && info.dli_fname != nullptr)
+        return juce::File (juce::String::fromUTF8 (info.dli_fname));
+    return {};
+   #endif
+}
+
+/** Walk up from the module binary to its owning bundle and return that
+    bundle's Contents directory. Handles .app, .vst3, .component (AU), and
+    .clap bundle layouts. Returns a non-existent File when the module is not
+    inside a bundle (e.g. Linux flat binary). */
+inline juce::File owningBundleContentsDir (const juce::File& moduleFile)
+{
+    for (auto dir = moduleFile.getParentDirectory();
+         dir.getFullPathName().isNotEmpty() && dir != dir.getParentDirectory();
+         dir = dir.getParentDirectory())
+    {
+        const auto name = dir.getFileName();
+        if (name.endsWithIgnoreCase (".app") || name.endsWithIgnoreCase (".vst3")
+            || name.endsWithIgnoreCase (".component") || name.endsWithIgnoreCase (".clap"))
+            return dir.getChildFile ("Contents");
+    }
+    return {};
+}
+
+/** Helper binary candidates inside a bundle's Contents/Helpers dir. */
+inline void addHelpersDirCandidates (juce::Array<juce::File>& candidates,
+                                     const juce::File& contentsDir)
+{
+    if (contentsDir.getFullPathName().isEmpty())
+        return;
+    const auto helpers = contentsDir.getChildFile ("Helpers");
+   #if JUCE_MAC
+    candidates.add (helpers.getChildFile ("Element Sandbox Host.app")
+                           .getChildFile ("Contents/MacOS/Element Sandbox Host"));
+    candidates.add (helpers.getChildFile ("element_sandbox_host"));
+   #elif JUCE_WINDOWS
+    candidates.add (helpers.getChildFile ("Element Sandbox Host.exe"));
+   #else
+    candidates.add (helpers.getChildFile ("element_sandbox_host"));
+   #endif
+}
+
+/** Pure resolution over an explicit search spec — see resolution-order comment
+    above. Returns a non-existent File when no helper is found; the caller MUST
+    treat that as a launch failure (no host re-exec). */
+inline juce::File resolveSandboxHelperExecutable (const SandboxHelperSearchSpec& spec)
+{
+    // 1. Explicit env override wins outright when it points at a real file.
+    //    A set-but-missing path is a misconfiguration — log and continue so a
+    //    stale env var can't silently disable the sandbox.
+    if (spec.envOverride.isNotEmpty())
+    {
+        const juce::File overrideFile (spec.envOverride);
+        if (overrideFile.existsAsFile())
+            return overrideFile;
+        juce::Logger::writeToLog ("[sandbox] EL_SANDBOX_HELPER set but not a file: "
+                                  + spec.envOverride + " — continuing with bundle search");
+    }
+
+    juce::Array<juce::File> candidates;
+
+    // 2. Owning-bundle Contents/Helpers (works when Element is a plugin in a DAW).
+    addHelpersDirCandidates (candidates, spec.bundleContentsDir);
+
+    // 3. Executable-adjacent layouts (standalone app / dev build).
+    const auto& hostExe = spec.hostExe;
    #if JUCE_MAC
     const juce::String helperBundle  = "Element Sandbox Host.app";
     const juce::String helperBinRel  = "Contents/MacOS/Element Sandbox Host";
@@ -748,9 +885,8 @@ inline juce::File resolveSandboxHelperExecutable()
     const auto appsDir     = hostAppDir.getParentDirectory();           // /Applications (installed)
     const auto artefactsParent = appsDir.getParentDirectory();          // build-merged (dev)
 
-    juce::Array<juce::File> candidates;
     // Installed / packaged: helper nested INSIDE Element.app (preferred ship layout).
-    candidates.add (contentsDir.getChildFile ("Helpers").getChildFile (helperBundle).getChildFile (helperBinRel));
+    addHelpersDirCandidates (candidates, contentsDir);
     candidates.add (macOsDir.getChildFile (helperBundle).getChildFile (helperBinRel));
     // Installed: helper as a SIBLING bundle next to Element.app (e.g. /Applications).
     candidates.add (appsDir.getChildFile (helperBundle).getChildFile (helperBinRel));
@@ -758,65 +894,78 @@ inline juce::File resolveSandboxHelperExecutable()
     candidates.add (artefactsParent.getChildFile ("element_sandbox_host_artefacts")
                                    .getChildFile (helperBundle)
                                    .getChildFile (helperBinRel));
-
-    for (const auto& c : candidates)
-        if (c.existsAsFile())
-            return c;
    #elif JUCE_WINDOWS
     // Sibling exe in the same directory as the host (install layout) or the dev
     // artefacts dir.
     const auto binDir = hostExe.getParentDirectory();
-    juce::Array<juce::File> candidates;
     candidates.add (binDir.getChildFile ("Element Sandbox Host.exe"));
     candidates.add (binDir.getParentDirectory()
                           .getChildFile ("element_sandbox_host_artefacts")
                           .getChildFile ("Element Sandbox Host.exe"));
-    for (const auto& c : candidates)
-        if (c.existsAsFile())
-            return c;
    #else
     // Linux: sibling binary or dev artefacts dir.
     const auto binDir = hostExe.getParentDirectory();
-    juce::Array<juce::File> candidates;
     candidates.add (binDir.getChildFile ("element_sandbox_host"));
     candidates.add (binDir.getParentDirectory()
                           .getChildFile ("element_sandbox_host_artefacts")
                           .getChildFile ("element_sandbox_host"));
+   #endif
+
     for (const auto& c : candidates)
         if (c.existsAsFile())
             return c;
-   #endif
 
-    return {}; // not found — caller falls back to the host executable
+    return {}; // not found — caller must fail the launch (no host re-exec)
+}
+
+/** Production entry point: gathers env + module bundle + process executable. */
+inline juce::File resolveSandboxHelperExecutable()
+{
+    SandboxHelperSearchSpec spec;
+    spec.envOverride = juce::SystemStats::getEnvironmentVariable ("EL_SANDBOX_HELPER", {});
+    spec.bundleContentsDir = owningBundleContentsDir (currentModuleFile());
+    spec.hostExe = juce::File::getSpecialLocation (juce::File::currentExecutableFile);
+    return resolveSandboxHelperExecutable (spec);
 }
 
 } // namespace detail
 
 inline bool SandboxHost::launchWorkerProcess()
 {
-    auto exe = juce::File::getSpecialLocation (juce::File::currentExecutableFile);
+    // Resolve the dedicated worker binary (distinct bundle id — see
+    // detail::resolveSandboxHelperExecutable for the full order: env override →
+    // owning-bundle Contents/Helpers → executable-adjacent).
+    auto exe = detail::resolveSandboxHelperExecutable();
 
-    if (! exe.existsAsFile())
+    if (exe.existsAsFile())
     {
-        juce::Logger::writeToLog ("Failed to find executable for sandbox worker");
-        return false;
-    }
-
-    // Prefer the dedicated worker binary (distinct bundle id — see
-    // detail::resolveSandboxHelperExecutable). Fall back to the host executable if
-    // the helper has not been built/installed, so the sandbox still functions (it
-    // will then hit the same-bundle-id duplicate-instance risk, but never silently
-    // fails to launch a worker).
-    if (auto helper = detail::resolveSandboxHelperExecutable(); helper.existsAsFile())
-    {
-        exe = helper;
         juce::Logger::writeToLog ("Using dedicated sandbox host helper: " + exe.getFullPathName());
     }
     else
     {
+       #if EL_SANDBOX_INCLUDE_TEST_FORMATS
+        // TEST BUILDS ONLY (test_element): the in-process test plugin formats
+        // (TestEchoPluginFormat / CrashOnLoadPluginFormat) exist solely inside the
+        // test binary, so the worker MUST be a re-exec of the test executable.
+        // This branch is compiled out of production binaries.
+        exe = juce::File::getSpecialLocation (juce::File::currentExecutableFile);
+        juce::Logger::writeToLog ("[sandbox] test build: no helper found — re-exec'ing test "
+                                  "executable as worker: " + exe.getFullPathName());
+        if (! exe.existsAsFile())
+            return false;
+       #else
+        // Production: FAIL HONESTLY. Never re-exec the host executable as a
+        // worker — same-bundle-id duplicate-instance SIGKILL risk for the
+        // standalone app, and outright wrong when the host is a DAW running
+        // Element as a plugin. Set EL_SANDBOX_HELPER or install the
+        // element_sandbox_host helper into <bundle>/Contents/Helpers.
         juce::Logger::writeToLog (
-            "Dedicated sandbox host helper not found — falling back to host executable "
-            "(same-bundle-id; duplicate-instance risk).");
+            "[sandbox] ERROR: element_sandbox_host helper not found (checked "
+            "EL_SANDBOX_HELPER, owning-bundle Contents/Helpers, and executable-"
+            "adjacent layouts). Refusing to re-exec the host as a worker — "
+            "sandboxed plugin loading is unavailable.");
+        return false;
+       #endif
     }
 
     juce::Logger::writeToLog ("Launching sandbox worker: " + exe.getFullPathName());
@@ -932,10 +1081,15 @@ inline void SandboxHost::handleWorkerMessage (const SandboxMessageHeader& header
         {
             PluginInfoPayload info;
             juce::StringArray names;
-            if (parsePluginInfoMessage (payload, header.payloadSize, info, names))
+            juce::Array<SandboxParamMeta> metas;
+            juce::StringArray labels;
+            if (parsePluginInfoMessage (payload, header.payloadSize, info, names, &metas, &labels))
             {
                 pluginInfo = info;
                 parameterNames = std::move (names);
+                parameterMetas = std::move (metas);
+                parameterLabels = std::move (labels);
+                pluginInfoReceived.store (true);
                 listeners.call (&Listener::sandboxPluginInfo, this);
             }
             else

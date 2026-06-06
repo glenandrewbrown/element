@@ -66,6 +66,37 @@ else
     exit 1
 fi
 
+echo "Bundling sandbox helper (element_sandbox_host)..."
+# Reliability Layer-3: the out-of-process plugin sandbox needs the dedicated
+# worker binary (distinct bundle id net.kushview.Element.sandbox) nested at
+# Element.app/Contents/Helpers/ — SandboxHost helper discovery checks
+# <bundle>/Contents/Helpers first. The CMake POST_BUILD step normally nests it
+# already; this block guarantees the packaged app always carries it.
+HELPER_NAME="Element Sandbox Host.app"
+HELPER_DEST="$PKG_ROOT/Applications/Element.app/Contents/Helpers"
+HELPER_SRC=""
+for cand in \
+    "$PROJECT_ROOT/$BUILD_DIR/element_sandbox_host_artefacts/Release/$HELPER_NAME" \
+    "$PROJECT_ROOT/$BUILD_DIR/element_sandbox_host_artefacts/$HELPER_NAME"; do
+    if [ -d "$cand" ]; then
+        HELPER_SRC="$cand"
+        break
+    fi
+done
+if [ -n "$HELPER_SRC" ]; then
+    mkdir -p "$HELPER_DEST"
+    rm -rf "$HELPER_DEST/$HELPER_NAME"
+    cp -R "$HELPER_SRC" "$HELPER_DEST/"
+    echo "  Bundled: $HELPER_SRC -> Element.app/Contents/Helpers/"
+elif [ -d "$PKG_ROOT/Applications/Element.app/Contents/Helpers/$HELPER_NAME" ]; then
+    echo "  Helper already nested in Element.app (CMake POST_BUILD) — keeping it."
+else
+    echo "ERROR: element_sandbox_host helper not found in $BUILD_DIR and not nested in Element.app."
+    echo "       Shipped builds must carry the sandbox worker (plugin crash isolation)."
+    echo "       Build it with: cmake --build $BUILD_DIR --target element_sandbox_host"
+    exit 1
+fi
+
 echo "Copying AU plugins..."
 # Instrument - prefer Release path
 if [ -d "$PROJECT_ROOT/$BUILD_DIR/element_instrument_artefacts/Release/AU/KV-Element.component" ]; then

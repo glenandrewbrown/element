@@ -544,6 +544,34 @@ inline void SandboxWorker::handleLoadPlugin (const void* payload, uint32_t paylo
         for (int i = 0; i < paramCount; ++i)
             paramNames.add (jParams[i]->getName (256));
 
+        // v2 meta table: real defaults/ranges/flags/labels off the live
+        // parameter objects so the host stops synthesizing 0.5 defaults.
+        juce::Array<SandboxParamMeta> paramMetas;
+        juce::StringArray paramLabels;
+        paramMetas.ensureStorageAllocated (paramCount);
+        paramLabels.ensureStorageAllocated (paramCount);
+        for (int i = 0; i < paramCount; ++i)
+        {
+            auto* jp = jParams[i];
+            SandboxParamMeta meta;
+            meta.defaultValue = jp->getDefaultValue();
+            meta.minValue = 0.0f;
+            meta.maxValue = 1.0f;
+            if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (jp))
+            {
+                const auto& range = ranged->getNormalisableRange();
+                meta.minValue = range.start;
+                meta.maxValue = range.end;
+            }
+            meta.stepped = jp->isDiscrete() ? 1 : 0;
+            meta.boolean = jp->isBoolean() ? 1 : 0;
+            const int steps = jp->getNumSteps();
+            meta.numSteps = (uint16_t) juce::jlimit (0, 0xFFFF,
+                                                     jp->isDiscrete() ? steps : 0);
+            paramMetas.add (meta);
+            paramLabels.add (jp->getLabel());
+        }
+
         PluginInfoPayload info;
         info.numParameters = (uint32_t) paramCount;
         info.numInputChannels = (uint32_t) plugin->getTotalNumInputChannels();
@@ -553,7 +581,7 @@ inline void SandboxWorker::handleLoadPlugin (const void* payload, uint32_t paylo
         info.producesMidi = plugin->producesMidi() ? 1 : 0;
         info.reserved = 0;
 
-        auto block = createPluginInfoMessage (info, paramNames);
+        auto block = createPluginInfoMessage (info, paramNames, &paramMetas, &paramLabels);
         sendResponse (SandboxMessageType::PluginInfo,
                       block.getData(),
                       static_cast<uint32_t> (block.getSize()));

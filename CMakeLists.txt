@@ -183,6 +183,21 @@ if(APPLE)
     install(TARGETS element_sandbox_host
         BUNDLE DESTINATION "Applications"
         COMPONENT "Standalone")
+    # Nest the helper inside Element.app/Contents/Helpers after every helper
+    # build so the DEV layout matches the SHIP layout (helper discovery checks
+    # <bundle>/Contents/Helpers first — see SandboxHost
+    # detail::resolveSandboxHelperExecutable). installer/build_pkg.sh performs
+    # the same nesting for packaged builds.
+    add_custom_command(TARGET element_sandbox_host POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E rm -rf
+            "$<TARGET_BUNDLE_DIR:element_app>/Contents/Helpers/Element Sandbox Host.app"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "$<TARGET_BUNDLE_DIR:element_sandbox_host>"
+            "$<TARGET_BUNDLE_DIR:element_app>/Contents/Helpers/Element Sandbox Host.app"
+        COMMENT "Nesting element_sandbox_host into Element.app/Contents/Helpers")
+    # The POST_BUILD nesting writes into Element.app — make sure the app bundle
+    # exists before the helper's copy step runs.
+    add_dependencies(element_sandbox_host element_app)
 elseif(WIN32)
     install(TARGETS element_sandbox_host DESTINATION ${CMAKE_INSTALL_BINDIR})
 else()
