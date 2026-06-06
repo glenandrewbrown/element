@@ -326,12 +326,13 @@ public:
         {
             for (int ch = numAudioIns; ch < numAudioOuts; ++ch)
                 buffer.clear (ch, 0, buffer.getNumSamples());
-            // Disabled node: silence CV outs + zero the UI latches so
-            // flow-debug never shows a stale value on a dead node.
+            // Disabled node: silence CV outs + zero the UI latches (value AND
+            // peak) so flow-debug never shows a stale value on a dead node.
             for (int i = 0; i < numCvOuts; ++i)
             {
                 cvBuffer.clear (numCvIns + i, 0, numSamples);
                 node->setOutputCV (i, 0.0f);
+                node->setOutputCVPeak (i, 0.0f);
             }
             return;
         }
@@ -597,12 +598,20 @@ public:
         for (int i = 0; i < numAudioOuts; ++i)
             node->setOutputRMS (i, buffer.getRMSLevel (i, 0, numSamples));
 
-        // CV-output last-sample latch (Wave-0 flow-debug). Same RT profile as
-        // the RMS loop above: one read + one relaxed atomic store per CV out.
+        // CV-output last-sample + block-|peak| latches (Wave-0 flow-debug +
+        // A5). Same RT profile as the RMS loop above: buffer reads + two
+        // relaxed atomic stores per CV out. The peak (getMagnitude = max |x|
+        // over the block, allocation-free) feeds the UI's activity gate —
+        // fast bipolar CV reads ~0 at block-end zero crossings, so the
+        // last-sample latch alone would falsely look idle. The last sample
+        // stays the numeric readout (`v`).
         {
             const int numCvIns = cvInChannelsToUse.size();
             for (int i = 0; i < cvOutChannelsToUse.size(); ++i)
+            {
                 node->setOutputCV (i, cvBuffer.getSample (numCvIns + i, numSamples - 1));
+                node->setOutputCVPeak (i, cvBuffer.getMagnitude (numCvIns + i, 0, numSamples));
+            }
         }
 
         // FFT spectrum tap (G3-B item 1). Same RT profile as the RMS loop right

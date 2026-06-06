@@ -295,6 +295,17 @@ public:
         zero audio outputs but real CV values). */
     int getNumOutputCVChannels() const noexcept { return outCV.size(); }
 
+    /** [AUDIO THREAD] Latch the block ABSOLUTE PEAK of a CV OUTPUT channel
+        (A5). Written lock-free in graphbuilder.cpp's ProcessBufferOp alongside
+        setOutputCV. The UI's activity gate reads THIS, not the last sample —
+        a fast bipolar CV crosses zero at block ends and would look idle on
+        the last-sample latch alone. */
+    void setOutputCVPeak (int chan, float val);
+
+    /** [any thread] Block |peak| of a CV output channel, or 0 when out of
+        range / never rendered. Same channel indexing as getOutputCV(). */
+    float getOutputCVPeak (int chan) const { return (chan < outCVPeak.size()) ? outCVPeak.getUnchecked (chan)->get() : 0.0f; }
+
     //=========================================================================
     /** Per-node FFT spectrum (G3-B item 1) — opt-in so idle cost is zero.
 
@@ -598,6 +609,7 @@ private:
     juce::Atomic<float> gain, lastGain, inputGain, lastInputGain;
     juce::OwnedArray<AtomicValue<float>> inRMS, outRMS;
     juce::OwnedArray<AtomicValue<float>> outCV; // last-sample latch per CV output channel
+    juce::OwnedArray<AtomicValue<float>> outCVPeak; // block |peak| latch per CV output channel (A5)
     std::atomic<float> renderNanos { 0.0f }; // EMA of per-render wall-clock cost (ns)
 
     // Per-node FFT analyser (G3-B item 1). Built in prepare(), reset in

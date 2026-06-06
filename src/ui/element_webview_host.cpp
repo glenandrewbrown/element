@@ -50,6 +50,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <map>
+#include <unordered_map>
 #include <vector>
 
 namespace element {
@@ -495,12 +496,13 @@ static float cableSignalLevelForArc (const Graph& G, const ValueTree& a)
 
     if (pt.isCv())
     {
-        // Wave-0/2: CV presence comes from the per-port last-sample latch
-        // (Processor::getOutputCV) — NOT the audio RMS array, which is sized
-        // off audio outputs and reads 0 forever for CV-only nodes.
+        // Wave-0/2 + A5: CV presence comes from the per-port block-|peak|
+        // latch (Processor::getOutputCVPeak) — NOT the audio RMS array (sized
+        // off audio outputs, reads 0 forever for CV-only nodes) and NOT the
+        // last-sample latch (fast bipolar CV reads ~0 at block-end zero
+        // crossings → cable falsely looks idle).
         const int channel = srcPort.channel();
-        const float v = proc->getOutputCV (channel);
-        return jmin (1.0f, std::fabs (v));
+        return jmin (1.0f, proc->getOutputCVPeak (channel));
     }
 
     if (pt.isAudio())
@@ -536,10 +538,12 @@ static float cableSignalLevelForArc (const Graph& G, const ValueTree& a)
     return 0.f;
 }
 
-/** Wave-2 flow-debug: signed CV value for a CV-sourced arc. Returns true and
-    fills `outValue` (the source port's last rendered sample, lock-free) when
-    the arc's source port is CV; false otherwise (audio/MIDI/Control arcs). */
-static bool cableCvValueForArc (const Graph& G, const ValueTree& a, float& outValue)
+/** Wave-2 flow-debug + A5: signed CV value AND block |peak| for a CV-sourced
+    arc. Returns true and fills `outValue` (the source port's last rendered
+    sample — the chip's numeric readout) and `outPeak` (the block's absolute
+    peak — the chip's activity gate) when the arc's source port is CV; false
+    otherwise (audio/MIDI/Control arcs). Both reads are lock-free atomics. */
+static bool cableCvValueForArc (const Graph& G, const ValueTree& a, float& outValue, float& outPeak)
 {
     const auto sn = (uint32_t) (int64) a.getProperty (tags::sourceNode);
     const int spi = (int) a.getProperty (tags::sourcePort, 0);
@@ -558,8 +562,103 @@ static bool cableCvValueForArc (const Graph& G, const ValueTree& a, float& outVa
         return false;
 
     outValue = proc->getOutputCV (srcPort.channel());
+    outPeak = proc->getOutputCVPeak (srcPort.channel());
     return true;
 }
+
+// ── C4/P3 meter-lane idle gating ──────────────────────────────────────────
+//
+// MEASURED (.omc/bench/meter_lane_bench.mm, 100 blocks / 150 cables, -O2):
+// the three 60Hz meter lanes cost ~2.36 ms/tick of pure JSON build on the
+// message thread (cable 1.31 + node 0.47 + channel 0.57 + wrap 0.01) — ~14%
+// of a core even when every meter is static. The cheapest effective cut is
+// lane-granular idle gating: a pre-pass of pure atomic reads + epsilon
+// compares (~0.01 ms) skips BOTH the JSON build and the evaluateJavascript
+// push for any lane whose values are ALL unchanged within the webview's own
+// LEVEL_EPSILON. Skipping a push leaves the webview stores holding exactly
+// the same state the full snapshot would have produced, so the stores'
+// replace-semantics stay untouched (row-level deltas would break them).
+// Caches are cleared on every graph push (topology / board change / webview
+// reload ⇒ next tick resends full snapshots).
+//
+// Message-thread only (timerCallback / pushGraphSnapshot / destructor), so
+// the instance-keyed map needs no locking. Keyed storage lives here instead
+// of a class member because the class is declared in
+// include/element/ui/element_webview_host.hpp (outside this wave's file
+// ownership).
+static float nodeOutputLevel (const Node& n); // defined below buildCableLevelsJson
+
+namespace meterlanegate
+{
+
+struct LaneSnapshots
+{
+    std::vector<float> cable, node, channel;
+};
+
+static std::unordered_map<const void*, LaneSnapshots> snapshots;
+
+/** Matches the webview's LEVEL_EPSILON (useCableMeterStore.ts) — below this
+    a meter change is visually imperceptible AND the store would drop it. */
+constexpr float epsilon = 0.001f;
+
+/** True when `fresh` differs from `cache` (size or any |delta| > epsilon);
+    on change, `fresh` becomes the new cache. */
+static bool changed (std::vector<float>& cache, std::vector<float>&& fresh)
+{
+    bool diff = cache.size() != fresh.size();
+    if (! diff)
+        for (size_t i = 0; i < fresh.size(); ++i)
+            if (std::fabs (cache[i] - fresh[i]) > epsilon)
+            {
+                diff = true;
+                break;
+            }
+    if (diff)
+        cache = std::move (fresh);
+    return diff;
+}
+
+/** Mirror buildCableLevelsJson's meter reads (level + v/pk) as raw floats. */
+static void collectCableLane (const Graph& G, std::vector<float>& out)
+{
+    const ValueTree arcs (G.getArcsValueTree());
+    for (int i = 0; i < arcs.getNumChildren(); ++i)
+    {
+        const auto a = arcs.getChild (i);
+        out.push_back (cableSignalLevelForArc (G, a));
+        float v = 0.f, pk = 0.f;
+        if (cableCvValueForArc (G, a, v, pk))
+        {
+            out.push_back (v);
+            out.push_back (pk);
+        }
+    }
+}
+
+/** Mirror buildNodeMetersJson's meter reads as raw floats. */
+static void collectNodeLane (const Graph& G, std::vector<float>& out)
+{
+    for (int i = 0; i < G.getNumNodes(); ++i)
+        out.push_back (nodeOutputLevel (G.getNode (i)));
+}
+
+/** Mirror buildNodeChannelLevelsJson's meter reads as raw floats. */
+static void collectChannelLane (const Graph& G, std::vector<float>& out)
+{
+    for (int i = 0; i < G.getNumNodes(); ++i)
+    {
+        const Node n (G.getNode (i));
+        if (auto* proc = n.getObject())
+        {
+            const int numCh = proc->getNumOutputRMSChannels();
+            for (int c = 0; c < numCh; ++c)
+                out.push_back (jmin (1.0f, proc->getOutputRMS (c) * 3.0f));
+        }
+    }
+}
+
+} // namespace meterlanegate
 
 static void appendAudioSetupJson (Context& ctx, DynamicObject::Ptr root)
 {
@@ -4853,6 +4952,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
 ElementWebViewHost::~ElementWebViewHost()
 {
     stopTimer();
+    meterlanegate::snapshots.erase (this); // C4/P3 idle-gate cache (file-static, instance-keyed)
     engineStateChangedConnection.disconnect(); // P1-11
     sandboxEventConnection.disconnect(); // R3
     detachSessionListener();
@@ -5031,27 +5131,51 @@ void ElementWebViewHost::timerCallback()
     }
 
     {
-        const String cableJson (buildCableLevelsJson());
-        evalInBrowser ("window.__elementNative && window.__elementNative.onCableLevels && window.__elementNative.onCableLevels("
-                       + cableJson + ");");
-    }
+        // C4/P3 idle gating: pre-pass each meter lane with pure atomic reads
+        // + epsilon compares (~0.01ms) and skip the JSON build + JS push for
+        // any lane whose values are all unchanged — see the meterlanegate
+        // block above buildCableLevelsJson for the measured numbers + design.
+        auto& snaps = meterlanegate::snapshots[this];
+        auto sessForMeters = context.session();
+        const Node boardForMeters (currentBoard());
+        const bool haveBoard = sessForMeters != nullptr && boardForMeters.isGraph();
+        const Graph GM (boardForMeters);
 
-    {
+        std::vector<float> freshCable;
+        if (haveBoard)
+            meterlanegate::collectCableLane (GM, freshCable);
+        if (meterlanegate::changed (snaps.cable, std::move (freshCable)))
+        {
+            const String cableJson (buildCableLevelsJson());
+            evalInBrowser ("window.__elementNative && window.__elementNative.onCableLevels && window.__elementNative.onCableLevels("
+                           + cableJson + ");");
+        }
+
         // Pillar-2 D1: per-node output level so terminal/unconnected Blocks meter
         // real signal (Q-VU-PER-BLOCK).
-        const String nodeJson (buildNodeMetersJson());
-        evalInBrowser ("window.__elementNative && window.__elementNative.onNodeLevels && window.__elementNative.onNodeLevels("
-                       + nodeJson + ");");
-    }
+        std::vector<float> freshNode;
+        if (haveBoard)
+            meterlanegate::collectNodeLane (GM, freshNode);
+        if (meterlanegate::changed (snaps.node, std::move (freshNode)))
+        {
+            const String nodeJson (buildNodeMetersJson());
+            evalInBrowser ("window.__elementNative && window.__elementNative.onNodeLevels && window.__elementNative.onNodeLevels("
+                           + nodeJson + ");");
+        }
 
-    {
         // G3-B item 2: per-node PER-CHANNEL output levels for surround / multi-
         // channel bus meters. Same 60Hz cadence + calibration as onNodeLevels,
         // but every output lane (not just the loudest). Consumed by the
         // BusInspector's per-lane VU columns via useNodeChannelMeterStore.
-        const String chJson (buildNodeChannelLevelsJson());
-        evalInBrowser ("window.__elementNative && window.__elementNative.onNodeChannelLevels && window.__elementNative.onNodeChannelLevels("
-                       + chJson + ");");
+        std::vector<float> freshCh;
+        if (haveBoard)
+            meterlanegate::collectChannelLane (GM, freshCh);
+        if (meterlanegate::changed (snaps.channel, std::move (freshCh)))
+        {
+            const String chJson (buildNodeChannelLevelsJson());
+            evalInBrowser ("window.__elementNative && window.__elementNative.onNodeChannelLevels && window.__elementNative.onNodeChannelLevels("
+                           + chJson + ");");
+        }
     }
 
     // G3-B item 1: re-assert FFT spectrum subscriptions and clear stale ones.
@@ -5335,6 +5459,10 @@ void ElementWebViewHost::valueTreeRedirected (ValueTree& tree)
 void ElementWebViewHost::pushGraphSnapshot()
 {
     graphPushPendingMs = 0;
+    // C4/P3: topology / board / webview-reload boundary — drop the meter-lane
+    // idle-gate caches so the next tick resends full level snapshots (the new
+    // cable/node ids need fresh rows even if values look numerically equal).
+    meterlanegate::snapshots.erase (this);
     const String json (buildActiveGraphJson());
     evalInBrowser ("window.__elementNative && window.__elementNative.onGraphState(" + json + ");");
     if (auto* ss = context.services().find<SessionService>())
@@ -5780,11 +5908,15 @@ String ElementWebViewHost::buildCableLevelsJson() const
         row->setProperty ("id", cableId);
         row->setProperty ("level", cableSignalLevelForArc (G, a));
 
-        // Flow-debug: CV arcs additionally carry the SIGNED value so the UI
-        // can show a numeric readout (level is unsigned presence only).
-        float cvValue = 0.f;
-        if (cableCvValueForArc (G, a, cvValue))
+        // Flow-debug: CV arcs additionally carry the SIGNED value (`v`, the
+        // chip's numeric readout) and the block |peak| (`pk`, A5 — the chip's
+        // activity gate; level is unsigned presence only).
+        float cvValue = 0.f, cvPeak = 0.f;
+        if (cableCvValueForArc (G, a, cvValue, cvPeak))
+        {
             row->setProperty ("v", cvValue);
+            row->setProperty ("pk", cvPeak);
+        }
 
         items.add (var (row.get()));
     }
@@ -5821,11 +5953,12 @@ static float nodeOutputLevel (const Node& n)
         return 0.75f;
 
     // CV-only nodes (Constant, Comparator, Logic, ...): use the loudest CV
-    // output latch so they are not falsely dark while emitting values.
+    // output block-|peak| latch (A5) so they are not falsely dark while
+    // emitting values — including fast bipolar CV caught at a zero crossing.
     const int numCvOuts = proc->getNumOutputCVChannels();
     float maxCv = 0.f;
     for (int i = 0; i < numCvOuts; ++i)
-        maxCv = jmax (maxCv, std::fabs (proc->getOutputCV (i)));
+        maxCv = jmax (maxCv, proc->getOutputCVPeak (i));
     if (maxCv > 0.f)
         return jmin (1.0f, maxCv);
 

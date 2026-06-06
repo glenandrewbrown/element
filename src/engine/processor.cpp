@@ -212,6 +212,12 @@ void Processor::setOutputCV (int chan, float val)
         outCV.getUnchecked (chan)->set (val);
 }
 
+void Processor::setOutputCVPeak (int chan, float val)
+{
+    if (chan < outCVPeak.size())
+        outCVPeak.getUnchecked (chan)->set (val);
+}
+
 bool Processor::isSuspended() const
 {
     return bypassed.get() == 1;
@@ -348,15 +354,20 @@ void Processor::prepare (const double newSampleRate,
             outRMS.add (avf);
         }
 
-        // CV-output last-sample latches (flow-debug). Sized from the CV OUTPUT
-        // port count — NEVER from audio outputs (a CV-only node has zero audio
-        // outputs but real CV values). Written lock-free in graphbuilder.cpp.
+        // CV-output last-sample + block-|peak| latches (flow-debug / A5).
+        // Sized from the CV OUTPUT port count — NEVER from audio outputs (a
+        // CV-only node has zero audio outputs but real CV values). Written
+        // lock-free in graphbuilder.cpp.
         outCV.clearQuick (true);
+        outCVPeak.clearQuick (true);
         for (int i = 0; i < (int) ports.size (PortType::CV, false); ++i)
         {
             AtomicValue<float>* avf = new AtomicValue<float>();
             avf->set (0);
             outCV.add (avf);
+            AtomicValue<float>* avp = new AtomicValue<float>();
+            avp->set (0);
+            outCVPeak.add (avp);
         }
 
         // Per-node FFT analyser (G3-B item 1). Allocate the FFT object, window,
@@ -382,6 +393,7 @@ void Processor::unprepare()
         inRMS.clear (true);
         outRMS.clear (true);
         outCV.clear (true);
+        outCVPeak.clear (true);
         spectrum.reset();
     }
 }
