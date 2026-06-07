@@ -1,11 +1,15 @@
 import { useState } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { QuickAddPopup } from "./QuickAddPopup";
-import {
-  usePluginBrowserStore,
-  type BrowserPlugin,
-} from "../../stores/usePluginBrowserStore";
+import { usePluginBrowserStore } from "../../stores/usePluginBrowserStore";
 import type { SignalType } from "../../data/types";
+
+// Base demo shape; the N2 alias-aware group fields (aliases/variants/isFavorite/
+// recentRank) are derived by seed() from the favorites/recents intent.
+type DemoPluginBase = Omit<
+  import("../../stores/usePluginBrowserStore").BrowserPlugin,
+  "description" | "aliases" | "variants" | "isFavorite" | "recentRank"
+>;
 
 /**
  * 🔍 Review/QuickAdd — guided one-at-a-time review wizard.
@@ -27,7 +31,7 @@ import type { SignalType } from "../../data/types";
 
 // ── Seed (cribbed from QuickAddPopup.stories.tsx — matches the component's
 //    real usePluginBrowserStore reads; nativeGraphAddPlugin no-ops) ──
-const demoPlugins: BrowserPlugin[] = [
+const demoPlugins: DemoPluginBase[] = [
   { identifier: "com.vendor.SurgeXT",    name: "Surge XT",            manufacturer: "Surge Synth Team", format: "VST3", category: "Synth",      blockCategory: "instrument", signalOut: "audio", usageCount: 9 },
   { identifier: "com.vendor.ProQ4",      name: "Pro-Q 4",             manufacturer: "FabFilter",        format: "AU",   category: "EQ",          blockCategory: "audiofx",   signalOut: "audio", usageCount: 5 },
   { identifier: "com.vendor.Stepic",     name: "Stepic",              manufacturer: "Audiomodern",      format: "CLAP", category: "MIDI",         blockCategory: "midifx",   signalOut: "midi",  usageCount: 3 },
@@ -37,9 +41,18 @@ const demoPlugins: BrowserPlugin[] = [
   { identifier: "com.vendor.ProC2",      name: "Pro-C 2",             manufacturer: "FabFilter",        format: "AU",   category: "Compressor",   blockCategory: "audiofx",   signalOut: "audio", usageCount: 0 },
 ];
 
-function seed(plugins: BrowserPlugin[], favorites: string[] = [], recents: string[] = []) {
+function seed(plugins: DemoPluginBase[], favorites: string[] = [], recents: string[] = []) {
+  const favSet = new Set(favorites);
+  const full = plugins.map((p) => ({
+    ...p,
+    description: "",
+    aliases: [p.identifier],
+    variants: [{ format: p.format, identifier: p.identifier }],
+    isFavorite: favSet.has(p.identifier),
+    recentRank: recents.indexOf(p.identifier),
+  }));
   usePluginBrowserStore.setState({
-    plugins,
+    plugins: full,
     favoriteIdentifiers: new Set(favorites),
     recentIdentifiers: recents,
   });

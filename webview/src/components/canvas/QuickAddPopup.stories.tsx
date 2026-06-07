@@ -1,10 +1,16 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, userEvent, within } from "storybook/test";
 import { QuickAddPopup } from "./QuickAddPopup";
-import {
-  usePluginBrowserStore,
-  type BrowserPlugin,
-} from "../../stores/usePluginBrowserStore";
+import { usePluginBrowserStore } from "../../stores/usePluginBrowserStore";
+
+// Base demo shape (the fields a story author cares about). The N2 alias-aware
+// group fields (aliases / variants / isFavorite / recentRank) are derived by
+// `seed()` from the favorites/recents args, so each story stays a single source
+// of truth for what's starred/recent.
+type DemoPluginBase = Omit<
+  import("../../stores/usePluginBrowserStore").BrowserPlugin,
+  "description" | "aliases" | "variants" | "isFavorite" | "recentRank"
+>;
 
 // ── Store seeding ──
 // QuickAddPopup reads the plugin list + favorites + recents from
@@ -16,7 +22,7 @@ import {
 // signalOut + usageCount are REAL fields now sent by C++ (G3c items 2+3).
 // Demo values: Surge XT is the most-used instrument; Stepic emits MIDI;
 // LFOTool emits value/CV — exercising the real per-plugin signal filter.
-const demoPlugins: BrowserPlugin[] = [
+const demoPlugins: DemoPluginBase[] = [
   {
     identifier: "com.vendor.SurgeXT",
     name: "Surge XT",
@@ -80,12 +86,23 @@ const demoPlugins: BrowserPlugin[] = [
 ];
 
 function seed(
-  plugins: BrowserPlugin[],
+  plugins: DemoPluginBase[],
   favorites: string[] = [],
   recents: string[] = [],
 ) {
+  // Derive the N2 group fields from the favorites/recents intent so QuickAdd's
+  // group-level browse stack matches what the story declares.
+  const favSet = new Set(favorites);
+  const full = plugins.map((p) => ({
+    ...p,
+    description: "",
+    aliases: [p.identifier],
+    variants: [{ format: p.format, identifier: p.identifier }],
+    isFavorite: favSet.has(p.identifier),
+    recentRank: recents.indexOf(p.identifier),
+  }));
   usePluginBrowserStore.setState({
-    plugins,
+    plugins: full,
     favoriteIdentifiers: new Set(favorites),
     recentIdentifiers: recents,
   });
@@ -177,8 +194,8 @@ export const PortTypeAudio: Story = {
   ],
   play: async ({ canvasElement }) => {
     const body = within(canvasElement.ownerDocument.body);
-    // Header present + tinted AUDIO pill.
-    await expect(body.getByText("Add block accepting")).toBeVisible();
+    // Removable port-context pill present + tinted AUDIO label (Unreal model).
+    await expect(body.getByLabelText("Clear AUDIO filter")).toBeVisible();
     await expect(body.getByText("AUDIO")).toBeVisible();
     // Audio-passing blocks shown…
     await expect(body.getByText("Surge XT")).toBeVisible(); // instrument → audio
@@ -272,14 +289,15 @@ export const PortTypeAudioWithFavRecents: Story = {
   ],
   play: async ({ canvasElement }) => {
     const body = within(canvasElement.ownerDocument.body);
-    // Port-type header still present.
-    await expect(body.getByText("Add block accepting")).toBeVisible();
+    // Removable port-context pill still present.
+    await expect(body.getByLabelText("Clear AUDIO filter")).toBeVisible();
     await expect(body.getByText("AUDIO")).toBeVisible();
-    // Favorites section shows audio-passing favourite.
-    await expect(body.getByText("Favorites")).toBeVisible();
+    // Favorites section shows audio-passing favourite. (getAllByText: "Favorites"
+    // appears both as a rail item and the results section label.)
+    await expect(body.getAllByText("Favorites").length).toBeGreaterThan(0);
     await expect(body.getByText("Surge XT")).toBeVisible();
     // Recents section shows audio-passing recent only.
-    await expect(body.getByText("Recents")).toBeVisible();
+    await expect(body.getAllByText("Recents").length).toBeGreaterThan(0);
     await expect(body.getByText("ValhallaVintageVerb")).toBeVisible();
     // Stepic is recent but MIDI — must be filtered out.
     await expect(body.queryByText("Stepic")).toBeNull();
@@ -425,16 +443,17 @@ export const RecentsFirstOnOpen: Story = {
   ],
   play: async ({ canvasElement }) => {
     const body = within(canvasElement.ownerDocument.body);
-    // Favorites section present with the starred plugin
-    await expect(body.getByText("Favorites")).toBeVisible();
+    // Favorites section present (label appears in BOTH the rail and the results
+    // section, so there are ≥2 matches in browse mode).
+    await expect(body.getAllByText("Favorites").length).toBeGreaterThan(1);
     await expect(body.getByText("Surge XT")).toBeVisible();
     // Recents section present, ordered most-recent-first
-    await expect(body.getByText("Recents")).toBeVisible();
+    await expect(body.getAllByText("Recents").length).toBeGreaterThan(1);
     await expect(body.getByText("LFOTool")).toBeVisible();
     await expect(body.getByText("Stepic")).toBeVisible();
     // Non-recent, non-favorite plugin still appears (in the rest section)
     await expect(body.getByText("Pro-Q 4")).toBeVisible();
-    // No port-type header in generic mode
+    // No port-type pill in generic mode
     await expect(body.queryByText("Add block accepting")).toBeNull();
   },
 };
@@ -471,15 +490,17 @@ export const FuzzySearchResults: Story = {
   ],
   play: async ({ canvasElement }) => {
     const body = within(canvasElement.ownerDocument.body);
-    const input = body.getByPlaceholderText("Add block...");
+    const input = body.getByPlaceholderText("Search blocks, makers, categories…");
 
     // Type "pro" — Pro-Q 4 and Pro-C 2 should appear; Surge XT, Stepic, LFOTool should not
     await userEvent.type(input, "pro");
     await expect(body.getByText("Pro-Q 4")).toBeVisible();
     await expect(body.getByText("Pro-C 2")).toBeVisible();
-    // Section labels gone while searching
-    await expect(body.queryByText("Favorites")).toBeNull();
-    await expect(body.queryByText("Recents")).toBeNull();
+    // Result SECTION labels collapse to a flat scored list while searching — so
+    // "Favorites"/"Recents" now appear ONLY in the rail (exactly 1 each), never
+    // as a results section header.
+    await expect(body.getAllByText("Favorites")).toHaveLength(1);
+    await expect(body.getAllByText("Recents")).toHaveLength(1);
   },
 };
 
@@ -519,7 +540,7 @@ export const MetadataSearch: Story = {
   ],
   play: async ({ canvasElement }) => {
     const body  = within(canvasElement.ownerDocument.body);
-    const input = body.getByPlaceholderText("Add block...");
+    const input = body.getByPlaceholderText("Search blocks, makers, categories…");
 
     // ── Test 1: manufacturer match — "valhalla" → ValhallaVintageVerb ────────
     await userEvent.type(input, "valhalla");
@@ -569,7 +590,7 @@ export const TypoTolerance: Story = {
   ],
   play: async ({ canvasElement }) => {
     const body  = within(canvasElement.ownerDocument.body);
-    const input = body.getByPlaceholderText("Add block...");
+    const input = body.getByPlaceholderText("Search blocks, makers, categories…");
 
     // ── "Pro q" (space instead of hyphen) → Pro-Q 4 ────────────────────────
     await userEvent.type(input, "Pro q");
@@ -622,7 +643,7 @@ export const MostUsedOrdering: Story = {
   ],
   play: async ({ canvasElement }) => {
     const body  = within(canvasElement.ownerDocument.body);
-    const input = body.getByPlaceholderText("Add block...");
+    const input = body.getByPlaceholderText("Search blocks, makers, categories…");
 
     await userEvent.type(input, "pro");
     const proQ = body.getByText("Pro-Q 4");
@@ -700,7 +721,7 @@ export const SignalOutOverridesCategory: Story = {
   decorators: [
     (Story) => {
       // Two modulator-category blocks with DIFFERENT real signal outputs.
-      const audioModulator: BrowserPlugin = {
+      const audioModulator: DemoPluginBase = {
         identifier: "com.vendor.ShaperBox",
         name: "ShaperBox",
         manufacturer: "Cableguys",
@@ -710,7 +731,7 @@ export const SignalOutOverridesCategory: Story = {
         signalOut: "audio", // real signal → audio (it processes audio)
         usageCount: 0,
       };
-      const cvModulator: BrowserPlugin = {
+      const cvModulator: DemoPluginBase = {
         identifier: "com.vendor.LFOTool",
         name: "LFOTool",
         manufacturer: "Xfer",
@@ -758,7 +779,7 @@ export const UsageCountRanking: Story = {
   },
   decorators: [
     (Story) => {
-      const proHigh: BrowserPlugin = {
+      const proHigh: DemoPluginBase = {
         identifier: "com.vendor.ProHigh",
         name: "Pro-High",
         manufacturer: "Acme",
@@ -768,7 +789,7 @@ export const UsageCountRanking: Story = {
         signalOut: "audio",
         usageCount: 20,
       };
-      const proLow: BrowserPlugin = {
+      const proLow: DemoPluginBase = {
         identifier: "com.vendor.ProLow",
         name: "Pro-Low",
         manufacturer: "Acme",
@@ -789,7 +810,7 @@ export const UsageCountRanking: Story = {
   ],
   play: async ({ canvasElement }) => {
     const body = within(canvasElement.ownerDocument.body);
-    const input = body.getByPlaceholderText("Add block...");
+    const input = body.getByPlaceholderText("Search blocks, makers, categories…");
     await userEvent.type(input, "pro");
     const high = body.getByText("Pro-High");
     const low = body.getByText("Pro-Low");
@@ -799,5 +820,134 @@ export const UsageCountRanking: Story = {
     expect(
       low.compareDocumentPosition(high) & Node.DOCUMENT_POSITION_PRECEDING,
     ).toBeTruthy();
+  },
+};
+
+/**
+ * SourcesRailVisible — N3 rebuild: the left filter rail is always present
+ * (★Favorites · ◷Recents · the 4 category shape-glyphs · All), single-level and
+ * keyboard-selectable — NOT a hover-cascade. The bigger ~520×460 panel removes
+ * the old over-truncation.
+ */
+export const SourcesRailVisible: Story = {
+  args: { x: 60, y: 40, onClose: () => {} },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "N3 layout — the persistent sources/filter rail on the left (research " +
+          "DECISION). Rows: ★Favorites, ◷Recents, the 4 Element categories with " +
+          "their colour-blind-safe shape glyphs, and All. Click or keyboard-select " +
+          "(Tab/← into the rail, ↑↓ to pick, 1–7 hotkeys) to scope the results. " +
+          "No hover fly-outs.",
+      },
+    },
+  },
+  decorators: [
+    (Story) => {
+      seed(demoPlugins, ["com.vendor.SurgeXT"], ["com.vendor.ProQ4"]);
+      return (
+        <div className="bg-canvas" style={{ height: 480 }}>
+          <Story />
+        </div>
+      );
+    },
+  ],
+  play: async ({ canvasElement }) => {
+    const body = within(canvasElement.ownerDocument.body);
+    // Rail items present (Favorites/Recents also appear as section labels, so
+    // ≥1 each; the category labels are rail-only).
+    await expect(body.getAllByText("Favorites").length).toBeGreaterThan(0);
+    await expect(body.getByText("Instruments")).toBeVisible();
+    await expect(body.getByText("Audio FX")).toBeVisible();
+    await expect(body.getByText("MIDI FX")).toBeVisible();
+    await expect(body.getByText("Modulators")).toBeVisible();
+    // Keyboard hint footer present.
+    await expect(body.getByText("navigate")).toBeVisible();
+    await expect(body.getByText("filter rail")).toBeVisible();
+  },
+};
+
+/**
+ * RailCategoryFilter — clicking a category rail row scopes the results to that
+ * block category (drill-able visible hierarchy, no cascading menus).
+ */
+export const RailCategoryFilter: Story = {
+  args: { x: 60, y: 40, onClose: () => {} },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Selecting the 'Audio FX' rail filter narrows the results to audio-effect " +
+          "blocks (Pro-Q 4, ValhallaVintageVerb, Pro-C 2). Instruments (Surge XT), " +
+          "MIDI FX (Stepic) and modulators (LFOTool) drop out. Click-driven; the rail " +
+          "is a filter, not a tree.",
+      },
+    },
+  },
+  decorators: [
+    (Story) => {
+      seed(demoPlugins);
+      return (
+        <div className="bg-canvas" style={{ height: 480 }}>
+          <Story />
+        </div>
+      );
+    },
+  ],
+  play: async ({ canvasElement }) => {
+    const body = within(canvasElement.ownerDocument.body);
+    // Click the "Audio FX" rail filter.
+    await userEvent.click(body.getByText("Audio FX"));
+    // Audio-FX blocks remain…
+    await expect(body.getByText("Pro-Q 4")).toBeVisible();
+    await expect(body.getByText("ValhallaVintageVerb")).toBeVisible();
+    await expect(body.getByText("Pro-C 2")).toBeVisible();
+    // …non-audiofx categories drop out.
+    await expect(body.queryByText("Surge XT")).toBeNull(); // instrument
+    await expect(body.queryByText("Stepic")).toBeNull(); // midifx
+    await expect(body.queryByText("LFOTool")).toBeNull(); // modulator
+  },
+};
+
+/**
+ * PortPillDismiss — the port-context pill is removable (Unreal model). Clicking
+ * the ✕ (or "Show all blocks") widens the audio-typed list to the full set.
+ */
+export const PortPillDismiss: Story = {
+  args: { x: 60, y: 40, portType: "audio", onClose: () => {} },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Opened port-typed to AUDIO (a removable accent pill shows the active " +
+          "filter — Unreal's 'context-sensitive' chip). Clicking the pill's ✕ clears " +
+          "the signal-type constraint and reveals every block, including the MIDI FX " +
+          "and modulators that the audio filter had hidden.",
+      },
+    },
+  },
+  decorators: [
+    (Story) => {
+      seed(demoPlugins);
+      return (
+        <div className="bg-canvas" style={{ height: 480 }}>
+          <Story />
+        </div>
+      );
+    },
+  ],
+  play: async ({ canvasElement }) => {
+    const body = within(canvasElement.ownerDocument.body);
+    // Audio-typed: MIDI fx + modulator hidden.
+    await expect(body.queryByText("Stepic")).toBeNull();
+    await expect(body.queryByText("LFOTool")).toBeNull();
+    // Dismiss the port pill via its ✕.
+    await userEvent.click(body.getByLabelText("Clear AUDIO filter"));
+    // Now ALL blocks show (the filter widened).
+    await expect(body.getByText("Stepic")).toBeVisible();
+    await expect(body.getByText("LFOTool")).toBeVisible();
+    // Pill is gone.
+    await expect(body.queryByLabelText("Clear AUDIO filter")).toBeNull();
   },
 };

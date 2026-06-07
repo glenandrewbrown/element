@@ -8,668 +8,190 @@ import {
   type KeyboardEvent,
 } from "react";
 import { NeuInput, EmptyState, Icon } from "../neu";
-import type { BlockCategory, SignalType } from "../../data/types";
+import type { SignalType } from "../../data/types";
 import { usePluginBrowserStore } from "../../stores/usePluginBrowserStore";
 import { nativeGraphAddPlugin } from "../../bridge/nativeGraph";
 import { EV_OPEN_PREFERENCES } from "../../events";
-import { iconForCategory } from "../neu/iconForCategory";
-
-// ── Category → hue colour ────────────────────────────────────────────────────
-// Icon.tsx's `tone` only maps audio/midi/cv/primary/secondary; category hues
-// use --cat-* CSS vars. We derive the colour directly from those vars so it
-// always stays in sync with the design-system tokens.
-const CAT_COLOR: Record<BlockCategory, string> = {
-  instrument: "hsl(var(--cat-instrument))",
-  audiofx:    "hsl(var(--cat-audiofx))",
-  midifx:     "hsl(var(--cat-midifx))",
-  modulator:  "hsl(var(--cat-modulator))",
-};
-
-// ── Category → glow CSS var (for the hover/active dopamine ring) ─────────────
-const CAT_GLOW_VAR: Record<BlockCategory, string> = {
-  instrument: "var(--cat-instrument)",
-  audiofx:    "var(--cat-audiofx)",
-  midifx:     "var(--cat-midifx)",
-  modulator:  "var(--cat-modulator)",
-};
-
-// ── Signal-type metadata ─────────────────────────────────────────────────────
+import type { QuickAddPlugin } from "./quickadd/fuzzyScore";
+import { useQuickAddResults } from "./quickadd/useQuickAddResults";
+import {
+  RAIL_ITEMS,
+  type RailFilter,
+} from "./quickadd/railFilter";
+import { SourcesRail } from "./quickadd/SourcesRail";
+import {
+  VirtualResultList,
+  type VirtualResultListHandle,
+} from "./quickadd/VirtualResultList";
 
 // ── Signal-type metadata ─────────────────────────────────────────────────────
 //
-// G3c item 2: port-type filtering + the signal-alias search now key off the
-// REAL per-plugin signal output (BrowserPlugin.signalOut, derived in C++ from
-// juce::PluginDescription isInstrument/numOutputChannels/category). The old
-// category-only CATEGORY_SIGNAL map was removed — a modulator that actually
-// outputs audio is no longer mis-filtered to CV.
-
-/** Frozen signal-type accent tokens (HSL) — W0-TOKENS. */
+// Port-type filtering + the signal-alias search key off the REAL per-plugin
+// signal output (BrowserPlugin.signalOut, derived in C++). Frozen accent tokens.
 const SIGNAL_HSL: Record<SignalType, string> = {
   audio: "var(--sig-audio)",
-  midi:  "var(--sig-midi)",
+  midi: "var(--sig-midi)",
   value: "var(--sig-value)",
 };
 
-/** Header label per signal type — "ADD BLOCK ACCEPTING <LABEL>". */
+/** Pill label per signal type. */
 const SIGNAL_LABEL: Record<SignalType, string> = {
   audio: "AUDIO",
-  midi:  "MIDI",
+  midi: "MIDI",
   value: "CV",
 };
 
-// ── Signal-type search aliases ────────────────────────────────────────────────
-// These terms let users type signal-domain words (e.g. "audio fx", "cv",
-// "midi") and find blocks by their derived signal type. Matched against the
-// query before the per-field fuzzy scoring runs.
-const SIGNAL_ALIASES: Record<SignalType, string[]> = {
-  audio: ["audio", "audiofx", "audio fx", "audio effect", "instrument", "synth", "sampler"],
-  midi:  ["midi", "midifx", "midi fx", "midi effect", "arp", "chord", "sequence"],
-  value: ["cv", "value", "modulator", "lfo", "envelope", "utility"],
-};
+// ── Panel geometry (research DECISION: ~520×460, viewport-clamped) ───────────
+const POPUP_W = 520;
+const POPUP_H = 460;
+const POPUP_MIN_H = 320;
 
-// ── Separator normaliser ──────────────────────────────────────────────────────
-// Collapses hyphens, underscores, dots, and multiple spaces so that
-// "Pro-Q 4", "Pro Q 4", "Pro_Q4", "pro.q4" all normalise to "pro q 4".
-// Applied to BOTH the query and each field before matching so Glen's natural
-// typing ("pro q", "Pro-q", "pro q4") hits "Pro-Q 4".
-function normaliseSeps(s: string): string {
-  return s.toLowerCase().replace(/[-_.]+/g, " ").replace(/\s+/g, " ").trim();
-}
+// ── Focus zones (keyboard model) ──────────────────────────────────────────────
+type FocusZone = "results" | "rail";
 
-// ── Edit-distance (Levenshtein) ───────────────────────────────────────────────
-// Used for short queries (≤6 chars) as a typo-tolerance fallback when no
-// substring / subsequence match exists. Capped at 1 edit to avoid false
-// positives on longer strings.
-function levenshtein(a: string, b: string): number {
-  if (a.length > b.length) return levenshtein(b, a);
-  const row = Array.from({ length: a.length + 1 }, (_, i) => i);
-  for (let j = 1; j <= b.length; j++) {
-    let prev = row[0]!;
-    row[0] = j;
-    for (let i = 1; i <= a.length; i++) {
-      const tmp = row[i]!;
-      row[i] = a[i - 1] === b[j - 1]
-        ? prev
-        : 1 + Math.min(prev, row[i - 1]!, row[i]!);
-      prev = tmp;
-    }
-  }
-  return row[a.length]!;
-}
-
-// ── Metadata fuzzy search ────────────────────────────────────────────────────
-
-/**
- * Scores a single text field against the query string.
- * Returns null when there is no meaningful match.
- *
- * Scoring tiers (applied to sep-normalised strings):
- *   1. Exact substring       → 100 + prefix bonus  (highest)
- *   2. All-chars ordered     → 20 + consecutive bonus  (subsequence)
- *   3. Acronym match         → 10  (initials)
- *   4. Levenshtein ≤1 edit   → 5   (typo tolerance, short queries only)
- */
-function fuzzyScoreField(field: string, query: string): number | null {
-  if (!query || !field) return null;
-
-  // Apply separator normalisation to both sides so "Pro-Q 4" and "pro q" align.
-  const f = normaliseSeps(field);
-  const q = normaliseSeps(query);
-
-  // 1. Exact substring match
-  const idx = f.indexOf(q);
-  if (idx !== -1) {
-    return 100 + (idx === 0 ? 40 : 0) - idx;
-  }
-
-  // 2. All query characters appear in order (subsequence match)
-  let qi = 0;
-  let consecutive = 0;
-  let prevMatch = -1;
-  for (let fi = 0; fi < f.length && qi < q.length; fi++) {
-    if (f[fi] === q[qi]) {
-      consecutive += prevMatch === fi - 1 ? 1 : 0;
-      prevMatch = fi;
-      qi++;
-    }
-  }
-  if (qi === q.length) {
-    return 20 + consecutive * 5 - f.length;
-  }
-
-  // 3. Acronym match — initials of words match query chars
-  const words = f.split(/\s+/);
-  const initials = words.map((w) => w[0] ?? "").join("");
-  if (initials.includes(q)) return 10;
-
-  // 4. Typo tolerance: Levenshtein ≤1 on short queries against each word
-  //    of the field. Only triggers for queries 2–6 chars to avoid false hits.
-  if (q.length >= 2 && q.length <= 6) {
-    for (const word of words) {
-      if (word.length >= q.length - 1 && word.length <= q.length + 2) {
-        if (levenshtein(q, word) <= 1) return 5;
-      }
-    }
-  }
-
-  return null;
-}
-
-interface PluginEntry {
-  id:           string;
-  name:         string;
-  category:     BlockCategory;
-  format:       string;
-  /** Raw C++-scanned category string (e.g. "EQ", "Reverb", "Synth"). Displayed in the row. */
-  rawCategory:  string;
-  /** Plugin manufacturer name (e.g. "FabFilter", "Valhalla DSP"). Used for metadata fuzzy search. */
-  manufacturer: string;
-  /** Real per-plugin signal output (from juce::PluginDescription). Drives port-type filtering. */
-  signalOut:    SignalType;
-  /** Real persisted use-count (PluginUsageTracker). Drives most-used ranking. */
-  usageCount:   number;
-}
-
-/**
- * Scores a PluginEntry against the query across ALL metadata fields:
- *   - name         (weight 1.0  — highest relevance)
- *   - manufacturer (weight 0.7  — "valhalla" finds ValhallaVintageVerb)
- *   - rawCategory  (weight 0.8  — "reverb" finds all reverbs)
- *   - blockCategory  (weight 0.6  — "audiofx" / "audio fx")
- *   - signal aliases (weight 0.5  — "audio", "cv", "midi" match by signal type)
- *
- * Returns null when no field produces any meaningful match.
- */
-function fuzzyScoreEntry(entry: PluginEntry, query: string): number | null {
-  const q = query.trim().toLowerCase();
-  if (!q) return 0;
-
-  // Signal-alias shortcut: if the query matches a signal-type alias keyword,
-  // we score entries of that signal type uniformly rather than going through
-  // fuzzy logic (so "reverb" → audiofx, "midi" → midifx, "cv" → modulator).
-  for (const [sig, aliases] of Object.entries(SIGNAL_ALIASES) as [SignalType, string[]][]) {
-    if (aliases.some((alias) => alias.includes(q) || q.includes(alias))) {
-      // Real per-plugin signal output (G3c item 2), not a category guess.
-      if (entry.signalOut === sig) return 55; // signal-alias match — lower than substring
-    }
-  }
-
-  const scores: number[] = [];
-
-  const nameScore = fuzzyScoreField(entry.name, q);
-  if (nameScore !== null) scores.push(nameScore * 1.0);
-
-  const rawCatScore = fuzzyScoreField(entry.rawCategory, q);
-  if (rawCatScore !== null) scores.push(rawCatScore * 0.8);
-
-  const mfgScore = fuzzyScoreField(entry.manufacturer, q);
-  if (mfgScore !== null) scores.push(mfgScore * 0.7);
-
-  const blockCatScore = fuzzyScoreField(entry.category, q);
-  if (blockCatScore !== null) scores.push(blockCatScore * 0.6);
-
-  if (scores.length === 0) return null;
-  return Math.max(...scores);
-}
-
-// ── Sub-components ───────────────────────────────────────────────────────────
-
-/**
- * Category icon — uses the iconForCategory helper (V3 bake-off verdict) rather
- * than unicode glyphs so every icon surface stays in sync. Colour is derived
- * from the category CSS var so it matches the rest of the design system.
- */
-function CategoryIcon({ category, name }: { category: BlockCategory; name: string }) {
-  const iconName = iconForCategory(category, name);
-  return (
-    <span
-      className="shrink-0 inline-flex items-center justify-center"
-      style={{ color: CAT_COLOR[category] ?? CAT_COLOR.audiofx }}
-      aria-hidden="true"
-    >
-      <Icon name={iconName} size={11} strokeWidth={1.75} />
-    </span>
-  );
-}
-
-/**
- * Raw category label badge — replaces the format/architecture badge (VST3/AU/CLAP).
- * Shows the plugin's functional category (EQ, Reverb, Compressor…) which is
- * more useful for discovery than the plugin format.
- */
-function CategoryLabel({
-  category,
-  rawCategory,
-}: {
-  category: BlockCategory;
-  rawCategory: string;
-}) {
-  if (!rawCategory || rawCategory === "Uncategorised" || rawCategory === "MIDI") return null;
-  // Colour-coded by block category (Glen) + fixed-width so the badges align
-  // into a clean right-hand column instead of ragged truncation. Opaque tint
-  // (no transparency) — category hue mixed into the canvas-dark base.
-  const color = CAT_COLOR[category] ?? CAT_COLOR.audiofx;
-  return (
-    <span
-      className="shrink-0 text-[8px] px-1 py-0.5 rounded uppercase font-bold leading-none tracking-wider truncate text-center"
-      style={{
-        color,
-        backgroundColor: `color-mix(in srgb, ${color} 15%, #1E1E22)`,
-        maxWidth: 48,
-        minWidth: 24,
-      }}
-      title={rawCategory}
-    >
-      {rawCategory}
-    </span>
-  );
-}
-
-/** Gold used for a filled favourite star (matches the native panel's accent). */
-const FAV_STAR_GOLD = "#E8A838";
-
-/**
- * Far-right favourite-star toggle. Rendered as a focusable `role="button"`
- * span (NOT a nested <button>, which is invalid inside the row's outer
- * <button>). Clicking toggles the plugin's PERSISTENT favourite status WITHOUT
- * inserting a Block — it stops propagation + prevents default so the row's
- * insert-block onClick never fires. Filled/gold when starred, hollow outline
- * otherwise. Occupies its own minimal fixed slot so row alignment stays tidy.
- */
-function FavoriteStar({
-  isFavorite,
-  onToggle,
-}: {
-  isFavorite: boolean;
-  onToggle: () => void;
-}) {
-  return (
-    <span
-      role="button"
-      tabIndex={-1}
-      aria-label={isFavorite ? "Remove from favourites" : "Add to favourites"}
-      aria-pressed={isFavorite}
-      title={isFavorite ? "Remove from favourites" : "Add to favourites"}
-      onClick={(e) => {
-        e.stopPropagation();
-        e.preventDefault();
-        onToggle();
-      }}
-      className={[
-        "shrink-0 inline-flex items-center justify-center w-4 h-4 rounded-sm cursor-pointer",
-        "transition-colors duration-100",
-        isFavorite
-          ? "text-[#E8A838]"
-          : "text-text-dim opacity-50 hover:opacity-100 hover:text-text-secondary",
-      ].join(" ")}
-    >
-      <Icon
-        name="Star"
-        size={12}
-        strokeWidth={1.75}
-        style={{ fill: isFavorite ? FAV_STAR_GOLD : "none" }}
-      />
-    </span>
-  );
-}
-
-interface PluginRowProps {
-  plugin:     PluginEntry;
-  isActive:   boolean;
-  isFavorite: boolean;
-  onSelect:   (id: string) => void;
-  onToggleFavorite: (id: string) => void;
-  onHover:    () => void;
-}
-
-function PluginRow({
-  plugin,
-  isActive,
-  isFavorite,
-  onSelect,
-  onToggleFavorite,
-  onHover,
-}: PluginRowProps) {
-  const glowVar = CAT_GLOW_VAR[plugin.category] ?? CAT_GLOW_VAR.audiofx;
-  return (
-    <button
-      type="button"
-      onClick={() => onSelect(plugin.id)}
-      onMouseEnter={onHover}
-      className={[
-        "w-full text-left px-2.5 py-1.5 text-[11px] rounded flex items-center gap-2",
-        "transition-all duration-100 cursor-pointer",
-        "border-b border-white/[0.04] last:border-b-0",
-        isActive
-          ? "bg-elevated text-text-primary"
-          : "text-text-secondary hover:text-text-primary",
-      ].join(" ")}
-      style={
-        isActive
-          ? {
-              boxShadow: `inset 0 0 0 1px hsl(${glowVar} / 0.22), 0 0 8px hsl(${glowVar} / 0.18)`,
-            }
-          : undefined
-      }
-    >
-      <CategoryIcon category={plugin.category} name={plugin.name} />
-      {/* A7/F6 — the block NAME is the visual anchor: semibold, and it
-          truncates LAST (the muted manufacturer gets a much higher flex
-          shrink factor, so it gives way first when the row is tight). Both
-          stay visible when space allows. */}
-      <span className="truncate flex-1 min-w-0 font-semibold">
-        {plugin.name}
-      </span>
-      {plugin.manufacturer && (
-        <span className="shrink-[6] min-w-0 max-w-[72px] text-[9px] text-text-dim truncate text-right">
-          {plugin.manufacturer}
-        </span>
-      )}
-      <CategoryLabel category={plugin.category} rawCategory={plugin.rawCategory} />
-      <FavoriteStar
-        isFavorite={isFavorite}
-        onToggle={() => onToggleFavorite(plugin.id)}
-      />
-    </button>
-  );
-}
-
-/** Shared section header label — "Favorites" / "Recents" / "All". */
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="px-2.5 pt-1 pb-0.5 text-[9px] uppercase tracking-widest text-text-dim">
-      {children}
-    </div>
-  );
-}
-
-/** Hairline divider between sections. */
-function SectionDivider() {
-  return <div className="mx-2 my-1 border-t border-white/5" />;
-}
-
-/**
- * Overflow affordance — shown as a sticky footer inside the scroll area when
- * the list is taller than the visible window. Shows how many items are not
- * currently in view so the user knows to scroll.
- */
-function MoreCount({ count }: { count: number }) {
-  if (count <= 0) return null;
-  return (
-    <div className="px-2.5 py-1 text-[9px] text-text-dim text-center tracking-wider border-t border-white/5 sticky bottom-0 bg-panel">
-      ··· {count} more
-    </div>
-  );
-}
-
-// ── Props + main component ────────────────────────────────────────────────────
+// ── Props ──────────────────────────────────────────────────────────────────────
 
 export interface QuickAddPopupProps {
-  /** Viewport X (clientX) of the cursor where the popup opens; clamped to keep the popup on-screen. */
+  /** Viewport X (clientX) where the popup opens; clamped to stay on-screen. */
   x: number;
-  /** Viewport Y (clientY) of the cursor where the popup opens; clamped to keep the popup on-screen. */
+  /** Viewport Y (clientY) where the popup opens; clamped to stay on-screen. */
   y: number;
   /**
-   * Signal type of the port a Cable was dragged off, when opened from a
-   * port-drag. When set, the list is filtered to Blocks that accept/pass that
-   * signal type and the header reads "ADD BLOCK ACCEPTING `TYPE`". When
-   * omitted (right-click on empty canvas), the full plugin list is shown with
-   * favourites pinned — the generic QuickAdd.
-   *
-   * ITEM 1: port-type mode now ALSO shows Favorites + Recents sections, just
-   * like generic mode — they are filtered by portType like everything else.
+   * Signal type of the port a Cable was dragged off (Opt+drop). When set, the
+   * list is filtered to Blocks whose REAL signalOut matches, and a removable
+   * accent pill is shown (Unreal "context-sensitive" model). When omitted
+   * (right-click on empty canvas), the full plugin list is shown — generic mode.
    */
   portType?: SignalType;
   /**
-   * Optional pick override (T3 ⌥+drop add-and-connect). When provided it
-   * REPLACES the default `nativeGraphAddPlugin(id)` insert — the caller takes
-   * full responsibility for what happens on selection (e.g. a positioned add +
-   * auto-connect to the dragged-off port). `onClose` is NOT called automatically
-   * in this mode; the override owns dismissal. When omitted, selection performs
-   * the default plain add then closes.
+   * Optional pick override (⌥+drop add-and-connect). When provided it REPLACES
+   * the default `nativeGraphAddPlugin(id)` insert and owns dismissal.
    */
   onPick?: (pluginId: string) => void;
-  /** Called to dismiss the popup (backdrop click, Escape, or after a Block is inserted). */
+  /** Dismiss the popup (backdrop click, Escape, or after a Block is inserted). */
   onClose: () => void;
 }
 
 /**
- * QuickAddPopup — the fastest path to add a Block to the Board.
+ * QuickAddPopup — the fastest path to add a Block to the Board (N3 rebuild).
  *
- * A small, keyboard-first search popup anchored at the cursor.
+ * A cursor-anchored, keyboard-first command-palette popup with a left sources
+ * filter rail and a visible, dismissible port-context pill. One component, two
+ * modes (generic / port-typed). Layout per
+ * `.omc/state/qa-wave-reports/quickadd-pattern-research.md` (Bitwig pop-up
+ * browser + Ableton sidebar labels + Unreal context palette; NO hover-cascade).
  *
- * Browse mode (empty search) — BOTH generic and port-type-aware:
- *   1. Favorites   — starred plugins, port-filtered, preserving store order
- *   2. Recents     — recently-used, port-filtered, excluding favorites
- *   3. Others      — remaining plugins, port-filtered, excluding fav+recent
+ *   Left rail   — ★Favorites · ◷Recents · 4 categories · All. Single-level
+ *                 filter, click/keyboard-selectable, never hover-revealed.
+ *   Results     — dense virtualized rows (Favorites→Recents→All browse stack
+ *                 when empty; flat fuzzy-scored list when typed). Per-row shape
+ *                 glyph + hue, maker, category badge, favourite star.
+ *   Port pill   — removable accent chip in the search row (port-typed mode);
+ *                 ✕ / Backspace-on-empty widens to all.
+ *   Footer      — persistent faint keyboard-hint strip.
  *
- * Fuzzy search mode (user has typed):
- *   Full list scored across ALL metadata fields (name, manufacturer, raw
- *   category, blockCategory, signal-type aliases). "valhalla" finds
- *   ValhallaVintageVerb; "reverb" finds all reverb plugins; "Pro q"/"Pro-q"/
- *   "pro q4" all find "Pro-Q 4" via sep-normalisation + Levenshtein fallback.
- *   Results are ranked by fuzzy score THEN by most-used — the REAL persisted
- *   usage frequency (favorite + recency are tie-breakers) — so the user's
- *   common picks float to the top on ties.
- *   Port-type filter still applies.
- *
- *   Category labels (EQ, Reverb, Compressor…) are shown in each result row;
- *   the format/architecture badge (VST3/AU/CLAP) has been removed — the
- *   category is more useful for discovery.
- *
- * Overflow: when results exceed the visible scroll area height an inline
- *   "··· N more" count appears at the bottom of the scroll container.
- *
- * Two modes:
- *  - Generic (no portType)    — right-click empty canvas, full list.
- *  - Port-type-aware (portType) — dragged off a port, filtered + tinted header.
- *    Both modes show Favorites → Recents → Others in browse, and both use
- *    the same fuzzy search in search mode.
+ * Keyboard: type → flat results; ↑/↓ move the active row (visible glow ring);
+ * Enter inserts; Tab/← focus the rail, ↑/↓ pick a filter, →/Enter/Tab back;
+ * 1–7 jump-select rail filters; Backspace-on-empty clears rail/port; Esc closes.
  */
 export function QuickAddPopup({
   x,
   y,
-  portType,
+  portType: portTypeProp,
   onPick,
   onClose,
 }: QuickAddPopupProps) {
-  const [search, setSearch]           = useState("");
+  const [search, setSearch] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
-  const [overflowCount, setOverflowCount] = useState(0);
-  const inputRef  = useRef<HTMLInputElement>(null);
-  const listRef   = useRef<HTMLDivElement>(null);
+  const [railFilter, setRailFilter] = useState<RailFilter>("all");
+  const [focusZone, setFocusZone] = useState<FocusZone>("results");
+  // Port filter is dismissible (the ✕ pill / Backspace-on-empty widens it).
+  const [portCleared, setPortCleared] = useState(false);
+  const portType = portCleared ? undefined : portTypeProp;
 
-  const nativePlugins        = usePluginBrowserStore((s) => s.plugins);
-  const favoriteIdentifiers  = usePluginBrowserStore((s) => s.favoriteIdentifiers);
-  const recentIdentifiers    = usePluginBrowserStore((s) => s.recentIdentifiers);
-  const refreshPlugins       = usePluginBrowserStore((s) => s.refresh);
-  const toggleFavorite       = usePluginBrowserStore((s) => s.toggleFavorite);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<VirtualResultListHandle>(null);
+
+  const nativePlugins = usePluginBrowserStore((s) => s.plugins);
+  const favoriteIdentifiers = usePluginBrowserStore((s) => s.favoriteIdentifiers);
+  const refreshPlugins = usePluginBrowserStore((s) => s.refresh);
+  const toggleFavorite = usePluginBrowserStore((s) => s.toggleFavorite);
 
   useEffect(() => {
     void refreshPlugins();
   }, [refreshPlugins]);
 
-  /** Full plugin list as flat PluginEntry array — includes metadata fields. */
-  const plugins = useMemo((): PluginEntry[] => {
-    return nativePlugins.map((p) => ({
-      id:           p.identifier,
-      name:         p.name,
-      category:     p.blockCategory,
-      format:       p.format,
-      rawCategory:  p.category,       // e.g. "EQ", "Reverb", "Synth"
-      manufacturer: p.manufacturer,   // e.g. "FabFilter", "Valhalla DSP"
-      signalOut:    p.signalOut,      // real per-plugin signal (G3c item 2)
-      usageCount:   p.usageCount,     // real persisted use-count (G3c item 3)
-    }));
-  }, [nativePlugins]);
-
-  /** Quick lookup map: identifier → PluginEntry (for recents ordering). */
-  const pluginById = useMemo((): Map<string, PluginEntry> => {
-    const m = new Map<string, PluginEntry>();
-    for (const p of plugins) m.set(p.id, p);
-    return m;
-  }, [plugins]);
-
   /**
-   * Most-used weight for a plugin — driven by the REAL persisted use-count
-   * (G3c item 3: PluginUsageTracker.useCount, surfaced on BrowserPlugin as
-   * `usageCount`). Frequency is now the dominant term; favorite + recency are
-   * tie-breakers so a starred-but-never-added plugin still ranks above an
-   * unstarred one on an equal fuzzy score:
-   *   - usageCount   → ×4 (real frequency, the primary signal)
-   *   - favorite     → +60 (user explicitly starred it)
-   *   - recent rank  → up to +30 for the most-recent, tapering by index
+   * Map the store's BrowserPlugin[] into the engine's QuickAddPlugin[].
+   * N2 alias-aware: `isFavorite` + `recentRank` are GROUP-level (precomputed
+   * across the family's format variants by the host) so a starred/recent AU
+   * still surfaces the family's VST3 primary under Favorites/Recents.
    */
-  const mostUsedWeight = useCallback(
-    (id: string): number => {
-      let w = (pluginById.get(id)?.usageCount ?? 0) * 4;
-      if (favoriteIdentifiers.has(id)) w += 60;
-      const recIdx = recentIdentifiers.indexOf(id);
-      if (recIdx !== -1) {
-        // Decay: position 0 (most recent) → 30, position 9 → ~3
-        w += Math.max(30 - recIdx * 3, 0);
-      }
-      return w;
-    },
-    [pluginById, favoriteIdentifiers, recentIdentifiers],
+  const plugins = useMemo(
+    (): QuickAddPlugin[] =>
+      nativePlugins.map((p) => ({
+        id: p.identifier,
+        name: p.name,
+        category: p.blockCategory,
+        format: p.format,
+        rawCategory: p.category,
+        manufacturer: p.manufacturer,
+        signalOut: p.signalOut,
+        usageCount: p.usageCount,
+        isFavorite: p.isFavorite,
+        recentRank: p.recentRank,
+      })),
+    [nativePlugins],
   );
 
-  /**
-   * Port-type predicate — keeps only Blocks whose REAL signal output matches
-   * the dragged port when portType is set (G3c item 2). This is the real
-   * per-plugin signalOut, so e.g. a modulator that actually outputs audio now
-   * correctly appears under an audio port rather than being forced to CV by a
-   * category-only guess.
-   */
-  const passesPortFilter = useCallback(
-    (p: PluginEntry) => {
-      if (!portType) return true;
-      return p.signalOut === portType;
-    },
-    [portType],
-  );
+  const { rows, isSearching, favCount, recentCount } = useQuickAddResults({
+    plugins,
+    search,
+    railFilter,
+    portType,
+  });
 
-  /**
-   * Display list. Two modes:
-   *
-   * EMPTY SEARCH (browse mode) — applies to BOTH generic and port-type:
-   *   Favorites → Recents → Others (port-filtered throughout).
-   *   Port-type-aware mode gets the same Favorites + Recents sections,
-   *   just pre-filtered to the compatible signal type.
-   *
-   * TYPED SEARCH (fuzzy metadata mode):
-   *   All plugins scored across name + manufacturer + rawCategory +
-   *   blockCategory + signal-type aliases + sep-normalisation + Levenshtein
-   *   fallback for short typos. Results ranked by fuzzy score, then by
-   *   most-used weight (real usage count, with favorite + recency as
-   *   tie-breakers) so common picks surface first.
-   *   Port-filter still applies. Section headers collapse to a flat scored list.
-   */
-  const { favorites, recents, others, fuzzyResults, isSearching } =
-    useMemo(() => {
-      const isSearching = search.trim().length > 0;
-
-      if (!isSearching) {
-        // ── Browse mode: Favorites → Recents → Others ─────────────────────────
-        const favSet    = favoriteIdentifiers;
-        const recentSet = new Set(recentIdentifiers);
-
-        const favs: PluginEntry[]  = [];
-        const recs: PluginEntry[]  = [];
-        const rest: PluginEntry[]  = [];
-
-        // Favorites: preserve stable plugin order, filter to starred
-        for (const p of plugins) {
-          if (!passesPortFilter(p)) continue;
-          if (favSet.has(p.id)) favs.push(p);
-        }
-
-        // Recents: ordered by recentIdentifiers (most recent first),
-        // skip favorites (they already appear above)
-        for (const id of recentIdentifiers) {
-          const p = pluginById.get(id);
-          if (!p || !passesPortFilter(p) || favSet.has(p.id)) continue;
-          recs.push(p);
-        }
-
-        // Others: everything that is neither a favorite nor recent
-        for (const p of plugins) {
-          if (!passesPortFilter(p)) continue;
-          if (favSet.has(p.id) || recentSet.has(p.id)) continue;
-          rest.push(p);
-        }
-
-        return {
-          favorites:    favs,
-          recents:      recs,
-          others:       rest,
-          fuzzyResults: [] as PluginEntry[],
-          isSearching:  false,
-        };
-      }
-
-      // ── Fuzzy-search mode: score across all metadata fields ───────────────
-      const scored: Array<{ plugin: PluginEntry; score: number; usedWeight: number }> = [];
-      for (const p of plugins) {
-        if (!passesPortFilter(p)) continue;
-        const score = fuzzyScoreEntry(p, search);
-        if (score !== null) {
-          scored.push({ plugin: p, score, usedWeight: mostUsedWeight(p.id) });
-        }
-      }
-      // Primary sort: fuzzy score DESC; secondary: most-used weight DESC
-      scored.sort((a, b) =>
-        b.score !== a.score ? b.score - a.score : b.usedWeight - a.usedWeight
-      );
-
-      return {
-        favorites:    [] as PluginEntry[],
-        recents:      [] as PluginEntry[],
-        others:       [] as PluginEntry[],
-        fuzzyResults: scored.map((s) => s.plugin),
-        isSearching:  true,
-      };
-    }, [
-      search,
-      plugins,
-      pluginById,
-      favoriteIdentifiers,
-      recentIdentifiers,
-      passesPortFilter,
-      mostUsedWeight,
-    ]);
-
-  /** Flat ordered list used for keyboard navigation. */
-  const flatList = useMemo(() => {
-    if (isSearching) return fuzzyResults;
-    return [...favorites, ...recents, ...others];
-  }, [isSearching, fuzzyResults, favorites, recents, others]);
-
-  // A4/F4 — type-ahead race fix. Two halves:
+  // ── A4/F4 — type-ahead race fix (HIGH, ultraqa #1) ────────────────────────
+  // Three layers so the FIRST keystroke after open goes ONLY to the search
+  // field — never to a global shortcut, never spawning a stray block/editor:
   //  1. SYNCHRONOUS autofocus (useLayoutEffect, no rAF): the input owns the
-  //     keyboard before the browser paints, so the window where keystrokes
-  //     can be lost shrinks to the open-trigger → React-commit gap.
-  //  2. Pre-focus keystroke buffer: a capture-phase window keydown listener
-  //     catches anything typed while the input does NOT yet have focus
-  //     (slow WKWebView focus handoff) and injects it into the search state,
-  //     so the first characters of a fast "right-click + type" gesture are
-  //     never dropped.
+  //     keyboard before the browser paints.
+  //  2. Pre-focus keystroke buffer (capture-phase window listener): catches
+  //     anything typed while the input does NOT yet have focus (slow WKWebView
+  //     focus handoff), injects it into search, AND stops the event so no
+  //     global handler (useKeyboard, transport) ever sees it.
+  //  3. The popup's own onKeyDown calls stopPropagation on every handled key so
+  //     navigation/commit keys never bubble to the window either.
   useLayoutEffect(() => {
     inputRef.current?.focus();
   }, []);
 
   useEffect(() => {
     const onCaptureKeyDown = (e: globalThis.KeyboardEvent) => {
+      // While the rail zone is focused, ↑/↓/Enter belong to the rail — let the
+      // popup's React onKeyDown handle them (it runs after this capture pass on
+      // the same target only when the input has focus; here we just don't
+      // swallow them so the controlled flow below works).
       if (document.activeElement === inputRef.current) return; // input owns it
-      if (e.metaKey || e.ctrlKey || e.altKey) return; // leave shortcuts alone
+      if (e.metaKey || e.ctrlKey || e.altKey) return; // leave real chords alone
       if (e.key.length === 1) {
+        // A printable key typed before focus landed — buffer it into search and
+        // grab focus. CRITICAL: stopImmediatePropagation (not just
+        // stopPropagation) so the key reaches NO other window listener —
+        // including same-target window-CAPTURE handlers (GraphCanvas ghost
+        // accept at :689) and the window-BUBBLE global shortcut handler
+        // (useKeyboard at :512). A plain stopPropagation would NOT stop a
+        // sibling capture listener registered earlier (GraphCanvas mounts
+        // first), so the first keystroke could still fire a global action /
+        // spawn a stray block. This is the core ultraqa-#1 race fix.
         e.preventDefault();
-        e.stopPropagation();
+        e.stopImmediatePropagation();
         setSearch((s) => s + e.key);
+        setFocusZone("results");
         inputRef.current?.focus();
       } else if (e.key === "Backspace") {
         e.preventDefault();
-        e.stopPropagation();
+        e.stopImmediatePropagation();
         setSearch((s) => s.slice(0, -1));
         inputRef.current?.focus();
       }
@@ -678,48 +200,18 @@ export function QuickAddPopup({
     return () => window.removeEventListener("keydown", onCaptureKeyDown, true);
   }, []);
 
+  // Reset active row when the result set changes (search / rail / port).
   useEffect(() => {
     setActiveIndex(0);
-  }, [search]);
+  }, [search, railFilter, portType]);
 
+  // Keep the active row visible when keyboard nav moves it.
   useEffect(() => {
-    const list = listRef.current;
-    if (!list) return;
-    const item = list.children[activeIndex] as HTMLElement | undefined;
-    item?.scrollIntoView({ block: "nearest" });
+    listRef.current?.scrollRowIntoView(activeIndex);
   }, [activeIndex]);
-
-  // ── Overflow count: count rows below the visible fold ────────────────────
-  // Recalculates whenever the flat list length changes.
-  useEffect(() => {
-    const list = listRef.current;
-    if (!list) {
-      setOverflowCount(0);
-      return;
-    }
-    function measure() {
-      if (!list) return;
-      const containerBottom = list.scrollTop + list.clientHeight;
-      let hidden = 0;
-      // list.children includes section labels + dividers; we only count button rows
-      for (const child of Array.from(list.children)) {
-        const el = child as HTMLElement;
-        if (el.tagName === "BUTTON" && el.offsetTop + el.offsetHeight > containerBottom) {
-          hidden++;
-        }
-      }
-      setOverflowCount(hidden);
-    }
-    measure();
-    list.addEventListener("scroll", measure, { passive: true });
-    return () => list.removeEventListener("scroll", measure);
-  }, [flatList]);
 
   const handleSelect = useCallback(
     (id: string) => {
-      // T3: when an `onPick` override is supplied (⌥+drop add-and-connect), it
-      // fully owns the selection — both the add and the dismissal. Otherwise the
-      // default plain add fires and we close.
       if (onPick) {
         onPick(id);
         return;
@@ -730,38 +222,132 @@ export function QuickAddPopup({
     [onPick, onClose],
   );
 
+  /** Clear the active rail filter and/or the port-context filter (widen). */
+  const widen = useCallback(() => {
+    if (railFilter !== "all") {
+      setRailFilter("all");
+      return;
+    }
+    if (portType) setPortCleared(true);
+  }, [railFilter, portType]);
+
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
+      // Number-key hotkeys (1–7) jump-select rail filters — only when the
+      // search field is empty so digits can still be typed into a query.
+      if (
+        search.length === 0 &&
+        !e.metaKey &&
+        !e.ctrlKey &&
+        !e.altKey &&
+        /^[1-7]$/.test(e.key)
+      ) {
+        const item = RAIL_ITEMS.find((r) => String(r.hotkey) === e.key);
+        if (item) {
+          e.preventDefault();
+          e.stopPropagation();
+          setRailFilter(item.key);
+          setFocusZone("results");
+          return;
+        }
+      }
+
       switch (e.key) {
         case "ArrowDown":
           e.preventDefault();
-          setActiveIndex((i) => Math.min(i + 1, flatList.length - 1));
+          e.stopPropagation();
+          if (focusZone === "rail") {
+            const idx = RAIL_ITEMS.findIndex((r) => r.key === railFilter);
+            const next = RAIL_ITEMS[Math.min(idx + 1, RAIL_ITEMS.length - 1)]!;
+            setRailFilter(next.key);
+          } else {
+            setActiveIndex((i) => Math.min(i + 1, rows.length - 1));
+          }
           break;
         case "ArrowUp":
           e.preventDefault();
-          setActiveIndex((i) => Math.max(i - 1, 0));
+          e.stopPropagation();
+          if (focusZone === "rail") {
+            const idx = RAIL_ITEMS.findIndex((r) => r.key === railFilter);
+            const prev = RAIL_ITEMS[Math.max(idx - 1, 0)]!;
+            setRailFilter(prev.key);
+          } else {
+            setActiveIndex((i) => Math.max(i - 1, 0));
+          }
+          break;
+        case "ArrowLeft":
+          // Only hop to the rail when the caret is at the start of the field
+          // (so ← still edits text mid-query).
+          if (
+            focusZone === "results" &&
+            inputRef.current?.selectionStart === 0
+          ) {
+            e.preventDefault();
+            e.stopPropagation();
+            setFocusZone("rail");
+          }
+          break;
+        case "ArrowRight":
+          if (focusZone === "rail") {
+            e.preventDefault();
+            e.stopPropagation();
+            setFocusZone("results");
+          }
+          break;
+        case "Tab":
+          e.preventDefault();
+          e.stopPropagation();
+          setFocusZone((z) => (z === "rail" ? "results" : "rail"));
           break;
         case "Enter":
           e.preventDefault();
-          if (flatList[activeIndex]) {
-            handleSelect(flatList[activeIndex].id);
+          e.stopPropagation();
+          if (focusZone === "rail") {
+            setFocusZone("results");
+          } else if (rows[activeIndex]) {
+            handleSelect(rows[activeIndex]!.plugin.id);
+          }
+          break;
+        case "Backspace":
+          // Backspace on an EMPTY query widens (clear rail / clear port) — the
+          // Unreal "uncheck Context Sensitive" escape hatch.
+          if (search.length === 0 && (railFilter !== "all" || portType)) {
+            e.preventDefault();
+            e.stopPropagation();
+            widen();
           }
           break;
         case "Escape":
           e.preventDefault();
+          e.stopPropagation();
           onClose();
           break;
       }
     },
-    [flatList, activeIndex, handleSelect, onClose],
+    [
+      search,
+      focusZone,
+      railFilter,
+      rows,
+      activeIndex,
+      portType,
+      handleSelect,
+      widen,
+      onClose,
+    ],
   );
 
-  const popupW    = 224;
-  const popupMaxH = 320;
-  const clampedX  = Math.max(8, Math.min(x, window.innerWidth  - popupW    - 8));
-  const clampedY  = Math.max(8, Math.min(y, window.innerHeight - popupMaxH - 8));
+  // ── Geometry — clamp the bigger panel to the viewport ─────────────────────
+  const panelH = Math.min(POPUP_H, Math.max(POPUP_MIN_H, window.innerHeight - 16));
+  const clampedX = Math.max(8, Math.min(x, window.innerWidth - POPUP_W - 8));
+  const clampedY = Math.max(8, Math.min(y, window.innerHeight - panelH - 8));
 
   const signalHsl = portType ? SIGNAL_HSL[portType] : null;
+
+  // List viewport height = panel − search row (~52) − footer (~24) − pill row.
+  const headerH = 52;
+  const footerH = 24;
+  const listH = Math.max(160, panelH - headerH - footerH);
 
   return (
     <>
@@ -773,173 +359,136 @@ export function QuickAddPopup({
         onKeyDown={handleKeyDown}
       >
         <div
-          className="w-56 bg-panel rounded overflow-hidden"
+          className="bg-panel rounded-lg overflow-hidden flex flex-col"
           style={{
+            width: POPUP_W,
+            height: panelH,
             boxShadow:
               "-4px -4px 8px rgba(255,255,255,0.04), 8px 8px 24px rgba(0,0,0,0.5)",
             outline: "1px solid rgba(139, 145, 156, 0.15)",
           }}
         >
-          {/* Port-type-aware header — only when opened from a cable drag. */}
-          {portType && signalHsl && (
-            <div
-              className="flex items-center justify-between px-2.5 pt-2 pb-1.5 border-b border-white/5"
-              style={{ borderColor: `hsl(${signalHsl} / 0.18)` }}
-            >
-              <span className="text-[8.5px] uppercase tracking-[0.16em] text-text-dim leading-none">
-                Add block accepting
-              </span>
-              <span
-                className="text-[9px] font-bold tabular px-1.5 py-0.5 rounded uppercase leading-none"
+          {/* ── Row A — search field + removable port-context pill ─────────── */}
+          <div className="flex items-center gap-2 p-2 border-b border-white/5 shrink-0">
+            {portType && signalHsl && (
+              <button
+                type="button"
+                onClick={() => setPortCleared(true)}
+                title="Clear signal-type filter (show all)"
+                aria-label={`Clear ${SIGNAL_LABEL[portType]} filter`}
+                className="shrink-0 flex items-center gap-1 text-[9px] font-bold tabular px-1.5 py-1 rounded uppercase leading-none cursor-pointer transition-opacity hover:opacity-80"
                 style={{
                   backgroundColor: `hsl(${signalHsl} / 0.18)`,
-                  color:           `hsl(${signalHsl})`,
-                  boxShadow:       `0 0 6px hsl(${signalHsl} / 0.35)`,
+                  color: `hsl(${signalHsl})`,
+                  boxShadow: `0 0 6px hsl(${signalHsl} / 0.30)`,
                 }}
               >
                 {SIGNAL_LABEL[portType]}
-              </span>
+                <Icon name="X" size={9} strokeWidth={2.5} aria-hidden />
+              </button>
+            )}
+            <div className="flex-1 min-w-0">
+              <NeuInput
+                ref={inputRef}
+                placeholder="Search blocks, makers, categories…"
+                value={search}
+                onChange={(v) => {
+                  setSearch(v);
+                  if (focusZone !== "results") setFocusZone("results");
+                }}
+              />
             </div>
-          )}
-
-          <div className="p-2">
-            <NeuInput
-              ref={inputRef}
-              placeholder="Add block..."
-              value={search}
-              onChange={setSearch}
-            />
           </div>
 
-          <div
-            ref={listRef}
-            className="max-h-52 overflow-y-auto px-1 pb-1.5"
-          >
-            {plugins.length === 0 ? (
-              <div className="px-2 py-3">
-                <EmptyState
-                  illustration="no-plugins"
-                  size="sm"
-                  tone="audio"
-                  title="No plugins scanned"
-                  description="Open Preferences to scan AU/VST3/CLAP/LV2 plugins."
-                  action={
+          {/* ── Body — rail + results ──────────────────────────────────────── */}
+          <div className="flex-1 flex min-h-0">
+            <SourcesRail
+              active={railFilter}
+              onSelect={(f) => {
+                setRailFilter(f);
+                setFocusZone("results");
+                inputRef.current?.focus();
+              }}
+              focused={focusZone === "rail"}
+            />
+
+            <div className="flex-1 min-w-0 flex flex-col">
+              {plugins.length === 0 ? (
+                <div className="px-2 py-3 flex-1 flex items-center justify-center">
+                  <EmptyState
+                    illustration="no-plugins"
+                    size="sm"
+                    tone="audio"
+                    title="No plugins scanned"
+                    description="Open Preferences to scan AU/VST3/CLAP/LV2 plugins."
+                    action={
+                      <button
+                        type="button"
+                        className="px-3 py-1 rounded bg-pressed text-[10px] uppercase tracking-widest text-accent-blue hover:bg-elevated transition-colors cursor-pointer"
+                        onClick={() => {
+                          window.dispatchEvent(new Event(EV_OPEN_PREFERENCES));
+                          onClose();
+                        }}
+                      >
+                        Open Preferences
+                      </button>
+                    }
+                  />
+                </div>
+              ) : rows.length === 0 ? (
+                <div className="px-2 py-6 flex-1 flex flex-col items-center justify-center gap-2 text-center">
+                  <span className="text-[10px] text-text-dim uppercase tracking-widest">
+                    {portType ? "No compatible blocks" : "No matches"}
+                  </span>
+                  {portType && (
                     <button
                       type="button"
-                      className="px-3 py-1 rounded bg-pressed text-[10px] uppercase tracking-widest text-accent-blue hover:bg-elevated transition-colors cursor-pointer"
-                      onClick={() => {
-                        window.dispatchEvent(new Event(EV_OPEN_PREFERENCES));
-                        onClose();
-                      }}
+                      onClick={() => setPortCleared(true)}
+                      className="text-[9px] uppercase tracking-wider text-accent-blue hover:text-text-primary transition-colors cursor-pointer"
                     >
-                      Open Preferences
+                      Show all blocks
                     </button>
-                  }
+                  )}
+                </div>
+              ) : (
+                <VirtualResultList
+                  ref={listRef}
+                  rows={rows}
+                  favCount={favCount}
+                  recentCount={recentCount}
+                  isSearching={isSearching}
+                  activeIndex={activeIndex}
+                  favoriteIdentifiers={favoriteIdentifiers}
+                  onSelect={handleSelect}
+                  onToggleFavorite={toggleFavorite}
+                  onHover={setActiveIndex}
+                  height={listH}
                 />
-              </div>
-            ) : flatList.length === 0 ? (
-              <div className="px-2 py-3 text-[10px] text-text-dim text-center uppercase tracking-widest">
-                {portType ? "No compatible blocks" : "No matches"}
-              </div>
-            ) : null}
-
-            {/* ── BROWSE MODE (no search typed) — generic AND port-type ───── */}
-            {/* Both modes now show Favorites → Recents → Others.             */}
-            {/* In port-type mode the sections are pre-filtered by portType.  */}
-            {!isSearching && (
-              <>
-                {favorites.length > 0 && (
-                  <>
-                    <SectionLabel>Favorites</SectionLabel>
-                    <div>
-                      {favorites.map((plugin, i) => (
-                        <PluginRow
-                          key={plugin.id}
-                          plugin={plugin}
-                          isActive={i === activeIndex}
-                          isFavorite={favoriteIdentifiers.has(plugin.id)}
-                          onSelect={handleSelect}
-                          onToggleFavorite={toggleFavorite}
-                          onHover={() => setActiveIndex(i)}
-                        />
-                      ))}
-                    </div>
-                  </>
-                )}
-
-                {recents.length > 0 && (
-                  <>
-                    {favorites.length > 0 && <SectionDivider />}
-                    <SectionLabel>Recents</SectionLabel>
-                    <div>
-                      {recents.map((plugin, i) => {
-                        const flatIndex = favorites.length + i;
-                        return (
-                          <PluginRow
-                            key={plugin.id}
-                            plugin={plugin}
-                            isActive={flatIndex === activeIndex}
-                            isFavorite={favoriteIdentifiers.has(plugin.id)}
-                            onSelect={handleSelect}
-                            onToggleFavorite={toggleFavorite}
-                            onHover={() => setActiveIndex(flatIndex)}
-                          />
-                        );
-                      })}
-                    </div>
-                  </>
-                )}
-
-                {others.length > 0 && (
-                  <>
-                    {(favorites.length > 0 || recents.length > 0) && (
-                      <SectionDivider />
-                    )}
-                    {(favorites.length > 0 || recents.length > 0) && (
-                      <SectionLabel>All</SectionLabel>
-                    )}
-                    <div>
-                      {others.map((plugin, i) => {
-                        const flatIndex =
-                          favorites.length + recents.length + i;
-                        return (
-                          <PluginRow
-                            key={plugin.id}
-                            plugin={plugin}
-                            isActive={flatIndex === activeIndex}
-                            isFavorite={favoriteIdentifiers.has(plugin.id)}
-                            onSelect={handleSelect}
-                            onToggleFavorite={toggleFavorite}
-                            onHover={() => setActiveIndex(flatIndex)}
-                          />
-                        );
-                      })}
-                    </div>
-                  </>
-                )}
-              </>
-            )}
-
-            {/* ── FUZZY SEARCH MODE (user has typed) ─────────────────────── */}
-            {isSearching && fuzzyResults.length > 0 && (
-              <div>
-                {fuzzyResults.map((plugin, i) => (
-                  <PluginRow
-                    key={plugin.id}
-                    plugin={plugin}
-                    isActive={i === activeIndex}
-                    isFavorite={favoriteIdentifiers.has(plugin.id)}
-                    onSelect={handleSelect}
-                    onToggleFavorite={toggleFavorite}
-                    onHover={() => setActiveIndex(i)}
-                  />
-                ))}
-              </div>
-            )}
+              )}
+            </div>
           </div>
 
-          {/* ── Overflow count — sticky footer inside scroll area ─────────── */}
-          <MoreCount count={overflowCount} />
+          {/* ── Row C — persistent keyboard-hint footer ────────────────────── */}
+          <div
+            className="shrink-0 flex items-center gap-3 px-3 h-6 border-t border-white/5 text-[8.5px] text-text-dim tracking-wider select-none"
+            style={{ height: footerH }}
+          >
+            <span>
+              <kbd className="font-sans">↑↓</kbd> navigate
+            </span>
+            <span>
+              <kbd className="font-sans">⏎</kbd> insert
+            </span>
+            <span>
+              <kbd className="font-sans">⇥</kbd> filter rail
+            </span>
+            <span>
+              <kbd className="font-sans">⌫</kbd> widen
+            </span>
+            <span className="ml-auto">
+              <kbd className="font-sans">esc</kbd> close
+            </span>
+          </div>
         </div>
       </div>
     </>

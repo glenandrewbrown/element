@@ -14,34 +14,71 @@ vi.mock("../../../bridge/nativeGraph", () => ({
 }));
 
 // ── Mock plugin store ─────────────────────────────────────────────────────────
-const PLUGINS = [
-  {
-    identifier: "com.vendor.SurgeXT",
-    name: "Surge XT",
-    blockCategory: "instrument" as const,
-    format: "VST3",
-  },
-  {
-    identifier: "com.vendor.EQPro",
-    name: "EQ Pro",
-    blockCategory: "audiofx" as const,
-    format: "AU",
-  },
-  {
-    identifier: "com.vendor.Arp",
-    name: "Arp",
-    blockCategory: "midifx" as const,
-    format: "VST3",
-  },
-];
+// N2 alias-aware BrowserPlugin shape: each row carries GROUP-level isFavorite +
+// recentRank (precomputed across format variants by the host). QuickAdd's
+// browse stack + favourite star key off these group fields.
+type MockPlugin = {
+  identifier: string;
+  name: string;
+  blockCategory: "instrument" | "audiofx" | "midifx" | "modulator";
+  format: string;
+  manufacturer: string;
+  category: string;
+  signalOut: "audio" | "midi" | "value";
+  usageCount: number;
+  isFavorite: boolean;
+  recentRank: number;
+};
+
+function mkPlugins(): MockPlugin[] {
+  return [
+    {
+      identifier: "com.vendor.SurgeXT",
+      name: "Surge XT",
+      blockCategory: "instrument",
+      format: "VST3",
+      manufacturer: "Surge Synth Team",
+      category: "Synth",
+      signalOut: "audio",
+      usageCount: 0,
+      isFavorite: false,
+      recentRank: -1,
+    },
+    {
+      identifier: "com.vendor.EQPro",
+      name: "EQ Pro",
+      blockCategory: "audiofx",
+      format: "AU",
+      manufacturer: "FabFilter",
+      category: "EQ",
+      signalOut: "audio",
+      usageCount: 0,
+      isFavorite: false,
+      recentRank: -1,
+    },
+    {
+      identifier: "com.vendor.Arp",
+      name: "Arp",
+      blockCategory: "midifx",
+      format: "VST3",
+      manufacturer: "MidiCorp",
+      category: "Arpeggiator",
+      signalOut: "midi",
+      usageCount: 0,
+      isFavorite: false,
+      recentRank: -1,
+    },
+  ];
+}
 
 const mockRefresh = vi.fn(async () => undefined);
+let mockPlugins: MockPlugin[] = mkPlugins();
 let mockFavorites = new Set<string>();
 
 vi.mock("../../../stores/usePluginBrowserStore", () => ({
   usePluginBrowserStore: vi.fn((selector: (s: unknown) => unknown) =>
     selector({
-      plugins: PLUGINS,
+      plugins: mockPlugins,
       favoriteIdentifiers: mockFavorites,
       recentIdentifiers: [] as string[],
       refresh: mockRefresh,
@@ -65,9 +102,10 @@ describe("<QuickAddPopup />", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockPlugins = mkPlugins();
     mockFavorites = new Set<string>();
     // jsdom does not implement scrollIntoView; QuickAddPopup calls it on the
-    // active list item (QuickAddPopup.tsx:167). Stub it so renders/keynav work.
+    // active list item + the virtual list. Stub it so renders/keynav work.
     Element.prototype.scrollIntoView = vi.fn();
   });
 
@@ -135,11 +173,17 @@ describe("<QuickAddPopup />", () => {
   // ── Favorites ─────────────────────────────────────────────────────────────
 
   it("promotes favorites to top of list", () => {
-    mockFavorites = new Set(["com.vendor.EQPro"]);
+    // N2 alias-aware: favourite membership is GROUP-level (isFavorite), not the
+    // id-keyed favoriteIdentifiers set. Flag EQ Pro's family as favourited.
+    mockPlugins = mkPlugins().map((p) =>
+      p.identifier === "com.vendor.EQPro" ? { ...p, isFavorite: true } : p,
+    );
     render(<QuickAddPopup {...defaultProps} />);
-    const buttons = screen.getAllByRole("button");
-    // First plugin button should be EQ Pro (the favorite)
-    expect(buttons[0].textContent).toContain("EQ Pro");
+    // The first result ROW should be EQ Pro (the favorite, pinned to the top).
+    const rows = screen.getAllByRole("button").filter((b) =>
+      b.hasAttribute("data-quickadd-row"),
+    );
+    expect(rows[0].textContent).toContain("EQ Pro");
   });
 
   // ── Category icons ────────────────────────────────────────────────────────

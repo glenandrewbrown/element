@@ -40,6 +40,8 @@ vi.mock("../../../events", () => ({
 // Rich plugin set covering all categories + metadata fields.
 // signalOut + usageCount are REAL fields now sent by C++ (G3c items 2+3); the
 // port-type filter keys off signalOut, so each entry carries its real signal.
+// N2 alias-aware: isFavorite + recentRank are GROUP-level (none favourited /
+// recent here, so the browse stack falls through to "All" / flat search).
 const RICH_PLUGINS = [
   {
     identifier: "com.vendor.SurgeXT",
@@ -50,6 +52,8 @@ const RICH_PLUGINS = [
     manufacturer: "Surge Synth Team",
     signalOut: "audio" as const,
     usageCount: 0,
+    isFavorite: false,
+    recentRank: -1,
   },
   {
     identifier: "com.fabfilter.ProQ4",
@@ -60,6 +64,8 @@ const RICH_PLUGINS = [
     manufacturer: "FabFilter",
     signalOut: "audio" as const,
     usageCount: 0,
+    isFavorite: false,
+    recentRank: -1,
   },
   {
     identifier: "com.valhalla.VintageVerb",
@@ -70,6 +76,8 @@ const RICH_PLUGINS = [
     manufacturer: "Valhalla DSP",
     signalOut: "audio" as const,
     usageCount: 0,
+    isFavorite: false,
+    recentRank: -1,
   },
   {
     identifier: "com.vendor.Arpeggio",
@@ -80,6 +88,8 @@ const RICH_PLUGINS = [
     manufacturer: "MidiCorp",
     signalOut: "midi" as const,
     usageCount: 0,
+    isFavorite: false,
+    recentRank: -1,
   },
   {
     identifier: "com.vendor.LFOTool",
@@ -90,6 +100,8 @@ const RICH_PLUGINS = [
     manufacturer: "Xfer Records",
     signalOut: "value" as const,
     usageCount: 0,
+    isFavorite: false,
+    recentRank: -1,
   },
   {
     identifier: "com.vendor.BasicSampler",
@@ -100,6 +112,8 @@ const RICH_PLUGINS = [
     manufacturer: "NativePlugins",
     signalOut: "audio" as const,
     usageCount: 0,
+    isFavorite: false,
+    recentRank: -1,
   },
 ];
 
