@@ -7,6 +7,7 @@ import { useSessionStore } from "../../stores/useSessionStore";
 import { useHostExtrasStore } from "../../stores/useHostExtrasStore";
 import { usePerformStore } from "../../stores/usePerformStore";
 import { usePluginScanStore } from "../../stores/usePluginScanStore";
+import { withGroupDefaults } from "../../test/pluginFixture";
 
 // ── Store seeding ──
 // ToolPalette reads from usePluginBrowserStore (plugins, favoriteIdentifiers,
@@ -99,7 +100,7 @@ const demoPlugins = [
     signalOut: "value" as const,
     usageCount: 2,
   },
-];
+].map(withGroupDefaults);
 
 const demoMolecules = [
   { name: "Sidechain Comp", description: "Classic sidechain compression chain" },
@@ -549,7 +550,7 @@ function make1000Plugins() {
     blockCategory: categories[i % categories.length],
     signalOut: "audio" as const,
     usageCount: i % 10,
-  }));
+  })).map(withGroupDefaults);
 }
 
 export const Synthetic1000: Story = {

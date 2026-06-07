@@ -175,8 +175,11 @@ export function useKeyboard({
             .getNodes()
             .filter((n) => n.selected && n.type === "block")
             .map((n) => n.id);
-          if (selected.length > 0) e.preventDefault();
-          if (selected.length < 2) return; // chord consumed, no-op
+          if (selected.length === 0) return; // nothing block-selected — no-op
+          e.preventDefault();
+          // Always call groupSelectionWithFeedback so refusals (e.g. "need-2"
+          // when only 1 block is selected) surface visibly in the StatusBar.
+          // Previously a silent `return` on < 2 swallowed the feedback path.
           groupSelectionWithFeedback(selected);
           return;
         }
@@ -283,14 +286,22 @@ export function useKeyboard({
 
           case "d": {
             e.preventDefault();
-            const { selectedNodeId, nodes, commentBoxes } =
-              useGraphStore.getState();
-            if (!selectedNodeId) return;
-            if (commentBoxes.some((c) => c.id === selectedNodeId)) return;
-            const original = nodes.find((n) => n.id === selectedNodeId);
-            if (!original) return;
-            void nativeGraphDuplicateNodes([selectedNodeId]).then((n) => {
-              if (n === 0) void nativeGraphDuplicateNode(selectedNodeId);
+            // Read the selected node from RF's own node list rather than
+            // useGraphStore.selectedNodeId. hydrateFromEngine resets
+            // selectedNodeId to null after every engine snapshot push (including
+            // the one triggered by the first duplicate), which made subsequent
+            // ⌘D presses silently no-op. RF's getNodes() preserves `.selected`
+            // across snapshot hydrations because it is driven by useNodesState,
+            // not the store's single-id tracker.
+            const rfSelectedBlock = reactFlow
+              .getNodes()
+              .find((n) => n.selected && n.type === "block");
+            if (!rfSelectedBlock) return;
+            const targetId = rfSelectedBlock.id;
+            const { commentBoxes } = useGraphStore.getState();
+            if (commentBoxes.some((c) => c.id === targetId)) return;
+            void nativeGraphDuplicateNodes([targetId]).then((n) => {
+              if (n === 0) void nativeGraphDuplicateNode(targetId);
             });
             return;
           }

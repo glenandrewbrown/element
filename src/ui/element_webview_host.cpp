@@ -1948,6 +1948,26 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                     if (graph.isGraph())
                     {
                         context.services().postMessage (new AddPluginMessage (graph, *desc, true));
+
+                        // 3a-W1 — optional args[1]=x, args[2]=y: position the new
+                        // Block at the given flow-space coords (same deferred-apply
+                        // mechanism as elementGraphAddPluginConnected — positioned
+                        // only, no ConnectionBuilder / auto-connect).
+                        if (args.size() >= 3)
+                        {
+                            const double flowX = (double) args[1];
+                            const double flowY = (double) args[2];
+                            const Graph G (graph);
+                            pendingConnectedAdd.active = true;
+                            pendingConnectedAdd.flowX = flowX;
+                            pendingConnectedAdd.flowY = flowY;
+                            pendingConnectedAdd.waitedTicks = 0;
+                            pendingConnectedAdd.boardPathSnapshot = boardPath;
+                            pendingConnectedAdd.preExistingUuids.clearQuick();
+                            for (int i = 0; i < G.getNumNodes(); ++i)
+                                pendingConnectedAdd.preExistingUuids.add (G.getNode (i).getUuidString());
+                        }
+
                         ok = true;
                     }
                 }
@@ -2681,6 +2701,47 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             postCompletion (completion, ok);
         });
 
+    // Rename a TOP-LEVEL Board (session graph) by index. Unlike a Block or a
+    // Container — which are Nodes in a board's node list and rename via
+    // elementGraphRenameNode by uuid — a top-level Board is a Session graph
+    // addressed by index (mirrors elementSessionSetActiveGraph), so it needs
+    // its own native: there is no node uuid to target. Sets the name property
+    // on the session-graph ValueTree (message thread). Pushing the snapshot
+    // refreshes the breadcrumb (it reads getActiveGraph().getName()); the
+    // session-tree consumer re-reads names via stabilizeContent.
+    //   args[0] = graphIndex : int  (0-based, into Session graphs)
+    //   args[1] = name       : String
+    //   → bool
+    registerFn (
+        Identifier ("elementSessionRenameGraph"),
+        [this, postCompletion] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 2)
+            {
+                const int idx = (int) args[0];
+                const String name (args[1].toString().trim());
+                if (auto sess = context.session())
+                {
+                    if (name.isNotEmpty() && isPositiveAndBelow (idx, sess->getNumGraphs()))
+                    {
+                        Node g (sess->getGraph (idx));
+                        if (g.isValid())
+                        {
+                            g.setProperty (tags::name, name);
+                            ok = true;
+                        }
+                    }
+                }
+            }
+            if (ok)
+            {
+                if (auto* gui = context.services().find<GuiService>())
+                    gui->stabilizeContent();
+                pushGraphSnapshot();
+            }
+            postCompletion (completion, ok);
+        });
+
     // Per-block user note (Inspector textarea). Persisted as a "userNote"
     // ValueTree property on the Node so it survives session save/load.
     registerFn (
@@ -3145,7 +3206,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             bool ok = false;
             if (auto* ss = context.services().find<SessionService>())
             {
-                FileChooser chooser ("Import Board", File(), "*.elg", true, false);
+                FileChooser chooser ("Bring in Board", File(), "*.elg", true, false);
                 if (chooser.browseForFileToOpen())
                 {
                     ss->importGraph (chooser.getResult());
@@ -3172,7 +3233,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                                     .getChildFile (node.getName().isNotEmpty() ? node.getName() : "Graph")
                                     .withFileExtension ("elg"));
                     start = start.getNonexistentSibling();
-                    FileChooser chooser (TRANS ("Export Board"), start, "*.elg");
+                    FileChooser chooser (TRANS ("Send out Board"), start, "*.elg");
                     if (chooser.browseForFileToSave (true))
                     {
                         ss->exportGraph (node, chooser.getResult());
@@ -6492,67 +6553,212 @@ String ElementWebViewHost::buildMasterLevelsJson() const
 String ElementWebViewHost::buildPluginListJson() const
 {
     DynamicObject::Ptr root (new DynamicObject());
-    Array<var> plugins;
 
-    // G3c item 3: build the identifier→real-useCount table once so the loop
+    // G3c item 3: build the identifier→real-useCount table once so the grouping
     // below stays O(n log n) over the ~2000-plugin payload instead of O(n²).
     auto& tracker = context.plugins().getUsageTracker();
     const std::map<String, int> usageCounts (tracker.getUsageCounts());
 
-    const auto& list = context.plugins().getKnownPlugins();
-    for (const auto& desc : list.getTypes())
+    const StringArray favorites (tracker.getFavoriteIdentifiers());
+    const StringArray recents (tracker.getRecentlyUsedIdentifiers (16));
+
+    // N2 / D-1: collect a thin, view-only snapshot of every scanned plugin, then
+    // hand it to the pure grouping helper. We NEVER touch KnownPluginList here —
+    // this is a presentation transform over `getTypes()`.
+    std::vector<PluginGroupSource> sources;
     {
-        DynamicObject::Ptr o (new DynamicObject());
-        o->setProperty ("name", desc.name);
-        o->setProperty ("descriptiveName", desc.descriptiveName);
-        o->setProperty ("manufacturer", desc.manufacturerName);
-        o->setProperty ("version", desc.version);
-        o->setProperty ("format", desc.pluginFormatName);
-        const String category (desc.category.isNotEmpty() ? desc.category : String ("Uncategorised"));
-        o->setProperty ("category", category);
-        const String identifier (desc.createIdentifierString());
-        o->setProperty ("identifier", identifier);
-
-        // G3c item 2: emit the REAL signal-output classification + the raw
-        // channel/instrument facts from juce::PluginDescription (captured at
-        // scan time). The webview no longer has to guess from the category
-        // string alone. Inference: instruments emit audio; anything with audio
-        // output channels emits audio; a pure-MIDI plugin (no audio out) whose
-        // category mentions MIDI emits MIDI; everything else is value/CV.
-        const bool isInstr = desc.isInstrument;
-        const bool hasAudioOut = desc.numOutputChannels != 0;
-        String signalOut;
-        if (isInstr || hasAudioOut)
-            signalOut = "audio";
-        else if (desc.category.containsIgnoreCase ("midi"))
-            signalOut = "midi";
-        else
-            signalOut = "value";
-        o->setProperty ("signalOut", signalOut);
-        o->setProperty ("isInstrument", isInstr);
-        o->setProperty ("numInputChannels", desc.numInputChannels);
-        o->setProperty ("numOutputChannels", desc.numOutputChannels);
-
-        // G3c item 3: real persisted usage count (0 if never used).
-        const auto it = usageCounts.find (identifier);
-        o->setProperty ("usageCount", it != usageCounts.end() ? it->second : 0);
-
-        plugins.add (var (o.get()));
+        const auto& list = context.plugins().getKnownPlugins();
+        const auto& types = list.getTypes();
+        sources.reserve ((size_t) types.size());
+        for (const auto& desc : types)
+        {
+            PluginGroupSource s;
+            s.name              = desc.name;
+            s.manufacturer      = desc.manufacturerName;
+            s.format            = desc.pluginFormatName;
+            s.identifier        = desc.createIdentifierString();
+            s.isInstrument      = desc.isInstrument;
+            s.numInputChannels  = desc.numInputChannels;
+            s.numOutputChannels = desc.numOutputChannels;
+            s.category          = desc.category;
+            s.version           = desc.version;
+            s.descriptiveName   = desc.descriptiveName;
+            sources.push_back (std::move (s));
+        }
     }
 
-    root->setProperty ("plugins", var (plugins));
+    root->setProperty ("plugins", var (buildPluginGroupRows (sources, usageCounts, favorites, recents)));
 
     {
         Array<var> fav, recent;
-        for (const auto& id : tracker.getFavoriteIdentifiers())
+        for (const auto& id : favorites)
             fav.add (var (id));
-        for (const auto& id : tracker.getRecentlyUsedIdentifiers (16))
+        for (const auto& id : recents)
             recent.add (var (id));
         root->setProperty ("favoriteIdentifiers", var (fav));
         root->setProperty ("recentIdentifiers", var (recent));
     }
 
     return JSON::toString (var (root.get()));
+}
+
+//==============================================================================
+// N2 / D-1 — pure, headless-testable plugin grouping. See header for contract.
+namespace {
+
+/** Format preference for choosing a family's primary row. Lower == preferred.
+    VST3 wins per Glen's nav feedback; the rest is a stable, documented order so
+    the primary choice is deterministic across rescans. */
+int pluginFormatRank (const String& format)
+{
+    if (format == "VST3")      return 0;
+    if (format == "CLAP")      return 1;
+    if (format == "AudioUnit") return 2;
+    if (format == "VST")       return 3;
+    if (format == "LV2")       return 4;
+    return 5; // Internal / Element / unknown — never preferred over a real format
+}
+
+/** Real signal-output classification (G3c item 2), unchanged from the per-row
+    logic: instruments + anything with audio-out emit audio; a pure-MIDI plugin
+    whose category mentions MIDI emits MIDI; everything else is value/CV. */
+String classifyGroupSignalOut (const PluginGroupSource& s)
+{
+    if (s.isInstrument || s.numOutputChannels != 0)
+        return "audio";
+    if (s.category.containsIgnoreCase ("midi"))
+        return "midi";
+    return "value";
+}
+
+} // namespace
+
+juce::Array<juce::var> buildPluginGroupRows (const std::vector<PluginGroupSource>& sources,
+                                             const std::map<juce::String, int>& usageCounts,
+                                             const juce::StringArray& favorites,
+                                             const juce::StringArray& recents)
+{
+    Array<var> rows;
+
+    // Group key = manufacturer + name (trimmed, case-insensitive). One O(n) pass
+    // builds the per-key index of original positions, preserving first-appearance
+    // order so the emitted family list is stable across rescans.
+    struct Group
+    {
+        std::vector<int> indices; // positions in `sources`
+    };
+    std::map<String, Group> groups;
+    std::vector<String> keyOrder; // first-appearance order of keys
+
+    auto groupKey = [] (const PluginGroupSource& s) -> String {
+        // \x1f (unit separator) can't appear in a name/manufacturer, so it's a
+        // safe, allocation-cheap composite key.
+        return (s.manufacturer.trim() + "\x1f" + s.name.trim()).toLowerCase();
+    };
+
+    for (int i = 0; i < (int) sources.size(); ++i)
+    {
+        const String key (groupKey (sources[(size_t) i]));
+        auto it = groups.find (key);
+        if (it == groups.end())
+        {
+            Group g;
+            g.indices.push_back (i);
+            groups.emplace (key, std::move (g));
+            keyOrder.push_back (key);
+        }
+        else
+        {
+            it->second.indices.push_back (i);
+        }
+    }
+
+    for (const auto& key : keyOrder)
+    {
+        const Group& g = groups.at (key);
+
+        // Pick the primary variant: best (lowest) format rank; ties broken by the
+        // earlier scan position so the choice is deterministic across rescans.
+        int primaryIdx = g.indices.front();
+        int primaryRank = pluginFormatRank (sources[(size_t) primaryIdx].format);
+        for (int idx : g.indices)
+        {
+            const int r = pluginFormatRank (sources[(size_t) idx].format);
+            if (r < primaryRank)
+            {
+                primaryRank = r;
+                primaryIdx = idx;
+            }
+        }
+
+        const PluginGroupSource& primary = sources[(size_t) primaryIdx];
+
+        // Aggregate the alias-keyed metadata across EVERY variant in the family,
+        // so a starred / recently-used AU keeps the family in Favourites/Recents
+        // even though only the VST3 primary row is shown (E2 — no orphaning).
+        Array<var> aliases;  // all variant identifiers
+        Array<var> variants; // structured {format, identifier} — never concatenated
+        int aggregateUsage = 0;
+        bool anyFavorite = false;
+        int bestRecentRank = -1;
+
+        // Emit variants primary-first, then the rest in stable scan order, so the
+        // "also available as AU" reveal lists alternatives predictably.
+        std::vector<int> ordered;
+        ordered.reserve (g.indices.size());
+        ordered.push_back (primaryIdx);
+        for (int idx : g.indices)
+            if (idx != primaryIdx)
+                ordered.push_back (idx);
+
+        for (int idx : ordered)
+        {
+            const PluginGroupSource& v = sources[(size_t) idx];
+            aliases.add (var (v.identifier));
+
+            DynamicObject::Ptr vo (new DynamicObject());
+            vo->setProperty ("format", v.format);
+            vo->setProperty ("identifier", v.identifier);
+            variants.add (var (vo.get()));
+
+            const auto uc = usageCounts.find (v.identifier);
+            if (uc != usageCounts.end())
+                aggregateUsage += uc->second;
+
+            if (favorites.contains (v.identifier))
+                anyFavorite = true;
+
+            const int rr = recents.indexOf (v.identifier); // -1 when not recent
+            if (rr >= 0 && (bestRecentRank < 0 || rr < bestRecentRank))
+                bestRecentRank = rr;
+        }
+
+        DynamicObject::Ptr o (new DynamicObject());
+        // Primary-row fields (identical shape to the legacy per-plugin row, so
+        // every existing consumer keeps working with zero changes).
+        o->setProperty ("name", primary.name);
+        o->setProperty ("descriptiveName", primary.descriptiveName);
+        o->setProperty ("manufacturer", primary.manufacturer);
+        o->setProperty ("version", primary.version);
+        o->setProperty ("format", primary.format);
+        o->setProperty ("category", primary.category.isNotEmpty() ? primary.category : String ("Uncategorised"));
+        o->setProperty ("identifier", primary.identifier);
+        o->setProperty ("signalOut", classifyGroupSignalOut (primary));
+        o->setProperty ("isInstrument", primary.isInstrument);
+        o->setProperty ("numInputChannels", primary.numInputChannels);
+        o->setProperty ("numOutputChannels", primary.numOutputChannels);
+
+        // N2 group fields. usageCount is now the AGGREGATE across the family.
+        o->setProperty ("usageCount", aggregateUsage);
+        o->setProperty ("aliases", var (aliases));
+        o->setProperty ("variants", var (variants));
+        o->setProperty ("isFavorite", anyFavorite);
+        o->setProperty ("recentRank", bestRecentRank);
+
+        rows.add (var (o.get()));
+    }
+
+    return rows;
 }
 
 String ElementWebViewHost::buildNodeParametersJson (const String& nodeUuid) const

@@ -1122,8 +1122,14 @@ function BlockComponent({ data, selected }: NodeProps) {
         className="w-[280px] bg-pressed border border-white/5 rounded-xl p-3"
       >
         <div className="flex items-center justify-between mb-3">
-          <span className="text-[10px] font-bold text-white/30 uppercase tracking-tighter">
-            {d.name} (Nested)
+          {/* Container label: real name + "(Nested)" qualifier. Falls back to
+              "Container" when unnamed so it never reads as a bare " (Nested)".
+              Hover hints rename (Cmd+R/Cmd+T → in-place editor), same as Blocks. */}
+          <span
+            className="text-[10px] font-bold text-white/30 uppercase tracking-tighter cursor-text hover:text-white/50"
+            title="Rename (⌘R)"
+          >
+            {(d.name?.trim() || "Container") + " (Nested)"}
           </span>
           <span className="text-[12px] text-white/20 cursor-pointer hover:text-white/50">
             ⤢
@@ -1273,7 +1279,14 @@ function BlockComponent({ data, selected }: NodeProps) {
         }}
       >
         <FunctionIcon name={d.name} category={d.category} />
-        <span className="text-[11px] font-bold truncate flex-1 leading-none tracking-wide">
+        {/* Title hints editability on hover (cursor + subtle underline) so the
+            rename affordance is discoverable; the actual edit is keyboard-driven
+            (Cmd+R/Cmd+T → in-place editor) to avoid colliding with the
+            double-click dive gesture. */}
+        <span
+          className="text-[11px] font-bold truncate flex-1 leading-none tracking-wide cursor-text hover:underline decoration-white/30 underline-offset-2"
+          title="Rename (⌘R)"
+        >
           {d.name}
         </span>
 

@@ -17,19 +17,26 @@ vi.mock("../../../bridge/nativeSession", () => ({
 
 vi.mock("../../../bridge/nativeGraph", () => ({
   nativeSessionGetGraphTree: vi.fn(async () => []),
+  nativeSessionRenameGraph: vi.fn(async () => true),
 }));
 
 import { nativeSessionSetActiveGraph } from "../../../bridge/nativeSession";
-import { nativeSessionGetGraphTree } from "../../../bridge/nativeGraph";
+import {
+  nativeSessionGetGraphTree,
+  nativeSessionRenameGraph,
+} from "../../../bridge/nativeGraph";
 
 const mockSetActive = nativeSessionSetActiveGraph as ReturnType<typeof vi.fn>;
 const mockGetTree = nativeSessionGetGraphTree as ReturnType<typeof vi.fn>;
+const mockRename = nativeSessionRenameGraph as ReturnType<typeof vi.fn>;
 
 // ── store helpers ─────────────────────────────────────────────────────────────
 
 function resetStores() {
   mockSetActive.mockReset();
   mockGetTree.mockReset();
+  mockRename.mockReset();
+  mockRename.mockResolvedValue(true);
   mockGetTree.mockResolvedValue([]);
   useSessionStore.setState({
     sessionLoaded: false,
@@ -220,5 +227,80 @@ describe("outline tree", () => {
     const collapseBtn = screen.getByRole("button", { name: /collapse outline/i });
     fireEvent.click(collapseBtn);
     expect(screen.queryByText("Synth Layer")).not.toBeInTheDocument();
+  });
+});
+
+// ── Board (top-level graph) in-place rename (Item 5b) ──────────────────────────
+
+describe("board rename", () => {
+  beforeEach(() => {
+    useSessionStore.setState((s) => ({
+      ...s,
+      graphs: [{ id: "g1", name: "Main Board", index: 0, active: true }],
+    }));
+  });
+
+  it("falls back to 'Board N' (not 'Graph N') when a board is unnamed", () => {
+    useSessionStore.setState((s) => ({
+      ...s,
+      graphs: [{ id: "g1", name: "", index: 2, active: true }],
+    }));
+    render(<SessionTree />);
+    expect(screen.getByText("Board 3")).toBeInTheDocument();
+    expect(screen.queryByText("Graph 3")).not.toBeInTheDocument();
+  });
+
+  it("double-clicking the board name opens an in-place edit field", () => {
+    render(<SessionTree />);
+    fireEvent.doubleClick(screen.getByText("Main Board"));
+    const input = screen.getByRole("textbox", { name: /rename board/i });
+    expect(input).toBeInTheDocument();
+    expect(input).toHaveValue("Main Board");
+  });
+
+  it("Enter commits the board rename via nativeSessionRenameGraph(index, name)", async () => {
+    render(<SessionTree />);
+    fireEvent.doubleClick(screen.getByText("Main Board"));
+    const input = screen.getByRole("textbox", { name: /rename board/i });
+    fireEvent.change(input, { target: { value: "Drums" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(mockRename).toHaveBeenCalledWith(0, "Drums"));
+    // Field closes after commit.
+    expect(
+      screen.queryByRole("textbox", { name: /rename board/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("Escape cancels without renaming", () => {
+    render(<SessionTree />);
+    fireEvent.doubleClick(screen.getByText("Main Board"));
+    const input = screen.getByRole("textbox", { name: /rename board/i });
+    fireEvent.change(input, { target: { value: "Nope" } });
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(mockRename).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole("textbox", { name: /rename board/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not commit when the name is unchanged or blank", () => {
+    render(<SessionTree />);
+    fireEvent.doubleClick(screen.getByText("Main Board"));
+    const input = screen.getByRole("textbox", { name: /rename board/i });
+    // Unchanged value.
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(mockRename).not.toHaveBeenCalled();
+  });
+
+  it("does not re-activate the board when double-clicking the name to rename", async () => {
+    render(<SessionTree />);
+    // Active board double-click would normally no-op activation; the name's
+    // own dblclick stops propagation so it enters edit instead.
+    fireEvent.doubleClick(screen.getByText("Main Board"));
+    expect(
+      screen.getByRole("textbox", { name: /rename board/i }),
+    ).toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(mockSetActive).not.toHaveBeenCalled();
   });
 });

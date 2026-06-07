@@ -1,6 +1,10 @@
+import { useState } from "react";
 import type { BlockCategory } from "../../../data/types";
+import type { PluginEntry } from "./usePaletteFilters";
 import { Icon } from "../../neu/Icon";
 import { categoryIconName } from "../../neu/iconForCategory";
+
+export type { PluginEntry };
 
 // ── Shared glyphs ────────────────────────────────────────────────────────────
 
@@ -40,6 +44,11 @@ function formatBadgeColor(format: string): string {
   return "var(--color-badge-lv2)";
 }
 
+/** Short, human label for a juce pluginFormatName ("AudioUnit" → "AU"). */
+function formatLabel(format: string): string {
+  return format.toUpperCase() === "AUDIOUNIT" ? "AU" : format.toUpperCase();
+}
+
 export function FormatBadge({ format }: { format: string }) {
   if (!format) return null;
   const c = formatBadgeColor(format);
@@ -48,16 +57,9 @@ export function FormatBadge({ format }: { format: string }) {
       className="text-[8px] font-bold leading-none px-1 py-[2px] rounded-sm tabular tracking-wide"
       style={{ color: c, background: "color-mix(in srgb, var(--color-pressed) 70%, transparent)" }}
     >
-      {format}
+      {formatLabel(format)}
     </span>
   );
-}
-
-export interface PluginEntry {
-  id: string;
-  name: string;
-  category: BlockCategory;
-  format: string;
 }
 
 interface PluginCardProps {
@@ -67,11 +69,22 @@ interface PluginCardProps {
   isFavourite: boolean;
   onSelect: () => void;
   onAdd: () => void;
+  /**
+   * N2 — add a SPECIFIC format variant by its real identifier (the "also
+   * available as AU" reveal). When omitted, the reveal is not rendered.
+   */
+  onAddVariant?: (identifier: string) => void;
 }
 
 /**
  * Raised neumorphic plugin card for both grid (2-col) and list (1-col) views.
  * Double-click / Enter → add to Board. Single-click → select.
+ *
+ * N2 (list view): when the plugin family has more than one format variant, a
+ * small "also available as …" reveal chevron toggles a sub-list of the OTHER
+ * variants. Selecting one inserts using that variant's real identifier — so a
+ * user who needs the AU's distinct latency/behaviour can pick it explicitly,
+ * even though the VST3 primary is what the list shows.
  */
 export function PluginCard({
   plugin,
@@ -80,6 +93,7 @@ export function PluginCard({
   isFavourite,
   onSelect,
   onAdd,
+  onAddVariant,
 }: PluginCardProps) {
   const accent = `hsl(var(--cat-${plugin.category}))`;
   const base =
@@ -87,6 +101,12 @@ export function PluginCard({
   const surface = selected
     ? "bg-surface neu-raised"
     : "bg-panel hover:bg-elevated hover:neu-raised";
+
+  // The variants OTHER than the shown primary row (primary is variants[0]).
+  const altVariants =
+    plugin.variants && plugin.variants.length > 1 ? plugin.variants.slice(1) : [];
+  const hasAlternatives = altVariants.length > 0 && onAddVariant != null;
+  const [revealOpen, setRevealOpen] = useState(false);
 
   if (view === "grid") {
     return (
@@ -109,7 +129,7 @@ export function PluginCard({
         <span
           className={`text-[10px] font-medium leading-tight line-clamp-2 ${selected ? "text-text-primary" : "text-text-secondary group-hover:text-text-primary"}`}
           style={selected ? { color: accent } : undefined}
-          title={plugin.name}
+          title={plugin.description || plugin.name}
         >
           {plugin.name}
         </span>
@@ -118,32 +138,83 @@ export function PluginCard({
   }
 
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      aria-pressed={selected}
-      aria-label={`${plugin.name} (${plugin.format || "plugin"})`}
-      onClick={onSelect}
-      onDoubleClick={onAdd}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") onAdd();
-      }}
-      className={`${base} ${surface} pl-2 pr-2 py-1.5 flex items-center gap-2`}
-    >
-      <CategoryShape category={plugin.category} />
-      <span
-        className={`text-[11px] font-medium truncate flex-1 ${selected ? "" : "text-text-secondary group-hover:text-text-primary"}`}
-        style={selected ? { color: accent } : undefined}
-        title={plugin.name}
+    <div className="relative">
+      <div
+        role="button"
+        tabIndex={0}
+        aria-pressed={selected}
+        aria-label={`${plugin.name} (${plugin.format || "plugin"})`}
+        onClick={onSelect}
+        onDoubleClick={onAdd}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") onAdd();
+        }}
+        className={`${base} ${surface} pl-2 pr-2 py-1.5 flex items-center gap-2`}
       >
-        {plugin.name}
-      </span>
-      {isFavourite ? (
-        <span className="text-accent-orange shrink-0" aria-label="Favourite" role="img">
-          <StarGlyph size={9} />
+        <CategoryShape category={plugin.category} />
+        <span
+          className={`text-[11px] font-medium truncate flex-1 ${selected ? "" : "text-text-secondary group-hover:text-text-primary"}`}
+          style={selected ? { color: accent } : undefined}
+          title={plugin.description ? `${plugin.name} — ${plugin.description}` : plugin.name}
+        >
+          {plugin.name}
         </span>
+        {isFavourite ? (
+          <span className="text-accent-orange shrink-0" aria-label="Favourite" role="img">
+            <StarGlyph size={9} />
+          </span>
+        ) : null}
+        {hasAlternatives ? (
+          <button
+            type="button"
+            className={`shrink-0 flex items-center gap-0.5 rounded px-1 py-[2px] text-[8px] font-bold tracking-wide transition-colors ${
+              revealOpen
+                ? "text-accent-blue neu-inset"
+                : "text-text-dim hover:text-text-secondary"
+            }`}
+            aria-label={`Other formats: ${altVariants.map((v) => formatLabel(v.format)).join(", ")}`}
+            aria-expanded={revealOpen}
+            title={`Also available as ${altVariants.map((v) => formatLabel(v.format)).join(", ")}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              setRevealOpen((v) => !v);
+            }}
+          >
+            +{altVariants.length}
+            <Icon name={revealOpen ? "ChevronUp" : "ChevronDown"} size={9} aria-hidden />
+          </button>
+        ) : null}
+        <FormatBadge format={plugin.format} />
+      </div>
+
+      {/* N2 reveal — the OTHER format variants of this family. Absolutely
+          positioned so it overlays rather than growing the row (the ALL-PLUGINS
+          list is fixed-height virtualized; inline growth would break its row
+          height math). Anchored under the row, above sibling rows via z-index. */}
+      {hasAlternatives && revealOpen ? (
+        <div
+          className="absolute left-0 right-0 top-full z-20 mt-0.5 rounded-md bg-elevated neu-raised p-1 space-y-0.5"
+          role="group"
+          aria-label="Other formats"
+        >
+          {altVariants.map((v) => (
+            <button
+              key={v.identifier}
+              type="button"
+              className="w-full flex items-center gap-2 rounded px-1.5 py-1 text-left text-[10px] text-text-secondary hover:bg-surface hover:text-text-primary transition-colors"
+              title={`Add the ${formatLabel(v.format)} variant`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onAddVariant?.(v.identifier);
+                setRevealOpen(false);
+              }}
+            >
+              <span className="text-text-dim">Add as</span>
+              <FormatBadge format={v.format} />
+            </button>
+          ))}
+        </div>
       ) : null}
-      <FormatBadge format={plugin.format} />
     </div>
   );
 }

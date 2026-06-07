@@ -48,31 +48,59 @@ describe("usePluginBrowserStore.refresh", () => {
     const { plugins } = usePluginBrowserStore.getState();
     expect(plugins).toHaveLength(1);
     expect(plugins[0].identifier).toBe("vst3.Reverb");
-    expect(plugins[0].name).toBe("Hall Reverb");
+    // N1: title is the real NAME; the descriptiveName is the secondary field.
+    expect(plugins[0].name).toBe("Reverb");
+    expect(plugins[0].description).toBe("Hall Reverb");
     expect(plugins[0].manufacturer).toBe("Acme");
     expect(plugins[0].format).toBe("VST3");
   });
 
-  it("prefers descriptiveName over name", async () => {
+  // N1 fix: the row TITLE is the real NAME, NOT the descriptiveName. Internal
+  // Element nodes put a sentence DESCRIPTION in `descriptiveName` ("Sends MIDI
+  // to a hardware…"), so preferring it leaked the description as the title.
+  it("titles by NAME, not descriptiveName, and carries the description separately", async () => {
     bridge.mock.mockResolvedValueOnce({
       plugins: [
-        { identifier: "au.Synth", name: "ShortName", descriptiveName: "LongSynth Name" },
+        {
+          identifier: "el.MidiOut",
+          name: "MIDI Output Device",
+          descriptiveName: "Sends MIDI to a hardware or virtual output device",
+        },
       ],
       favoriteIdentifiers: [],
       recentIdentifiers: [],
     });
     await usePluginBrowserStore.getState().refresh();
-    expect(usePluginBrowserStore.getState().plugins[0].name).toBe("LongSynth Name");
+    const p = usePluginBrowserStore.getState().plugins[0];
+    expect(p.name).toBe("MIDI Output Device"); // real name is the title
+    expect(p.description).toBe("Sends MIDI to a hardware or virtual output device");
   });
 
-  it("falls back to identifier when name and descriptiveName are absent", async () => {
+  it("leaves description empty when it equals the name (no redundant subtitle)", async () => {
     bridge.mock.mockResolvedValueOnce({
-      plugins: [{ identifier: "fallback-id" }],
+      plugins: [{ identifier: "vst3.Verb", name: "BigVerb", descriptiveName: "BigVerb" }],
       favoriteIdentifiers: [],
       recentIdentifiers: [],
     });
     await usePluginBrowserStore.getState().refresh();
-    expect(usePluginBrowserStore.getState().plugins[0].name).toBe("fallback-id");
+    expect(usePluginBrowserStore.getState().plugins[0].description).toBe("");
+  });
+
+  it("falls back to descriptiveName then identifier for the title when name absent", async () => {
+    bridge.mock.mockResolvedValueOnce({
+      plugins: [
+        { identifier: "au.Synth", descriptiveName: "LongSynth Name" },
+        { identifier: "fallback-id" },
+      ],
+      favoriteIdentifiers: [],
+      recentIdentifiers: [],
+    });
+    await usePluginBrowserStore.getState().refresh();
+    const ps = usePluginBrowserStore.getState().plugins;
+    // No `name` → descriptiveName is the best available title.
+    expect(ps[0].name).toBe("LongSynth Name");
+    // Neither → identifier.
+    expect(ps[1].name).toBe("fallback-id");
   });
 
   it("populates favoriteIdentifiers Set", async () => {
@@ -283,6 +311,85 @@ describe("usePluginBrowserStore.refresh", () => {
       expect(usePluginBrowserStore.getState().plugins[0].signalOut).toBe(expected);
     },
   );
+});
+
+// ── N2 / D-1: alias-aware group fields consumption ──────────────────────────
+
+describe("usePluginBrowserStore.refresh — N2 group fields", () => {
+  let bridge: JuceBridgeMock;
+
+  beforeEach(() => {
+    bridge = installJuceBridgeMock();
+    resetStore();
+  });
+
+  afterEach(() => bridge.uninstall());
+
+  it("consumes the host-precomputed group fields verbatim", async () => {
+    bridge.mock.mockResolvedValueOnce({
+      plugins: [
+        {
+          identifier: "vst3:BigVerb",
+          name: "BigVerb",
+          format: "VST3",
+          aliases: ["vst3:BigVerb", "au:BigVerb"],
+          variants: [
+            { format: "VST3", identifier: "vst3:BigVerb" },
+            { format: "AudioUnit", identifier: "au:BigVerb" },
+          ],
+          usageCount: 7,
+          isFavorite: true,
+          recentRank: 2,
+        },
+      ],
+      favoriteIdentifiers: ["au:BigVerb"],
+      recentIdentifiers: ["x", "y", "au:BigVerb"],
+    });
+    await usePluginBrowserStore.getState().refresh();
+    const p = usePluginBrowserStore.getState().plugins[0];
+    expect(p.aliases).toEqual(["vst3:BigVerb", "au:BigVerb"]);
+    expect(p.variants).toHaveLength(2);
+    expect(p.variants[1]).toEqual({ format: "AudioUnit", identifier: "au:BigVerb" });
+    expect(p.usageCount).toBe(7); // aggregated by host
+    expect(p.isFavorite).toBe(true);
+    expect(p.recentRank).toBe(2);
+  });
+
+  it("derives a single-variant group when an older host omits the group fields", async () => {
+    bridge.mock.mockResolvedValueOnce({
+      plugins: [{ identifier: "vst3:Solo", name: "Solo", format: "VST3" }],
+      favoriteIdentifiers: [],
+      recentIdentifiers: [],
+    });
+    await usePluginBrowserStore.getState().refresh();
+    const p = usePluginBrowserStore.getState().plugins[0];
+    expect(p.aliases).toEqual(["vst3:Solo"]);
+    expect(p.variants).toEqual([{ format: "VST3", identifier: "vst3:Solo" }]);
+    expect(p.isFavorite).toBe(false);
+    expect(p.recentRank).toBe(-1);
+  });
+
+  it("derives isFavorite/recentRank from aliases when host omits them (older build)", async () => {
+    // The AU alias is starred + recent; the derived group must reflect it even
+    // though the host sent no isFavorite/recentRank.
+    bridge.mock.mockResolvedValueOnce({
+      plugins: [
+        {
+          identifier: "vst3:BigVerb",
+          name: "BigVerb",
+          format: "VST3",
+          aliases: ["vst3:BigVerb", "au:BigVerb"],
+          // no isFavorite / recentRank fields
+        },
+      ],
+      favoriteIdentifiers: ["au:BigVerb"],
+      recentIdentifiers: ["z", "au:BigVerb"],
+    });
+    await usePluginBrowserStore.getState().refresh();
+    const p = usePluginBrowserStore.getState().plugins[0];
+    expect(p.isFavorite).toBe(true); // starred AU alias keeps the group favourited
+    expect(p.recentRank).toBe(1); // best alias rank
+  });
 });
 
 // ── I4-B: persistent favourite-star toggle (optimistic + bridge call) ────────

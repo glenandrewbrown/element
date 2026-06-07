@@ -79,6 +79,9 @@ vi.mock("@xyflow/react", () => {
       getViewport: vi.fn(() => ({ x: 0, y: 0, zoom: 1 })),
       getNodes: vi.fn(() => []),
     })),
+    useStoreApi: vi.fn(() => ({
+      getState: vi.fn(() => ({ addSelectedNodes: vi.fn() })),
+    })),
     BackgroundVariant: { Dots: "dots" },
     SelectionMode: { Partial: "partial" },
   };
@@ -163,6 +166,8 @@ vi.mock("../../../bridge/nativeGraph", () => ({
   nativeGraphCommentAdd: vi.fn(),
   nativeGraphCommentUpsert: vi.fn(),
   nativeGraphConnect: vi.fn(),
+  nativeGraphAddPlugin: vi.fn(async () => true),
+  nativeGraphAddPluginAt: vi.fn(async () => true),
   nativeGraphAddPluginConnected: vi.fn(async () => true),
   nativeGraphDisconnect: vi.fn(),
   nativeGraphMoveNodes: vi.fn(),

@@ -120,6 +120,7 @@ export function PluginList({
               isFavourite={favoriteIds.has(plugin.id)}
               onSelect={() => onSelect(plugin.id)}
               onAdd={() => void nativeGraphAddPlugin(plugin.id)}
+              onAddVariant={(id) => void nativeGraphAddPlugin(id)}
             />
           ))}
         </div>
@@ -173,6 +174,7 @@ export function PluginList({
                   isFavourite={favoriteIds.has(plugin.id)}
                   onSelect={() => onSelect(plugin.id)}
                   onAdd={() => void nativeGraphAddPlugin(plugin.id)}
+                  onAddVariant={(id) => void nativeGraphAddPlugin(id)}
                 />
               </div>
             ))}

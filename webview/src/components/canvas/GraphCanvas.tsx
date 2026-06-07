@@ -278,10 +278,17 @@ export function GraphCanvas() {
     undefined,
   );
 
-  // ── Inline rename overlay (triggered by element:start-rename event) ──
+  // ── In-place rename editor (triggered by element:start-rename event) ──
+  // Cmd+R/Cmd+T on a selected Block or Container dispatches EV_START_RENAME;
+  // we render an editable label IN PLACE over the block's header (NOT a
+  // centered modal — that collided with the double-click dive gesture and felt
+  // detached). `screen` is the block's top-left in screen px (via React Flow's
+  // flowToScreenPosition); null when the transform is unavailable (e.g. unit
+  // tests) → the editor falls back to a fixed anchor so it still functions.
   const [renameOverlay, setRenameOverlay] = useState<{
     nodeId: string;
     value: string;
+    screen: { x: number; y: number } | null;
   } | null>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
 
@@ -821,7 +828,27 @@ export function GraphCanvas() {
       const { nodeId } = (e as CustomEvent<{ nodeId: string }>).detail;
       const node = useGraphStore.getState().nodes.find((n) => n.id === nodeId);
       if (!node) return;
-      setRenameOverlay({ nodeId, value: node.name });
+      // Anchor the editor at the block's on-screen position so it appears IN
+      // PLACE over the block header. flowToScreenPosition may be absent in
+      // non-RF environments (unit tests) — degrade to a null anchor (fixed
+      // fallback in the render) rather than throwing.
+      let screen: { x: number; y: number } | null = null;
+      const toScreen = (
+        reactFlow as unknown as {
+          flowToScreenPosition?: (p: { x: number; y: number }) => {
+            x: number;
+            y: number;
+          };
+        }
+      ).flowToScreenPosition;
+      if (typeof toScreen === "function" && node.position) {
+        try {
+          screen = toScreen({ x: node.position.x, y: node.position.y });
+        } catch {
+          screen = null;
+        }
+      }
+      setRenameOverlay({ nodeId, value: node.name, screen });
     };
 
     window.addEventListener(EV_FIT_BOARD, handleFitBoard);
@@ -1066,35 +1093,59 @@ export function GraphCanvas() {
         />
       )}
 
-      {/* Inline rename overlay — triggered by Cmd+R keyboard shortcut */}
+      {/* In-place rename editor — triggered by Cmd+R/Cmd+T (EV_START_RENAME)
+          on a selected Block or Container. Renders the editable label AT the
+          block's on-screen position (over its header), NOT as a centered modal
+          and NOT on double-click (double-click is the dive-into-Container
+          gesture). Key-trapped so a keystroke never leaks to a global shortcut
+          (e.g. Space=play): Enter commits via nativeGraphRenameNode, Esc
+          reverts, blur dismisses. When the React Flow transform is unavailable
+          (unit tests) `screen` is null → a fixed top-centre fallback anchor. */}
       {renameOverlay && (
-        <div className="absolute inset-0 flex items-start justify-center pt-16 z-[9999] pointer-events-none">
-          <div className="pointer-events-auto flex flex-col gap-1 w-64 bg-panel border border-white/10 rounded-lg shadow-[8px_8px_24px_rgba(0,0,0,0.5)] px-3 py-2">
-            <span className="text-[10px] font-bold text-text-secondary uppercase tracking-widest">
-              Rename Block
-            </span>
-            <input
-              ref={renameInputRef}
-              type="text"
-              value={renameOverlay.value}
-              onChange={(e) =>
-                setRenameOverlay({ ...renameOverlay, value: e.target.value })
-              }
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  const trimmed = renameOverlay.value.trim();
-                  if (trimmed.length > 0) {
-                    void nativeGraphRenameNode(renameOverlay.nodeId, trimmed);
-                  }
-                  setRenameOverlay(null);
-                } else if (e.key === "Escape") {
-                  setRenameOverlay(null);
+        <div
+          className={
+            renameOverlay.screen
+              ? "absolute z-[9999]"
+              : "absolute left-1/2 top-16 -translate-x-1/2 z-[9999]"
+          }
+          style={
+            renameOverlay.screen
+              ? {
+                  left: renameOverlay.screen.x,
+                  top: renameOverlay.screen.y,
                 }
-              }}
-              onBlur={() => setRenameOverlay(null)}
-              className="w-full bg-surface border border-accent-blue focus:outline-none rounded px-2 py-1 text-[11px] text-text-primary"
-            />
-          </div>
+              : undefined
+          }
+          data-testid="rename-inplace"
+        >
+          <input
+            ref={renameInputRef}
+            type="text"
+            aria-label="Rename block"
+            value={renameOverlay.value}
+            onChange={(e) =>
+              setRenameOverlay({ ...renameOverlay, value: e.target.value })
+            }
+            onKeyDown={(e) => {
+              // Trap EVERY key inside the editor so global shortcuts (transport,
+              // align, duplicate…) can never fire mid-rename — same focus
+              // discipline as QuickAdd. Enter commits, Esc reverts.
+              e.stopPropagation();
+              if (e.key === "Enter") {
+                const trimmed = renameOverlay.value.trim();
+                if (trimmed.length > 0) {
+                  void nativeGraphRenameNode(renameOverlay.nodeId, trimmed);
+                }
+                setRenameOverlay(null);
+              } else if (e.key === "Escape") {
+                setRenameOverlay(null);
+              }
+            }}
+            onBlur={() => setRenameOverlay(null)}
+            // ≥44px hit area (min-h-11), high-contrast focus ring (2px accent
+            // ring + outer glow, not shadow-only), sits over the block header.
+            className="min-h-11 min-w-[180px] bg-surface text-text-primary text-[12px] font-bold rounded-md px-2 py-1 outline-none ring-2 ring-accent-blue shadow-[0_0_0_4px_rgba(74,144,217,0.25)]"
+          />
         </div>
       )}
 

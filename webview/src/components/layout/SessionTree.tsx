@@ -1,11 +1,14 @@
-import { memo, useCallback, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { useSessionStore, type SessionGraphRow } from "../../stores/useSessionStore";
 import {
   useHostExtrasStore,
   type GraphOutlineNode,
 } from "../../stores/useHostExtrasStore";
 import { nativeSessionSetActiveGraph } from "../../bridge/nativeSession";
-import { nativeSessionGetGraphTree } from "../../bridge/nativeGraph";
+import {
+  nativeSessionGetGraphTree,
+  nativeSessionRenameGraph,
+} from "../../bridge/nativeGraph";
 
 // ── Inline icons (no external dep) ──
 
@@ -106,6 +109,33 @@ function GraphRow({ graph, outline, onActivate }: GraphRowProps) {
   const [open, setOpen] = useState(graph.active);
   const hasOutline = outline.length > 0;
 
+  // In-place Board (top-level graph) rename. A Board is addressed by index
+  // (not a node uuid), so it routes through nativeSessionRenameGraph. Double-
+  // clicking the NAME enters edit (stopPropagation so the row's double-click
+  // doesn't also re-activate); Enter commits, Esc/blur reverts. Keys are
+  // trapped so they never reach global shortcuts while typing.
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+  const displayName = graph.name || `Board ${graph.index + 1}`;
+
+  useEffect(() => {
+    if (editing) requestAnimationFrame(() => inputRef.current?.select());
+  }, [editing]);
+
+  const beginEdit = useCallback(() => {
+    setDraft(graph.name || "");
+    setEditing(true);
+  }, [graph.name]);
+
+  const commit = useCallback(() => {
+    const trimmed = draft.trim();
+    if (trimmed.length > 0 && trimmed !== graph.name) {
+      void nativeSessionRenameGraph(graph.index, trimmed);
+    }
+    setEditing(false);
+  }, [draft, graph.index, graph.name]);
+
   return (
     <>
       <div
@@ -145,10 +175,37 @@ function GraphRow({ graph, outline, onActivate }: GraphRowProps) {
         >
           {graph.index + 1}.
         </span>
-        <span className="text-[11px] flex-1 truncate font-medium">
-          {graph.name || `Graph ${graph.index + 1}`}
-        </span>
-        {!graph.active ? (
+        {editing ? (
+          <input
+            ref={inputRef}
+            type="text"
+            aria-label="Rename board"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onClick={(e) => e.stopPropagation()}
+            onDoubleClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              // Trap keys so global shortcuts never fire while renaming.
+              e.stopPropagation();
+              if (e.key === "Enter") commit();
+              else if (e.key === "Escape") setEditing(false);
+            }}
+            onBlur={() => setEditing(false)}
+            className="text-[11px] flex-1 min-w-0 bg-surface text-text-primary font-medium rounded px-1 py-0.5 outline-none ring-2 ring-accent-blue"
+          />
+        ) : (
+          <span
+            className="text-[11px] flex-1 truncate font-medium cursor-text"
+            title="Double-click to rename board"
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              beginEdit();
+            }}
+          >
+            {displayName}
+          </span>
+        )}
+        {!graph.active && !editing ? (
           <button
             type="button"
             className="text-[9px] uppercase tracking-wider text-text-dim hover:text-accent-blue px-1"

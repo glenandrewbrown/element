@@ -39,14 +39,17 @@ export function FavouritesSection({
             plugin={{
               id: p.identifier,
               name: p.name,
+              description: p.description ?? "",
               category: p.blockCategory,
               format: p.format,
+              variants: p.variants ?? [{ format: p.format, identifier: p.identifier }],
             }}
             view="list"
             selected={p.identifier === selectedId}
             isFavourite={favoriteIds.has(p.identifier)}
             onSelect={() => onSelect(p.identifier)}
             onAdd={() => void nativeGraphAddPlugin(p.identifier)}
+            onAddVariant={(id) => void nativeGraphAddPlugin(id)}
           />
         ))}
       </div>

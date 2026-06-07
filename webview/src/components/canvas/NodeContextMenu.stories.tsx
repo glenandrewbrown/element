@@ -4,6 +4,7 @@ import { ReactFlowProvider } from "@xyflow/react";
 import { NodeContextMenu } from "./NodeContextMenu";
 import { useGraphStore } from "../../stores/useGraphStore";
 import { usePluginBrowserStore } from "../../stores/usePluginBrowserStore";
+import { withGroupDefaults, type BrowserPluginSeed } from "../../test/pluginFixture";
 import type { BlockData } from "../../data/types";
 import type { BrowserPlugin } from "../../stores/usePluginBrowserStore";
 
@@ -44,7 +45,8 @@ function seed(node: BlockData) {
 
 // Mock plugin list for ReplacePicker stories — matches the real BrowserPlugin
 // shape exactly so the picker renders as it would with a live bridge call.
-const MOCK_PLUGINS: BrowserPlugin[] = [
+const MOCK_PLUGINS: BrowserPlugin[] = (
+  [
   {
     identifier: "vstplugin:Massive X:Native Instruments GmbH",
     name: "Massive X",
@@ -105,7 +107,8 @@ const MOCK_PLUGINS: BrowserPlugin[] = [
     signalOut: "midi",
     usageCount: 8,
   },
-];
+  ] satisfies BrowserPluginSeed[]
+).map(withGroupDefaults);
 
 function seedPlugins(plugins: BrowserPlugin[] = MOCK_PLUGINS) {
   // Override refresh so the ReplacePicker's useEffect doesn't call the bridge.

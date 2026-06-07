@@ -54,6 +54,13 @@ const { capturedProps, capturedMinimapProps, mockStore, mockAppStore, mockHostEx
     const reactFlow = {
       fitView: vi.fn(),
       screenToFlowPosition: vi.fn(() => ({ x: 0, y: 0 })),
+      // In-place rename anchors at the block's screen position via this
+      // transform; return a recognisable offset so the positioning test can
+      // assert the editor is placed AT the block, not a centered modal.
+      flowToScreenPosition: vi.fn((p: { x: number; y: number }) => ({
+        x: p.x + 1000,
+        y: p.y + 500,
+      })),
     };
     return {
       capturedProps: {} as Record<string, unknown>,
@@ -89,6 +96,12 @@ vi.mock("@xyflow/react", () => ({
   useNodesState: vi.fn(() => [[], vi.fn(), vi.fn()]),
   useEdgesState: vi.fn(() => [[], vi.fn(), vi.fn()]),
   useReactFlow: vi.fn(() => mockReactFlow),
+  // Minimal store-api stub: GraphCanvas calls useStoreApi() for imperative
+  // RF state reads (cable-splice insert path). The tests here don't exercise
+  // it, so a getState() returning empty defaults is sufficient.
+  useStoreApi: vi.fn(() => ({
+    getState: () => ({ nodeLookup: new Map(), transform: [0, 0, 1] }),
+  })),
   BackgroundVariant: { Dots: "dots" },
   SelectionMode: { Partial: "partial" },
 }));
@@ -426,7 +439,7 @@ describe("GraphCanvas (gaps)", () => {
     expect(mockNativeGraph.nativeGraphCommentAdd).toHaveBeenCalled();
   });
 
-  it("EV_START_RENAME with known nodeId → rename overlay appears", () => {
+  it("EV_START_RENAME with known nodeId → in-place rename editor appears", () => {
     mockStore.nodes = [{ id: "node-1", name: "Surge XT" }];
     render(<GraphCanvas />);
     act(() =>
@@ -434,7 +447,9 @@ describe("GraphCanvas (gaps)", () => {
         new CustomEvent(EV_START_RENAME, { detail: { nodeId: "node-1" } }),
       ),
     );
-    expect(screen.getByText(/rename block/i)).toBeInTheDocument();
+    // In-place editor: the editable label carries the accessible name (no
+    // detached "Rename Block" modal heading anymore).
+    expect(screen.getByLabelText(/rename block/i)).toBeInTheDocument();
     expect(screen.getByRole("textbox")).toHaveValue("Surge XT");
   });
 
@@ -501,6 +516,57 @@ describe("GraphCanvas (gaps)", () => {
     fireEvent.blur(input);
     expect(mockNativeGraph.nativeGraphRenameNode).not.toHaveBeenCalled();
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+  });
+
+  // ── In-place positioning (Item 5b: editor AT the block, not a centered modal) ──
+
+  it("rename editor renders AT the block's screen position (in-place, not centered)", () => {
+    mockStore.nodes = [
+      { id: "n1", name: "Old Name", position: { x: 120, y: 80 } },
+    ];
+    render(<GraphCanvas />);
+    act(() =>
+      window.dispatchEvent(
+        new CustomEvent(EV_START_RENAME, { detail: { nodeId: "n1" } }),
+      ),
+    );
+    // flowToScreenPosition mock maps {x,y} → {x+1000, y+500}, so the editor
+    // wrapper must be absolutely positioned at 1120/580 — NOT a centered modal
+    // (which would have no inline left/top and use the pt-16 fallback).
+    const wrapper = screen.getByTestId("rename-inplace");
+    expect(wrapper.style.left).toBe("1120px");
+    expect(wrapper.style.top).toBe("580px");
+  });
+
+  it("rename editor falls back to a fixed anchor when no screen position", () => {
+    // Node without a position → flowToScreenPosition isn't applied → null
+    // anchor → fixed fallback (no inline left/top).
+    mockStore.nodes = [{ id: "n1", name: "Old Name" }];
+    render(<GraphCanvas />);
+    act(() =>
+      window.dispatchEvent(
+        new CustomEvent(EV_START_RENAME, { detail: { nodeId: "n1" } }),
+      ),
+    );
+    const wrapper = screen.getByTestId("rename-inplace");
+    expect(wrapper.style.left).toBe("");
+    expect(wrapper.style.top).toBe("");
+  });
+
+  // ── Key-trap (Item 5b/G5: a keystroke never leaks to global shortcuts) ──
+
+  it("rename editor traps keys (stopPropagation) so no global shortcut fires", () => {
+    const stopSpy = vi.spyOn(Event.prototype, "stopPropagation");
+    openRename();
+    const input = screen.getByRole("textbox");
+    // A bare letter (e.g. would be an align/duplicate chord at the canvas) must
+    // be swallowed by the editor.
+    fireEvent.keyDown(input, { key: "d" });
+    expect(stopSpy).toHaveBeenCalled();
+    // Still editing (a non-Enter/Esc key neither commits nor dismisses).
+    expect(screen.getByRole("textbox")).toBeInTheDocument();
+    expect(mockNativeGraph.nativeGraphRenameNode).not.toHaveBeenCalled();
+    stopSpy.mockRestore();
   });
 
   // ── Empty board watermark ────────────────────────────────────────────────────

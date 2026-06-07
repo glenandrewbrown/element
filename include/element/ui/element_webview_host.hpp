@@ -10,10 +10,12 @@
 #include <element/web_metering_fifo.hpp>
 
 #include <functional>
+#include <map>
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 namespace element {
 
@@ -231,6 +233,51 @@ private:
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ElementWebViewHost)
 };
+
+//==============================================================================
+// N2 / Decision D-1 — alias-aware VST3-primary plugin dedupe (presentation-only).
+//
+// Groups scanned plugins by (manufacturer, name): a family with multiple format
+// variants (VST3 + AU + …) emits ONE primary row (VST3 preferred) carrying the
+// `PluginGroup` metadata below. A solitary plugin emits a single-variant group
+// (aliases == [its own id]). This is a PURE view transform over the scanned
+// list — it NEVER mutates KnownPluginList or any saved identifier; saved .elg
+// projects keep resolving their exact (possibly-AU) identifier independently.
+//
+// Free function (not a member) so it is unit-testable headless with no Context:
+// callers pass the live PluginDescription list + the persisted usage/favorite/
+// recent data, and receive the grouped rows ready to serialise. O(n log n).
+// Each variant is emitted as a {format, identifier} JSON object inside the
+// row's `variants` array — see buildPluginGroupRows.
+
+/** Inputs for one scanned plugin (a thin, test-friendly view of PluginDescription). */
+struct PluginGroupSource
+{
+    juce::String name;
+    juce::String manufacturer;
+    juce::String format;        // pluginFormatName
+    juce::String identifier;    // createIdentifierString()
+    bool isInstrument = false;
+    int numInputChannels = 0;
+    int numOutputChannels = 0;
+    juce::String category;      // raw category (or empty)
+    juce::String version;
+    juce::String descriptiveName;
+};
+
+/** Build the grouped plugin rows as a JSON-ready var Array.
+    @param sources      one entry per scanned plugin, in list order.
+    @param usageCounts  identifier → real persisted use-count.
+    @param favorites    favourited identifiers (exact, as persisted).
+    @param recents      recently-used identifiers, most-recent-first.
+    Each emitted row is the primary variant's row PLUS the group fields
+    (aliases[], variants[{format,identifier}], aggregated usageCount,
+    isFavorite = any alias starred, recentRank = best alias rank | -1).
+    Stable: family order follows first-appearance of the primary in `sources`. */
+juce::Array<juce::var> buildPluginGroupRows (const std::vector<PluginGroupSource>& sources,
+                                             const std::map<juce::String, int>& usageCounts,
+                                             const juce::StringArray& favorites,
+                                             const juce::StringArray& recents);
 
 #endif // JUCE_WEB_BROWSER
 

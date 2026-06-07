@@ -6,6 +6,7 @@ import {
   usePluginBrowserStore,
   type BrowserPlugin,
 } from "../../stores/usePluginBrowserStore";
+import { withGroupDefaults, type BrowserPluginSeed } from "../../test/pluginFixture";
 import type { BlockData, SceneData } from "../../data/types";
 
 // ── Store seeding ──
@@ -15,38 +16,40 @@ import type { BlockData, SceneData } from "../../data/types";
 // and early-returns WITHOUT clearing the store — so the seeded plugin list
 // survives. Native action bridges are also no-ops. Seeding state is enough.
 
-const demoPlugins: BrowserPlugin[] = [
-  {
-    identifier: "com.vendor.SurgeXT",
-    name: "Surge XT",
-    manufacturer: "Surge Synth Team",
-    format: "VST3",
-    category: "Synth",
-    blockCategory: "instrument",
-    signalOut: "audio",
-    usageCount: 9,
-  },
-  {
-    identifier: "com.vendor.ProQ4",
-    name: "Pro-Q 4",
-    manufacturer: "FabFilter",
-    format: "AU",
-    category: "EQ",
-    blockCategory: "audiofx",
-    signalOut: "audio",
-    usageCount: 4,
-  },
-  {
-    identifier: "com.vendor.Arp",
-    name: "Stepic",
-    manufacturer: "Audiomodern",
-    format: "CLAP",
-    category: "MIDI",
-    blockCategory: "midifx",
-    signalOut: "midi",
-    usageCount: 2,
-  },
-];
+const demoPlugins: BrowserPlugin[] = (
+  [
+    {
+      identifier: "com.vendor.SurgeXT",
+      name: "Surge XT",
+      manufacturer: "Surge Synth Team",
+      format: "VST3",
+      category: "Synth",
+      blockCategory: "instrument",
+      signalOut: "audio",
+      usageCount: 9,
+    },
+    {
+      identifier: "com.vendor.ProQ4",
+      name: "Pro-Q 4",
+      manufacturer: "FabFilter",
+      format: "AU",
+      category: "EQ",
+      blockCategory: "audiofx",
+      signalOut: "audio",
+      usageCount: 4,
+    },
+    {
+      identifier: "com.vendor.Arp",
+      name: "Stepic",
+      manufacturer: "Audiomodern",
+      format: "CLAP",
+      category: "MIDI",
+      blockCategory: "midifx",
+      signalOut: "midi",
+      usageCount: 2,
+    },
+  ] satisfies BrowserPluginSeed[]
+).map(withGroupDefaults);
 
 const demoBlocks: BlockData[] = [
   {

@@ -362,6 +362,27 @@ export async function nativeGraphRenameNode(
 }
 
 /**
+ * Rename a TOP-LEVEL Board (session graph) by its index.
+ *
+ * Blocks and Containers are Nodes inside a board's node list and rename by uuid
+ * via {@link nativeGraphRenameNode}. A top-level Board has no node uuid — it is
+ * a Session graph addressed by index (mirrors `nativeSessionSetActiveGraph`),
+ * so it routes through its own native (`elementSessionRenameGraph`). The host
+ * sets the name on the session-graph ValueTree (message thread) and re-pushes
+ * an authoritative snapshot, so the breadcrumb/tab redraw from engine truth.
+ */
+export async function nativeSessionRenameGraph(
+  index: number,
+  name: string,
+): Promise<boolean> {
+  const r = await invokeElementNative("elementSessionRenameGraph", [
+    index,
+    name,
+  ]);
+  return r === true;
+}
+
+/**
  * Update a block's free-form user note (Inspector textarea).
  * Persists in the Node ValueTree as the "userNote" property so it survives
  * project save/load. Blueprint §7.4.11.

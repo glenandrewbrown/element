@@ -7,51 +7,68 @@
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { renderHook } from "@testing-library/react";
+import { withGroupDefaults, type BrowserPluginSeed } from "../../../../test/pluginFixture";
+import type { BrowserPlugin } from "../../../../stores/usePluginBrowserStore";
 
 // ── Store mocks ───────────────────────────────────────────────────────────────
+//
+// N2 — Favourites/Recents now operate on the GROUP fields (isFavorite /
+// recentRank) the store precomputes per row, NOT the raw id-keyed sets. Tests
+// set those fields on the rows (via group()) to express favourite/recent intent.
 
-const mockPlugins = [
-  {
-    identifier: "surge.vst3",
-    name: "Surge XT",
-    blockCategory: "instrument" as const,
-    format: "VST3",
-    manufacturer: "Surge Synth",
-    category: "Instrument",
-    signalOut: "audio" as const,
-    usageCount: 5,
-  },
-  {
-    identifier: "proeq.au",
-    name: "Pro-Q 3",
-    blockCategory: "audiofx" as const,
-    format: "AU",
-    manufacturer: "FabFilter",
-    category: "EQ",
-    signalOut: "audio" as const,
-    usageCount: 3,
-  },
-  {
-    identifier: "midi-router.int",
-    name: "MIDI Router",
-    blockCategory: "midifx" as const,
-    format: "INT",
-    manufacturer: "Element",
-    category: "Utility",
-    signalOut: "midi" as const,
-    usageCount: 1,
-  },
-  {
-    identifier: "lfo.int",
-    name: "LFO",
-    blockCategory: "modulator" as const,
-    format: "INT",
-    manufacturer: "Element",
-    category: "Modulator",
-    signalOut: "value" as const,
-    usageCount: 2,
-  },
-];
+const basePlugins: BrowserPlugin[] = (
+  [
+    {
+      identifier: "surge.vst3",
+      name: "Surge XT",
+      blockCategory: "instrument",
+      format: "VST3",
+      manufacturer: "Surge Synth",
+      category: "Instrument",
+      signalOut: "audio",
+      usageCount: 5,
+    },
+    {
+      identifier: "proeq.au",
+      name: "Pro-Q 3",
+      blockCategory: "audiofx",
+      format: "AU",
+      manufacturer: "FabFilter",
+      category: "EQ",
+      signalOut: "audio",
+      usageCount: 3,
+    },
+    {
+      identifier: "midi-router.int",
+      name: "MIDI Router",
+      blockCategory: "midifx",
+      format: "INT",
+      manufacturer: "Element",
+      category: "Utility",
+      signalOut: "midi",
+      usageCount: 1,
+    },
+    {
+      identifier: "lfo.int",
+      name: "LFO",
+      blockCategory: "modulator",
+      format: "INT",
+      manufacturer: "Element",
+      category: "Modulator",
+      signalOut: "value",
+      usageCount: 2,
+    },
+  ] satisfies BrowserPluginSeed[]
+).map(withGroupDefaults);
+
+const mockPlugins = basePlugins;
+
+/** Clone the base list, overriding group fields per identifier. */
+function group(
+  overrides: Record<string, Partial<Pick<BrowserPlugin, "isFavorite" | "recentRank" | "aliases" | "variants">>>,
+): BrowserPlugin[] {
+  return basePlugins.map((p) => ({ ...p, ...(overrides[p.identifier] ?? {}) }));
+}
 
 let storePlugins = mockPlugins;
 let storeFavoriteIds: Set<string> = new Set();
@@ -83,14 +100,16 @@ describe("usePaletteFilters", () => {
   });
 
   describe("plugins mapping", () => {
-    it("maps nativePlugins to PluginEntry[]", () => {
+    it("maps nativePlugins to PluginEntry[] (incl. N2 description + variants)", () => {
       const { result } = renderHook(() => usePaletteFilters("", null));
       expect(result.current.plugins).toHaveLength(4);
       expect(result.current.plugins[0]).toEqual({
         id: "surge.vst3",
         name: "Surge XT",
+        description: "",
         category: "instrument",
         format: "VST3",
+        variants: [{ format: "VST3", identifier: "surge.vst3" }],
       });
     });
   });
@@ -164,15 +183,18 @@ describe("usePaletteFilters", () => {
     });
   });
 
-  describe("favPlugins", () => {
-    it("returns empty array when no favorites", () => {
-      storeFavoriteIds = new Set();
+  describe("favPlugins (N2 — group-based)", () => {
+    it("returns empty array when no group is favourited", () => {
+      storePlugins = basePlugins; // none have isFavorite
       const { result } = renderHook(() => usePaletteFilters("", null));
       expect(result.current.favPlugins).toHaveLength(0);
     });
 
-    it("returns BrowserPlugin objects for favorite ids", () => {
-      storeFavoriteIds = new Set(["surge.vst3", "proeq.au"]);
+    it("returns rows whose GROUP isFavorite is set", () => {
+      storePlugins = group({
+        "surge.vst3": { isFavorite: true },
+        "proeq.au": { isFavorite: true },
+      });
       const { result } = renderHook(() => usePaletteFilters("", null));
       expect(result.current.favPlugins).toHaveLength(2);
       const ids = result.current.favPlugins.map((p) => p.identifier);
@@ -180,41 +202,49 @@ describe("usePaletteFilters", () => {
       expect(ids).toContain("proeq.au");
     });
 
-    it("ignores favorite ids not present in plugin list", () => {
-      storeFavoriteIds = new Set(["surge.vst3", "ghost.id"]);
+    it("starred AU keeps its VST3-primary family in Favourites (no orphaning)", () => {
+      // A VST3 primary row carries the AU as an alias; the AU is the one starred,
+      // so the host set isFavorite=true on the primary row. The family shows.
+      storePlugins = group({
+        "surge.vst3": {
+          isFavorite: true,
+          aliases: ["surge.vst3", "surge.au"],
+          variants: [
+            { format: "VST3", identifier: "surge.vst3" },
+            { format: "AudioUnit", identifier: "surge.au" },
+          ],
+        },
+      });
       const { result } = renderHook(() => usePaletteFilters("", null));
-      // Only the real plugin survives
       expect(result.current.favPlugins).toHaveLength(1);
       expect(result.current.favPlugins[0].identifier).toBe("surge.vst3");
+      // ...and the per-card star set marks the SHOWN (VST3) primary row.
+      expect(result.current.favoriteIds.has("surge.vst3")).toBe(true);
     });
   });
 
-  describe("recentPlugins", () => {
-    it("returns empty array when no recents", () => {
-      storeRecentIds = [];
+  describe("recentPlugins (N2 — group-based, ranked)", () => {
+    it("returns empty array when no group is recent", () => {
+      storePlugins = basePlugins; // all recentRank === -1
       const { result } = renderHook(() => usePaletteFilters("", null));
       expect(result.current.recentPlugins).toHaveLength(0);
     });
 
-    it("returns BrowserPlugin objects in recent order", () => {
-      storeRecentIds = ["proeq.au", "surge.vst3"];
+    it("returns rows with recentRank >= 0, sorted best-first", () => {
+      storePlugins = group({
+        "proeq.au": { recentRank: 0 },
+        "surge.vst3": { recentRank: 1 },
+      });
       const { result } = renderHook(() => usePaletteFilters("", null));
       expect(result.current.recentPlugins).toHaveLength(2);
       expect(result.current.recentPlugins[0].identifier).toBe("proeq.au");
       expect(result.current.recentPlugins[1].identifier).toBe("surge.vst3");
     });
-
-    it("ignores recent ids not present in plugin list", () => {
-      storeRecentIds = ["proeq.au", "ghost.id"];
-      const { result } = renderHook(() => usePaletteFilters("", null));
-      expect(result.current.recentPlugins).toHaveLength(1);
-      expect(result.current.recentPlugins[0].identifier).toBe("proeq.au");
-    });
   });
 
-  describe("favoriteIds passthrough", () => {
-    it("exposes the raw Set for isFavourite checks", () => {
-      storeFavoriteIds = new Set(["surge.vst3"]);
+  describe("favoriteIds (N2 — group favourite primary-id set)", () => {
+    it("contains the primary id of every favourited group", () => {
+      storePlugins = group({ "surge.vst3": { isFavorite: true } });
       const { result } = renderHook(() => usePaletteFilters("", null));
       expect(result.current.favoriteIds.has("surge.vst3")).toBe(true);
       expect(result.current.favoriteIds.has("proeq.au")).toBe(false);

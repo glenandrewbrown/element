@@ -287,6 +287,18 @@ describe("<Block />", () => {
     expect(screen.getByText("Empty — open to edit")).toBeInTheDocument();
   });
 
+  it("labels a Container with its REAL name + (Nested) — never a raw UUID", () => {
+    renderBlock({ containerNodeCount: 2, name: "Synth Layer" });
+    expect(screen.getByText("Synth Layer (Nested)")).toBeInTheDocument();
+  });
+
+  it("falls back to 'Container (Nested)' (never bare ' (Nested)' or 'Graph') when unnamed", () => {
+    renderBlock({ containerNodeCount: 2, name: "" });
+    expect(screen.getByText("Container (Nested)")).toBeInTheDocument();
+    expect(screen.queryByText(/^\s*\(Nested\)$/)).toBeNull();
+    expect(screen.queryByText(/GRAPH \(NESTED\)/i)).toBeNull();
+  });
+
   it("shows PORTAL label for portal blocks", () => {
     renderBlock({ isPortal: true });
     expect(screen.getByText("External Portal")).toBeInTheDocument();

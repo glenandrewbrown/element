@@ -33,6 +33,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   Circle,
   ClipboardPaste,
   Clock,
@@ -112,6 +113,7 @@ const ICON_MAP: Record<string, ComponentType<LucideProps>> = {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   Circle,
   ClipboardPaste, // paste blocks at cursor (canvas context menu)
   Clock,

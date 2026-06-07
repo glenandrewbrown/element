@@ -187,7 +187,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
         id: "act-open",
         label: "Open Project…",
         category: "action",
-        hint: "File dialog",
+        hint: "Board chooser",
         onSelect: runAndClose(() => nativeSessionOpen()),
       },
       {

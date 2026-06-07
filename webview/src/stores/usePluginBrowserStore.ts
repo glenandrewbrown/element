@@ -4,9 +4,33 @@ import { logBridgeError } from "../bridge/bridgeError";
 import { nativeToggleFavorite } from "../bridge/nativeGraph";
 import type { BlockCategory, SignalType } from "../data/types";
 
+/**
+ * N2 / Decision D-1 — one format variant of a plugin family. The host emits a
+ * structured array (never a concatenated string) so the "also available as AU"
+ * reveal can insert using the variant's REAL identifier.
+ */
+export type PluginVariant = {
+  /** juce pluginFormatName: "VST3" | "AudioUnit" | "CLAP" | "VST" | "LV2" | … */
+  format: string;
+  /** The variant's exact PluginDescription identifier (createIdentifierString). */
+  identifier: string;
+};
+
 export type BrowserPlugin = {
   identifier: string;
+  /**
+   * The plugin/node's real NAME — the row TITLE (e.g. "MIDI Output Device",
+   * "Audio Mixer"). N1 fix: internal Element nodes set `descriptiveName` to a
+   * sentence DESCRIPTION ("Sends MIDI to a hardware…"); that must NEVER be the
+   * title. We bind `name` here and surface the description separately.
+   */
   name: string;
+  /**
+   * Secondary, human description (juce PluginDescription.descriptiveName).
+   * Subtitle / tooltip only — never the row title. Empty string when none /
+   * same as the name. The store always populates it from the live snapshot.
+   */
+  description: string;
   manufacturer: string;
   format: string;
   category: string;
@@ -19,8 +43,29 @@ export type BrowserPlugin = {
    * fallback (see categorySignalFallback).
    */
   signalOut: SignalType;
-  /** Real persisted use-count from PluginUsageTracker (0 if never used / absent). */
+  /**
+   * Real persisted use-count from PluginUsageTracker, AGGREGATED across the
+   * family's aliases by the host (N2). 0 if never used / absent.
+   */
   usageCount: number;
+
+  // ── N2 / D-1 alias-aware group fields (precomputed native-side) ────────────
+  // The store ALWAYS populates these (deriving a single-variant group when an
+  // older host omits them — see refresh()), so they are part of the row
+  // contract the QuickAdd / palette consumers read directly.
+  /**
+   * All variant identifiers in this plugin family (incl. this primary row's own
+   * id). Length 1 for a solitary plugin. The reveal affordance lists the
+   * non-primary entries; Favourites/Recents membership is decided on the GROUP
+   * so a starred/recent AU is never orphaned when its VST3 primary is shown.
+   */
+  aliases: string[];
+  /** Structured {format, identifier} per variant, primary-first. */
+  variants: PluginVariant[];
+  /** True when ANY alias is starred (star an AU ⇒ the family stays favourited). */
+  isFavorite: boolean;
+  /** Best (lowest) Recents rank across aliases, or -1 when no alias is recent. */
+  recentRank: number;
 };
 
 /**
@@ -142,12 +187,17 @@ export const usePluginBrowserStore = create<PluginBrowserState>()((set) => ({
             numInputChannels?: number;
             numOutputChannels?: number;
             usageCount?: number;
+            aliases?: unknown[];
+            variants?: unknown[];
+            isFavorite?: boolean;
+            recentRank?: number;
           }>
         | undefined;
       if (!Array.isArray(list)) return;
       const plugins: BrowserPlugin[] = list
         .filter((p) => p.identifier)
         .map((p) => {
+          const identifier = String(p.identifier);
           const category = String(p.category ?? "Uncategorised");
           const blockCategory = inferBlockCategory(category);
           // Prefer the REAL per-plugin signal from C++; fall back to the
@@ -158,15 +208,67 @@ export const usePluginBrowserStore = create<PluginBrowserState>()((set) => ({
             p.signalOut === "value"
               ? p.signalOut
               : categorySignalFallback(blockCategory);
+          const format = String(p.format ?? "");
+
+          // N2 group fields. An older host build that predates the grouping
+          // emits no aliases/variants → derive an honest single-variant group
+          // from this row, and decide favourite/recent from the id-keyed sets
+          // (the legacy behaviour) so nothing silently breaks.
+          const aliases: string[] = Array.isArray(p.aliases)
+            ? p.aliases.filter((x): x is string => typeof x === "string")
+            : [identifier];
+          const variants: PluginVariant[] = Array.isArray(p.variants)
+            ? p.variants
+                .map((v) =>
+                  v && typeof v === "object"
+                    ? {
+                        format: String((v as { format?: unknown }).format ?? ""),
+                        identifier: String(
+                          (v as { identifier?: unknown }).identifier ?? "",
+                        ),
+                      }
+                    : null,
+                )
+                .filter(
+                  (v): v is PluginVariant => v != null && v.identifier !== "",
+                )
+            : [{ format, identifier }];
+          const isFavorite =
+            typeof p.isFavorite === "boolean"
+              ? p.isFavorite
+              : aliases.some((id) => fav.has(id));
+          const recentRank =
+            typeof p.recentRank === "number"
+              ? p.recentRank
+              : aliases.reduce((best, id) => {
+                  const r = recent.indexOf(id);
+                  if (r < 0) return best;
+                  return best < 0 || r < best ? r : best;
+                }, -1);
+
+          // N1 fix: the row TITLE is the real NAME. Internal nodes put a
+          // sentence description in `descriptiveName`, so preferring it (the old
+          // behaviour) leaked "Sends MIDI to a hardware…" as the title. Prefer
+          // `name`; the description ships as the separate secondary field.
+          const realName = String(p.name || p.descriptiveName || identifier);
+          const descriptiveName = String(p.descriptiveName ?? "");
+          const description =
+            descriptiveName && descriptiveName !== realName ? descriptiveName : "";
+
           return {
-            identifier: String(p.identifier),
-            name: String(p.descriptiveName || p.name || p.identifier),
+            identifier,
+            name: realName,
+            description,
             manufacturer: String(p.manufacturer ?? ""),
-            format: String(p.format ?? ""),
+            format,
             category,
             blockCategory,
             signalOut,
             usageCount: typeof p.usageCount === "number" ? p.usageCount : 0,
+            aliases,
+            variants,
+            isFavorite,
+            recentRank,
           };
         });
       set({ plugins, favoriteIdentifiers: fav, recentIdentifiers: recent });

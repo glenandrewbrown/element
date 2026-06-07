@@ -118,3 +118,7 @@ webview/.tmp/
 
 # OMO scratch dir (ephemeral; audit/plans under .omo/ stay tracked)
 .omo/tmp/
+
+# OMC harness state (never commit)
+webview/src/.omc/
+webview/.omc/

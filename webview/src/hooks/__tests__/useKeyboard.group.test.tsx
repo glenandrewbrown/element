@@ -65,8 +65,8 @@ vi.mock("../../bridge/nativeGraph", () => ({
   nativeGraphSetCableBus: vi.fn(),
   nativeGraphCopyNodes: vi.fn(),
   nativeGraphPasteNodes: vi.fn(),
-  nativeGraphDuplicateNode: vi.fn(),
-  nativeGraphDuplicateNodes: vi.fn(),
+  nativeGraphDuplicateNode: vi.fn(async () => undefined),
+  nativeGraphDuplicateNodes: vi.fn(async () => 1),
   nativeRedo: vi.fn(),
   nativeUndo: vi.fn(),
 }));
@@ -140,8 +140,19 @@ describe("useKeyboard — Cmd+Shift+D group chord", () => {
     expect(mockGroup).toHaveBeenCalledWith(["a", "b"]);
   });
 
-  it("<2 selected → chord is a no-op (no bridge call)", async () => {
+  it("1 selected block → groupSelectionWithFeedback called so refusal surfaces", async () => {
+    // The "need-2" refusal must be VISIBLE, not silently swallowed.
+    // groupSelectionWithFeedback handles the need-2 case internally (see
+    // groupSelection.test.ts); the chord's job is to always call it so the
+    // StatusBar shows the reason.
     mockGetNodes.mockReturnValue([flow("a")]);
+    mount();
+    await act(async () => fireKey("d", { metaKey: true, shiftKey: true }));
+    expect(mockGroup).toHaveBeenCalledWith(["a"]);
+  });
+
+  it("0 selected blocks → groupSelectionWithFeedback not called (nothing to group)", async () => {
+    mockGetNodes.mockReturnValue([]);
     mount();
     await act(async () => fireKey("d", { metaKey: true, shiftKey: true }));
     expect(mockGroup).not.toHaveBeenCalled();
@@ -158,13 +169,16 @@ describe("useKeyboard — Cmd+Shift+D group chord", () => {
   // is covered by groupSelection.test.ts; the chord's contract is just to call
   // it with the eligible selection.
 
-  it("comment nodes are not counted as selection", async () => {
+  it("comment nodes are filtered out — only blocks count toward the selection", async () => {
+    // 1 block + 1 comment → selected block ids = ["a"]. groupSelectionWithFeedback
+    // is called with ["a"] so the "need-2" refusal surfaces in the StatusBar
+    // (comments do not count as eligible blocks for grouping).
     mockGetNodes.mockReturnValue([
       flow("a"),
       { id: "k", selected: true, type: "comment" },
     ]);
     mount();
     await act(async () => fireKey("d", { metaKey: true, shiftKey: true }));
-    expect(mockGroup).not.toHaveBeenCalled();
+    expect(mockGroup).toHaveBeenCalledWith(["a"]);
   });
 });
