@@ -10,6 +10,7 @@
 #include <element/settings.hpp>
 
 #include "engine/graphmanager.hpp"
+#include "engine/portprovisioning.hpp"
 #include "nodes/mididevice.hpp"
 #include "engine/rootgraph.hpp"
 #include <element/engine.hpp>
@@ -515,8 +516,19 @@ Node EngineService::groupNodes (const Node& parentGraph, const juce::Array<juce:
     // Mirror node.cpp:30 — a graph-type Internal description. addNode(desc,rx,ry)
     // builds the GraphNode + its 4 IO children + 6 graph ports + the subgraph
     // Binding (graphmanager.cpp:443/483).
+    // Sensible default name "Container N" (N = next free ordinal among existing
+    // Containers on this board) instead of a bare "Container" — fixes the
+    // ultraqa T7 "default name Graph"/empty-label complaint and gives the
+    // breadcrumb/tab/outline a real, distinct label even before the user
+    // renames it. Counts current child graphs (Containers/Portals) on the
+    // parent board, then takes the next ordinal.
+    int containerOrdinal = 1;
+    for (int i = 0; i < parentGraph.getNumNodes(); ++i)
+        if (parentGraph.getNode (i).isGraph())
+            ++containerOrdinal;
+
     PluginDescription graphDesc;
-    graphDesc.name = "Container";
+    graphDesc.name = "Container " + String (containerOrdinal);
     graphDesc.fileOrIdentifier = EL_NODE_ID_GRAPH;
     graphDesc.pluginFormatName = EL_NODE_FORMAT_NAME;
 
@@ -528,6 +540,9 @@ Node EngineService::groupNodes (const Node& parentGraph, const juce::Array<juce:
     if (! container.isValid() || ! container.isGraph())
         return Node();
     container.setPosition (centroidX, centroidY);
+    // addNode may derive the node name from the description or leave it blank;
+    // force the computed default so the label is never empty or a bare "Graph".
+    container.setProperty (tags::name, graphDesc.name);
 
     // --- (5) Locate the container's sub-manager -----------------------------
     auto* subMgr = parentMgr->findGraphManagerForGraph (container);
@@ -731,6 +746,102 @@ void EngineService::removeGraph (int index)
         ui->stabilizeContent();
 }
 
+namespace detail {
+
+// Wave-1 Item 1: count the REAL Blocks on a Board (children that are not the
+// auto-managed Audio/MIDI IO device nodes). A Board is "empty" (eligible for
+// per-Block IO provisioning of the FIRST drop) when it owns exactly one real
+// Block — the one just added.
+static int realBlockCount (const Node& graph)
+{
+    int n = 0;
+    for (int i = 0; i < graph.getNumNodes(); ++i)
+        if (! graph.getNode (i).isIONode())
+            ++n;
+    return n;
+}
+
+// Find the raw port index of a node's first port of the given type/direction,
+// or -1. Object-independent (reads the persisted Port ValueTrees).
+static int firstPortIndex (const Node& node, PortType type, bool isInput)
+{
+    for (int i = 0; i < node.getNumPorts(); ++i)
+        if (node.getPort (i).isA (type, isInput))
+            return i;
+    return -1;
+}
+
+} // namespace detail
+
+void EngineService::provisionFirstBlockIO (const Node& graph, const Node& addedNode)
+{
+    // Gate hard on "first Block into an EMPTY Board" — NEVER strip IO from a
+    // populated/mixed Board (product-feedback-v4 §2 Item 1). A snippet that adds
+    // several Blocks at once therefore won't trip this (>1 real Block) and keeps
+    // today's all-4 superset, exactly as specified.
+    if (! graph.isGraph() || ! addedNode.isValid() || addedNode.isIONode())
+        return;
+    if (detail::realBlockCount (graph) != 1)
+        return;
+
+    const NodePortNeeds needs (classifyNodePorts (addedNode));
+    if (! needs.any())
+        return; // a node with no audio/MIDI ports (pure CV/util) — leave the superset
+
+    auto* controller = graphs->findGraphManagerFor (graph);
+    if (controller == nullptr)
+        return;
+
+    // --- Site (a): drive the Board's port set from the classification --------
+    // RootGraph::setNumPorts(async=false) rewrites the graph's audio/MIDI port
+    // counts. Stereo audio = 2 channels; MIDI = 1. Setting the counts fires
+    // portsChanged → NodeModelUpdater → IONodeEnforcer, which is Site (b): it
+    // adds/removes the matching IO *child nodes* to track the new port set.
+    auto& gnode = controller->getGraph();
+    gnode.setNumPorts (PortType::Audio, needs.needsAudioIn ? 2 : 0, true, false);
+    gnode.setNumPorts (PortType::Audio, needs.needsAudioOut ? 2 : 0, false, false);
+    gnode.setNumPorts (PortType::Midi, needs.needsMidiIn ? 1 : 0, true, false);
+    gnode.setNumPorts (PortType::Midi, needs.needsMidiOut ? 1 : 0, false, false);
+
+    // Re-resolve the live model node (its model Node is stable, but make sure we
+    // read its ports as they now stand) and the freshly-reconciled IO children.
+    const Node block (controller->getNodeModelForId (addedNode.getNodeId()));
+    if (! block.isValid())
+        return;
+
+    // --- Site (c): auto-cable the first drop (type-valid only) ---------------
+    // Wire the surrounding IO into/out of the Block by signal type so a dropped
+    // instrument makes sound immediately: MIDI In → Block, Block → Audio Out,
+    // Audio In → Block, Block → MIDI Out — each only when BOTH ends have a real
+    // matching port. Cables go through the standard connect machinery (real,
+    // undoable Arcs). connect() resolves channel→port and is a no-op if a port
+    // is missing, so an over-eager pair simply doesn't wire.
+    if (needs.needsMidiIn)
+    {
+        const Node io (graph.getIONode (PortType::Midi, true)); // midi.input device
+        if (io.isValid() && detail::firstPortIndex (block, PortType::Midi, true) >= 0)
+            connect (PortType::Midi, io, 0, block, 0, 1);
+    }
+    if (needs.needsAudioOut)
+    {
+        const Node io (graph.getIONode (PortType::Audio, false)); // audio.output device
+        if (io.isValid() && detail::firstPortIndex (block, PortType::Audio, false) >= 0)
+            connect (PortType::Audio, block, 0, io, 0, 2);
+    }
+    if (needs.needsAudioIn)
+    {
+        const Node io (graph.getIONode (PortType::Audio, true)); // audio.input device
+        if (io.isValid() && detail::firstPortIndex (block, PortType::Audio, true) >= 0)
+            connect (PortType::Audio, io, 0, block, 0, 2);
+    }
+    if (needs.needsMidiOut)
+    {
+        const Node io (graph.getIONode (PortType::Midi, false)); // midi.output device
+        if (io.isValid() && detail::firstPortIndex (block, PortType::Midi, false) >= 0)
+            connect (PortType::Midi, block, 0, io, 0, 1);
+    }
+}
+
 void EngineService::connectChannels (const Node& graph, const Node& src, const int sc, const Node& dst, const int dc)
 {
     connectChannels (graph, src.getNodeId(), sc, dst.getNodeId(), dc);
@@ -822,6 +933,8 @@ Node EngineService::addNode (const Node& node, const Node& target, const Connect
         if (ref.isValid())
         {
             builder.addConnections (*controller, nodeId);
+            // Wave-1 Item 1: first-Block-into-empty-Board IO defaults + auto-cable.
+            provisionFirstBlockIO (target, ref);
             return ref;
         }
     }
@@ -908,6 +1021,9 @@ Node EngineService::addPlugin (const PluginDescription& desc, const bool verifie
         if (EL_INVALID_NODE != nodeId)
         {
             node = root->getNodeModelForId (nodeId);
+            // Wave-1 Item 1: first-Block-into-empty-Board IO defaults + auto-cable.
+            if (node.isValid())
+                provisionFirstBlockIO (node.getParentGraph(), node);
             if (! dontShowUI && context().settings().showPluginWindowsWhenAdded())
                 if (auto* gui = sibling<GuiService>())
                     gui->presentPluginWindow (node);
@@ -1195,6 +1311,8 @@ Node EngineService::addPlugin (const Node& graph, const PluginDescription& desc,
         {
             builder.addConnections (*controller, node.getNodeId());
             jassert (! node.getUuid().isNull());
+            // Wave-1 Item 1: first-Block-into-empty-Board IO defaults + auto-cable.
+            provisionFirstBlockIO (graph, node);
         }
         return node;
     }

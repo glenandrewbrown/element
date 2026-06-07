@@ -95,6 +95,19 @@ public:
                  the selection, or fewer than two resolvable nodes all refuse. */
     Node groupNodes (const Node& parentGraph, const juce::Array<juce::Uuid>& nodeIds);
 
+    /** Wave-1 Item 1 (product-feedback-v4 §2): when the FIRST Block lands in an
+        EMPTY Board, provision the surrounding IO to match that Block's real
+        capabilities and auto-cable the first drop. Classifies @p addedNode from
+        its real ports (NOT the signalOut UI heuristic) → drives the Board's port
+        set + IO device child nodes (sampler→{MIDI In, Audio Out}; MIDI fx→{MIDI
+        In, MIDI Out}; EQ→{Audio In, Audio Out}) and wires MIDI In→Block→Audio Out
+        (type-valid only). No-op on a populated/mixed Board (keeps the all-4
+        superset) or a node with no audio/MIDI ports. Message-thread only.
+
+        @param graph     The Board the Block was added to.
+        @param addedNode The Block just added (carries a live nodeId). */
+    void provisionFirstBlockIO (const Node& graph, const Node& addedNode);
+
     /** Add a connection on the active root graph */
     void addConnection (const uint32, const uint32, const uint32, const uint32);
 

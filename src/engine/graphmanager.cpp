@@ -114,21 +114,30 @@ private:
             {
                 case IONode::audioInputNode:
                     desc.fileOrIdentifier = "audio.input";
+                    // N1: GraphManager::addNode stamps tags::name from desc.name
+                    // (graphmanager.cpp:449), which the snapshot + SessionTree
+                    // render. IONodeEnforcer left it empty → IO blocks showed
+                    // "(unnamed)". Give each IO device node the friendly label
+                    // (matches Node::createDefaultGraph — node.cpp:195).
+                    desc.name = "Audio In";
                     rx = .25;
                     ry = .25;
                     break;
                 case IONode::audioOutputNode:
                     desc.fileOrIdentifier = "audio.output";
+                    desc.name = "Audio Out";
                     rx = .25;
                     ry = .75;
                     break;
                 case IONode::midiInputNode:
                     desc.fileOrIdentifier = "midi.input";
+                    desc.name = "MIDI In";
                     rx = .75;
                     ry = .25;
                     break;
                 case IONode::midiOutputNode:
                     desc.fileOrIdentifier = "midi.output";
+                    desc.name = "MIDI Out";
                     rx = .75;
                     ry = .75;
                     break;

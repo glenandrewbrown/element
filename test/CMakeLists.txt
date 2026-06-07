@@ -80,6 +80,16 @@ add_test(NAME "ContainerDiveTests" COMMAND test_element --run_test=ContainerDive
 # deactivates/reactivates the shared EngineService between cases.
 add_test(NAME "GroupNodesTests" COMMAND test_element --run_test=GroupNodesTests)
 set_tests_properties(GroupNodesTests PROPERTIES RUN_SERIAL TRUE)
+# Wave-1 Item 1 — smart port defaults + auto-cabled first drop. Engine-backed
+# (EngineService::provisionFirstBlockIO against the attached RootGraphManager);
+# also covers the pure capability classifier + the N1 IO-node display-name fix.
+# RUN_SERIAL: rebuilds the shared session's active graph between cases.
+add_test(NAME "PortDefaultsTests" COMMAND test_element --run_test=PortDefaultsTests)
+set_tests_properties(PortDefaultsTests PROPERTIES RUN_SERIAL TRUE)
+# N2 / D-1 — alias-aware VST3-primary plugin dedupe. PURE grouping helper
+# (buildPluginGroupRows) — no Context/engine/message-thread, so it needs no
+# serialisation and runs in the headless harness.
+add_test(NAME "PluginGroupingTests" COMMAND test_element --run_test=PluginGroupingTests)
 add_test(NAME "RootGraphMissingNodeTests" COMMAND test_element --run_test=RootGraphMissingNodeTests)
 add_test(NAME "SandboxIsolationTests" COMMAND test_element --run_test=SandboxIsolationTests)
 add_test(NAME "LuaBoundsTests" COMMAND test_element --run_test=LuaBoundsTests)
