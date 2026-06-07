@@ -21,7 +21,8 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 
 const SRC_ROOT = join(__dirname, "..");
-const BANNED = /\b(?:[Gg]raphs?|[Ss]essions?|[Nn]odes?|[Pp]resets?)\b/;
+// Import/Export added 2026-06-07 (4c jargon purge) — use "Bring in"/"Send out" instead.
+const BANNED = /\b(?:[Gg]raphs?|[Ss]essions?|[Nn]odes?|[Pp]resets?|[Ii]mport|[Ee]xport)\b/;
 
 type AllowEntry = { file: string; contains: string; reason: string };
 // eslint-disable-next-line @typescript-eslint/no-require-imports

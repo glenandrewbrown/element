@@ -779,10 +779,10 @@ void GuiService::getCommandInfo (CommandID commandID, ApplicationCommandInfo& re
             break;
         //======================================================================
         case Commands::importGraph:
-            result.setInfo ("Import board", "Import a board into current project", "Project", 0);
+            result.setInfo ("Bring in Board", "Bring a board into the current project", "Project", 0);
             break;
         case Commands::exportGraph:
-            result.setInfo ("Export current board", "Export the current board to file", "Project", 0);
+            result.setInfo ("Send out Board", "Send the current board to a file", "Project", 0);
             break;
         //======================================================================
         case Commands::panic:
@@ -965,7 +965,7 @@ bool GuiService::perform (const InvocationInfo& info)
             break;
         //======================================================================
         case Commands::importGraph: {
-            FileChooser chooser ("Import Board", impl->lastExportedGraph, "*.elg");
+            FileChooser chooser ("Bring in Board", impl->lastExportedGraph, "*.elg");
             if (chooser.browseForFileToOpen())
                 sibling<SessionService>()->importGraph (chooser.getResult());
             break;
@@ -984,7 +984,7 @@ bool GuiService::perform (const InvocationInfo& info)
             }
 
             {
-                FileChooser chooser (TRANS ("Export Board"), impl->lastExportedGraph, "*.elg");
+                FileChooser chooser (TRANS ("Send out Board"), impl->lastExportedGraph, "*.elg");
                 if (chooser.browseForFileToSave (true))
                     sibling<SessionService>()->exportGraph (node, chooser.getResult());
                 if (auto* gui = sibling<GuiService>())

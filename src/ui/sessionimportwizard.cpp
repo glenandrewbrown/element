@@ -90,7 +90,7 @@ public:
         };
 
         addAndMakeVisible (importButton);
-        importButton.setButtonText ("Import");
+        importButton.setButtonText ("Bring in");
         importButton.onClick = [this]() {
             if (auto* dialog = findParentComponentOfClass<SessionImportWizardDialog>())
             {
@@ -193,7 +193,7 @@ const String& name,
                   bool addToDesktop = true);
                   */
 SessionImportWizardDialog::SessionImportWizardDialog (std::unique_ptr<Component>& h, const File& file)
-    : DialogWindow ("Import Project", Colors::widgetBackgroundColor.darker(), true, true),
+    : DialogWindow ("Bring in Project", Colors::widgetBackgroundColor.darker(), true, true),
       holder (h)
 {
     holder.reset (this);

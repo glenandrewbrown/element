@@ -67,7 +67,7 @@ void MainMenu::setupMenu()
 StringArray MainMenu::getMenuBarNames()
 {
     const char* const names[] = {
-        "File",
+        "Element",
         "Edit",
         "View",
         "Options",
@@ -87,7 +87,7 @@ PopupMenu MainMenu::getMenuForIndex (int index, const String& name)
     ignoreUnused (index);
     PopupMenu menu;
 
-    if (name == "File")
+    if (name == "Element")
         buildFileMenu (menu);
     else if (name == "Edit")
         buildEditMenu (menu);
@@ -274,8 +274,8 @@ void MainMenu::buildFileMenu (PopupMenu& menu)
         menu.addCommandItem (&cmd, Commands::sessionSave, "Save Project");
         menu.addCommandItem (&cmd, Commands::sessionSaveAs, "Save Project As...");
         menu.addSeparator();
-        menu.addCommandItem (&cmd, Commands::importGraph, "Import...");
-        menu.addCommandItem (&cmd, Commands::exportGraph, "Export board...");
+        menu.addCommandItem (&cmd, Commands::importGraph, "Bring in Board…");
+        menu.addCommandItem (&cmd, Commands::exportGraph, "Send out Board…");
     }
 
 #if ! JUCE_MAC
@@ -385,8 +385,8 @@ void MainMenu::buildSessionMenu (Commands& cmd, PopupMenu& menu)
     menu.addCommandItem (&cmd, Commands::sessionSaveAs, "Save Project As...");
 
     menu.addSeparator();
-    menu.addCommandItem (&cmd, Commands::importGraph, "Import...");
-    menu.addCommandItem (&cmd, Commands::exportGraph, "Export graph...");
+    menu.addCommandItem (&cmd, Commands::importGraph, "Bring in Board…");
+    menu.addCommandItem (&cmd, Commands::exportGraph, "Send out Board…");
 }
 
 void MainMenu::buildEditMenu (Commands& cmd, PopupMenu& menu)

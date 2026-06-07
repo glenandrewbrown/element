@@ -31,7 +31,8 @@ ALLOWLIST_FILE = SCRIPT_DIR / "terminology-allowlist.txt"
 
 # Word-boundary pattern for banned terms inside a double-quoted string literal.
 # We extract the quoted string first, then test the content.
-BANNED_RE = re.compile(r'\b(Graph|Session|Node|Preset)\b')
+# Import/Export added 2026-06-07 (4c jargon purge) — use "Bring in"/"Send out" instead.
+BANNED_RE = re.compile(r'\b(Graph|Session|Node|Preset|Import|Export)\b')
 
 # Match a complete double-quoted string literal (non-greedy, no newlines).
 STRING_LITERAL_RE = re.compile(r'"([^"\n]*)"')
