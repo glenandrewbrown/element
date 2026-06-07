@@ -4,7 +4,7 @@ Scanned the whole real tree PLUS a temporary throwaway fixture containing
 a deliberately-bad selector `useGraphStore((s) => s.nodes.map((n) => n.id))`
 with NO useShallow.
 
-Files scanned: 73 (real tree 72 + 1 temp fixture)
+Files scanned: 123 (real tree 122 + 1 temp fixture)
 Offenders found: 1
   src/test/__guard_fixture_tmp.tsx:6  useGraphStore(...)  →  s.nodes.map((n) => n.id)
 

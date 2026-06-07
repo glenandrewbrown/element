@@ -1,6 +1,6 @@
 # Task 9 — selector guard PASS proof (clean real tree)
 
-Source files scanned (excl. tests/stories/.d.ts): 72
+Source files scanned (excl. tests/stories/.d.ts): 122
 Offenders found: 0
   (none)
 
