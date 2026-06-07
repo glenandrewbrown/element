@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useRef } from "react";
 import { useReactFlow } from "@xyflow/react";
+import { useShallow } from "zustand/react/shallow";
 import { useGraphStore } from "../../stores/useGraphStore";
 import { useHostExtrasStore } from "../../stores/useHostExtrasStore";
+import { useAppStore } from "../../stores/useAppStore";
 import {
   nativeGraphAutoLayout,
   nativeGraphCommentAdd,
   nativeGraphPasteNodes,
   nativeGraphSetCanvasOptions,
+  nativeMoleculeSave,
 } from "../../bridge/nativeGraph";
 import { computeAutoLayout } from "../../lib/autoLayout";
 import { Icon } from "../neu";
@@ -34,6 +37,8 @@ export interface CanvasContextMenuProps {
 // category, so the dopamine hover-glow uses the primary signal hue.
 const CANVAS_ACCENT = "#4A90D9";
 
+const SAVE_SNIPPET_HINT_MS = 3000;
+
 /**
  * CanvasContextMenu — the right-click action menu for the empty Board surface.
  *
@@ -43,28 +48,32 @@ const CANVAS_ACCENT = "#4A90D9";
  * (`src/ui/contextmenus.hpp`), adapted to the webview stores.
  *
  *   WIRED (real store/bridge action):
- *     Add Block…        → opens QuickAddPopup at the cursor (onAddBlock).
- *     Add Comment Box   → nativeGraphCommentAdd at the cursor.
- *     Paste             → nativeGraphPasteNodes (host pasteboard).
- *     Select All Blocks → React Flow selection + useGraphStore sync.
- *     Fit to View       → reactFlow.fitView (⌘0).
- *     Zoom In / Out     → reactFlow.zoomIn / zoomOut (⌘= / ⌘-).
- *     Snap to Grid      → nativeGraphSetCanvasOptions (toggles host canvas flag).
- *     Minimap           → useGraphStore.toggleMinimap (⇧M).
- *     Auto-Layout…      → computeAutoLayout() over the real useGraphStore
- *                         nodes+edges, applied via nativeGraphAutoLayout (the
- *                         host batch-setPosition bridge → single snapshot push,
- *                         positions persist). NOTE: there is NO native layout
- *                         engine — the JUCE graph editor only has a
- *                         horizontal/vertical DIRECTION toggle
- *                         (grapheditorcomponent verticalLayout), not an arrange
- *                         algorithm; the layered layout is computed here in the
- *                         webview.
+ *     Add Block…              → opens QuickAddPopup at the cursor (onAddBlock).
+ *     Add Comment Box         → nativeGraphCommentAdd at the cursor.
+ *     Save selection as Snippet → feature-detected; degrades to hint if native
+ *                               `elementMoleculeSave` is not yet bridged.
+ *     Paste                   → nativeGraphPasteNodes (host pasteboard).
+ *     Select All Blocks       → React Flow selection + useGraphStore sync.
+ *     Fit to View             → reactFlow.fitView (⌘0).
+ *     Zoom In / Out           → reactFlow.zoomIn / zoomOut (⌘= / ⌘-).
+ *     Snap to Grid            → nativeGraphSetCanvasOptions (toggles host canvas flag).
+ *     Minimap                 → useGraphStore.toggleMinimap (⇧M).
+ *     Auto-Layout…            → computeAutoLayout() over the real useGraphStore
+ *                               nodes+edges, applied via nativeGraphAutoLayout (the
+ *                               host batch-setPosition bridge → single snapshot push,
+ *                               positions persist). NOTE: there is NO native layout
+ *                               engine — the JUCE graph editor only has a
+ *                               horizontal/vertical DIRECTION toggle
+ *                               (grapheditorcomponent verticalLayout), not an arrange
+ *                               algorithm; the layered layout is computed here in the
+ *                               webview.
  *
  *   HONEST-DEGRADED:
- *     Auto-Layout…      → disabled with reason "Board is empty — add Blocks
- *                         first" when the Board has zero Blocks (a real state,
- *                         not a bridge gap).
+ *     Save selection as Snippet → disabled when no blocks selected; degrades to
+ *                               StatusBar hint when native not yet wired.
+ *     Auto-Layout…            → disabled with reason "Board is empty — add Blocks
+ *                               first" when the Board has zero Blocks (a real state,
+ *                               not a bridge gap).
  *
  * Design: mirrors NodeContextMenu — same neumorphic shell, header, MenuItem
  * primitives, and category-hue dopamine hover-glow (here the primary signal
@@ -83,6 +92,14 @@ export function CanvasContextMenu({
   const minimapVisible = useGraphStore((s) => s.minimapVisible);
   const toggleMinimap = useGraphStore((s) => s.toggleMinimap);
   const selectNode = useGraphStore((s) => s.selectNode);
+  const selectedNodeIds = useGraphStore(
+    useShallow((s) => s.nodes.filter((n) => n.selected).map((n) => n.id)),
+  );
+
+  const setCanvasHint = useAppStore((s) => s.setCanvasHint);
+  const hintTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
 
   const snapToGrid = useHostExtrasStore((s) => s.canvas.snapToGrid);
   const gridSize = useHostExtrasStore((s) => s.canvas.gridSize);
@@ -106,11 +123,45 @@ export function CanvasContextMenu({
 
   // ── Action handlers (every enabled item invokes a real store/bridge call) ──
 
+  const showHint = useCallback(
+    (msg: string) => {
+      if (hintTimerRef.current !== undefined)
+        clearTimeout(hintTimerRef.current);
+      setCanvasHint(msg);
+      hintTimerRef.current = setTimeout(
+        () => setCanvasHint(null),
+        SAVE_SNIPPET_HINT_MS,
+      );
+    },
+    [setCanvasHint],
+  );
+
   const handleAddComment = useCallback(() => {
     // Centre a default 240×160 comment frame on the cursor.
     void nativeGraphCommentAdd(flowPosition.x - 120, flowPosition.y - 80);
     onClose();
   }, [flowPosition, onClose]);
+
+  const handleSaveAsSnippet = useCallback(() => {
+    onClose();
+    if (selectedNodeIds.length === 0) {
+      showHint("Select one or more Blocks first, then save as Snippet.");
+      return;
+    }
+    const name = window.prompt(
+      `Save ${selectedNodeIds.length} selected block${selectedNodeIds.length === 1 ? "" : "s"} as Snippet:`,
+      "My Snippet",
+    );
+    if (!name || name.trim() === "") return;
+
+    void nativeMoleculeSave(name.trim(), selectedNodeIds).then((ok) => {
+      showHint(
+        ok
+          ? `Snippet "${name.trim()}" saved.`
+          : `Failed to save Snippet "${name.trim()}".`,
+      );
+    });
+  }, [selectedNodeIds, showHint, onClose]);
 
   const handlePaste = useCallback(() => {
     void nativeGraphPasteNodes();
@@ -174,8 +225,8 @@ export function CanvasContextMenu({
     onClose();
   }, [onClose]);
 
-  // Estimated height for bottom-edge clamping (8 rows + 3 dividers + headers).
-  const estimatedHeight = 360;
+  // Estimated height for bottom-edge clamping (9 rows + 3 dividers + headers).
+  const estimatedHeight = 380;
   const menuStyle: React.CSSProperties = {
     position: "fixed",
     left: Math.min(position.x, window.innerWidth - 232),
@@ -222,6 +273,14 @@ export function CanvasContextMenu({
           shortcut="⇧C"
           accent={CANVAS_ACCENT}
           onClick={handleAddComment}
+        />
+        <MenuItem
+          iconName="BookmarkPlus"
+          label="Save selection as Snippet"
+          accent={CANVAS_ACCENT}
+          disabled={selectedNodeIds.length === 0}
+          disabledReason="Select one or more Blocks first"
+          onClick={handleSaveAsSnippet}
         />
 
         <MenuDivider />

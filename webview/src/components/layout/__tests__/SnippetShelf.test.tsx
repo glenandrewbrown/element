@@ -78,11 +78,22 @@ describe("<SnippetShelf />", () => {
 
   // ── Interaction ────────────────────────────────────────────────────────────
 
-  it("calls nativeMoleculeInsert with molecule name on click", () => {
+  it("calls nativeMoleculeInsert with molecule name on click (viewport-centre default)", () => {
+    // Insert position is now computed via snippetInsertDefault() which reads the
+    // React Flow DOM transform. In jsdom there is no .react-flow__viewport element,
+    // so the fallback (200, 200) is used. This is the spec-correct behaviour —
+    // the old hardcoded (120, 120) was the bug this test now guards against.
     mockMolecules = [{ name: "Reverb Send" }];
     render(<SnippetShelf />);
     fireEvent.click(screen.getByText("Reverb Send"));
-    expect(mockMoleculeInsert).toHaveBeenCalledWith("Reverb Send", 120, 120);
+    const [name, x, y] = mockMoleculeInsert.mock.calls[0] as [string, number, number];
+    expect(name).toBe("Reverb Send");
+    // Must NOT be the old hardcoded value
+    expect(x).not.toBe(120);
+    expect(y).not.toBe(120);
+    // Fallback in test env (no RF DOM) is 200, 200
+    expect(x).toBe(200);
+    expect(y).toBe(200);
   });
 
   it("calls nativeTransportPanic on PANIC click", () => {
@@ -91,12 +102,16 @@ describe("<SnippetShelf />", () => {
     expect(mockTransportPanic).toHaveBeenCalledOnce();
   });
 
-  it("inserts correct molecule when multiple exist", () => {
+  it("inserts correct molecule when multiple exist (not the old hardcoded coords)", () => {
     mockMolecules = [{ name: "A" }, { name: "B" }];
     render(<SnippetShelf />);
     fireEvent.click(screen.getByText("B"));
-    expect(mockMoleculeInsert).toHaveBeenCalledWith("B", 120, 120);
     expect(mockMoleculeInsert).toHaveBeenCalledTimes(1);
+    const [name, x, y] = mockMoleculeInsert.mock.calls[0] as [string, number, number];
+    expect(name).toBe("B");
+    // Must NOT be the old hardcoded (120,120) — insert uses viewport-centre default
+    expect(x).not.toBe(120);
+    expect(y).not.toBe(120);
   });
 
   // ── Edge cases ─────────────────────────────────────────────────────────────

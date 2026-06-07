@@ -4,7 +4,6 @@ import { useShallow } from "zustand/react/shallow";
 import type { BlockCategory, BlockData, CableData, Port } from "../../data/types";
 import {
   useGraphStore,
-  selectZoomTier,
   selectEdges,
 } from "../../stores/useGraphStore";
 import { useBusStore } from "../../stores/useBusStore";
@@ -703,6 +702,130 @@ function RmsMeter({
   );
 }
 
+// ── Primary signal classification (NOTHING-fake — from REAL ports) ──────────
+//
+// Decision A/2b + Gemini G2: the single activity bar's MAGNITUDE stays the
+// honest conflated `level` scalar, but its COLOUR is set by the node's primary
+// signal classification — real metadata (the node's actual port types), not a
+// fabricated second lane. Derived from the node's real OUTPUT ports (what the
+// block emits): audio wins, then MIDI, then Value/CV. A sink-only node (e.g.
+// Audio Output, audio ins only) falls back to its input side so it still reads
+// audio.
+type PrimarySignal = "audio" | "midi" | "cv";
+
+function primarySignalOf(ports: Port[]): PrimarySignal {
+  const has = (dir: "input" | "output", t: string) =>
+    ports.some((p) => p.direction === dir && p.type === t);
+  if (has("output", "audio") || has("input", "audio")) return "audio";
+  if (has("output", "midi") || has("input", "midi")) return "midi";
+  if (has("output", "value") || has("input", "value")) return "cv";
+  return "audio";
+}
+
+// One honest activity bar (2b / Decision-A compact well). A single horizontal
+// LED ladder whose lit count is the REAL `level` scalar and whose colour is the
+// node's primary signal classification (--sig-*). NEVER two magnitude
+// indicators off the one scalar (the conflated-scalar trap, documented in the
+// plan): a third-party card + a collapsed face each show EXACTLY this one bar.
+// Stale (no recent host frame) → neutral grey no-data. Recessed well so it
+// reads as pressed into the chassis (matches the meter-well language).
+//
+// PAINTER LAW (perf-wave guardrail): level → 9-bucket index (Cable's
+// ampToBucket pattern). Each segment gets ONE class string: `sigbar-seg
+// sigbar-lit-{0..8}` (lit, bucket index decides glow intensity) or
+// `sigbar-seg sigbar-unlit` (dark). Stale adds `sigbar-stale` to the wrapper.
+// Signal colour is carried via `data-signal` on the wrapper → CSS attr selector.
+// Identical bucket + state = identical class string = React/DOM no-op.
+// Zero per-tick inline background/opacity/boxShadow writes on any segment.
+function sigbarBucket(level: number): number {
+  // 9 steps 0..8 — mirrors ampToBucket in Cable.tsx.
+  return Math.round(Math.max(0, Math.min(1, level)) * 8);
+}
+
+const SEG_COUNT = 16;
+
+function SignalActivityBar({
+  level = 0,
+  signal,
+  active,
+  stale = false,
+}: {
+  level?: number;
+  signal: PrimarySignal;
+  active: boolean;
+  stale?: boolean;
+}) {
+  const bucket = stale ? 0 : sigbarBucket(level);
+  // lit = how many of the 16 segments are "on" for this bucket.
+  const lit = stale ? 0 : Math.round((bucket / 8) * SEG_COUNT);
+  const wrapperClass = `sigbar-well${stale ? " sigbar-stale" : ""}${!active ? " sigbar-inactive" : ""}`;
+  return (
+    <div
+      data-testid="signal-activity-bar"
+      data-signal={signal}
+      className={wrapperClass}
+    >
+      {Array.from({ length: SEG_COUNT }).map((_, i) => (
+        <div
+          key={i}
+          className={`sigbar-seg${i < lit ? ` sigbar-lit-${bucket}` : " sigbar-unlit"}`}
+        />
+      ))}
+    </div>
+  );
+}
+
+// ── Collapse chevron (D3 affordance matrix) ─────────────────────────────────
+//
+// Header affordance toggling the persisted collapse state (Decision A-2a).
+// D3 {rest/hover/active/focus}: rest = dim ink glyph; hover = brightens +
+// subtle backing; active(collapsed) = category micro-glow so the collapsed
+// state reads from the header alone; focus = high-contrast ring (G5 a11y, not
+// shadow-only). Pure glyph swap ▸/▾ (no rotate) honours the SNAP motion rule.
+function CollapseChevron({
+  collapsed,
+  accent,
+  onToggle,
+}: {
+  collapsed: boolean;
+  accent: string;
+  onToggle: (e: React.MouseEvent) => void;
+}) {
+  const [hover, setHover] = useState(false);
+  return (
+    <button
+      type="button"
+      data-testid="collapse-chevron"
+      aria-label={collapsed ? "Expand block" : "Collapse block"}
+      aria-expanded={!collapsed}
+      title={collapsed ? "Expand (show controls)" : "Collapse (header only)"}
+      onClick={onToggle}
+      onDoubleClick={(e) => { e.stopPropagation(); }}
+      onMouseDown={(e) => { e.stopPropagation(); }}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      className="shrink-0 flex items-center justify-center rounded focus:outline-none focus-visible:ring-2"
+      style={{
+        width: 14,
+        height: 14,
+        color: collapsed
+          ? "#15151A"
+          : hover
+            ? "rgba(21,21,26,0.95)"
+            : "rgba(21,21,26,0.62)",
+        background: hover ? "rgba(0,0,0,0.14)" : "transparent",
+        boxShadow: collapsed ? `0 0 4px ${accent}` : undefined,
+        transition: "color 120ms ease, background 120ms ease",
+        ["--tw-ring-color" as string]: accent,
+      }}
+    >
+      <span aria-hidden className="leading-none font-bold" style={{ fontSize: 9 }}>
+        {collapsed ? "▸" : "▾"}
+      </span>
+    </button>
+  );
+}
+
 // Chassis corner radius per category — a synth reads differently from an FX
 // rack at a glance (mockup's getChassisShape, radius only). Matches the
 // mockup's vst-instrument / vst-effect / vst-midi / logic silhouettes.
@@ -921,7 +1044,25 @@ function BlockComponent({ data, selected }: NodeProps) {
   const cat = catConfig[d.category] ?? catConfig.instrument;
   const isContainer = d.containerNodeCount != null;
   const isPortal = d.isPortal ?? false;
-  const zoomTier = useGraphStore(selectZoomTier);
+  // Built-in (internal) nodes carry format "INT"; everything else
+  // (VST3/AU/CLAP/LV2) is a third-party plugin and renders the fixed I/O +
+  // single-activity-bar card (2b), never an embedded editor on the face.
+  const isThirdParty = d.format !== "INT";
+
+  // ── Persisted collapse state (Decision A-2a, Glen Q1: PERSISTS across reopen) ──
+  // Replaces the old zoom-driven content swap (2a — kill zoom-morph): a Block
+  // renders ONE content-driven (A-1) height and zoom only SCALES it (React Flow
+  // transform). The "compact" tier is now a DELIBERATE user collapse, not a
+  // zoom artifact. `d.collapsed` is the engine-persisted boolean (hydrated from
+  // the Node ValueTree); `setCollapsed` flips it write-on-click (optimistic +
+  // ValueTree persist) so the layout survives save/load. Collapsed = header +
+  // activity well only (≈84px, D5 — the well STAYS, never name+dot).
+  const collapsed = d.collapsed ?? false;
+  const setCollapsed = useGraphStore((s) => s.setCollapsed);
+  const toggleCollapsed = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    void setCollapsed(d.id, !collapsed);
+  };
 
   // ── Header state actions (verdict 1) — real engine wiring for B/M ──
   // Solo (S) is intentionally absent: Element's engine has no solo concept
@@ -1188,20 +1329,12 @@ function BlockComponent({ data, selected }: NodeProps) {
     );
   }
 
-  // ── Compact mode (semantic zoom) ──
-
-  if (zoomTier === "compact") {
-    return (
-      <div style={{ contain: "content" }} className="w-[100px] bg-surface rounded-lg p-2 border border-white/5">
-        <div className="flex items-center gap-1.5">
-          <div className={`w-2 h-2 rounded-full ${cat.bg}`} />
-          <span className="text-[10px] font-bold text-text-primary truncate">{d.name}</span>
-        </div>
-      </div>
-    );
-  }
-
   // ── Standard block ──
+  //
+  // 2a — zoom-driven content morphing is GONE: the block renders one
+  // content-driven (A-1) height; React Flow's transform handles zoom scaling.
+  // The deliberate COMPACT tier (collapse) is handled inside this render below
+  // (header + activity well only when `collapsed`), not by a zoom branch.
 
   const hostOutline = hostColourOutline(d.hostColor);
   // Per-node custom colour (right-click → Options swatches): when set it
@@ -1339,7 +1472,9 @@ function BlockComponent({ data, selected }: NodeProps) {
           {d.format}
         </span>
         {/* z-50 keeps B/M ABOVE the muted/bypassed overlays (z-30/z-10) so the
-            state buttons stay lit + clickable to undo the state (mockup). */}
+            state buttons stay lit + clickable to undo the state (mockup). The
+            collapse chevron sits with them (also z-50): toggles the persisted
+            compact tier (Decision A-2a). */}
         <div className="flex items-center gap-px shrink-0 relative z-50">
           <StateBtn
             letter="B"
@@ -1361,25 +1496,60 @@ function BlockComponent({ data, selected }: NodeProps) {
             }}
             title="Mute"
           />
+          <CollapseChevron
+            collapsed={collapsed}
+            accent={accentHsl}
+            onToggle={toggleCollapsed}
+          />
         </div>
       </div>
 
-      {/* Control deck — mockup's two-branch body (NO dead space, Glen):
-          • knobs present  → knob bank + a flex-1 stacked L/R RMS strip
-          • no knobs, audio → flex-1 stacked L/R RMS meters fill the deck
-          • no knobs, midi/mod → status text + activity dot (mockup) */}
-      {/* The deck renders at standard tier; at EXPANDED tier (the DEFAULT —
-          zoom > 0.9, i.e. how Glen actually sees a board) it normally yields
-          to the BlockEmbed — but a curated inline face is the block's primary
-          control surface (T5, "controls directly on the block GUI"), so it
-          stays visible at expanded too. Live QA 2026-06-06: the chooser was
-          invisible at default zoom without this. Compact stays bare. */}
-      {(zoomTier !== "expanded" || (inlineSpec && inlineFaceValid)) && (
+      {/* ── COMPACT tier (Decision A-2a, persisted collapse) ──
+          When collapsed the Block shows header + a single activity well only
+          (≈84px total). D5: the activity well STAYS (never "name + dot") — a
+          single honest bar off the real `level` scalar, coloured by the node's
+          signal type. NO control deck, NO embed, NO full port lane. Transition
+          is a SNAP (locked motion rule — width/height are never animated). */}
+      {collapsed ? (
+        <div
+          className="block-body flex items-center px-2 relative z-[5]"
+          style={{ height: 22 }}
+        >
+          <SignalActivityBar
+            level={meterLevel}
+            signal={primarySignalOf(d.ports)}
+            active={active}
+            stale={meterState === "stale"}
+          />
+        </div>
+      ) : null}
+
+      {/* Control deck — content-driven (A-1), zoom-INVARIANT (2a). Renders
+          whenever the Block is NOT collapsed; zoom only scales it.
+          • THIRD-PARTY (non-INT plugin, 2b): the fixed card body = ONE honest
+            activity bar off `level`, coloured by signal type. No knobs, no
+            second meter, NO embedded editor (double-click opens the windowed
+            editor). The conflated-scalar trap: exactly ONE indicator.
+          • BUILT-IN: curated inline face (T5) → indexed knobs + RMS strip →
+            audio meter strip → MIDI/mod status (the mockup's two-branch body). */}
+      {!collapsed && (
         <div
           className="block-body flex items-center gap-1.5 px-2 relative z-[5]"
           style={{ height: 54 }}
         >
-          {inlineSpec && inlineFaceValid ? (
+          {isThirdParty ? (
+            // 2b — third-party plugin card: real I/O (port lane below) + a
+            // SINGLE activity bar coloured by signal type. NOTHING-fake: one
+            // bar off the one `level` scalar, never an audio-VU + MIDI-LED pair.
+            <div className="flex-1 flex items-center min-w-0">
+              <SignalActivityBar
+                level={meterLevel}
+                signal={primarySignalOf(d.ports)}
+                active={active}
+                stale={meterState === "stale"}
+              />
+            </div>
+          ) : inlineSpec && inlineFaceValid ? (
             // T5 — curated inline face (validated). Replaces the generic deck
             // for built-in INT blocks whose identifier has a registered face.
             <InlineFace d={d} spec={inlineSpec} meta={inlineMeta ?? []} />
@@ -1451,8 +1621,17 @@ function BlockComponent({ data, selected }: NodeProps) {
         </div>
       )}
 
-      {/* ── Expanded embed (semantic zoom) ── */}
-      {zoomTier === "expanded" && (
+      {/* ── Heavy face (live meter + FFT spectrum) ──
+          2a — NO LONGER auto-mounted by zoom. The heavy BlockEmbed appears only
+          where a REAL audio block warrants it AND the block is expanded:
+          a BUILT-IN audiofx node (EQ / spectral processor) that is not
+          collapsed and has a real audio output — that is the one place the live
+          FFT spectrum strip carries unique real data (useNodeSpectrum gates the
+          audio-thread tap to exactly these on-screen blocks). Third-party
+          plugins get the single activity card instead (2b) and NEVER an embed;
+          non-audio built-ins are covered by the deck above. Honest + perf-safe:
+          the spectrum tap is scoped to visible audiofx blocks only. */}
+      {!collapsed && !isThirdParty && d.category === "audiofx" && hasAudioOut && (
         <BlockEmbed nodeId={d.id} category={d.category} />
       )}
 
@@ -1474,10 +1653,15 @@ function BlockComponent({ data, selected }: NodeProps) {
         // essential I/O. Param rows (when expanded) stack below the toggle.
         const toggleTop = essentialRows * PORT_LANE_H + PORT_LANE_H / 2 + 2;
         const paramBaseRow = essentialRows + (hasParamPorts ? 1 : 0);
+        // Collapsed (compact tier): keep ONLY essential I/O ports so the block
+        // stays cablable, but drop the param pill + param rows (the ≈84px
+        // compact face is header + activity well + essential I/O, never the
+        // full param wall). Expanded: the usual lean lane.
+        const showParamLane = hasParamPorts && !collapsed;
         const shownRows =
           essentialRows +
-          (hasParamPorts ? 1 : 0) +
-          (paramsExpanded ? paramRows : 0);
+          (showParamLane ? 1 : 0) +
+          (showParamLane && paramsExpanded ? paramRows : 0);
         return (
           <div
             className="relative shrink-0 z-20"
@@ -1503,8 +1687,10 @@ function BlockComponent({ data, selected }: NodeProps) {
               />
             ))}
 
-            {/* PARAM/MOD — collapsed by default behind the toggle. */}
-            {hasParamPorts && (
+            {/* PARAM/MOD — collapsed by default behind the toggle. Suppressed
+                entirely when the BLOCK is collapsed (compact tier shows only
+                essential I/O + the activity well). */}
+            {showParamLane && (
               <ParamLaneToggle
                 count={paramPortCount}
                 expanded={paramsExpanded}
@@ -1515,7 +1701,7 @@ function BlockComponent({ data, selected }: NodeProps) {
                 }}
               />
             )}
-            {hasParamPorts &&
+            {showParamLane &&
               paramsExpanded &&
               paramInputs.map((port, i) => (
                 <PortRow
@@ -1526,7 +1712,7 @@ function BlockComponent({ data, selected }: NodeProps) {
                   busName={portBusMap.get(port.id)}
                 />
               ))}
-            {hasParamPorts &&
+            {showParamLane &&
               paramsExpanded &&
               paramOutputs.map((port, i) => (
                 <PortRow

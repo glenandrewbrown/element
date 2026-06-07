@@ -51,6 +51,16 @@ export interface BlockData {
    */
   hiddenParams?: string[];
   /**
+   * Persisted collapse state (Decision A-2a, Glen Q1 2026-06-07: collapse
+   * PERSISTS across reopen). When true the Block renders the COMPACT face —
+   * header + activity well only (≈84px), NO control deck (D5: the activity well
+   * STAYS, never name+dot). Persisted in the Node ValueTree as the "collapsed"
+   * property (mirrors userNote/userHiddenParams) so the layout survives
+   * save/load. Write-on-click only via `setCollapsed` → joins the coalesced
+   * graph push (a static graph pushes nothing). Default/absent = false.
+   */
+  collapsed?: boolean;
+  /**
    * Internal node identifier from the engine snapshot (e.g. "element.compare").
    * Present for all blocks; lets inline Block controls branch on built-in type.
    */

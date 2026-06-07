@@ -11,6 +11,7 @@ import {
   nativeGraphSetOversample,
   nativeGraphReplacePlugin,
   nativeGraphSetNodeHiddenParams,
+  nativeGraphSetNodeCollapsed,
   nativeEnterContainer,
   nativeExitContainer,
 } from "../bridge/nativeGraph";
@@ -244,6 +245,15 @@ interface GraphActions {
    * set for the node (not a delta).
    */
   setHiddenParams: (nodeId: string, hiddenIds: string[]) => Promise<void>;
+  /**
+   * Set a Block's persisted collapse state (Decision A-2a, Glen Q1 — collapse
+   * PERSISTS across reopen). Optimistic-with-rollback (mirrors setHiddenParams):
+   * the local `collapsed` flag flips immediately, then the bridge persists the
+   * boolean on the Node ValueTree; if the bridge rejects/throws the flag reverts
+   * so a no-op never leaves a fabricated state on screen. The next snapshot
+   * reconciles authoritatively. Write-on-click only ⇒ joins the coalesced push.
+   */
+  setCollapsed: (nodeId: string, collapsed: boolean) => Promise<void>;
   /**
    * G3-A — replace the plugin in a node in-place. No optimistic edit: the
    * replaced node's ports/name/params arrive via the next snapshot — never
@@ -582,6 +592,38 @@ export const useGraphStore = create<GraphStore>()((set) => ({
       set((s) => ({
         nodes: s.nodes.map((n) =>
           n.id === nodeId ? { ...n, hiddenParams: prev } : n,
+        ),
+      }));
+    }
+  },
+
+  setCollapsed: async (nodeId, collapsed) => {
+    let prev: boolean | undefined;
+    set((s) => {
+      const node = s.nodes.find((n) => n.id === nodeId);
+      prev = node?.collapsed;
+      return {
+        nodes: s.nodes.map((n) => (n.id === nodeId ? { ...n, collapsed } : n)),
+      };
+    });
+    try {
+      const ok = await nativeGraphSetNodeCollapsed(nodeId, collapsed);
+      if (!ok) {
+        logBridgeError(
+          "useGraphStore.setCollapsed",
+          `bridge rejected collapsed ${nodeId} → ${collapsed}`,
+        );
+        set((s) => ({
+          nodes: s.nodes.map((n) =>
+            n.id === nodeId ? { ...n, collapsed: prev } : n,
+          ),
+        }));
+      }
+    } catch (err) {
+      logBridgeError("useGraphStore.setCollapsed", err);
+      set((s) => ({
+        nodes: s.nodes.map((n) =>
+          n.id === nodeId ? { ...n, collapsed: prev } : n,
         ),
       }));
     }

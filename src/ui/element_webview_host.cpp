@@ -394,13 +394,16 @@ static String buildSessionBrowserEntriesJson()
     };
     std::vector<Entry> all;
 
+    // E8 (4b): the Projects shelf lists `.els` SESSIONS only — `elementSessionOpenPath`
+    // only opens `.els`, so listing .elg/.eln/.elpreset/.elc would show files the
+    // shelf can't open. Autosave files (`*.autosave.els` / `autosave_*.els`) ARE
+    // `.els` and ARE recoverable, so they remain but carry an `isAutosave` flag.
     auto addFromDir = [&all] (const File& dir, bool recursive)
     {
         if (! dir.isDirectory())
             return;
         for (const auto& entry :
-             RangedDirectoryIterator (dir, recursive, "*.els;*.elg;*.eln;*.elpreset;*.elc",
-                                      File::findFiles))
+             RangedDirectoryIterator (dir, recursive, "*.els", File::findFiles))
         {
             const File f = entry.getFile();
             all.push_back ({ f, f.getLastModificationTime() });
@@ -408,11 +411,9 @@ static String buildSessionBrowserEntriesJson()
     };
 
     addFromDir (DataPath::defaultSessionDir(), true);
-    addFromDir (DataPath::defaultGraphDir(), true);
-    addFromDir (DataPath::defaultControllersDir(), true);
 
     const File userRoot = DataPath::defaultLocation();
-    for (const auto& entry : RangedDirectoryIterator (userRoot, false, "*.els;*.elg", File::findFiles))
+    for (const auto& entry : RangedDirectoryIterator (userRoot, false, "*.els", File::findFiles))
     {
         const File f = entry.getFile();
         bool dup = false;
@@ -434,10 +435,46 @@ static String buildSessionBrowserEntriesJson()
     for (int i = 0; i < cap; ++i)
     {
         const File& f = all[(size_t) i].file;
+        const String fname = f.getFileName();
+        const bool untitledAutosave = fname.startsWith ("autosave_");
+        const bool siblingAutosave = fname.endsWith (".autosave.els");
+        const bool isAutosave = untitledAutosave || siblingAutosave;
+
+        // isRecoverable applies the strictly-newer-than-backing rule:
+        //   • untitled autosaves (autosave_*.els) — always recoverable
+        //   • sibling autosaves (<name>.autosave.els) — recoverable only if the
+        //     autosave is STRICTLY NEWER than <name>.els (or backing doesn't exist)
+        //   • regular named files — never recoverable
+        bool isRecoverable = false;
+        if (untitledAutosave)
+        {
+            isRecoverable = true;
+        }
+        else if (siblingAutosave)
+        {
+            const String backingName = fname.upToLastOccurrenceOf (".autosave.els", false, false) + ".els";
+            const File backing = f.getParentDirectory().getChildFile (backingName);
+            isRecoverable = !backing.existsAsFile()
+                            || f.getLastModificationTime() > backing.getLastModificationTime();
+        }
+
+        // Friendly label: untitled recoveries read "Untitled — recovered";
+        // sibling autosaves drop the ".autosave" stem so they group with their
+        // project; everything else is the plain stem.
+        String name;
+        if (untitledAutosave)
+            name = "Untitled \xe2\x80\x94 recovered";
+        else if (siblingAutosave)
+            name = fname.upToLastOccurrenceOf (".autosave.els", false, false);
+        else
+            name = f.getFileNameWithoutExtension();
+
         DynamicObject::Ptr o (new DynamicObject());
         o->setProperty ("path", f.getFullPathName());
-        o->setProperty ("name", f.getFileNameWithoutExtension());
+        o->setProperty ("name", name);
         o->setProperty ("ext", f.getFileExtension().toLowerCase());
+        o->setProperty ("isAutosave", isAutosave);
+        o->setProperty ("isRecoverable", isRecoverable);
         o->setProperty ("modifiedMs", (int64) all[(size_t) i].modified.toMilliseconds());
         rows.add (var (o.get()));
     }
@@ -2805,6 +2842,43 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             postCompletion (completion, ok);
         });
 
+    // Per-block persisted collapse state (Decision A-2a, Glen Q1 2026-06-07:
+    // collapse PERSISTS across reopen). Stored as a "collapsed" boolean
+    // ValueTree property on the Node — mirrors "userNote"/"userHiddenParams"
+    // exactly — so a deliberately-collapsed Block survives session save/load.
+    // Read back into the snapshot as `collapsed` (see block-emit below).
+    //   args[0] = nodeUuid  : String
+    //   args[1] = collapsed : bool
+    //   → bool
+    registerFn (
+        Identifier ("elementNodeSetCollapsed"),
+        [this, postCompletion] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 2)
+            {
+                if (auto sess = context.session())
+                {
+                    const Graph G (currentBoard());
+                    if (G.isGraph())
+                    {
+                        Node n = findNodeByUuidInGraph (G, args[0].toString());
+                        if (n.isValid())
+                        {
+                            n.setProperty (Identifier ("collapsed"), (bool) args[1]);
+                            ok = true;
+                        }
+                    }
+                }
+            }
+            // A purely visual per-Block UI property — no audio/RT path.
+            // Write-on-click only, so the 40 ms coalesced push reflects it on
+            // the next snapshot (a static graph still pushes nothing — this
+            // field only ever changes on a deliberate user click).
+            if (ok)
+                scheduleGraphPush (40);
+            postCompletion (completion, ok);
+        });
+
     registerFn (
         Identifier ("elementGraphDuplicateNodes"),
         [this, postCompletion] (const Array<var>& args, auto completion) {
@@ -3411,6 +3485,74 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             postCompletion (completion, j);
         });
 
+    // E6 (4b): silent named-save. args[0] = project name (no extension). Saves
+    // to <defaultSessionDir>/<name>.els with NO FileChooser. Returns true on a
+    // successful write. The webview uses this for the inline first-save prompt.
+    registerFn (
+        Identifier ("elementSessionSaveNamed"),
+        [this, postCompletion] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 1)
+                if (auto* ss = context.services().find<SessionService>())
+                {
+                    ok = ss->saveSessionToName (args[0].toString());
+                    if (auto* gui = context.services().find<GuiService>())
+                        gui->stabilizeContent();
+                }
+            if (ok)
+                pushGraphSnapshot();
+            postCompletion (completion, ok);
+        });
+
+    // E1 (4b): report the newest recoverable autosave (newer than its backing
+    // session, or any untitled autosave). Returns a JSON object
+    // {path,name,untitled,modifiedMs} or an empty object when none is found.
+    registerFn (
+        Identifier ("elementSessionFindRecoverable"),
+        [this, postCompletion] (const Array<var>&, auto completion) {
+            DynamicObject::Ptr o (new DynamicObject());
+            if (auto* ss = context.services().find<SessionService>())
+            {
+                const File rec (ss->findRecoverableAutosave());
+                if (rec.existsAsFile())
+                {
+                    const bool untitled = rec.getFileName().startsWith ("autosave_");
+                    o->setProperty ("path", rec.getFullPathName());
+                    o->setProperty ("name", untitled ? String ("Untitled — recovered")
+                                                      : rec.getFileName()
+                                                            .upToLastOccurrenceOf (".autosave.els", false, false));
+                    o->setProperty ("untitled", untitled);
+                    o->setProperty ("modifiedMs",
+                                    (juce::int64) rec.getLastModificationTime().toMilliseconds());
+                }
+            }
+            postCompletion (completion, JSON::toString (var (o.get())));
+        });
+
+    // E1 (4b): perform recovery of an autosave file as a real `.els` session.
+    // args[0] = absolute path (from elementSessionFindRecoverable / the shelf).
+    // Returns true on success; an untitled recovery presents as
+    // "Untitled — recovered" with no file set (next save prompts for a name).
+    registerFn (
+        Identifier ("elementSessionRecover"),
+        [this, postCompletion] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 1)
+                if (auto* ss = context.services().find<SessionService>())
+                {
+                    const File f (args[0].toString().trim());
+                    if (f.existsAsFile() && f.hasFileExtension ("els"))
+                    {
+                        ok = ss->recoverFromAutosave (f);
+                        if (auto* gui = context.services().find<GuiService>())
+                            gui->stabilizeContent();
+                    }
+                }
+            if (ok)
+                pushGraphSnapshot();
+            postCompletion (completion, ok);
+        });
+
     registerFn (
         Identifier ("elementPluginEditorOpen"),
         [this, postCompletion] (const Array<var>& args, auto completion) {
@@ -3512,6 +3654,44 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             if (count > 0)
                 pushGraphSnapshot();
             postCompletion (completion, count);
+        });
+
+    // Save the current selection as a reusable Snippet (Molecule). Wave-2 C.
+    // args[0] = snippet name, args[1] = array of node UUID strings.
+    // Returns true only when the molecule was genuinely created + stored
+    // (NOTHING-fake: the webview's "Snippet saved" hint must never lie).
+    registerFn (
+        Identifier ("elementMoleculeSave"),
+        [this, postCompletion] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 2)
+                if (auto sess = context.session())
+                {
+                    const String molName = args[0].toString().trim();
+                    const Graph G (sess->getCurrentGraph());
+                    Array<uint32> nodeIds;
+                    if (molName.isNotEmpty() && G.isGraph())
+                        if (const Array<var>* arr = args[1].getArray())
+                            for (const auto& v : *arr)
+                            {
+                                const Node n = findNodeByUuidInGraph (G, v.toString());
+                                if (n.isValid())
+                                    nodeIds.add ((uint32) (int64) n.getNodeId());
+                            }
+                    if (nodeIds.size() > 0)
+                    {
+                        const Molecule mol = Molecule::createFromSelection (G, nodeIds, molName);
+                        if (mol.isValid())
+                        {
+                            MoleculeLibrary lib;
+                            lib.refresh();
+                            ok = lib.addMolecule (mol);
+                        }
+                    }
+                }
+            if (ok)
+                pushGraphSnapshot();
+            postCompletion (completion, ok);
         });
 
     registerFn (
@@ -5996,11 +6176,16 @@ String ElementWebViewHost::buildActiveGraphJson() const
         const File sf (ss->getSessionFile());
         sessionObj->setProperty ("filePath", sf.getFullPathName());
         sessionObj->setProperty ("dirty", ss->hasSessionChanged());
+        // G3 (4b): timestamp of the last successful save / autosave. The webview
+        // fires a non-modal save-pulse when this value increases — covers silent
+        // saves AND autosaves with no separate JS push.
+        sessionObj->setProperty ("savedAtMs", ss->getLastSavedMs());
     }
     else
     {
         sessionObj->setProperty ("filePath", String());
         sessionObj->setProperty ("dirty", false);
+        sessionObj->setProperty ("savedAtMs", (juce::int64) 0);
     }
     {
         Array<var> recentVar;
@@ -6220,6 +6405,12 @@ String ElementWebViewHost::buildActiveGraphJson() const
         // BlockData.hiddenParams and filters those Value/CV ports off the Block.
         // Empty when none hidden → BlockData.hiddenParams [] → all params shown.
         b->setProperty ("hiddenParams", n.getProperty (Identifier ("userHiddenParams"), "").toString());
+        // Persisted collapse state (Decision A-2a, Glen Q1: collapse PERSISTS
+        // across reopen). Real boolean from the Node ValueTree "collapsed"
+        // property (write-on-click via elementNodeSetCollapsed); default false
+        // (expanded). The webview renders the compact header+activity-well face
+        // when true (BlockData.collapsed). Round-trips save/load with the tree.
+        b->setProperty ("collapsed", (bool) n.getProperty (Identifier ("collapsed"), false));
 
         // Per-block CPU load + latency. Latency comes from
         // `Processor::getLatencySamples()` (already aggregates host-reported,
@@ -6415,6 +6606,20 @@ static float nodeOutputLevel (const Node& n)
             maxRms = jmax (maxRms, proc->getOutputRMS (i));
         if (maxRms > 0.f)
             return jmin (1.0f, maxRms * 3.0f);
+    }
+
+    // Sink nodes (e.g. Audio Output) have no audio outputs — surface input
+    // RMS instead so the block meter shows the signal REACHING it rather than
+    // being permanently dark. getInputRMS is populated per channel by
+    // graphbuilder every render block — real data, no new plumbing. (Wave-2 E)
+    const int numInputs = proc->getNumAudioInputs();
+    if (numInputs > 0)
+    {
+        float maxInRms = 0.f;
+        for (int i = 0; i < numInputs; ++i)
+            maxInRms = jmax (maxInRms, proc->getInputRMS (i));
+        if (maxInRms > 0.f)
+            return jmin (1.0f, maxInRms * 3.0f);
     }
 
     // No audio output level — surface MIDI output activity (router / MIDI fx /

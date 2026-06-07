@@ -74,6 +74,22 @@ interface AppState {
    * auto-clear timeout (T3). Session-only; never persisted.
    */
   canvasHint: string | null;
+  /**
+   * Auto-tidy-on-add (Feedback #3b, Glen Q3: "yes — and on by default"). When
+   * true, dropping a NEW Block triggers a debounced animated relayout (Tidy) so
+   * "blocks clean themselves up instinctively". OFF disables it (the toggle next
+   * to the Tidy button). The no-fighting-the-user constraints (fire only on ADD,
+   * never on a user drag, a drag cancels a pending pass) live in GraphCanvas;
+   * this flag is just the on/off gate. Session-only; never persisted (it is a
+   * workflow preference, not project state — matches cableRouting/flowDebug).
+   */
+  autoTidyOnAdd: boolean;
+  /**
+   * Session-local snap-to-grid for dragged Blocks (Feedback #3b). React Flow's
+   * `snapToGrid` is driven from this OR the host canvas flag, so a user can flip
+   * snapping from the toolbar without a host round-trip. Session-only.
+   */
+  snapToGrid: boolean;
 }
 
 interface AppActions {
@@ -92,6 +108,10 @@ interface AppActions {
   requestGraphStateRefresh: () => void;
   setEmbeddedEditorNodeId: (nodeId: string | null) => void;
   setCanvasHint: (hint: string | null) => void;
+  toggleAutoTidyOnAdd: () => void;
+  setAutoTidyOnAdd: (on: boolean) => void;
+  toggleSnapToGrid: () => void;
+  setSnapToGrid: (on: boolean) => void;
 }
 
 type AppStore = AppState & AppActions;
@@ -113,10 +133,22 @@ export const useAppStore = create<AppStore>()(
   embeddedEditorNodeId: null,
   flowDebug: false,
   canvasHint: null,
+  // Glen Q3 — auto-tidy ships ON by default ("blocks should clean themselves up
+  // instinctively"). The user can disable it via the toggle next to Tidy.
+  autoTidyOnAdd: true,
+  snapToGrid: false,
 
   markHostReady: () => set({ hostReady: true }),
 
   setCanvasHint: (hint) => set({ canvasHint: hint }),
+
+  toggleAutoTidyOnAdd: () => set((s) => ({ autoTidyOnAdd: !s.autoTidyOnAdd })),
+
+  setAutoTidyOnAdd: (on) => set({ autoTidyOnAdd: on }),
+
+  toggleSnapToGrid: () => set((s) => ({ snapToGrid: !s.snapToGrid })),
+
+  setSnapToGrid: (on) => set({ snapToGrid: on }),
 
   setEmbeddedEditorNodeId: (nodeId) => set({ embeddedEditorNodeId: nodeId }),
 

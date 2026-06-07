@@ -153,7 +153,10 @@ function CableComponent({
   // Endpoint plug opacity follows the SAME stops as the main stroke
   // (selected ⇒ 1, else 0.4 + amp*0.6) but quantised to the bucket so the two
   // plug circles don't re-paint a fresh opacity float every tick either.
-  const plugOpacity = selected ? 1 : 0.4 + ampQ * 0.6;
+  // Endpoint plug opacity: minimum floor raised to 0.65 (was 0.4) so an idle
+  // plug on the dark chassis (#1E1E22) achieves ≥4.5:1 contrast (G5/T9 Wave-2).
+  // Still quantised to the bucket; selected forces full opacity.
+  const plugOpacity = selected ? 1 : 0.65 + ampQ * 0.35;
   // Unique per-edge marker id (T9b). A shared id would make ALL cables paint
   // with the FIRST mounted cable's marker colour (a known SVG quirk: <marker>
   // is referenced by url(#id), so identical ids collapse to one definition).
@@ -284,15 +287,19 @@ function CableComponent({
       {/* Per-edge arrowhead marker (T9b) — UNIQUE id so each cable paints its
           own signal colour. Lives in the cable's <g>, not a shared layer. */}
       <defs>
+        {/* T9/Wave-2: strokeWidth units keep the arrowhead proportionally
+            visible across the zoom band (0.5×–1.5×). markerWidth/Height 3.5
+            in strokeWidth units ≈ 7–17px at the cable's 2–5px stroke range.
+            refX 5 tucks the tip flush with the port. */}
         <marker
           id={markerId}
           viewBox="0 0 8 8"
-          refX="6"
+          refX="5"
           refY="4"
-          markerWidth="5"
-          markerHeight="5"
+          markerWidth="3.5"
+          markerHeight="3.5"
           orient="auto-start-reverse"
-          markerUnits="userSpaceOnUse"
+          markerUnits="strokeWidth"
         >
           <path d="M0,0 L8,4 L0,8 Z" fill={color} />
         </marker>
@@ -342,10 +349,12 @@ function CableComponent({
           Drawn at the React-Flow endpoints so they track the live geometry.
           Opacity is bucket-quantised (plugOpacity) so the discs don't repaint a
           fresh opacity float every tick. */}
+      {/* r=5 (was 4) + min-opacity 0.65 for ≥4.5:1 contrast on the dark chassis
+          at idle. No blur (neumorphic). Opacity bucket-quantised. (T9/Wave-2) */}
       <circle
         cx={sourceX}
         cy={sourceY}
-        r={4}
+        r={5}
         fill={color}
         stroke="#1A1A1E"
         strokeWidth={1.5}
@@ -356,7 +365,7 @@ function CableComponent({
       <circle
         cx={targetX}
         cy={targetY}
-        r={4}
+        r={5}
         fill={color}
         stroke="#1A1A1E"
         strokeWidth={1.5}

@@ -127,7 +127,11 @@ describe("<Block />", () => {
   // miscategorisation from blockcategory.hpp's name heuristic.
 
   it("never shows a VU on a MIDI-only node, even when categorised instrument", () => {
+    // BUILT-IN (INT) path: the RMS deck is port-gated, so a MIDI-only built-in
+    // shows no VU. (Third-party plugins render the single signal bar instead —
+    // covered separately below; this asserts the built-in deck's port gating.)
     renderBlock({
+      format: "INT",
       category: "instrument", // miscategorised hardware MIDI input
       ports: [
         { id: "out-m", label: "MIDI", direction: "output", type: "midi", connected: false },
@@ -136,8 +140,11 @@ describe("<Block />", () => {
     expect(screen.queryAllByTestId("rms-meter")).toHaveLength(0);
   });
 
-  it("shows VU meters when the block has an audio output", () => {
+  it("shows VU meters when a BUILT-IN block has an audio output", () => {
+    // The dual-RMS strip is the BUILT-IN audio deck. Third-party plugins get
+    // the single signal-activity bar (2b) instead — see the dedicated test.
     renderBlock({
+      format: "INT",
       category: "instrument",
       ports: [
         { id: "out-0", label: "L", direction: "output", type: "audio", connected: false },
@@ -149,8 +156,9 @@ describe("<Block />", () => {
   it("never shows a VU on an audio-output-device shape (audio INPUTS only)", () => {
     // Output device: audio ins, no audio outs — the output-RMS feed has no
     // data for it, so an honest face shows no meter (input-side RMS bridge is
-    // the named follow-up).
+    // the named follow-up). Built-in path (the RMS deck).
     renderBlock({
+      format: "INT",
       category: "audiofx",
       ports: [
         { id: "in-0", label: "L", direction: "input", type: "audio", connected: true },
@@ -160,8 +168,9 @@ describe("<Block />", () => {
     expect(screen.queryAllByTestId("rms-meter")).toHaveLength(0);
   });
 
-  it("MIDI-only node renders the status row instead of meters", () => {
+  it("MIDI-only BUILT-IN node renders the status row instead of meters", () => {
     renderBlock({
+      format: "INT",
       category: "midifx",
       ports: [
         { id: "out-m", label: "MIDI", direction: "output", type: "midi", connected: false },
@@ -169,6 +178,39 @@ describe("<Block />", () => {
     });
     expect(screen.getByText("Pass-through")).toBeInTheDocument();
     expect(screen.queryAllByTestId("rms-meter")).toHaveLength(0);
+  });
+
+  // ── 2b — third-party plugin card: I/O + ONE signal-coloured activity bar ──
+  // A non-INT plugin renders the fixed card: exactly ONE activity indicator
+  // (the SignalActivityBar), NEVER an audio-VU + MIDI-LED pair (the conflated-
+  // scalar trap). Magnitude = the real `level` scalar; colour = signal type.
+
+  it("third-party audio plugin renders ONE signal bar (no dual RMS, audio-coloured)", () => {
+    renderBlock({
+      format: "VST3",
+      category: "audiofx",
+      ports: [
+        { id: "out-0", label: "L", direction: "output", type: "audio", connected: false },
+      ],
+    });
+    const bars = screen.getAllByTestId("signal-activity-bar");
+    expect(bars).toHaveLength(1); // exactly ONE indicator — NOTHING-fake
+    expect(bars[0].getAttribute("data-signal")).toBe("audio");
+    // No built-in dual-RMS strip on a third-party card.
+    expect(screen.queryAllByTestId("rms-meter")).toHaveLength(0);
+  });
+
+  it("third-party MIDI plugin renders ONE signal bar coloured teal (midi)", () => {
+    renderBlock({
+      format: "VST3",
+      category: "midifx",
+      ports: [
+        { id: "out-m", label: "MIDI", direction: "output", type: "midi", connected: false },
+      ],
+    });
+    const bars = screen.getAllByTestId("signal-activity-bar");
+    expect(bars).toHaveLength(1);
+    expect(bars[0].getAttribute("data-signal")).toBe("midi");
   });
 
   // ── Bypass / mute states ────────────────────────────────────────────────

@@ -56,6 +56,8 @@ type EngineBlock = {
   note?: string;
   /** CSV of hidden param-port ids (persisted "userHiddenParams"). */
   hiddenParams?: string;
+  /** Persisted collapse state (ValueTree "collapsed"; Decision A-2a). */
+  collapsed?: boolean;
   /** Internal node identifier, e.g. "element.compare" (all blocks). */
   identifier?: string;
   /** Engine-truth integer mode for element.compare / element.logic only. */
@@ -134,6 +136,7 @@ type EngineSnapshot = {
     filePath?: string;
     dirty?: boolean;
     recentFiles?: string[];
+    savedAtMs?: number;
   };
   graphs?: EngineGraphRow[];
   engine?: {
@@ -272,6 +275,10 @@ function mapBlock(b: EngineBlock): BlockData {
             .map((s) => s.trim())
             .filter((s) => s.length > 0)
         : [],
+    // Persisted collapse state (Decision A-2a). The host emits a real boolean
+    // ("collapsed" ValueTree property); absent/falsy → false (expanded — the
+    // default). Round-trips save/load via the Node ValueTree.
+    collapsed: b.collapsed === true,
     // Internal node identifier (all blocks) + engine-truth integer mode for
     // the built-in logic/comparator nodes. intMode is left undefined unless the
     // host actually emitted it (no fake value for non-logic blocks).
@@ -389,6 +396,10 @@ function applySnapshot(raw: unknown) {
       ? s.session.recentFiles
       : undefined,
     graphs: graphRows.length > 0 ? graphRows : undefined,
+    savedAtMs:
+      typeof s.session?.savedAtMs === "number"
+        ? s.session.savedAtMs
+        : undefined,
   });
 
   let scenesPayload: SceneData[] | undefined;

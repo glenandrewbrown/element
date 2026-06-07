@@ -35,6 +35,7 @@ const { mockGraphStore } = vi.hoisted(() => {
     zoomTier: "normal" as string,
     toggleBypass: vi.fn(),
     toggleMute: vi.fn(),
+    setCollapsed: vi.fn(),
     selectNode: vi.fn(),
   };
   return { mockGraphStore: store };
@@ -133,30 +134,104 @@ describe("<Block /> (gaps)", () => {
     expect(bBtn).toBeInTheDocument();
   });
 
-  // ── Compact zoom tier ────────────────────────────────────────────────────────
+  // ── Persisted COMPACT tier (Decision A-2a — replaces zoom-compact) ─────────────
+  // Collapse is now a deliberate, persisted per-node state (d.collapsed), NOT a
+  // zoom artifact. Collapsed = header (with chevron + B/M still present) + a
+  // single activity well (D5), no control deck/embed/full port lane.
 
-  it("compact tier renders name chip only (no full header)", () => {
-    mockGraphStore.zoomTier = "compact";
-    renderBlock({ name: "Pro-Q 3", category: "audiofx" });
+  it("collapsed block keeps the header + shows the single activity well (D5)", () => {
+    renderBlock({ name: "Pro-Q 3", category: "audiofx", collapsed: true });
+    // Header (and thus the name + B/M + the collapse chevron) STAYS — the
+    // compact tier is header+well, never "name + dot".
     expect(screen.getByText("Pro-Q 3")).toBeInTheDocument();
-    // No Bypass/Mute buttons in compact mode
-    expect(screen.queryByTitle("Bypass")).not.toBeInTheDocument();
-    expect(screen.queryByTitle("Mute")).not.toBeInTheDocument();
+    expect(screen.getByTitle("Bypass")).toBeInTheDocument();
+    expect(screen.getByTitle("Mute")).toBeInTheDocument();
+    expect(screen.getByTestId("collapse-chevron")).toBeInTheDocument();
+    // D5: the activity well STAYS in the collapsed state (real signal bar).
+    expect(screen.getAllByTestId("signal-activity-bar").length).toBeGreaterThan(0);
   });
 
-  it("compact tier renders without crashing for all categories", () => {
-    mockGraphStore.zoomTier = "compact";
+  it("collapse chevron toggles the persisted collapse state via setCollapsed", () => {
+    renderBlock({ id: "b-col", collapsed: false });
+    fireEvent.click(screen.getByTestId("collapse-chevron"));
+    expect(mockGraphStore.setCollapsed).toHaveBeenCalledWith("b-col", true);
+  });
+
+  it("collapsed block renders without crashing for all categories", () => {
     for (const cat of ["instrument", "audiofx", "midifx", "modulator"] as const) {
-      expect(() => renderBlock({ category: cat })).not.toThrow();
+      expect(() => renderBlock({ category: cat, collapsed: true })).not.toThrow();
     }
   });
 
-  // ── Expanded zoom tier ───────────────────────────────────────────────────────
+  // ── Heavy embed mount rule (2a — no longer zoom-gated) ─────────────────────────
+  // BlockEmbed (live meter + FFT) mounts ONLY for a built-in audiofx node with a
+  // real audio output, never for third-party plugins or by zoom.
 
-  it("expanded tier renders BlockEmbed instead of control deck", () => {
-    mockGraphStore.zoomTier = "expanded";
-    renderBlock();
+  it("audiofx BUILT-IN with audio out renders BlockEmbed", () => {
+    renderBlock({
+      format: "INT",
+      category: "audiofx",
+      ports: [
+        { id: "out-0", label: "L", direction: "output", type: "audio", connected: false },
+      ],
+    });
     expect(screen.getByTestId("block-embed")).toBeInTheDocument();
+  });
+
+  it("third-party plugin does NOT embed the heavy face (2b card instead)", () => {
+    renderBlock({
+      format: "VST3",
+      category: "audiofx",
+      ports: [
+        { id: "out-0", label: "L", direction: "output", type: "audio", connected: false },
+      ],
+    });
+    expect(screen.queryByTestId("block-embed")).not.toBeInTheDocument();
+    expect(screen.getAllByTestId("signal-activity-bar").length).toBe(1);
+  });
+
+  it("collapsed audiofx block does NOT mount the heavy embed", () => {
+    renderBlock({
+      format: "INT",
+      category: "audiofx",
+      collapsed: true,
+      ports: [
+        { id: "out-0", label: "L", direction: "output", type: "audio", connected: false },
+      ],
+    });
+    expect(screen.queryByTestId("block-embed")).not.toBeInTheDocument();
+  });
+
+  // ── Painter law: SignalActivityBar must use CSS classes, not per-tick inlines ──
+  // The perf-wave guardrail: segment divs inside the activity bar must NOT carry
+  // inline `background` or `box-shadow` style attributes (those must live in
+  // index.css keyed off .sigbar-lit-{n} / .sigbar-unlit / [data-signal] selectors).
+
+  it("signal-activity-bar segments carry no inline background or boxShadow (painter law)", () => {
+    const { container } = renderBlock({
+      format: "VST3",
+      category: "audiofx",
+      ports: [{ id: "out-0", label: "L", direction: "output", type: "audio", connected: false }],
+    });
+    const bar = container.querySelector('[data-testid="signal-activity-bar"]');
+    expect(bar).not.toBeNull();
+    const segments = bar!.querySelectorAll(".sigbar-seg");
+    expect(segments.length).toBeGreaterThan(0);
+    segments.forEach((seg) => {
+      const el = seg as HTMLElement;
+      expect(el.style.background).toBe("");
+      expect(el.style.boxShadow).toBe("");
+    });
+  });
+
+  it("signal-activity-bar wrapper carries data-signal attr for CSS colour routing", () => {
+    const { container } = renderBlock({
+      format: "VST3",
+      category: "audiofx",
+      ports: [{ id: "out-0", label: "L", direction: "output", type: "audio", connected: false }],
+    });
+    const bar = container.querySelector('[data-testid="signal-activity-bar"]');
+    expect(bar?.getAttribute("data-signal")).toMatch(/^(audio|midi|cv)$/);
   });
 
   // ── MIDI / modulator deck body ────────────────────────────────────────────────
@@ -343,5 +418,58 @@ describe("<Block /> (gaps)", () => {
     expect(screen.getByTestId("handle-in-0")).toBeInTheDocument();
     expect(screen.getByTestId("handle-in-1")).toBeInTheDocument();
     expect(screen.getByTestId("handle-out-0")).toBeInTheDocument();
+  });
+
+  // ── Dense-node param-port collapser default (lean-block / canvas-polish) ──────
+  // A params-heavy node defaults to In/Out + a "▸ N params" pill; the Value/CV
+  // param ports stay HIDDEN until the pill is expanded (port chrome only where
+  // it's wanted — no wall of rows by default).
+
+  it("dense node defaults to a collapsed '▸ N params' pill (param ports hidden)", () => {
+    renderBlock({
+      ports: [
+        { id: "in-0", label: "In", direction: "input", type: "audio", connected: false },
+        { id: "p-mix", label: "Mix", direction: "input", type: "value", connected: false },
+        { id: "p-fb", label: "Feedback", direction: "input", type: "value", connected: false },
+        { id: "p-width", label: "Width", direction: "input", type: "value", connected: false },
+      ],
+    });
+    // Essential audio I/O shows; the 3 value/CV params collapse behind the pill.
+    expect(screen.getByTestId("handle-in-0")).toBeInTheDocument();
+    expect(screen.getByText(/3\s*params/)).toBeInTheDocument();
+    // Param-port handles are NOT rendered until the pill is expanded (default-collapsed).
+    expect(screen.queryByTestId("handle-p-mix")).not.toBeInTheDocument();
+  });
+
+  it("expanding the '▸ N params' pill reveals the param-port lane", () => {
+    renderBlock({
+      ports: [
+        { id: "in-0", label: "In", direction: "input", type: "audio", connected: false },
+        { id: "p-mix", label: "Mix", direction: "input", type: "value", connected: false },
+      ],
+    });
+    fireEvent.click(screen.getByText(/1\s*param/));
+    expect(screen.getByTestId("handle-p-mix")).toBeInTheDocument();
+  });
+
+  // ── 2a — zoom-invariant content (zoomToTier swap is gone) ────────────────────
+  // The Block must render the SAME control content regardless of the (now-vestigial)
+  // zoomTier value — zoom only scales via React Flow's transform, never swaps GUI.
+
+  it("renders identical content regardless of the vestigial zoomTier value", () => {
+    const ports = [
+      { id: "out-0", label: "L", direction: "output" as const, type: "audio" as const, connected: false },
+    ];
+    mockGraphStore.zoomTier = "compact";
+    const { container: compactDom } = renderBlock({ format: "INT", category: "audiofx", ports });
+    mockGraphStore.zoomTier = "expanded";
+    const { container: expandedDom } = renderBlock({ format: "INT", category: "audiofx", ports });
+    // Same RMS-meter count at both extremes → content is zoom-invariant.
+    expect(
+      compactDom.querySelectorAll('[data-testid="rms-meter"]').length,
+    ).toBe(expandedDom.querySelectorAll('[data-testid="rms-meter"]').length);
+    // And the header (with name) is present at both — no bare dot+name swap.
+    expect(compactDom.querySelector('[data-testid="collapse-chevron"]')).not.toBeNull();
+    expect(expandedDom.querySelector('[data-testid="collapse-chevron"]')).not.toBeNull();
   });
 });

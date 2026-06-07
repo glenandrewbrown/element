@@ -148,3 +148,42 @@ describe("validateInlineFace", () => {
     expect(validateInlineFace(spec, [param(0, "Depth")])).toBe(false);
   });
 });
+
+// ── D2 density-variant schema (Wave-2 addition, Wave-3 consumer) ─────────────
+describe("InlineFaceSpec density schema (D2)", () => {
+  it("absent densities is valid (single-size — the common case)", () => {
+    const spec: InlineFaceSpec = { entries: [] };
+    expect(validateInlineFace(spec, [])).toBe(true);
+  });
+
+  it("accepts density buckets that reference real entry indices", () => {
+    const spec: InlineFaceSpec = {
+      entries: [
+        { kind: "opChooser", title: "Mode", options: [{ value: 0, label: "A" }] },
+        { kind: "opChooser", title: "Op", options: [{ value: 0, label: "B" }] },
+      ],
+      densities: { compact: [], medium: [0], large: [0, 1] },
+    };
+    expect(validateInlineFace(spec, [])).toBe(true);
+  });
+
+  it("REJECTS a density bucket index that is out of bounds (NOTHING-fake)", () => {
+    const spec: InlineFaceSpec = {
+      entries: [
+        { kind: "opChooser", title: "Mode", options: [{ value: 0, label: "A" }] },
+      ],
+      densities: { large: [0, 1] }, // index 1 has no entry → malformed face
+    };
+    expect(validateInlineFace(spec, [])).toBe(false);
+  });
+
+  it("REJECTS a negative or non-integer density index", () => {
+    const spec: InlineFaceSpec = {
+      entries: [
+        { kind: "opChooser", title: "Mode", options: [{ value: 0, label: "A" }] },
+      ],
+      densities: { medium: [-1] },
+    };
+    expect(validateInlineFace(spec, [])).toBe(false);
+  });
+});

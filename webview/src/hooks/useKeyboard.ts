@@ -26,7 +26,7 @@ import {
 } from "../bridge/nativeSession";
 import { nativePluginEditorClose } from "../bridge/nativePluginEditor";
 import { groupSelectionWithFeedback } from "../components/canvas/groupSelection";
-import { EV_START_RENAME } from "../events";
+import { EV_START_RENAME, EV_TIDY } from "../events";
 
 // ── Signal-chain order (G6/P5) ───────────────────────────────────────────────
 //
@@ -325,6 +325,15 @@ export function useKeyboard({
           case "0": {
             e.preventDefault();
             reactFlow.fitView({ padding: 0.15, duration: 200 });
+            return;
+          }
+
+          // ⌘L — Tidy the Board (Item 3b). Plain ⌘L only: ⌘⇧L is align-left,
+          // intercepted by the meta+shift block above before this switch.
+          case "l":
+          case "L": {
+            e.preventDefault();
+            window.dispatchEvent(new CustomEvent(EV_TIDY));
             return;
           }
 

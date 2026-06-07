@@ -251,6 +251,22 @@ describe("mapBlock field mapping", () => {
     ]);
   });
 
+  // ── collapsed boolean (Decision A-2a — persisted collapse) ──
+  it("defaults collapsed to false when the host omits it", () => {
+    mountHook();
+    pushSnapshot({ blocks: [{ id: "b1", name: "X" }], cables: [] });
+    expect(useGraphStore.getState().nodes[0]?.collapsed).toBe(false);
+  });
+
+  it("maps a real collapsed=true boolean through (round-trip from ValueTree)", () => {
+    mountHook();
+    pushSnapshot({
+      blocks: [{ id: "b1", name: "X", collapsed: true }],
+      cables: [],
+    });
+    expect(useGraphStore.getState().nodes[0]?.collapsed).toBe(true);
+  });
+
   // ── identifier + intMode (P0 — inline logic/comparator controls) ──
   it("maps the internal identifier through for all blocks", () => {
     mountHook();

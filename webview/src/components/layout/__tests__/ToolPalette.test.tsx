@@ -34,14 +34,26 @@ const {
   mockImportGraph,
   mockListFiles,
   mockOpenPath,
+  mockRecover,
   mockSetActiveGraph,
 } = vi.hoisted(() => ({
   mockAddPlugin: vi.fn(async () => undefined),
   mockMoleculeInsert: vi.fn(async () => undefined),
   mockExportGraph: vi.fn(async () => undefined),
   mockImportGraph: vi.fn(async () => undefined),
-  mockListFiles: vi.fn(async () => [] as { name: string; path: string }[]),
+  mockListFiles: vi.fn(
+    async () =>
+      [] as {
+        name: string;
+        path: string;
+        ext?: string;
+        modifiedMs?: number;
+        isAutosave?: boolean;
+        isRecoverable?: boolean;
+      }[],
+  ),
   mockOpenPath: vi.fn(async () => undefined),
+  mockRecover: vi.fn(async () => true),
   mockSetActiveGraph: vi.fn(async () => undefined),
 }));
 
@@ -62,6 +74,7 @@ vi.mock("../../../bridge/nativeSession", () => {
     nativeSessionImportGraph: sp(mockImportGraph),
     nativeSessionListFiles: sp(mockListFiles),
     nativeSessionOpenPath: sp(mockOpenPath),
+    nativeSessionRecover: sp(mockRecover),
     nativeSessionSetActiveGraph: sp(mockSetActiveGraph),
   };
 });
@@ -393,14 +406,22 @@ describe("<ToolPalette /> — molecules", () => {
     expect(screen.getByText("Reverb Chain")).toBeInTheDocument();
   });
 
-  it("clicking a molecule calls nativeMoleculeInsert with name and position", async () => {
+  it("clicking a molecule calls nativeMoleculeInsert with name and viewport-centre default", async () => {
     renderPalette();
     // Expand first
     fireEvent.click(screen.getByRole("button", { name: /molecules/i }));
     fireEvent.click(screen.getByRole("button", { name: "Reverb Chain" }));
-    await waitFor(() =>
-      expect(mockMoleculeInsert).toHaveBeenCalledWith("Reverb Chain", 140, 140),
-    );
+    await waitFor(() => {
+      expect(mockMoleculeInsert).toHaveBeenCalledTimes(1);
+      const [name, x, y] = mockMoleculeInsert.mock.calls[0] as unknown as [string, number, number];
+      expect(name).toBe("Reverb Chain");
+      // Must NOT be the old hardcoded (140,140) — insert now uses viewport-centre default
+      expect(x).not.toBe(140);
+      expect(y).not.toBe(140);
+      // Fallback in test env (no RF DOM) is 200, 200
+      expect(x).toBe(200);
+      expect(y).toBe(200);
+    });
   });
 
   it("does NOT render Molecules section when molecules array is empty", () => {
@@ -532,6 +553,34 @@ describe("<ToolPalette /> — projects tab", () => {
     fireEvent.click(screen.getByText("My Track.els"));
     await waitFor(() =>
       expect(mockOpenPath).toHaveBeenCalledWith("/Users/glen/My Track.els"),
+    );
+  });
+
+  // 4b (E1/E8) — autosave recoverables get their own "Recover" group and route
+  // to nativeSessionRecover (NOT nativeSessionOpenPath).
+  it("groups autosave entries under Recover and recovers them via nativeSessionRecover", async () => {
+    mockListFiles.mockResolvedValue([
+      { name: "My Track", path: "/s/My Track.els", isAutosave: false },
+      {
+        name: "Untitled — recovered",
+        path: "/s/autosave_123.els",
+        isAutosave: true,
+        isRecoverable: true,
+      },
+    ]);
+    renderPalette();
+    fireEvent.click(screen.getByRole("button", { name: /projects/i }));
+    await waitFor(() => screen.getByText("Recover"));
+    // The autosave row carries the recovery affordance.
+    const row = await screen.findByTitle(/recover autosave/i);
+    fireEvent.click(row);
+    await waitFor(() =>
+      expect(mockRecover).toHaveBeenCalledWith("/s/autosave_123.els"),
+    );
+    // A named project still opens, not recovers.
+    fireEvent.click(screen.getByText("My Track"));
+    await waitFor(() =>
+      expect(mockOpenPath).toHaveBeenCalledWith("/s/My Track.els"),
     );
   });
 

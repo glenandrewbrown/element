@@ -4,7 +4,7 @@ import { categoryIconName } from "../neu/iconForCategory";
 import type { BlockCategory } from "../../data/types";
 import { usePluginBrowserStore } from "../../stores/usePluginBrowserStore";
 import { useSessionStore } from "../../stores/useSessionStore";
-import { nativeSessionListFiles, nativeSessionOpenPath, type SessionFileEntry } from "../../bridge/nativeSession";
+import { nativeSessionListFiles, nativeSessionOpenPath, nativeSessionRecover, type SessionFileEntry } from "../../bridge/nativeSession";
 import { PaletteSearch } from "./palette/PaletteSearch";
 import { CategoryChips, CATEGORY_FILTERS } from "./palette/CategoryChips";
 import { ScanControls } from "./palette/ScanControls";
@@ -94,6 +94,10 @@ export function ToolPalette({
     const q = search.toLowerCase();
     return e.name.toLowerCase().includes(q) || e.path.toLowerCase().includes(q);
   });
+  // 4b — autosave recoverables get their own group + a real recovery action
+  // (nativeSessionRecover), distinct from opening a named `.els` directly.
+  const recoverableSessions = filteredSessions.filter((e) => e.isRecoverable);
+  const namedSessions = filteredSessions.filter((e) => !e.isAutosave);
 
   // ── Collapsed rail ──────────────────────────────────────────────────────────
   if (collapsed) {
@@ -237,16 +241,37 @@ export function ToolPalette({
         {/* ── Projects tab ── */}
         {browseTab === "projects" ? (
           <>
+            {/* Recoverable autosaves (E1) — distinct group + recovery action */}
+            {recoverableSessions.length > 0 ? (
+              <div className="mb-3 space-y-1">
+                <div className="text-[9px] font-bold text-accent-teal tracking-widest uppercase px-1">
+                  Recover
+                </div>
+                {recoverableSessions.map((e) => (
+                  <button
+                    key={e.path}
+                    type="button"
+                    className="w-full text-left text-[10px] px-2 py-1.5 rounded-md text-text-secondary hover:bg-elevated hover:neu-raised hover:text-accent-teal truncate transition-[box-shadow,background-color,color] duration-150 ease-out"
+                    title={`Recover autosave — ${e.path}`}
+                    onClick={() => void nativeSessionRecover(e.path)}
+                  >
+                    {e.name}{" "}
+                    <span className="text-text-dim normal-case">(autosave)</span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+
             <div className="mb-3 space-y-1">
               <div className="text-[9px] font-bold text-text-secondary tracking-widest uppercase px-1">
                 Project files (host scan)
               </div>
-              {filteredSessions.length === 0 ? (
+              {namedSessions.length === 0 ? (
                 <div className="text-[10px] text-text-dim py-2 px-1">
                   No matches or host returned an empty list.
                 </div>
               ) : (
-                filteredSessions.map((e) => (
+                namedSessions.map((e) => (
                   <button
                     key={e.path}
                     type="button"

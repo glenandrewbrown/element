@@ -19,14 +19,9 @@ import {
   nativeUndo,
   nativeRedo,
 } from "../../bridge/nativeGraph";
-import {
-  nativeSessionNew,
-  nativeSessionOpen,
-  nativeSessionSave,
-  nativeSessionSaveAs,
-  nativeSessionSetActiveGraph,
-} from "../../bridge/nativeSession";
+import { nativeSessionSetActiveGraph } from "../../bridge/nativeSession";
 import { useSessionStore } from "../../stores/useSessionStore";
+import { SaveControl } from "./SaveControl";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { PreferencesModal } from "./PreferencesModal";
 import { AboutModal } from "./AboutModal";
@@ -34,7 +29,7 @@ import { AboutModal } from "./AboutModal";
 // toggle + Scene controls are gone (Wave-0 + Wave-1 U3): no perform path in
 // the toolbar, the app is locked to Edit. usePerformStore / nativePerform*
 // remain on disk (reversible backlog); they are simply not wired here.
-import { EV_OPEN_PREFERENCES } from "../../events";
+import { EV_OPEN_PREFERENCES, EV_TIDY } from "../../events";
 import { Icon } from "../neu";
 import { InstanceSwitcher } from "./InstanceSwitcher";
 
@@ -52,14 +47,7 @@ const DEPTH_HUES = [
 ] as const;
 
 // ── Toolbar component ──
-
-function sessionDisplayName(filePath: string, dirty: boolean): string {
-  if (!filePath || filePath.length === 0)
-    return dirty ? "Untitled •" : "Untitled";
-  const base = filePath.replace(/^.*[/\\]/, "");
-  const stem = base.replace(/\.els$/i, "");
-  return dirty ? `${stem} •` : stem;
-}
+// (Project name + save-pulse + file actions moved to <SaveControl> — 4b E6/G3.)
 
 /**
  * Open the global command palette. The palette's open-state lives in App.tsx
@@ -192,14 +180,18 @@ export function Toolbar() {
 
   const breadcrumbs = useGraphStore(selectBreadcrumbs);
   const bpm = usePerformStore(selectBpm);
-  const filePath = useSessionStore((s) => s.filePath);
-  const dirty = useSessionStore((s) => s.dirty);
   const sessionGraphs = useSessionStore((s) => s.graphs);
 
   const cableRouting = useAppStore(selectCableRouting);
   const setCableRouting = useAppStore((s) => s.setCableRouting);
   const flowDebug = useAppStore((s) => s.flowDebug);
   const toggleFlowDebug = useAppStore((s) => s.toggleFlowDebug);
+  // Item 3b — Tidy controls. autoTidyOnAdd is ON by default (Glen Q3); snap is a
+  // session toggle the canvas ORs with the host flag.
+  const autoTidyOnAdd = useAppStore((s) => s.autoTidyOnAdd);
+  const toggleAutoTidyOnAdd = useAppStore((s) => s.toggleAutoTidyOnAdd);
+  const snapToGrid = useAppStore((s) => s.snapToGrid);
+  const toggleSnapToGrid = useAppStore((s) => s.toggleSnapToGrid);
 
   // F-04: format Hz → compact "44.1k" / "48k" / "96k" label for the SAMPLE
   // field. Falls back to an em-dash when the device hasn't reported a rate.
@@ -217,35 +209,10 @@ export function Toolbar() {
             ELEMENT
           </span>
 
-          {/* File actions — pressed segmented well (neu-pressed-shallow) */}
-          <div className="flex items-center rounded-[5px] overflow-hidden neu-pressed-shallow bg-pressed">
-            {(
-              [
-                { label: "New", fn: nativeSessionNew, title: "New Project" },
-                { label: "Open", fn: nativeSessionOpen, title: "Open Project…" },
-                { label: "Save", fn: nativeSessionSave, title: "Save Project" },
-                { label: "As…", fn: nativeSessionSaveAs, title: "Save Project As…" },
-              ] as const
-            ).map(({ label, fn, title }) => (
-              <button
-                key={label}
-                type="button"
-                className="px-2 h-7 text-[10px] font-semibold uppercase tracking-wider text-text-secondary hover:text-text-primary hover:bg-elevated transition-colors t-precision"
-                title={title}
-                onClick={() => void fn()}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-
-          {/* Active project file name */}
-          <span
-            className="text-[11px] text-accent-orange max-w-[150px] truncate"
-            title={filePath || "No file on disk"}
-          >
-            {sessionDisplayName(filePath, dirty)}
-          </span>
+          {/* File actions (New/Open/Save/As) + project name + non-modal
+              save-pulse. Save on a never-named project shows an inline name
+              prompt (no OS dialog); subsequent saves are silent. (4b — E6/G3) */}
+          <SaveControl />
 
           {/* Board switcher (only when the Project has > 1 Board) */}
           {sessionGraphs.length > 1 ? (
@@ -512,6 +479,62 @@ export function Toolbar() {
               onClick={() => setCableRouting("bezier")}
             >
               BEZ
+            </button>
+          </div>
+
+          {/* Tidy region (Item 3b) — a Tidy button + its auto-tidy & snap
+              toggles, grouped in one pressed well. Tidy fires EV_TIDY (handled
+              in GraphCanvas → auto-layout + glide). Auto-tidy-on-add is ON by
+              default (Glen Q3) and one click away from off. Snap toggles
+              session snap-to-grid. All carry tooltips (U7 discoverability). */}
+          <div className="flex items-center rounded-[5px] overflow-hidden neu-pressed-shallow bg-pressed">
+            <button
+              type="button"
+              className="flex items-center gap-1 px-2 h-7 text-[9px] font-black tracking-widest uppercase text-text-secondary hover:text-text-primary hover:bg-elevated transition-colors t-precision"
+              title="Tidy — auto-arrange the Board (⌘L)"
+              aria-label="Tidy the Board"
+              onClick={() => window.dispatchEvent(new CustomEvent(EV_TIDY))}
+            >
+              <Icon name="MoveHorizontal" size={12} aria-hidden />
+              TIDY
+            </button>
+            <div className="w-px h-3 bg-white/10" />
+            <button
+              type="button"
+              className={`px-2 h-7 text-[9px] font-black tracking-widest uppercase transition-colors t-precision ${
+                autoTidyOnAdd
+                  ? "bg-surface text-accent-blue shadow-[0_0_4px_rgba(74,144,217,0.25)]"
+                  : "text-text-secondary hover:text-text-primary"
+              }`}
+              title={
+                autoTidyOnAdd
+                  ? "Auto-tidy on add: ON — new blocks auto-arrange (click to disable)"
+                  : "Auto-tidy on add: OFF — click to auto-arrange new blocks"
+              }
+              aria-pressed={autoTidyOnAdd}
+              aria-label="Toggle auto-tidy on add"
+              onClick={toggleAutoTidyOnAdd}
+            >
+              AUTO
+            </button>
+            <div className="w-px h-3 bg-white/10" />
+            <button
+              type="button"
+              className={`px-2 h-7 text-[9px] font-black tracking-widest uppercase transition-colors t-precision ${
+                snapToGrid
+                  ? "bg-surface text-accent-blue shadow-[0_0_4px_rgba(74,144,217,0.25)]"
+                  : "text-text-secondary hover:text-text-primary"
+              }`}
+              title={
+                snapToGrid
+                  ? "Snap to grid: ON (click to disable)"
+                  : "Snap to grid: OFF (click to enable)"
+              }
+              aria-pressed={snapToGrid}
+              aria-label="Toggle snap to grid"
+              onClick={toggleSnapToGrid}
+            >
+              SNAP
             </button>
           </div>
 

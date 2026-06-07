@@ -140,6 +140,31 @@ export const Modulator: Story = story(
   makeBlock({ name: "LFO Tool", category: "modulator", format: "CLAP" }),
   "Modulator Block — purple ⬡ accent. CV/modulation sources like LFOs, envelopes, automation curves.",
 );
+export const ThirdPartyPluginCard: Story = story(
+  makeBlock({
+    name: "ValhallaRoom",
+    category: "audiofx",
+    format: "VST3",
+    ports: [
+      { id: "in-l", type: "audio", direction: "input", label: "In", connected: true },
+      { id: "out-l", type: "audio", direction: "output", label: "Out", connected: false },
+    ],
+  }),
+  "2b — third-party plugin card. A non-built-in (VST3/AU/CLAP/LV2) plugin renders the FIXED card: name, category shape+dot, real I/O ports, and EXACTLY ONE activity bar driven by the per-node `level` scalar and COLOURED by the node's signal type (audio = blue here). NOTHING-fake: never an audio-VU + MIDI-LED pair off the one scalar. No embedded editor on the face — double-click opens the windowed editor.",
+);
+export const Collapsed: Story = story(
+  makeBlock({
+    name: "ValhallaRoom",
+    category: "audiofx",
+    format: "VST3",
+    collapsed: true,
+    ports: [
+      { id: "in-l", type: "audio", direction: "input", label: "In", connected: true },
+      { id: "out-l", type: "audio", direction: "output", label: "Out", connected: false },
+    ],
+  }),
+  "Decision A-2a — persisted COMPACT tier. A collapsed Block shows header + a single activity well only (≈84px). The chevron (▸/▾) in the header toggles it; the state PERSISTS across reopen (Node ValueTree `collapsed`). D5: the activity well STAYS (never name+dot) — a real signal bar coloured by signal type. Collapse is a deliberate user action, NOT a zoom artifact (zoom-morph is gone — zoom only scales).",
+);
 export const MidiInputDevice: Story = story(
   makeBlock({
     name: "KeyLab 61 In",

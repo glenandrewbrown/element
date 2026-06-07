@@ -8,6 +8,7 @@ import {
 } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { NeuInput, Icon } from "../neu";
+import { useShallow } from "zustand/react/shallow";
 import { useGraphStore } from "../../stores/useGraphStore";
 import { useAppStore } from "../../stores/useAppStore";
 // SHELVED (D3, hide-UI keep-code) — see FINISH-APP-PLAN. usePerformStore /
@@ -22,6 +23,7 @@ import {
   nativeTransportSetRecording,
   nativeTransportTogglePlay,
   nativeUndo,
+  nativeMoleculeSave,
 } from "../../bridge/nativeGraph";
 import { nativeSessionOpen, nativeSessionSave } from "../../bridge/nativeSession";
 import {
@@ -71,6 +73,7 @@ import {
   EV_FIT_BOARD,
   EV_CREATE_COMMENT,
   EV_OPEN_PREFERENCES,
+  EV_TIDY,
 } from "../../events";
 
 const EASE = [0.16, 1, 0.3, 1] as const;
@@ -115,6 +118,9 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
   const nodes = useGraphStore((s) => s.nodes);
   const selectNode = useGraphStore((s) => s.selectNode);
   const toggleMinimap = useGraphStore((s) => s.toggleMinimap);
+  const selectedNodeIds = useGraphStore(
+    useShallow((s) => s.nodes.filter((n) => n.selected).map((n) => n.id)),
+  );
   const openBlockTab = useAppStore((s) => s.openBlockTab);
   // SHELVED (D3, hide-UI keep-code) — see FINISH-APP-PLAN. toggleMode, setScene
   // and the usePerformStore scenes list are no longer read here: the
@@ -219,6 +225,15 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
           window.dispatchEvent(new CustomEvent(EV_FIT_BOARD));
         }),
       },
+      {
+        id: "act-tidy",
+        label: "Tidy Board",
+        category: "action",
+        hint: "Cmd+L",
+        onSelect: runAndClose(() => {
+          window.dispatchEvent(new CustomEvent(EV_TIDY));
+        }),
+      },
       // SHELVED (D3, hide-UI keep-code) — see FINISH-APP-PLAN. The
       // "Toggle Edit / Perform" command is removed (Perform mode shelved).
       // Restore by re-adding an action wired to `toggleMode`.
@@ -269,6 +284,33 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
         category: "action",
         hint: "MIDI input · Shift+K",
         onSelect: runAndClose(() => useAppStore.getState().toggleVirtualKeyboard()),
+      },
+      {
+        id: "act-save-snippet",
+        label: "Save selection as Snippet",
+        category: "action",
+        hint:
+          selectedNodeIds.length > 0
+            ? `${selectedNodeIds.length} block${selectedNodeIds.length === 1 ? "" : "s"} selected`
+            : "Select blocks first",
+        onSelect: runAndClose(() => {
+          if (selectedNodeIds.length === 0) return;
+          const name = window.prompt("Snippet name:", "My Snippet");
+          if (!name || name.trim() === "") return;
+          void nativeMoleculeSave(name.trim(), selectedNodeIds).then((ok) => {
+            useAppStore
+              .getState()
+              .setCanvasHint(
+                ok
+                  ? `Snippet "${name.trim()}" saved.`
+                  : `Failed to save Snippet "${name.trim()}".`,
+              );
+            setTimeout(
+              () => useAppStore.getState().setCanvasHint(null),
+              3000,
+            );
+          });
+        }),
       },
     ];
 

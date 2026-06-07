@@ -72,10 +72,39 @@ export type InlineFaceEntry =
       label: string;
     };
 
+/**
+ * Per-entry density visibility (D2 — Wave-2 schema, Wave-3 consumer).
+ *
+ * A single curated face must render at THREE deliberate heights (Decision A
+ * combined model): `compact` (collapsed — header + activity well only, NO
+ * controls), `medium` (default — 1–2 primary controls), `large` (focused —
+ * full control grid). Declared per-tier so ONE spec deserializes the three
+ * Stitch layouts instead of needing three separate specs.
+ */
+export type InlineFaceDensity = "compact" | "medium" | "large";
+
 /** A curated inline face: an ordered list of ≤6 entries. */
 export interface InlineFaceSpec {
   /** Ordered controls (registry enforces ≤6 by convention; not load-bearing). */
   entries: InlineFaceEntry[];
+  /**
+   * D2 density-variant schema (Wave-2 addition, Wave-3 consumer — no-op until
+   * the density-aware renderer lands). Maps each density tier to the subset of
+   * `entries` (by index) shown at that tier, letting ONE face be compact/medium/
+   * large. Optional: when absent the face renders all entries (the current
+   * single-size behaviour, unchanged). When present it is validated for
+   * index-bounds by {@link validateInlineFace} (NOTHING-fake: a density bucket
+   * can only reference controls that really exist on the face).
+   */
+  densities?: {
+    /** Entry indices shown when collapsed/compact (usually [] — compact = no
+     *  controls, just header + activity well per D5). */
+    compact?: number[];
+    /** Entry indices shown at the default medium height. */
+    medium?: number[];
+    /** Entry indices shown at the focused large height. */
+    large?: number[];
+  };
 }
 
 // ── Compare / Logic op tables (engine-verified) ─────────────────────────────
@@ -168,6 +197,25 @@ export function validateInlineFace(
     if (!row) return false; // param absent → reject whole face
     if (entry.expectName && !paramNameMatches(entry.expectName, row.name))
       return false; // name mismatch → reject whole face
+  }
+
+  // D2 density-variant pass-through validation (Wave-2 schema): every index in
+  // a density bucket must reference a real entry. An out-of-bounds density index
+  // is a malformed face (would render a control that doesn't exist) → reject,
+  // same "never half-broken" discipline as the param checks above. No-op when
+  // `densities` is absent (the common single-size case).
+  if (spec.densities) {
+    const n = spec.entries.length;
+    for (const bucket of [
+      spec.densities.compact,
+      spec.densities.medium,
+      spec.densities.large,
+    ]) {
+      if (!bucket) continue;
+      for (const idx of bucket) {
+        if (!Number.isInteger(idx) || idx < 0 || idx >= n) return false;
+      }
+    }
   }
   return true;
 }

@@ -40,6 +40,7 @@ import {
   nativeGraphRenameNode,
   nativeGraphSetNodeNote,
   nativeGraphSetNodeHiddenParams,
+  nativeGraphSetNodeCollapsed,
   nativeGraphCommentAdd,
   nativeGraphCommentUpsert,
   nativeGraphCommentDelete,
@@ -390,6 +391,19 @@ const booleanCases: BoolCase[] = [
     call: () => nativeGraphSetNodeHiddenParams("n", []),
     nativeName: "elementGraphSetNodeHiddenParams",
     args: ["n", ""],
+  },
+  // Persisted collapse (Decision A-2a) — boolean crosses the bridge verbatim.
+  {
+    name: "nativeGraphSetNodeCollapsed (collapse)",
+    call: () => nativeGraphSetNodeCollapsed("n", true),
+    nativeName: "elementNodeSetCollapsed",
+    args: ["n", true],
+  },
+  {
+    name: "nativeGraphSetNodeCollapsed (expand)",
+    call: () => nativeGraphSetNodeCollapsed("n", false),
+    nativeName: "elementNodeSetCollapsed",
+    args: ["n", false],
   },
   {
     name: "nativeGraphCommentAdd (defaults)",

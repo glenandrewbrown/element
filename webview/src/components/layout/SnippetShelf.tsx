@@ -1,8 +1,18 @@
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { useHostExtrasStore } from "../../stores/useHostExtrasStore";
-import { nativeMoleculeInsert } from "../../bridge/nativeGraph";
+import { useGraphStore } from "../../stores/useGraphStore";
+import { useAppStore } from "../../stores/useAppStore";
+import {
+  nativeMoleculeInsert,
+  nativeMoleculeSave,
+} from "../../bridge/nativeGraph";
 import { nativeTransportPanic } from "../../bridge/nativeGraph";
 import { NeuButton, Icon } from "../neu";
+import { setSnippetDragData, snippetInsertDefault } from "../../lib/snippetDrag";
+
+/** Duration (ms) the StatusBar hint stays visible after a save attempt. */
+const HINT_CLEAR_MS = 3000;
 
 /**
  * Edit-mode bottom shelf of saved Snippets (reusable Block + Cable groups,
@@ -10,13 +20,73 @@ import { NeuButton, Icon } from "../neu";
  * pre-wired chain (sidechain comp, reverb send, etc.) onto the Board in one
  * click instead of rebuilding it. Also hosts the always-visible red PANIC
  * button that sends Note Off to all MIDI outputs.
+ *
+ * Click-to-insert lands at the current viewport centre (computed from the
+ * React Flow DOM transform — no ReactFlowProvider needed here).
+ * Each thumbnail is also a drag source (HTML5 DnD, SNIPPET_DRAG_TYPE) so it
+ * can be dragged onto the canvas and dropped at the cursor position.
  */
 export function SnippetShelf() {
   const molecules = useHostExtrasStore((s) => s.molecules);
+  const setCanvasHint = useAppStore((s) => s.setCanvasHint);
+  const hintTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
+
+  const selectedNodeIds = useGraphStore(
+    useShallow((s) => s.nodes.filter((n) => n.selected).map((n) => n.id)),
+  );
+
+  // ── Click-to-insert: viewport centre via DOM (no ReactFlowProvider needed) ──
 
   const handleInsert = useCallback((name: string) => {
-    void nativeMoleculeInsert(name, 120, 120);
+    const { x, y } = snippetInsertDefault();
+    void nativeMoleculeInsert(name, x, y);
   }, []);
+
+  // ── Drag source ────────────────────────────────────────────────────────────
+
+  const handleDragStart = useCallback(
+    (event: React.DragEvent<HTMLButtonElement>, name: string) => {
+      setSnippetDragData(event.dataTransfer, { name });
+    },
+    [],
+  );
+
+  // ── Save-as-Snippet ────────────────────────────────────────────────────────
+  // NOTE: No native `elementMoleculeSave` bridge exists yet.
+  // Feature-detected so the WV side is wired and degrades gracefully.
+  // LEAD REPORT: need C++ native `elementMoleculeSave(name, nodeIds[]) → bool`.
+
+  const showHint = useCallback(
+    (msg: string) => {
+      if (hintTimerRef.current !== undefined)
+        clearTimeout(hintTimerRef.current);
+      setCanvasHint(msg);
+      hintTimerRef.current = setTimeout(
+        () => setCanvasHint(null),
+        HINT_CLEAR_MS,
+      );
+    },
+    [setCanvasHint],
+  );
+
+  const handleSaveAsSnippet = useCallback(() => {
+    if (selectedNodeIds.length === 0) {
+      showHint("Select one or more Blocks first, then save as Snippet.");
+      return;
+    }
+    const name = window.prompt("Snippet name:", "My Snippet");
+    if (!name || name.trim() === "") return;
+
+    void nativeMoleculeSave(name.trim(), selectedNodeIds).then((ok) => {
+      showHint(
+        ok
+          ? `Snippet "${name.trim()}" saved.`
+          : `Failed to save Snippet "${name.trim()}".`,
+      );
+    });
+  }, [selectedNodeIds, showHint]);
 
   return (
     <div className="h-full flex items-center gap-4 px-6 overflow-x-auto select-none">
@@ -31,20 +101,43 @@ export function SnippetShelf() {
         </span>
       </div>
 
+      {/* Save-as-Snippet button */}
+      <button
+        type="button"
+        onClick={handleSaveAsSnippet}
+        title={
+          selectedNodeIds.length > 0
+            ? `Save ${selectedNodeIds.length} selected block${selectedNodeIds.length === 1 ? "" : "s"} as Snippet`
+            : "Select blocks on the Board, then save as Snippet"
+        }
+        className={[
+          "shrink-0 flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-medium",
+          "border border-white/10 transition-colors",
+          selectedNodeIds.length > 0
+            ? "text-accent-blue hover:bg-elevated cursor-pointer"
+            : "text-text-dim opacity-50 cursor-default",
+        ].join(" ")}
+      >
+        <Icon name="BookmarkPlus" size={11} aria-hidden />
+        Save as Snippet
+      </button>
+
       {/* Molecule thumbnails */}
       <div className="flex items-center gap-3">
         {molecules.length === 0 && (
           <span className="text-[10px] text-text-dim italic">
-            No snippets saved — select blocks and save as molecule
+            No snippets saved — select blocks and save as Snippet
           </span>
         )}
         {molecules.map((mol) => (
           <button
             key={mol.name}
             type="button"
+            draggable
+            onDragStart={(e) => handleDragStart(e, mol.name)}
             onClick={() => handleInsert(mol.name)}
             title={mol.description || mol.name}
-            className="w-32 h-10 bg-pressed rounded shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] border border-white/5 flex items-center justify-center gap-2 group cursor-pointer hover:bg-surface hover:border-white/10 transition-colors"
+            className="w-32 h-10 bg-pressed rounded shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] border border-white/5 flex items-center justify-center gap-2 group cursor-grab active:cursor-grabbing hover:bg-surface hover:border-white/10 transition-colors"
           >
             <Icon name="Puzzle" size={10} className="text-accent-orange/60 group-hover:text-accent-orange" aria-hidden />
             <span className="text-[10px] text-text-secondary group-hover:text-text-primary font-medium truncate max-w-[90px]">

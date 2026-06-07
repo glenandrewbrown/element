@@ -527,3 +527,141 @@ body {
 .port-idle { filter: none; }
 .port-connected { filter: drop-shadow(0 0 4px currentColor); }
 .port-hovered { filter: drop-shadow(0 0 6px currentColor); transform: scale(1.25); }
+
+/* ============================================================
+   WAVE-2 D — CANVAS INTERACTIONS (Tidy glide · splice highlight ·
+   snippet drop-in). All motion is TRANSFORM/box-shadow/filter only —
+   never width/height/layout and never a per-tick painter style on
+   Cable — so the perf-wave painter guardrails stay green.
+   ============================================================ */
+
+/* Tidy glide (Feedback #3b / D4). When a Tidy/auto-tidy relayout moves Blocks,
+   React Flow re-renders each node at its new `transform: translate(x,y)`. This
+   class adds a short eased transition on `transform` ONLY so the node GLIDES to
+   its new position instead of teleporting — the user can track what moved. It is
+   applied transiently (added before the move, removed after the glide) by
+   GraphCanvas so it never interferes with live drag (which must stay 1:1 with
+   the pointer). Reduced-motion users get the instant snap via the global
+   `[style*="transform"] { transition: none }` rule above. */
+.react-flow__node.tidy-glide {
+  transition: transform 260ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Cable-splice target highlight (Feedback #1b). While a type-compatible Block is
+   dragged over a cable, that cable's path is highlighted using the SAME glow
+   language as a selected cable (stroke brighten + signal-hue drop-shadow) so the
+   "drop here to splice" affordance reads instantly without inventing new chrome.
+   Applied as an edge className → lands on the `.react-flow__edge` wrapper; we
+   brighten its path. Pure filter/opacity/stroke (compositor-only), no layout. */
+.react-flow__edge.cable-splice-target .react-flow__edge-path {
+  filter: drop-shadow(0 0 6px currentColor);
+  opacity: 1;
+  stroke-width: 3;
+}
+
+/* Snippet drop-in spring (Feedback #4a-iii / G6). Masks C++ instantiation
+   latency: a freshly dropped snippet's Blocks scale up from 92%→100% over
+   ~150ms. Transform-only (GPU compositor), so no paint/layout cost. Applied
+   transiently by GraphCanvas keyed off the just-inserted node ids, then removed. */
+@keyframes snippetDropIn {
+  from {
+    transform: scale(0.92);
+    opacity: 0.6;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+.react-flow__node.snippet-dropin {
+  animation: snippetDropIn 150ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ============================================================
+   WAVE-2 A — SIGNAL ACTIVITY BAR (SignalActivityBar in Block.tsx)
+   Painter-law compliant: ALL per-segment styling lives here.
+   Signal colour carried via [data-signal] on the wrapper div.
+   Bucket classes sigbar-lit-{0..8} quantise the 60Hz level float
+   to 9 steps — identical bucket = identical class = DOM no-op.
+   Zero per-tick inline background/opacity/boxShadow on segments.
+   ============================================================ */
+
+/* Recessed well (same pressed-into-chassis language as the RMS meter) */
+.sigbar-well {
+  display: flex;
+  gap: 1.5px;
+  height: 7px;
+  align-items: stretch;
+  width: 100%;
+  padding: 1.5px;
+  border-radius: 2.5px;
+  background: hsl(240 12% 6%);
+  box-shadow: inset 1.5px 1.5px 2.5px rgba(0,0,0,0.85),
+              inset -0.5px -0.5px 1px rgba(255,255,255,0.04);
+}
+
+/* Segment base */
+.sigbar-seg {
+  flex: 1;
+  border-radius: 1px;
+}
+
+/* Unlit segment (dim pressed-in) */
+.sigbar-unlit {
+  background: hsl(240 6% 14%);
+  opacity: 0.55;
+  box-shadow: inset 0 0.5px 1px rgba(0,0,0,0.6);
+}
+
+/* Stale (no host frame) → entire bar goes dim grey */
+.sigbar-stale .sigbar-seg {
+  background: hsl(240 6% 42%);
+  opacity: 0.12;
+  box-shadow: none;
+}
+
+/* Inactive (bypassed/muted) → lit segments at half brightness */
+.sigbar-inactive .sigbar-lit-0,
+.sigbar-inactive .sigbar-lit-1,
+.sigbar-inactive .sigbar-lit-2,
+.sigbar-inactive .sigbar-lit-3,
+.sigbar-inactive .sigbar-lit-4,
+.sigbar-inactive .sigbar-lit-5,
+.sigbar-inactive .sigbar-lit-6,
+.sigbar-inactive .sigbar-lit-7,
+.sigbar-inactive .sigbar-lit-8 {
+  opacity: 0.45;
+}
+
+/* ── Audio signal (blue) ─────────────────────────────────── */
+[data-signal="audio"] .sigbar-lit-0 { background: hsl(var(--sig-audio)); opacity: 0.28; box-shadow: none; }
+[data-signal="audio"] .sigbar-lit-1 { background: hsl(var(--sig-audio)); opacity: 0.38; box-shadow: 0 0 1px hsl(var(--sig-audio) / 0.4), inset 0 0.5px 0 rgba(255,255,255,0.18); }
+[data-signal="audio"] .sigbar-lit-2 { background: hsl(var(--sig-audio)); opacity: 0.48; box-shadow: 0 0 1.5px hsl(var(--sig-audio) / 0.5), inset 0 0.5px 0 rgba(255,255,255,0.22); }
+[data-signal="audio"] .sigbar-lit-3 { background: hsl(var(--sig-audio)); opacity: 0.58; box-shadow: 0 0 2px hsl(var(--sig-audio) / 0.55), inset 0 0.5px 0 rgba(255,255,255,0.26); }
+[data-signal="audio"] .sigbar-lit-4 { background: hsl(var(--sig-audio)); opacity: 0.68; box-shadow: 0 0 2px hsl(var(--sig-audio) / 0.6), inset 0 0.5px 0 rgba(255,255,255,0.28); }
+[data-signal="audio"] .sigbar-lit-5 { background: hsl(var(--sig-audio)); opacity: 0.76; box-shadow: 0 0 2px hsl(var(--sig-audio) / 0.65), inset 0 0.5px 0 rgba(255,255,255,0.30); }
+[data-signal="audio"] .sigbar-lit-6 { background: hsl(var(--sig-audio)); opacity: 0.84; box-shadow: 0 0 2px hsl(var(--sig-audio) / 0.70), inset 0 0.5px 0 rgba(255,255,255,0.30); }
+[data-signal="audio"] .sigbar-lit-7 { background: hsl(var(--sig-audio)); opacity: 0.92; box-shadow: 0 0 2px hsl(var(--sig-audio) / 0.80), inset 0 0.5px 0 rgba(255,255,255,0.30); }
+[data-signal="audio"] .sigbar-lit-8 { background: hsl(var(--sig-audio)); opacity: 1.00; box-shadow: 0 0 2px hsl(var(--sig-audio) / 0.90), inset 0 0.5px 0 rgba(255,255,255,0.30); }
+
+/* ── MIDI signal (teal) ──────────────────────────────────── */
+[data-signal="midi"] .sigbar-lit-0 { background: hsl(var(--sig-midi)); opacity: 0.28; box-shadow: none; }
+[data-signal="midi"] .sigbar-lit-1 { background: hsl(var(--sig-midi)); opacity: 0.38; box-shadow: 0 0 1px hsl(var(--sig-midi) / 0.4), inset 0 0.5px 0 rgba(255,255,255,0.18); }
+[data-signal="midi"] .sigbar-lit-2 { background: hsl(var(--sig-midi)); opacity: 0.48; box-shadow: 0 0 1.5px hsl(var(--sig-midi) / 0.5), inset 0 0.5px 0 rgba(255,255,255,0.22); }
+[data-signal="midi"] .sigbar-lit-3 { background: hsl(var(--sig-midi)); opacity: 0.58; box-shadow: 0 0 2px hsl(var(--sig-midi) / 0.55), inset 0 0.5px 0 rgba(255,255,255,0.26); }
+[data-signal="midi"] .sigbar-lit-4 { background: hsl(var(--sig-midi)); opacity: 0.68; box-shadow: 0 0 2px hsl(var(--sig-midi) / 0.6), inset 0 0.5px 0 rgba(255,255,255,0.28); }
+[data-signal="midi"] .sigbar-lit-5 { background: hsl(var(--sig-midi)); opacity: 0.76; box-shadow: 0 0 2px hsl(var(--sig-midi) / 0.65), inset 0 0.5px 0 rgba(255,255,255,0.30); }
+[data-signal="midi"] .sigbar-lit-6 { background: hsl(var(--sig-midi)); opacity: 0.84; box-shadow: 0 0 2px hsl(var(--sig-midi) / 0.70), inset 0 0.5px 0 rgba(255,255,255,0.30); }
+[data-signal="midi"] .sigbar-lit-7 { background: hsl(var(--sig-midi)); opacity: 0.92; box-shadow: 0 0 2px hsl(var(--sig-midi) / 0.80), inset 0 0.5px 0 rgba(255,255,255,0.30); }
+[data-signal="midi"] .sigbar-lit-8 { background: hsl(var(--sig-midi)); opacity: 1.00; box-shadow: 0 0 2px hsl(var(--sig-midi) / 0.90), inset 0 0.5px 0 rgba(255,255,255,0.30); }
+
+/* ── CV / Value signal (orange) ──────────────────────────── */
+[data-signal="cv"] .sigbar-lit-0 { background: hsl(var(--sig-value)); opacity: 0.28; box-shadow: none; }
+[data-signal="cv"] .sigbar-lit-1 { background: hsl(var(--sig-value)); opacity: 0.38; box-shadow: 0 0 1px hsl(var(--sig-value) / 0.4), inset 0 0.5px 0 rgba(255,255,255,0.18); }
+[data-signal="cv"] .sigbar-lit-2 { background: hsl(var(--sig-value)); opacity: 0.48; box-shadow: 0 0 1.5px hsl(var(--sig-value) / 0.5), inset 0 0.5px 0 rgba(255,255,255,0.22); }
+[data-signal="cv"] .sigbar-lit-3 { background: hsl(var(--sig-value)); opacity: 0.58; box-shadow: 0 0 2px hsl(var(--sig-value) / 0.55), inset 0 0.5px 0 rgba(255,255,255,0.26); }
+[data-signal="cv"] .sigbar-lit-4 { background: hsl(var(--sig-value)); opacity: 0.68; box-shadow: 0 0 2px hsl(var(--sig-value) / 0.6), inset 0 0.5px 0 rgba(255,255,255,0.28); }
+[data-signal="cv"] .sigbar-lit-5 { background: hsl(var(--sig-value)); opacity: 0.76; box-shadow: 0 0 2px hsl(var(--sig-value) / 0.65), inset 0 0.5px 0 rgba(255,255,255,0.30); }
+[data-signal="cv"] .sigbar-lit-6 { background: hsl(var(--sig-value)); opacity: 0.84; box-shadow: 0 0 2px hsl(var(--sig-value) / 0.70), inset 0 0.5px 0 rgba(255,255,255,0.30); }
+[data-signal="cv"] .sigbar-lit-7 { background: hsl(var(--sig-value)); opacity: 0.92; box-shadow: 0 0 2px hsl(var(--sig-value) / 0.80), inset 0 0.5px 0 rgba(255,255,255,0.30); }
+[data-signal="cv"] .sigbar-lit-8 { background: hsl(var(--sig-value)); opacity: 1.00; box-shadow: 0 0 2px hsl(var(--sig-value) / 0.90), inset 0 0.5px 0 rgba(255,255,255,0.30); }

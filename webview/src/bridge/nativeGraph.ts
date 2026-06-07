@@ -1,6 +1,21 @@
 import { invokeElementNative } from "./juceBackend";
 import { logBridgeError } from "./bridgeError";
 
+/**
+ * Save the current selection as a reusable Snippet (Molecule). Wave-2 C/lead.
+ * Returns true ONLY when the host genuinely created + stored the molecule
+ * (NOTHING-fake: callers must surface failure honestly).
+ *
+ * C++ bridge: elementMoleculeSave(name, nodeUuids[])
+ */
+export async function nativeMoleculeSave(
+  name: string,
+  nodeIds: string[],
+): Promise<boolean> {
+  const r = await invokeElementNative("elementMoleculeSave", [name, nodeIds]);
+  return r === true;
+}
+
 export async function nativeGraphAddPlugin(
   identifier: string,
 ): Promise<boolean> {
@@ -410,6 +425,25 @@ export async function nativeGraphSetNodeHiddenParams(
   const r = await invokeElementNative("elementGraphSetNodeHiddenParams", [
     nodeId,
     hiddenIds.join(","),
+  ]);
+  return r === true;
+}
+
+/**
+ * Set a Block's persisted collapse state (Decision A-2a, Glen Q1 2026-06-07 —
+ * collapse PERSISTS across reopen). The host stores it verbatim on the Node
+ * ValueTree as the "collapsed" boolean property (mirrors "userNote"/
+ * "userHiddenParams") so the layout survives project save/load and reconciles on
+ * the next snapshot (`collapsed` field). Write-on-click only ⇒ the field joins
+ * the coalesced graph push and a static graph still pushes nothing.
+ */
+export async function nativeGraphSetNodeCollapsed(
+  nodeId: string,
+  collapsed: boolean,
+): Promise<boolean> {
+  const r = await invokeElementNative("elementNodeSetCollapsed", [
+    nodeId,
+    collapsed,
   ]);
   return r === true;
 }

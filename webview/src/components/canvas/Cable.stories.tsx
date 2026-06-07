@@ -9,15 +9,45 @@ import { useCableMeterStore } from "../../stores/useCableMeterStore";
 
 // ── Helpers ──
 //
-// Cable is a React Flow *edge*. We mount it on a tiny canvas with two plain
-// (default-type) nodes so the edge binds to default handles without needing
-// a custom node + matching port-handle ids. Signal colour is driven by
-// `data.signalType`, width by `data.channelCount`. Wireless state is read
-// from useBusStore (NOT data.busName); meter glow/pulse from useCableMeterStore.
+// Cable is a React Flow *edge*. We mount it on a tiny canvas with two
+// TerminalNode nodes so the edge binds to their default handles.
+// Signal colour is driven by `data.signalType`, width by `data.channelCount`.
+// Wireless state is read from useBusStore (NOT data.busName); meter
+// glow/pulse from useCableMeterStore.
+
+// D4/Wave-2: terminal endpoint nodes use dark surface (#252529) + neu-raised
+// shadow so flow-debug Out/In labels don't render as white cards on the dark
+// canvas. No explicit <Handle> tags — React Flow supplies default handles.
+import type { NodeProps } from "@xyflow/react";
+
+function TerminalNode({ data }: NodeProps) {
+  const label = (data as { label?: string }).label ?? "";
+  return (
+    <div
+      style={{
+        background: "#252529",
+        border: "none",
+        borderRadius: 6,
+        padding: "5px 10px",
+        fontSize: 11,
+        fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+        color: "#E5E5EA",
+        boxShadow:
+          "2px 2px 6px rgba(0,0,0,0.45), -1px -1px 3px rgba(255,255,255,0.04)",
+        minWidth: 36,
+        textAlign: "center",
+      }}
+    >
+      {label}
+    </div>
+  );
+}
+
+const nodeTypes = { terminal: TerminalNode };
 
 const nodes: Node[] = [
-  { id: "src", position: { x: 0, y: 40 }, data: { label: "Out" } },
-  { id: "dst", position: { x: 240, y: 40 }, data: { label: "In" } },
+  { id: "src", type: "terminal", position: { x: 0, y: 40 }, data: { label: "Out" } },
+  { id: "dst", type: "terminal", position: { x: 240, y: 40 }, data: { label: "In" } },
 ];
 
 function makeCable(over: Partial<CableData> = {}): CableData {
@@ -73,7 +103,7 @@ type Story = StoryObj;
 function signalStory(signalType: SignalType, doc: string): Story {
   return {
     render: () => (
-      <MiniFlow nodes={nodes} edges={[edge(makeCable({ signalType }))]} edgeTypes={edgeTypes} height={220} />
+      <MiniFlow nodes={nodes} edges={[edge(makeCable({ signalType }))]} edgeTypes={edgeTypes} nodeTypes={nodeTypes} height={220} />
     ),
     parameters: { docs: { description: { story: doc } } },
     decorators: [
@@ -114,6 +144,7 @@ export const SurroundSixChannel: Story = {
       nodes={nodes}
       edges={[edge(makeCable({ signalType: "audio", channelCount: 6 }))]}
       edgeTypes={edgeTypes}
+      nodeTypes={nodeTypes}
       height={220}
     />
   ),
@@ -140,6 +171,7 @@ export const Sidechain: Story = {
       nodes={nodes}
       edges={[edge(makeCable({ signalType: "audio", isSidechain: true }))]}
       edgeTypes={edgeTypes}
+      nodeTypes={nodeTypes}
       height={220}
     />
   ),
@@ -162,7 +194,7 @@ export const ActiveWithSignal: Story = {
     },
   },
   render: () => (
-    <MiniFlow nodes={nodes} edges={[edge(makeCable())]} edgeTypes={edgeTypes} height={220} />
+    <MiniFlow nodes={nodes} edges={[edge(makeCable())]} edgeTypes={edgeTypes} nodeTypes={nodeTypes} height={220} />
   ),
   decorators: [
     (Story) => {
@@ -190,7 +222,7 @@ function flowDebugStory(
   return {
     parameters: { docs: { description: { story: doc } } },
     render: () => (
-      <MiniFlow nodes={nodes} edges={[edge(makeCable(data))]} edgeTypes={edgeTypes} height={220} />
+      <MiniFlow nodes={nodes} edges={[edge(makeCable(data))]} edgeTypes={edgeTypes} nodeTypes={nodeTypes} height={220} />
     ),
     decorators: [
       (Story) => {
@@ -280,8 +312,8 @@ function matrixStory(routing: "bezier" | "manhattan"): Story {
     render: () => {
       const ROW_H = 120;
       const rowNodes: Node[] = MATRIX_ROWS.flatMap((row, i) => [
-        { id: `src-${i}`, position: { x: 0, y: i * ROW_H + 20 }, data: { label: row.label } },
-        { id: `dst-${i}`, position: { x: 260, y: i * ROW_H + 20 }, data: { label: "" } },
+        { id: `src-${i}`, type: "terminal", position: { x: 0, y: i * ROW_H + 20 }, data: { label: row.label } },
+        { id: `dst-${i}`, type: "terminal", position: { x: 260, y: i * ROW_H + 20 }, data: { label: "" } },
       ]);
       const rowEdges: Edge[] = MATRIX_ROWS.map((row, i) => {
         const data = makeCable({ id: `cab-${i}`, ...(row.data ?? {}) });
@@ -299,6 +331,7 @@ function matrixStory(routing: "bezier" | "manhattan"): Story {
           nodes={rowNodes}
           edges={rowEdges}
           edgeTypes={edgeTypes}
+          nodeTypes={nodeTypes}
           height={MATRIX_ROWS.length * ROW_H + 40}
         />
       );
@@ -351,8 +384,8 @@ export const PerfBoardManyCables: Story = {
       const rowIdx = Math.floor(i / COLS);
       const x = col * X_GAP * 2;
       const y = rowIdx * Y_GAP + 20;
-      perfNodes.push({ id: `ps-${i}`, position: { x, y }, data: { label: `${i}` } });
-      perfNodes.push({ id: `pd-${i}`, position: { x: x + X_GAP, y }, data: { label: "" } });
+      perfNodes.push({ id: `ps-${i}`, type: "terminal", position: { x, y }, data: { label: `${i}` } });
+      perfNodes.push({ id: `pd-${i}`, type: "terminal", position: { x: x + X_GAP, y }, data: { label: "" } });
       perfEdges.push({
         id: `pcab-${i}`,
         source: `ps-${i}`,
@@ -370,6 +403,7 @@ export const PerfBoardManyCables: Story = {
         nodes={perfNodes}
         edges={perfEdges}
         edgeTypes={edgeTypes}
+        nodeTypes={nodeTypes}
         height={Math.ceil(COUNT / COLS) * Y_GAP + 60}
       />
     );
@@ -404,6 +438,7 @@ export const WirelessBusBadge: Story = {
       nodes={nodes}
       edges={[{ ...edge(makeCable({ busName: "Reverb Send A" })), selected: true }]}
       edgeTypes={edgeTypes}
+      nodeTypes={nodeTypes}
       height={220}
     />
   ),

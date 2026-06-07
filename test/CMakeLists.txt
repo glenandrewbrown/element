@@ -67,6 +67,9 @@ add_test(NAME "GuiServiceTests" COMMAND test_element --run_test=GuiServiceTests)
 add_test(NAME "MappingServiceTests" COMMAND test_element --run_test=MappingServiceTests)
 add_test(NAME "OSCServiceTests" COMMAND test_element --run_test=OSCServiceTests)
 add_test(NAME "SessionServiceTests" COMMAND test_element --run_test=SessionServiceTests)
+# Wave-2 B (4b) — autosave `.els` format + named-save + recovery round-trip +
+# undo-orthogonality. Headless-safe (no chooser/modal paths).
+add_test(NAME "SessionAutosaveRecoveryTests" COMMAND test_element --run_test=SessionAutosaveRecoveryTests)
 add_test(NAME "BridgeContractTests" COMMAND test_element --run_test=BridgeContractTests)
 # QUARANTINE: corrupted 204f5545, unverified — JS bridge unavailable in headless test context;
 # elementGetGraphState returns invalid JSON in non-JUCE-app harness.

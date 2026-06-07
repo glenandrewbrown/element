@@ -3,6 +3,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type DragEvent as ReactDragEvent,
   type MouseEvent,
 } from "react";
 import {
@@ -41,6 +42,7 @@ import {
   nativeGraphMoveNodes,
   nativeGraphRenameNode,
   nativeGraphSetViewport,
+  nativeMoleculeInsert,
 } from "../../bridge/nativeGraph";
 import {
   nativePluginEditorClose,
@@ -61,13 +63,30 @@ import {
   type RouteSuggestion,
   type RouteSuggestionCache,
 } from "./autoRouteSuggestions";
+import { computeAutoLayout } from "../../lib/autoLayout";
+import {
+  nextAutoFitExtent,
+  extentForBounds,
+  type Extent,
+} from "../../lib/autoFitExtent";
+import {
+  findSpliceCandidate,
+  planSplice,
+  type CableGeometry,
+} from "../../lib/cableSplice";
+import { isSnippetDrag, parseSnippetDrop } from "../../lib/snippetDrag";
 import type {
   BlockData,
   CableData,
   CommentBoxData,
   SignalType,
 } from "../../data/types";
-import { EV_FIT_BOARD, EV_CREATE_COMMENT, EV_START_RENAME } from "../../events";
+import {
+  EV_FIT_BOARD,
+  EV_CREATE_COMMENT,
+  EV_START_RENAME,
+  EV_TIDY,
+} from "../../events";
 
 // ── Custom node/edge type registrations (stable references) ──
 
@@ -80,6 +99,16 @@ const edgeTypes: EdgeTypes = { cable: Cable, ghost: GhostEdge };
 // (architect-perf-plan §2.1a) — a ghost hint still feels instant at 10Hz, and
 // the lower cadence cuts the per-tick matcher work during a heavy drag.
 const SUGGEST_THROTTLE_MS = 100;
+
+// Debounce (ms) before an auto-tidy-on-add relayout fires. Long enough that a
+// burst of adds (e.g. a multi-block snippet) coalesces into ONE relayout, and
+// that a user who immediately starts dragging the new block cancels it.
+const AUTO_TIDY_DEBOUNCE_MS = 450;
+// How long the .tidy-glide transform-transition class stays on nodes (must
+// cover the 260ms CSS transition; a little slack so the glide completes).
+const TIDY_GLIDE_MS = 320;
+// How long the .snippet-dropin spring class stays on freshly-inserted nodes.
+const SNIPPET_DROPIN_MS = 220;
 
 // ── Category → minimap colour ──
 
@@ -124,7 +153,11 @@ function toCommentFlowNodes(
   }));
 }
 
-function toFlowEdges(cables: CableData[], selectedId: string | null): Edge[] {
+function toFlowEdges(
+  cables: CableData[],
+  selectedId: string | null,
+  spliceTargetId: string | null = null,
+): Edge[] {
   return cables.map((c) => ({
     id: c.id,
     type: "cable",
@@ -134,6 +167,9 @@ function toFlowEdges(cables: CableData[], selectedId: string | null): Edge[] {
     targetHandle: c.targetPort,
     data: c,
     selected: c.id === selectedId,
+    // Item 1b — highlight the cable a compatible Block is being dragged over as
+    // the splice target (same glow language as a selected cable; CSS handles it).
+    className: c.id === spliceTargetId ? "cable-splice-target" : undefined,
   }));
 }
 
@@ -252,6 +288,8 @@ export function GraphCanvas() {
   const openBlockTab = useAppStore((s) => s.openBlockTab);
   const embeddedEditorNodeId = useAppStore((s) => s.embeddedEditorNodeId);
   const setCanvasHint = useAppStore((s) => s.setCanvasHint);
+  const autoTidyOnAdd = useAppStore((s) => s.autoTidyOnAdd);
+  const sessionSnap = useAppStore((s) => s.snapToGrid);
 
   const isEdit = mode === "edit";
 
@@ -302,6 +340,51 @@ export function GraphCanvas() {
   const canvasSnap = useHostExtrasStore((s) => s.canvas.snapToGrid);
   const gridSize = useHostExtrasStore((s) => s.canvas.gridSize);
   const graphBounds = useHostExtrasStore((s) => s.canvas.graphBounds);
+
+  // Snap-to-grid is ON if EITHER the host canvas flag or the session toolbar
+  // toggle is set (Feedback #3b: flip snapping from the toolbar w/o a round-trip).
+  const snapEnabled = canvasSnap || sessionSnap;
+
+  // ── Cable-splice (Item 1b) ──
+  // While a Block is dragged over a type-compatible cable, that cable id is the
+  // splice target (highlighted); dropping splices A→new→B. Kept in a ref (read
+  // on drag-stop without re-creating the handler) AND mirrored to state (drives
+  // the edge className). Cleared when the drag leaves any cable / ends.
+  const [spliceTargetEdgeId, setSpliceTargetEdgeId] = useState<string | null>(
+    null,
+  );
+  const spliceTargetRef = useRef<string | null>(null);
+  useEffect(() => {
+    spliceTargetRef.current = spliceTargetEdgeId;
+  }, [spliceTargetEdgeId]);
+
+  // ── Auto-fit extent (Item 3a-W2) ──
+  // The live translate extent. Seeded from the host graphBounds; grows with
+  // hysteresis as Blocks approach the edge (never shrinks, never jerks). Mirrored
+  // to a ref so the per-frame hysteresis check reads it without re-subscribing.
+  const [translateExtent, setTranslateExtent] = useState<Extent>(() =>
+    extentForBounds(graphBounds),
+  );
+  const extentRef = useRef<Extent>(translateExtent);
+  useEffect(() => {
+    extentRef.current = translateExtent;
+  }, [translateExtent]);
+
+  // True while a Block drag is in flight — gates auto-tidy-on-add (never yank a
+  // node the user is moving) and the near-edge auto-fit pan (never pan under a
+  // live drag). Set on drag-start, cleared on drag-stop.
+  const draggingRef = useRef(false);
+
+  // Auto-tidy-on-add debounce timer + the block count at the last settle, so we
+  // relayout only on a genuine ADD (count increased), not a delete/move.
+  const autoTidyTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
+  const lastBlockCountRef = useRef(blocks.length);
+  // .tidy-glide class strip timer (transient transform-transition).
+  const glideTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -504,6 +587,64 @@ export function GraphCanvas() {
     [clearSuggestions],
   );
 
+  // ── Tidy (Item 3b) ──
+  // Apply the transient .tidy-glide transform-transition class to the named
+  // nodes (or all, when ids is undefined) so their move to new positions GLIDES
+  // rather than teleports, then strip it after the glide completes. Class-based
+  // + transform-only → no per-tick painter style, perf guardrails stay green.
+  const applyTidyGlide = useCallback(
+    (ids?: Set<string>) => {
+      if (glideTimerRef.current !== undefined) clearTimeout(glideTimerRef.current);
+      reactFlow.setNodes((nds) =>
+        nds.map((n) =>
+          (!ids || ids.has(n.id)) && !n.className?.includes("tidy-glide")
+            ? { ...n, className: `${n.className ?? ""} tidy-glide`.trim() }
+            : n,
+        ),
+      );
+      glideTimerRef.current = setTimeout(() => {
+        reactFlow.setNodes((nds) =>
+          nds.map((n) =>
+            n.className?.includes("tidy-glide")
+              ? {
+                  ...n,
+                  className: n.className.replace(/\s*tidy-glide/g, "").trim(),
+                }
+              : n,
+          ),
+        );
+        glideTimerRef.current = undefined;
+      }, TIDY_GLIDE_MS);
+    },
+    [reactFlow],
+  );
+
+  // Relayout the current Board via the existing deterministic layered layout,
+  // then persist the new positions through the host (single batch op). Blocks
+  // glide to place. No-op on an empty Board (honest — nothing to tidy).
+  const runTidy = useCallback(() => {
+    const { nodes: storeNodes, edges: storeEdges } = useGraphStore.getState();
+    const positions = computeAutoLayout(storeNodes, storeEdges);
+    if (positions.length === 0) return;
+    applyTidyGlide();
+    // Optimistically move locally so the glide animates immediately, then push
+    // to the host (authoritative positions arrive on the next snapshot).
+    updateNodePositions(positions);
+    void nativeGraphMoveNodes(positions);
+  }, [applyTidyGlide, updateNodePositions]);
+
+  // Drag-start: mark a drag in flight + cancel any pending auto-tidy pass. This
+  // is constraint (d) — "a manual drag DURING the debounce window cancels that
+  // relayout pass" — so a deliberately-moved Block is never yanked back (Q3).
+  const onNodeDragStart = useCallback((_event: MouseEvent, node: Node) => {
+    if (node.type === "comment") return;
+    draggingRef.current = true;
+    if (autoTidyTimerRef.current !== undefined) {
+      clearTimeout(autoTidyTimerRef.current);
+      autoTidyTimerRef.current = undefined;
+    }
+  }, []);
+
   // While a Block is dragged, (throttled) recompute the ghost suggestions from
   // the LIVE drag position. React Flow mutates `nodes` in place during the
   // drag, so we overlay the live RF positions/sizes onto the store's BlockData
@@ -512,6 +653,7 @@ export function GraphCanvas() {
     (_event, node) => {
       if (!isEdit || node.type === "comment") {
         if (suggestionsRef.current.length > 0) clearSuggestions();
+        if (spliceTargetRef.current !== null) setSpliceTargetEdgeId(null);
         return;
       }
       const now =
@@ -555,6 +697,47 @@ export function GraphCanvas() {
         suggestCacheRef.current,
       );
       setSuggestions(next);
+
+      // ── Cable-splice hit-test (Item 1b) ──
+      // Find the type-compatible cable the dragged Block is hovering over (its
+      // centre within the hit radius of the cable's segment). Build each cable's
+      // geometry from the LIVE source/target node centres. Highlight the single
+      // best candidate; the drop handler reads spliceTargetRef. The dragged
+      // block must have a compatible in AND out for that signal (NOTHING-fake —
+      // canBlockSpliceCable enforces it inside findSpliceCandidate).
+      const draggedBlock = liveBlocks.find((b) => b.id === node.id);
+      let spliceId: string | null = null;
+      if (draggedBlock) {
+        const centerOf = (id: string) => {
+          const p = livePos.get(id);
+          if (!p) return null;
+          const m = measured.get(id);
+          return {
+            x: p.x + (m ? m.width / 2 : 0),
+            y: p.y + (m ? m.height / 2 : 0),
+          };
+        };
+        const dragCenter = centerOf(node.id);
+        if (dragCenter) {
+          const geoms: CableGeometry[] = [];
+          for (const e of liveEdges) {
+            const a = centerOf(e.source);
+            const b = centerOf(e.target);
+            if (!a || !b) continue;
+            geoms.push({
+              id: e.id,
+              source: e.source,
+              target: e.target,
+              signalType: e.signalType,
+              a,
+              b,
+            });
+          }
+          spliceId = findSpliceCandidate(draggedBlock, dragCenter, geoms);
+        }
+      }
+      if (spliceId !== spliceTargetRef.current) setSpliceTargetEdgeId(spliceId);
+
       // Discoverability (T8): advertise the accept gestures in the status
       // footer while ghosts are live; clear when they vanish mid-drag.
       const app = useAppStore.getState();
@@ -576,6 +759,55 @@ export function GraphCanvas() {
       node: Node,
       draggedNodes?: Node[],
     ) => {
+      draggingRef.current = false;
+
+      // ── Cable-splice on drop (Item 1b) ──
+      // If the Block was dropped onto a highlighted compatible cable, splice it
+      // into that chain (A→new→B) by composing the existing disconnect/connect
+      // natives. Takes precedence over the ghost-accept path (the user aimed at a
+      // cable). The three ops are independent undo steps (no compound-undo bridge
+      // — documented in the report). The new topology arrives on the next
+      // snapshot; we still persist the moved position below so the block sits
+      // where it was dropped.
+      const spliceEdgeId = spliceTargetRef.current;
+      setSpliceTargetEdgeId(null);
+      if (spliceEdgeId && node.type !== "comment") {
+        const cable = useGraphStore
+          .getState()
+          .edges.find((e) => e.id === spliceEdgeId);
+        const block = useGraphStore
+          .getState()
+          .nodes.find((b) => b.id === node.id);
+        if (cable && block) {
+          const ops = planSplice(block, cable);
+          if (ops) {
+            for (const op of ops) {
+              if (op.kind === "disconnect") {
+                void nativeGraphDisconnect(
+                  op.source,
+                  op.sourcePort,
+                  op.target,
+                  op.targetPort,
+                );
+              } else {
+                void nativeGraphConnect(
+                  op.source,
+                  op.sourcePort,
+                  op.target,
+                  op.targetPort,
+                );
+              }
+            }
+          }
+        }
+        // A splice supersedes ghost suggestions — discard them, don't also wire.
+        clearSuggestions();
+        const p = node.position;
+        updateNodePositions([{ id: node.id, x: p.x, y: p.y }]);
+        void nativeGraphMoveNodes([{ id: node.id, x: p.x, y: p.y }]);
+        return;
+      }
+
       // Accept-on-drop — mirrors the JUCE BlockComponent::mouseUp contract:
       // dropping with the modifier key (Cmd / Ctrl) held APPLIES the ghost
       // suggestions; a plain drop just discards them. This keeps the user in
@@ -639,9 +871,16 @@ export function GraphCanvas() {
   useEffect(() => {
     setEdges([
       ...toGhostEdges(suggestions, acceptSuggestion),
-      ...toFlowEdges(cables, selectedEdgeId),
+      ...toFlowEdges(cables, selectedEdgeId, spliceTargetEdgeId),
     ]);
-  }, [cables, selectedEdgeId, suggestions, acceptSuggestion, setEdges]);
+  }, [
+    cables,
+    selectedEdgeId,
+    spliceTargetEdgeId,
+    suggestions,
+    acceptSuggestion,
+    setEdges,
+  ]);
 
   // Keyboard accept/dismiss for ghost suggestions — only bound while at least
   // one suggestion is live (so it never shadows global shortcuts at rest).
@@ -780,6 +1019,68 @@ export function GraphCanvas() {
     }
   }, []);
 
+  // ── Snippet drop-target (Item 4a-iii / U6) ──
+  // Accept a Snippet dragged from the SnippetShelf (the C-worker's drag contract
+  // in lib/snippetDrag). onDragOver must preventDefault + set dropEffect so the
+  // browser permits the drop; onDrop deserializes the payload and inserts the
+  // molecule AT the drop point via the existing nativeMoleculeInsert(name,x,y).
+  const onSnippetDragOver = useCallback(
+    (event: ReactDragEvent<HTMLDivElement>) => {
+      if (!isEdit || !isSnippetDrag(event.dataTransfer)) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "copy";
+    },
+    [isEdit],
+  );
+
+  const onSnippetDrop = useCallback(
+    (event: ReactDragEvent<HTMLDivElement>) => {
+      if (!isEdit) return;
+      const payload = parseSnippetDrop(event.dataTransfer);
+      if (!payload) return; // not our drag — leave for any other handler
+      event.preventDefault();
+      const flow = reactFlow.screenToFlowPosition({
+        x: event.clientX,
+        y: event.clientY,
+      });
+      void nativeMoleculeInsert(payload.name, flow.x, flow.y);
+      // G6 latency-mask: snapshot the current node ids; after a short delay
+      // (covering the C++ insert) tag whatever is NEW with the .snippet-dropin
+      // scale-up spring, then strip it. Best-effort — purely cosmetic.
+      const before = new Set(useGraphStore.getState().nodes.map((n) => n.id));
+      window.setTimeout(() => {
+        const added = useGraphStore
+          .getState()
+          .nodes.filter((n) => !before.has(n.id))
+          .map((n) => n.id);
+        if (added.length === 0) return;
+        const addedSet = new Set(added);
+        reactFlow.setNodes((nds) =>
+          nds.map((n) =>
+            addedSet.has(n.id) && !n.className?.includes("snippet-dropin")
+              ? { ...n, className: `${n.className ?? ""} snippet-dropin`.trim() }
+              : n,
+          ),
+        );
+        window.setTimeout(() => {
+          reactFlow.setNodes((nds) =>
+            nds.map((n) =>
+              n.className?.includes("snippet-dropin")
+                ? {
+                    ...n,
+                    className: n.className
+                      .replace(/\s*snippet-dropin/g, "")
+                      .trim(),
+                  }
+                : n,
+            ),
+          );
+        }, SNIPPET_DROPIN_MS);
+      }, 120);
+    },
+    [isEdit, reactFlow],
+  );
+
   // ── Minimap node colour ──
 
   const minimapNodeColor = useCallback((node: Node) => {
@@ -787,11 +1088,6 @@ export function GraphCanvas() {
     const cat = (node.data as Record<string, unknown>)?.category as string;
     return categoryColor[cat] ?? "#8E8E93";
   }, []);
-
-  const translateExtent = [
-    [graphBounds.minX - 800, graphBounds.minY - 600],
-    [graphBounds.maxX + 800, graphBounds.maxY + 600],
-  ] as [[number, number], [number, number]];
 
   const viewportPushTimerRef = useRef<
     ReturnType<typeof setTimeout> | undefined
@@ -851,15 +1147,67 @@ export function GraphCanvas() {
       setRenameOverlay({ nodeId, value: node.name, screen });
     };
 
+    const handleTidy = () => runTidy();
+
     window.addEventListener(EV_FIT_BOARD, handleFitBoard);
     window.addEventListener(EV_CREATE_COMMENT, handleCreateComment);
     window.addEventListener(EV_START_RENAME, handleStartRename);
+    window.addEventListener(EV_TIDY, handleTidy);
     return () => {
       window.removeEventListener(EV_FIT_BOARD, handleFitBoard);
       window.removeEventListener(EV_CREATE_COMMENT, handleCreateComment);
       window.removeEventListener(EV_START_RENAME, handleStartRename);
+      window.removeEventListener(EV_TIDY, handleTidy);
     };
-  }, [reactFlow]);
+  }, [reactFlow, runTidy]);
+
+  // ── Auto-tidy on add (Item 3b, Glen Q3 — ON by default) ──
+  // Fire a debounced animated relayout ONLY when the block COUNT increases (a
+  // genuine ADD), never on a delete/move. Constraints: (a) ADD-only; (b) the
+  // relayout animates (runTidy applies the glide); (c) the toggle disables it;
+  // (d) a manual drag mid-debounce cancels the pending pass (onNodeDragStart +
+  // the draggingRef guard below). A drag in flight at fire-time also aborts.
+  useEffect(() => {
+    const prev = lastBlockCountRef.current;
+    lastBlockCountRef.current = blocks.length;
+    if (!autoTidyOnAdd) return;
+    if (blocks.length <= prev) return; // not an add (delete/move/no-op)
+    if (draggingRef.current) return; // never relayout under a live drag
+    if (autoTidyTimerRef.current !== undefined) {
+      clearTimeout(autoTidyTimerRef.current);
+    }
+    autoTidyTimerRef.current = setTimeout(() => {
+      autoTidyTimerRef.current = undefined;
+      // Re-check at fire-time: a drag that began during the debounce cancels.
+      if (draggingRef.current) return;
+      runTidy();
+    }, AUTO_TIDY_DEBOUNCE_MS);
+  }, [blocks.length, autoTidyOnAdd, runTidy]);
+
+  // Clear the auto-tidy/glide timers on unmount.
+  useEffect(
+    () => () => {
+      if (autoTidyTimerRef.current !== undefined) {
+        clearTimeout(autoTidyTimerRef.current);
+      }
+      if (glideTimerRef.current !== undefined) {
+        clearTimeout(glideTimerRef.current);
+      }
+    },
+    [],
+  );
+
+  // ── Auto-fit extent with hysteresis (Item 3a-W2, G4) ──
+  // As block bounds change (add/move settle → graphBounds updates from the
+  // snapshot), grow the translate extent ONLY when a block creeps within the
+  // ~100px band (nextAutoFitExtent returns null otherwise → hold steady, no
+  // jerk). Never expand under a live drag (a cable/node drag near the edge must
+  // not trigger a pan). The grown extent is monotonic (never shrinks).
+  useEffect(() => {
+    if (draggingRef.current) return;
+    const next = nextAutoFitExtent(extentRef.current, graphBounds);
+    if (next) setTranslateExtent(next);
+  }, [graphBounds]);
 
   // WKWebView zoom sharpness: promote the viewport to a GPU layer ONLY while a
   // pan/zoom gesture is in flight, and explicitly demote it when the gesture
@@ -918,7 +1266,11 @@ export function GraphCanvas() {
   );
 
   return (
-    <div className="w-full h-full relative">
+    <div
+      className="w-full h-full relative"
+      onDragOver={onSnippetDragOver}
+      onDrop={onSnippetDrop}
+    >
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -928,6 +1280,7 @@ export function GraphCanvas() {
         edgeTypes={edgeTypes}
         onNodeClick={onNodeClick}
         onNodeDoubleClick={onNodeDoubleClick}
+        onNodeDragStart={isEdit ? onNodeDragStart : undefined}
         onNodeDrag={isEdit ? onNodeDrag : undefined}
         onNodeDragStop={onNodeDragStop}
         onEdgeClick={onEdgeClick}
@@ -945,7 +1298,7 @@ export function GraphCanvas() {
         elementsSelectable={true}
         selectionOnDrag={isEdit}
         selectionMode={SelectionMode.Partial}
-        snapToGrid={canvasSnap}
+        snapToGrid={snapEnabled}
         snapGrid={[gridSize, gridSize]}
         fitView
         fitViewOptions={{ padding: 0.15 }}
