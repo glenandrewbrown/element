@@ -366,4 +366,49 @@ describe("useJuceBridge — gap coverage", () => {
     });
     expect(prev).toHaveBeenCalledTimes(1);
   });
+
+  // ── onEmbeddedEditorReady → sets the embed mirror (Phase 4 Task 4.2) ───────
+  // The host pushes this once the embedded editor is mounted, replacing the
+  // interim retry-poll backoff with an authoritative "it's open" signal.
+
+  it("onEmbeddedEditorReady sets embeddedEditorNodeId to the pushed node uuid", async () => {
+    renderHook(() => useJuceBridge());
+    await act(async () => { await flushAsync(); });
+
+    expect(useAppStore.getState().embeddedEditorNodeId).toBeNull();
+
+    act(() => {
+      window.__elementNative?.onEmbeddedEditorReady?.("valhalla");
+    });
+    expect(useAppStore.getState().embeddedEditorNodeId).toBe("valhalla");
+  });
+
+  it("onEmbeddedEditorReady ignores an empty/invalid node id (no mirror set)", async () => {
+    // Establish a clean precondition (prior tests in this suite may have set it).
+    act(() => {
+      useAppStore.getState().setEmbeddedEditorNodeId(null);
+    });
+
+    renderHook(() => useJuceBridge());
+    await act(async () => { await flushAsync(); });
+
+    act(() => {
+      window.__elementNative?.onEmbeddedEditorReady?.("");
+    });
+    expect(useAppStore.getState().embeddedEditorNodeId).toBeNull();
+  });
+
+  it("onEmbeddedEditorReady chains to a previously-installed handler", async () => {
+    const prev = vi.fn();
+    window.__elementNative = { onEmbeddedEditorReady: prev };
+
+    renderHook(() => useJuceBridge());
+    await act(async () => { await flushAsync(); });
+
+    act(() => {
+      window.__elementNative?.onEmbeddedEditorReady?.("node-x");
+    });
+    expect(prev).toHaveBeenCalledTimes(1);
+    expect(prev).toHaveBeenCalledWith("node-x");
+  });
 });

@@ -111,9 +111,20 @@ private:
 
     void setupNode (const ValueTree& data, ProcessorPtr object);
 
+    // Wave-3 Phase 4 — async plugin load. addNode(desc,...) routes EXTERNAL
+    // (JUCE-format) plugins here: it adds a transient loading placeholder
+    // synchronously (stable final uuid, zero connectable ports), kicks
+    // createGraphNodeAsync, and on the message-thread callback calls
+    // swapInLoadedProcessor to swap the real processor INTO the SAME model
+    // ValueTree (uuid preserved) and republish via the engine API. The swap is
+    // guarded by a WeakReference so a session reload mid-load is a safe no-op.
+    uint32 addExternalPluginAsync (const PluginDescription& desc, double rx, double ry, uint32 nodeId);
+    void swapInLoadedProcessor (const String& nodeUuid, uint32 placeholderId, ProcessorPtr realProcessor, const PluginDescription& desc);
+
     void processorArcsChanged();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GraphManager)
+    JUCE_DECLARE_WEAK_REFERENCEABLE (GraphManager)
 };
 
 class RootGraphManager : public GraphManager

@@ -5849,6 +5849,14 @@ void ElementWebViewHost::pluginEditorOpen (const String& nodeUuid, int x, int y,
     addAndMakeVisible (*pluginEmbedEditor);
     rebuildPluginEmbedLayout();
     pluginEmbedEditor->toFront (false);
+
+    // Wave-3 Phase 4 (Task 4.2) — tell the webview the embedded editor is mounted
+    // and ready, so it can finalise its mirror + drag affordance WITHOUT the
+    // interim retry-poll backoff (nativePluginEditor.ts PLUGIN_EDITOR_OPEN_DELAYS_MS).
+    // Fired exactly once per successful open, AFTER the editor exists. Mirrors
+    // onEmbeddedEditorClosed (the single teardown push). Always message-thread.
+    evalInBrowser ("window.__elementNative && window.__elementNative.onEmbeddedEditorReady && window.__elementNative.onEmbeddedEditorReady("
+                   + nodeUuid.quoted() + ");");
 }
 
 void ElementWebViewHost::pluginEditorSetBounds (int x, int y, int w, int h)
@@ -6607,6 +6615,18 @@ String ElementWebViewHost::buildActiveGraphJson() const
         b->setProperty ("id", n.getUuidString());
         b->setProperty ("name", n.getName());
 
+        // Wave-3 Phase 4 — transient async-load lifecycle state. While an external
+        // plugin's real processor is still being instantiated, GraphManager marks
+        // the placeholder node with the runtime-only tags::loading flag (stripped
+        // on save). Emit loadState:"loading" so the React Block shows the honest
+        // loading face (name + "loading…", no meters, no connectable ports). For a
+        // READY node the key is OMITTED — the webview's mapBlock treats absent as
+        // "ready" (back-compat: every legacy/steady-state node decodes as ready,
+        // and the snapshot stays byte-identical to today for the Task 1.2 dedupe).
+        const bool nodeIsLoading = (bool) n.getProperty (tags::loading, false);
+        if (nodeIsLoading)
+            b->setProperty ("loadState", "loading");
+
         // P0 — internal node identifier (e.g. "element.compare"). Emitted for ALL
         // blocks (harmless for third-party — just the file/identifier string). Lets
         // the webview branch its inline controls on built-in node type.
@@ -6739,18 +6759,27 @@ String ElementWebViewHost::buildActiveGraphJson() const
         b->setProperty ("latencyMs", latencyMs);
         b->setProperty ("oversample", oversample);
 
+        // A LOADING node exposes NO connectable ports (loading contract §3/§4):
+        // a brand-new async-loaded plugin has no real port layout yet, so emit an
+        // EMPTY ports array rather than the placeholder's guessed ports. The Block
+        // therefore renders no handles and is not cable-targetable until ready.
+        // (The placeholder already derives 0 ports, but gating here makes the
+        // "nothing fake" guarantee explicit and independent of the placeholder.)
         Array<var> portsVar;
-        for (int pi = 0; pi < n.getNumPorts(); ++pi)
+        if (! nodeIsLoading)
         {
-            const Port p = n.getPort (pi);
-            DynamicObject::Ptr po (new DynamicObject());
-            const bool isIn = p.isInput();
-            po->setProperty ("id", String (isIn ? "in-" : "out-") + String ((int) p.index()));
-            po->setProperty ("label", p.getName());
-            po->setProperty ("direction", isIn ? "input" : "output");
-            po->setProperty ("type", p.getType().getSlug());
-            po->setProperty ("signalType", portTypeToSignalString (p.getType()));
-            portsVar.add (var (po.get()));
+            for (int pi = 0; pi < n.getNumPorts(); ++pi)
+            {
+                const Port p = n.getPort (pi);
+                DynamicObject::Ptr po (new DynamicObject());
+                const bool isIn = p.isInput();
+                po->setProperty ("id", String (isIn ? "in-" : "out-") + String ((int) p.index()));
+                po->setProperty ("label", p.getName());
+                po->setProperty ("direction", isIn ? "input" : "output");
+                po->setProperty ("type", p.getType().getSlug());
+                po->setProperty ("signalType", portTypeToSignalString (p.getType()));
+                portsVar.add (var (po.get()));
+            }
         }
         b->setProperty ("ports", var (portsVar));
 

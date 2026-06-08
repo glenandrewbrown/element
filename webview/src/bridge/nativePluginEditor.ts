@@ -2,18 +2,24 @@ import { invokeElementNative } from "./juceBackend";
 import { useAppStore } from "../stores/useAppStore";
 
 /**
- * Retry-poll backoff for the plugin-editor open path. The C++ handler
- * returns `false` when `pluginEmbedEditor != nullptr` is false — which
- * happens when a freshly added plugin's `AudioProcessor` is not yet
- * instantiated even though its node already exists in the graph
- * snapshot. Bounded retries close the T-P6-3 race without requiring a
- * new C++ push channel. Total worst-case wait ≈ 1.2 s (Task 1.5,
- * Wave-3 perf; was 2.9 s); returns immediately on first success.
+ * Open the embedded plugin editor for a node — SINGLE-SHOT (Wave-3 Phase 4
+ * Task 4.2; the interim retry-poll backoff `PLUGIN_EDITOR_OPEN_DELAYS_MS` is
+ * removed).
+ *
+ * The backoff existed only to paper over a synchronous-add race: a freshly
+ * added plugin's `AudioProcessor` was absent for a few frames after its node
+ * appeared, so `elementPluginEditorOpen` returned `false` transiently. Phase 4
+ * replaces that race with an explicit `loadState`: a node is `loading` (no real
+ * processor, no editor, Block pinned + non-interactive) until the async load
+ * completes and the snapshot flips it to `ready`. By the time the user can
+ * open an editor, the real processor exists — so one call suffices.
+ *
+ * On success the host also pushes `onEmbeddedEditorReady(nodeId)` (consumed in
+ * useJuceBridge) as the authoritative "editor is mounted" signal; we still set
+ * the mirror optimistically here so the toggle/✕/Esc state is correct without
+ * waiting a round-trip. A `false` return (e.g. the node is still loading, which
+ * has no editor) simply does not open — the caller surfaces no drag handle.
  */
-// INTERIM: removed by Task 4.2 (host editor ready-push)
-// Exported for test assertions only — do not use outside this module.
-export const PLUGIN_EDITOR_OPEN_DELAYS_MS = [0, 80, 160, 320, 640] as const;
-
 export async function nativePluginEditorOpen(
   nodeId: string,
   x: number,
@@ -21,26 +27,20 @@ export async function nativePluginEditorOpen(
   w: number,
   h: number,
 ): Promise<boolean> {
-  for (const delay of PLUGIN_EDITOR_OPEN_DELAYS_MS) {
-    if (delay > 0) {
-      await new Promise<void>((resolve) =>
-        window.setTimeout(resolve, delay),
-      );
-    }
-    const r = await invokeElementNative("elementPluginEditorOpen", [
-      nodeId,
-      x,
-      y,
-      w,
-      h,
-    ]);
-    if (r === true) {
-      // Mirror the host's `pluginEmbedNodeUuid` so the webview knows which
-      // Block currently owns the embedded editor (drives the double-click
-      // toggle, Esc-to-close, and the ✕ affordance). (P1-A)
-      useAppStore.getState().setEmbeddedEditorNodeId(nodeId);
-      return true;
-    }
+  const r = await invokeElementNative("elementPluginEditorOpen", [
+    nodeId,
+    x,
+    y,
+    w,
+    h,
+  ]);
+  if (r === true) {
+    // Mirror the host's `pluginEmbedNodeUuid` so the webview knows which Block
+    // currently owns the embedded editor (drives the double-click toggle,
+    // Esc-to-close, and the ✕ affordance). The host's onEmbeddedEditorReady
+    // push reaffirms this. (P1-A)
+    useAppStore.getState().setEmbeddedEditorNodeId(nodeId);
+    return true;
   }
   return false;
 }

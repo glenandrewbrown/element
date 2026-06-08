@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <functional>
+
 #include <element/juce/audio_processors.hpp>
 #include <element/signals.hpp>
 
@@ -105,6 +107,23 @@ public:
 
     juce::AudioPluginInstance* createAudioPlugin (const juce::PluginDescription& desc, juce::String& errorMsg);
     Processor* createGraphNode (const juce::PluginDescription& desc, juce::String& errorMsg);
+
+    /** Wave-3 Phase 4 — asynchronous variant of createGraphNode.
+     *
+     *  For EXTERNAL (JUCE-format) plugins this routes instantiation through
+     *  AudioPluginFormatManager::createPluginInstanceAsync so the message thread
+     *  is NOT blocked while a heavy plugin loads. The callback receives the wrapped
+     *  Processor (ownership transferred) or nullptr + an error string.
+     *
+     *  RT-safety: JUCE guarantees the completion callback runs on the MESSAGE
+     *  THREAD (juce_AudioPluginFormatManager.h: "called on the message thread"),
+     *  so the supplied callback may safely touch the model/engine.
+     *
+     *  Internal / NodeFactory / IO nodes are cheap to build and are created
+     *  SYNCHRONOUSLY (the callback is invoked inline, still on the calling thread),
+     *  reusing createGraphNode so there is no behaviour change for them. */
+    using GraphNodeCreationCallback = std::function<void (Processor*, const juce::String&)>;
+    void createGraphNodeAsync (const juce::PluginDescription& desc, GraphNodeCreationCallback callback);
 
     /** Create a sandboxed graph node that runs the plugin in an isolated process.
      *  This provides crash isolation - if the plugin crashes, only the sandbox

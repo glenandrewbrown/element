@@ -447,6 +447,60 @@ uint32 GraphManager::addNode (const Node& newNode)
     return nodeId;
 }
 
+// Wave-3 Phase 4: apply the real-processor-specific node setup that historically
+// ran synchronously in addNode(desc,...) AFTER the plugin instance existed:
+// stereo-by-default bus negotiation + hiding the Control/CV/Video/Event ports on
+// the Block. Factored out so BOTH the synchronous (internal/IO/Container) add and
+// the async loading→ready swap share ONE implementation (no divergence).
+static void applyAddedNodeProcessorSetup (GraphNode& processor, Processor* object, Node& node)
+{
+    PortArray pins, pouts;
+    std::vector<PortType> toHide = {
+        PortType::Control, PortType::CV, PortType::Video, PortType::Event
+    };
+
+    for (const auto& pt : toHide)
+        node.getPorts (pins, pouts, pt);
+
+    for (auto& c : pins)
+        c.setHiddenOnBlock (true);
+    for (auto& c : pouts)
+        c.setHiddenOnBlock (true);
+
+    if (auto* const proc = object->getAudioProcessor())
+    {
+        // try to use stereo by default on newly added plugins
+        AudioProcessor::BusesLayout stereoInOut;
+        stereoInOut.inputBuses.add (AudioChannelSet::stereo());
+        stereoInOut.outputBuses.add (AudioChannelSet::stereo());
+        AudioProcessor::BusesLayout stereoOut;
+        stereoOut.outputBuses.add (AudioChannelSet::stereo());
+        AudioProcessor::BusesLayout* tryStereo = nullptr;
+        const auto oldLayout = proc->getBusesLayout();
+
+        if (proc->getTotalNumInputChannels() == 1 && proc->getTotalNumOutputChannels() == 1 && proc->checkBusesLayoutSupported (stereoInOut))
+        {
+            tryStereo = &stereoInOut;
+        }
+        else if (proc->getTotalNumInputChannels() == 0 && proc->getTotalNumOutputChannels() == 1 && proc->checkBusesLayoutSupported (stereoOut))
+        {
+            tryStereo = &stereoOut;
+        }
+
+        if (tryStereo != nullptr && proc->checkBusesLayoutSupported (*tryStereo))
+        {
+            proc->suspendProcessing (true);
+            proc->releaseResources();
+
+            if (! proc->setBusesLayout (*tryStereo))
+                proc->setBusesLayout (oldLayout);
+
+            proc->prepareToPlay (processor.getSampleRate(), processor.getBlockSize());
+            proc->suspendProcessing (false);
+        }
+    }
+}
+
 uint32 GraphManager::addNode (const PluginDescription* desc, double rx, double ry, uint32 nodeId)
 {
     if (! desc)
@@ -456,6 +510,19 @@ uint32 GraphManager::addNode (const PluginDescription* desc, double rx, double r
                                      TRANS ("Cannot instantiate plugin without a description"));
         return EL_INVALID_NODE;
     }
+
+    // Wave-3 Phase 4 — ASYNC LOAD path for EXTERNAL JUCE-format plugins only.
+    // pluginManager.getAudioPluginFormat() returns non-null exactly for real
+    // formats (VST3/AU/LV2/CLAP/VST) and null for "Internal"/NodeProvider/IO
+    // nodes — which stay on the unchanged synchronous path below (they are cheap
+    // to build, never blocked the message thread, and a placeholder would be
+    // pointless). For an external plugin we add a transient LOADING placeholder
+    // synchronously (stable FINAL uuid, zero connectable ports — placeholder.hpp
+    // §setupFor derives 0 ports from the empty node), then kick the async
+    // instantiation. The loading→ready swap (swapInLoadedProcessor) runs on the
+    // JUCE message-thread callback and preserves the uuid (CRITICAL-1).
+    if (pluginManager.getAudioPluginFormat (desc->pluginFormatName) != nullptr)
+        return addExternalPluginAsync (*desc, rx, ry, nodeId);
 
     if (auto* object = createFilter (desc, rx, ry, nodeId))
     {
@@ -486,57 +553,11 @@ uint32 GraphManager::addNode (const PluginDescription* desc, double rx, double r
             node.getBlockValueTree().setProperty (tags::displayMode, "compact", nullptr);
         }
 
-        PortArray pins, pouts;
-        std::vector<PortType> toHide = {
-            PortType::Control, PortType::CV, PortType::Video, PortType::Event
-        };
-
-        for (const auto& pt : toHide)
-        {
-            node.getPorts (pins, pouts, pt);
-        }
-
-        for (auto& c : pins)
-            c.setHiddenOnBlock (true);
-        for (auto& c : pouts)
-            c.setHiddenOnBlock (true);
+        applyAddedNodeProcessorSetup (processor, object, node);
 
         if (object->isSubGraph())
         {
             bindings.add (new Binding (*this, object, node));
-        }
-
-        if (auto* const proc = object->getAudioProcessor())
-        {
-            // try to use stereo by default on newly added plugins
-            AudioProcessor::BusesLayout stereoInOut;
-            stereoInOut.inputBuses.add (AudioChannelSet::stereo());
-            stereoInOut.outputBuses.add (AudioChannelSet::stereo());
-            AudioProcessor::BusesLayout stereoOut;
-            stereoOut.outputBuses.add (AudioChannelSet::stereo());
-            AudioProcessor::BusesLayout* tryStereo = nullptr;
-            const auto oldLayout = proc->getBusesLayout();
-
-            if (proc->getTotalNumInputChannels() == 1 && proc->getTotalNumOutputChannels() == 1 && proc->checkBusesLayoutSupported (stereoInOut))
-            {
-                tryStereo = &stereoInOut;
-            }
-            else if (proc->getTotalNumInputChannels() == 0 && proc->getTotalNumOutputChannels() == 1 && proc->checkBusesLayoutSupported (stereoOut))
-            {
-                tryStereo = &stereoOut;
-            }
-
-            if (tryStereo != nullptr && proc->checkBusesLayoutSupported (*tryStereo))
-            {
-                proc->suspendProcessing (true);
-                proc->releaseResources();
-
-                if (! proc->setBusesLayout (*tryStereo))
-                    proc->setBusesLayout (oldLayout);
-
-                proc->prepareToPlay (processor.getSampleRate(), processor.getBlockSize());
-                proc->suspendProcessing (false);
-            }
         }
 
         // Seed a sensible ABSOLUTE position so webview-added nodes don't all
@@ -566,6 +587,149 @@ uint32 GraphManager::addNode (const PluginDescription* desc, double rx, double r
     }
 
     return nodeId;
+}
+
+uint32 GraphManager::addExternalPluginAsync (const PluginDescription& desc, double rx, double ry, uint32 nodeId)
+{
+    // ── 1. Build + add the LOADING placeholder SYNCHRONOUSLY (instant, message
+    //       thread). A fresh empty Node has no ports child, so
+    //       PlaceholderProcessor::setupFor derives ZERO audio/MIDI ports — the
+    //       node is not cable-targetable until ready (loading contract §3/§4). ──
+    ValueTree data (types::Node);
+
+    // Stamp the FINAL uuid NOW (not lazily) so the very first snapshot frame
+    // carries the stable id and the React Block mounts once and never re-keys
+    // across the loading→ready swap (CRITICAL-1 / contract §2.2).
+    const String finalUuid (Uuid().toString());
+    data.setProperty (tags::uuid, finalUuid, nullptr)
+        .setProperty (tags::format, desc.pluginFormatName, nullptr)
+        .setProperty (tags::identifier, desc.fileOrIdentifier, nullptr)
+        .setProperty (tags::name, desc.name, nullptr)
+        .setProperty (tags::relativeX, rx, nullptr)
+        .setProperty (tags::relativeY, ry, nullptr)
+        .setProperty (tags::pluginIdentifierString, desc.createIdentifierString(), nullptr)
+        // Transient runtime-only marker → host emits loadState:"loading" and the
+        // Block renders the honest loading face. Stripped on save (sanitizeProperties).
+        .setProperty (tags::loading, true, nullptr);
+
+    Node placeholderNode (data, false);
+
+    auto* ph = new PlaceholderProcessor();
+    ph->setupFor (placeholderNode, processor.getSampleRate(), processor.getBlockSize());
+    auto* added = processor.addNode (new AudioProcessorNode (0, ph), nodeId);
+    if (added == nullptr)
+    {
+        showFailedInstantiationAlert (desc, true);
+        return EL_INVALID_NODE;
+    }
+
+    nodeId = added->nodeId;
+    data.setProperty (tags::id, static_cast<int64> (nodeId), nullptr)
+        .setProperty (tags::type, added->getTypeString(), nullptr)
+        .setProperty (tags::object, added, nullptr)
+        .setProperty (tags::updater, new NodeModelUpdater (*this, data, added), nullptr);
+
+    placeholderNode.resetPorts();
+
+    // Absolute-position seed (same grid as the synchronous path) so the loading
+    // Block appears where it should, not at the origin.
+    if (! data.hasProperty (tags::x) && ! data.hasProperty (tags::y))
+    {
+        constexpr int columns = 4;
+        const int slot = nodes.getNumChildren();
+        const double seedX = 80.0 + static_cast<double> (slot % columns) * 220.0;
+        const double seedY = 80.0 + static_cast<double> (slot / columns) * 180.0;
+        data.setProperty (tags::x, seedX, nullptr)
+            .setProperty (tags::y, seedY, nullptr);
+    }
+
+    nodes.addChild (data, -1, nullptr);
+    changed();
+
+    // ── 2. Kick the async instantiation. The callback runs on the MESSAGE
+    //       THREAD (JUCE contract) → the swap is RT-safe. Guard with a
+    //       WeakReference so a session reload that destroys this GraphManager
+    //       mid-load is a safe no-op (the real instance is just dropped). ──
+    juce::WeakReference<GraphManager> weakThis (this);
+    const PluginDescription descCopy (desc);
+    pluginManager.createGraphNodeAsync (descCopy, [weakThis, finalUuid, nodeId, descCopy] (Processor* realProcessor, const String& error) {
+        // Adopt the raw Processor* into a ref-counted ProcessorPtr IMMEDIATELY so
+        // ownership is safe on every path: if the GraphManager is gone (session
+        // reload/shutdown) the ptr drops here and the instance is released exactly
+        // once (no raw delete / no double-free); if it lives, addNode inside the
+        // swap retains it and this local reference drops to the array's count.
+        ProcessorPtr real (realProcessor);
+        juce::ignoreUnused (error);
+        if (weakThis == nullptr)
+            return; // GraphManager gone — `real` releases the instance on scope exit.
+        weakThis->swapInLoadedProcessor (finalUuid, nodeId, real, descCopy);
+    });
+
+    return nodeId;
+}
+
+void GraphManager::swapInLoadedProcessor (const String& nodeUuid, uint32 placeholderId, ProcessorPtr realProcessor, const PluginDescription& desc)
+{
+    // Resolve the model node by its STABLE uuid (NOT the engine nodeId — the
+    // integer id is about to change). If the user deleted/undid the node while it
+    // was loading, the lookup fails → drop the instance, no-op (contract §2.3).
+    // `realProcessor` is a ProcessorPtr, so returning here releases it safely.
+    ValueTree nodeData (nodes.getChildWithProperty (tags::uuid, nodeUuid));
+    if (! nodeData.isValid())
+        return;
+
+    if (realProcessor == nullptr)
+    {
+        // Instantiation failed. Leave the node as a terminal placeholder but
+        // clear the transient loading flag so it stops claiming to be loading
+        // (it becomes an honest missing/placeholder block) and surface the error.
+        nodeData.removeProperty (tags::loading, nullptr);
+        changed();
+        showFailedInstantiationAlert (desc, true);
+        return;
+    }
+
+    Node node (nodeData, false);
+
+    // ── Engine swap — DRIVES the lock-free op-republish via the existing engine
+    //    API (graphnode.cpp). A loading node has ZERO cables, so removeNode
+    //    disconnects nothing (no lossy port remap). removeNode → handleAsyncUpdate
+    //    (sync rebuild); addNode → triggerAsyncUpdate (async rebuild) →
+    //    buildRenderingSequence → activeRenderingOps.exchange(acq_rel). The audio
+    //    thread reads load(acquire). NEVER touches activeRenderingOps directly.
+    //    addNode adopts the processor into the GraphNode's ReferenceCountedArray;
+    //    the local ProcessorPtr then just holds an extra reference. ──
+    processor.removeNode (placeholderId);
+    auto* added = processor.addNode (realProcessor.get(), 0);
+    if (added == nullptr)
+    {
+        // Engine refused the add (should not happen) — treat as failure.
+        nodeData.removeProperty (tags::loading, nullptr);
+        changed();
+        showFailedInstantiationAlert (desc, true);
+        return;
+    }
+
+    // ── Model update on the SAME ValueTree — uuid PRESERVED (never written).
+    //    setupNode rewrites tags::type/object/updater (the old updater referenced
+    //    the dead placeholder) and matches the real processor's bus layout. ──
+    nodeData.setProperty (tags::id, static_cast<int64> (added->nodeId), nullptr);
+    setupNode (nodeData, added);
+    node.resetPorts();
+
+    applyAddedNodeProcessorSetup (processor, added, node);
+
+    if (node.isIONode())
+        node.getBlockValueTree().setProperty (tags::displayMode, "compact", nullptr);
+
+    if (added->isSubGraph())
+        bindings.add (new Binding (*this, added, node));
+
+    // Clear the transient loading flag LAST → the next buildActiveGraphJson push
+    // emits real ports + loadState:"ready" and the Block re-renders to its normal
+    // tier with connectable handles. UUID never changed → Block never detaches.
+    nodeData.removeProperty (tags::loading, nullptr);
+    changed();
 }
 
 void GraphManager::removeNode (const uint32 uid)

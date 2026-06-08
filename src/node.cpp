@@ -355,7 +355,11 @@ void Node::sanitizeProperties (ValueTree node, const bool recursive)
     {
         Array<Identifier> properties ({ tags::offline,
                                         tags::placeholder,
-                                        tags::missing });
+                                        tags::missing,
+                                        // Wave-3 Phase 4: transient async-load marker — RUNTIME-ONLY.
+                                        // Strip on save so a node that was mid-load never persists as a
+                                        // permanent "loading" fake (nothing-fake). The load window is ms–s.
+                                        tags::loading });
         for (const auto& property : properties)
             node.removeProperty (property, nullptr);
     }

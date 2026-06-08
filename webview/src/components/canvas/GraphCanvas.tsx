@@ -52,6 +52,10 @@ import {
 } from "../../bridge/nativePluginEditor";
 import { Block } from "./Block";
 import { Cable } from "./Cable";
+import {
+  EditorDragHandle,
+  type EditorBounds,
+} from "./EditorDragHandle";
 import { GhostEdge, type GhostEdgeData } from "./GhostEdge";
 import { CommentFrame } from "./CommentFrame";
 import { QuickAddPopup } from "./QuickAddPopup";
@@ -341,6 +345,18 @@ export function GraphCanvas() {
   const [edgeContextMenu, setEdgeContextMenu] =
     useState<EdgeContextMenuState | null>(null);
 
+  // ── Docked-editor drag (Task 4.3) ──
+  // Bounds of the free plugin-editor overlay opened by a canvas double-click
+  // (anchored at the click, 720×480). Tracked LOCALLY — the embed bounds are a
+  // JS-owned property, and deriving the drag here avoids a new store action.
+  // Paired with `embeddedEditorNodeId`: set when WE open, cleared the moment the
+  // editor closes or its owner changes (incl. an editor opened from the
+  // Inspector, which docks to a panel slot and must NOT get a canvas handle).
+  const [editorDrag, setEditorDrag] = useState<{
+    nodeId: string;
+    bounds: EditorBounds;
+  } | null>(null);
+
   // ── T3: ⌥+drop-to-add wiring ──
   // `pendingConnect` (when set) makes the QuickAdd popup port-typed AND routes
   // its pick to a positioned add+auto-connect instead of a plain add. The
@@ -461,6 +477,16 @@ export function GraphCanvas() {
     suggestionsRef.current = suggestions;
   }, [suggestions]);
 
+  // Drop the canvas drag handle the instant the editor it belongs to is gone or
+  // its owner changes — covers Esc/✕/host-push close and an editor re-opened
+  // from the Inspector (which docks to a panel slot, not the canvas). The open
+  // path sets `editorDrag`; this is the single teardown.
+  useEffect(() => {
+    if (editorDrag && embeddedEditorNodeId !== editorDrag.nodeId) {
+      setEditorDrag(null);
+    }
+  }, [embeddedEditorNodeId, editorDrag]);
+
   useEffect(() => {
     setNodes([
       ...toFlowNodes(blocks, selectedNodeId),
@@ -484,6 +510,10 @@ export function GraphCanvas() {
     (event, node) => {
       if (node.type === "comment") return;
       const data = node.data as BlockData;
+      // A still-loading Block (Phase-4 async load) has no real processor yet —
+      // nothing to dive into and no editor to open. Ignore double-click until
+      // loadState flips to ready (defense-in-depth over the host's safe no-op).
+      if (data.loadState === "loading") return;
       // Real LOCAL Container → dive INTO its nested Board via the engine. The
       // host re-pushes a snapshot with the nested nodes/edges + a deeper
       // breadcrumb, so the canvas + breadcrumb update from snapshot truth — no
@@ -500,6 +530,7 @@ export function GraphCanvas() {
       // than a dead-end re-open. Read the owner from the store at call time to
       // avoid a stale closure without widening the dep array.
       if (useAppStore.getState().embeddedEditorNodeId === node.id) {
+        setEditorDrag(null);
         void nativePluginEditorClose();
         return;
       }
@@ -507,7 +538,22 @@ export function GraphCanvas() {
       // size; the host clamps to screen bounds.
       const anchorX = (event as MouseEvent).clientX ?? 80;
       const anchorY = (event as MouseEvent).clientY ?? 80;
-      void nativePluginEditorOpen(node.id, anchorX, anchorY, 720, 480);
+      const w = 720;
+      const h = 480;
+      // Only surface the drag handle once the open actually succeeds (the open
+      // path retry-polls and can fail), so the handle never appears for a
+      // missing editor. Bounds match exactly what the host received.
+      // `Promise.resolve` guards a non-thenable bridge return (e.g. in tests).
+      void Promise.resolve(
+        nativePluginEditorOpen(node.id, anchorX, anchorY, w, h),
+      ).then((ok) => {
+        if (ok) {
+          setEditorDrag({
+            nodeId: node.id,
+            bounds: { x: anchorX, y: anchorY, w, h },
+          });
+        }
+      });
     },
     [],
   );
@@ -1659,11 +1705,34 @@ export function GraphCanvas() {
         </div>
       )}
 
+      {/* Docked-editor titlebar (Task 4.3) — the free plugin-editor overlay
+          opened by a canvas double-click is a borderless native component with
+          NO window chrome, so it "cannot be moved". This strip is its titlebar:
+          grab + drag to reposition the overlay live (via nativePluginEditor
+          SetBounds), plus pop-out-to-float and close affordances. Only shown for
+          the canvas-opened editor (we own its bounds locally); an editor docked
+          into the Inspector slot falls back to the ✕ pill below. */}
+      {editorDrag && embeddedEditorNodeId === editorDrag.nodeId && (
+        <EditorDragHandle
+          title={
+            blocks.find((b) => b.id === editorDrag.nodeId)?.name ??
+            "Plugin editor"
+          }
+          bounds={editorDrag.bounds}
+          onCommit={(x, y) =>
+            setEditorDrag((prev) =>
+              prev ? { ...prev, bounds: { ...prev.bounds, x, y } } : prev,
+            )
+          }
+        />
+      )}
+
       {/* Embedded-editor close affordance (P1-A) — a small ✕ pill pinned
-          top-centre while a plugin editor is embedded, so the editor is never
-          a dead-end (it can also be dismissed via Esc or a double-click on its
+          top-centre while a plugin editor is embedded WITHOUT a canvas drag
+          handle (e.g. opened from the Inspector slot), so the editor is never a
+          dead-end (it can also be dismissed via Esc or a double-click on its
           Block). Only the pill captures clicks; the canvas stays interactive. */}
-      {embeddedEditorNodeId && (
+      {embeddedEditorNodeId && embeddedEditorNodeId !== editorDrag?.nodeId && (
         <div className="absolute top-2 left-1/2 -translate-x-1/2 z-[60] pointer-events-none">
           <button
             type="button"
