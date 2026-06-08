@@ -1186,6 +1186,45 @@ static File resolveWebviewDistRoot()
 }
 
 //==============================================================================
+// Task 1.3 — invalidation hook for the plugin-category memo. KnownPluginList is
+// a juce::ChangeBroadcaster (deps/juce/.../juce_KnownPluginList.h:49); it sends a
+// change on scan / recreateFromXml / clear. A dedicated listener (rather than
+// making the host a ChangeListener) keeps the host's base-class surface minimal
+// and the teardown ordering explicit. Marks the cache dirty only — the rebuild
+// is lazy, on the next buildActiveGraphJson use.
+struct ElementWebViewHost::KnownPluginListWatcher final : public juce::ChangeListener
+{
+    explicit KnownPluginListWatcher (ElementWebViewHost& h) : host (h) {}
+    void changeListenerCallback (juce::ChangeBroadcaster*) override
+    {
+        host.pluginCategoryCacheDirty = true;
+    }
+    ElementWebViewHost& host;
+};
+
+juce::String ElementWebViewHost::categoryForPluginIdentifier (const juce::String& identifier) const
+{
+    if (identifier.isEmpty())
+        return {};
+
+    if (pluginCategoryCacheDirty)
+    {
+        pluginCategoryByIdentifier.clear();
+        // getTypes() returns a COPY of the internal array — iterate it once and
+        // store category by identifier (the only field the hot path needs), so
+        // we never hold a pointer into the temporary copy.
+        for (const auto& desc : context.plugins().getKnownPlugins().getTypes())
+            pluginCategoryByIdentifier[desc.createIdentifierString()] = desc.category;
+        pluginCategoryCacheDirty = false;
+    }
+
+    const auto it = pluginCategoryByIdentifier.find (identifier);
+    // Not-found → empty string, IDENTICAL to the prior linear scan's nullptr →
+    // empty category (mapBlockCategory then falls back to the name heuristic).
+    return it != pluginCategoryByIdentifier.end() ? it->second : juce::String();
+}
+
+//==============================================================================
 ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : context (ctx)
 {
     logForwarder = std::make_unique<ElementWebViewLogForwarder> (*this);
@@ -5536,6 +5575,12 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             emitSandboxEventToWeb (nodeId, static_cast<int> (ev), reason);
         });
 
+    // Task 1.3 — observe the KnownPluginList ChangeBroadcaster so the plugin-
+    // category memo (categoryForPluginIdentifier) invalidates on rescan /
+    // recreateFromXml. Dirty by default → built lazily on the first push.
+    knownPluginListWatcher = std::make_unique<KnownPluginListWatcher> (*this);
+    ctx.plugins().getKnownPlugins().addChangeListener (knownPluginListWatcher.get());
+
     attachSessionListener();
     startTimerHz (60);
 }
@@ -5547,6 +5592,13 @@ ElementWebViewHost::~ElementWebViewHost()
     sentinelcache::replies.erase (this);   // §2.3 change-sentinel reply cache (same lifetime)
     engineStateChangedConnection.disconnect(); // P1-11
     sandboxEventConnection.disconnect(); // R3
+    // Task 1.3 — unregister the plugin-list watcher before context (and its
+    // PluginManager / KnownPluginList) can be torn down.
+    if (knownPluginListWatcher != nullptr)
+    {
+        context.plugins().getKnownPlugins().removeChangeListener (knownPluginListWatcher.get());
+        knownPluginListWatcher.reset();
+    }
     detachSessionListener();
     pluginEditorClose();
     if (logForwarder != nullptr)
@@ -5600,6 +5652,11 @@ void ElementWebViewHost::detachSessionListener()
     attachedSessionRoot.removeListener (this);
     attachedSessionRoot = {};
     listenerAttached = false;
+    // Task 1.2a — session teardown/swap is a forced-refresh boundary: clear the
+    // graph-push dedupe cache so the FIRST push after a new session attaches is
+    // never short-circuited against the previous session's (possibly identical)
+    // JSON.
+    lastPushedGraphJson.clear();
 }
 
 void ElementWebViewHost::rebuildPluginEmbedLayout()
@@ -6005,6 +6062,24 @@ bool ElementWebViewHost::shouldIgnoreSessionRootProperty (const Identifier& prop
     return prop != tags::tempo && prop != tags::name;
 }
 
+bool ElementWebViewHost::isWindowChromeProperty (const Identifier& prop) noexcept
+{
+    // Task 1.2b (perf-diag #2) — pure window-chrome state that the React canvas
+    // does NOT render. PluginWindow::moved() writes windowX/windowY on the node
+    // ValueTree on every frame of a drag (pluginwindow.cpp:409-410), and
+    // windowVisible/windowOnTop on show/pin (:289/:177). These props can live on
+    // the SAME node child tree as the block-position props (tags::x/tags::y), so
+    // the under-root listener MUST filter by IDENTIFIER, not by tree (critic
+    // MAJOR-5). This predicate is deliberately a small static pure function so
+    // the host test can gate it directly. It is consulted ONLY on the
+    // vtIsUnderSessionRoot branch below — it must NEVER be folded into
+    // shouldIgnoreSessionRootProperty (the ROOT-tree filter, a different thing).
+    return prop == tags::windowX
+        || prop == tags::windowY
+        || prop == tags::windowVisible
+        || prop == tags::windowOnTop;
+}
+
 void ElementWebViewHost::valueTreePropertyChanged (ValueTree& tree, const Identifier& prop)
 {
     auto sess = context.session();
@@ -6020,7 +6095,14 @@ void ElementWebViewHost::valueTreePropertyChanged (ValueTree& tree, const Identi
     }
 
     if (vtIsUnderSessionRoot (tree, sessionRoot))
+    {
+        // Task 1.2b — drop window-chrome property writes (window drag = a
+        // windowX/windowY storm) so they never SCHEDULE a full-graph push. Every
+        // OTHER prop, incl. tags::x/tags::y (block position), still pushes.
+        if (isWindowChromeProperty (prop))
+            return;
         scheduleGraphPush (40);
+    }
 }
 
 void ElementWebViewHost::valueTreeChildAdded (ValueTree& parent, ValueTree&)
@@ -6109,6 +6191,10 @@ void ElementWebViewHost::valueTreeRedirected (ValueTree& tree)
         // swap) — any dive from the previous project is meaningless now. Reset
         // to the top board so the snapshot walks the freshly-loaded active graph.
         boardPath.clearQuick();
+        // Task 1.2a — forced-refresh boundary: clear the push dedupe cache so the
+        // post-redirect snapshot is delivered even if it happens to match the
+        // pre-redirect JSON byte-for-byte.
+        lastPushedGraphJson.clear();
         scheduleGraphPush (40);
         return;
     }
@@ -6128,7 +6214,18 @@ void ElementWebViewHost::pushGraphSnapshot()
     // the "~" no-change sentinel. Drop the per-handler reply cache to force it.
     sentinelcache::replies.erase (this);
     const String json (buildActiveGraphJson());
-    evalInBrowser ("window.__elementNative && window.__elementNative.onGraphState(" + json + ");");
+    // Task 1.2a (perf-diag #2) — output-dedupe. If the freshly-built JSON is
+    // byte-identical to the last push, skip the evalInBrowser entirely (the IPC
+    // hop + WKWebView parse + JUCE's O(n²) quote-escape). The build above still
+    // runs — accepted (Task 1.3 cheapens its dominant cost); this gate removes
+    // the no-op IPC class that window-chrome churn / repeated identical pushes
+    // produce. Mirrors sentinelcache::dedupe. The dirty-flag refresh below still
+    // runs so the ~2 Hz dirty poll stays correct even on a deduped tick.
+    if (json != lastPushedGraphJson)
+    {
+        lastPushedGraphJson = json;
+        evalInBrowser ("window.__elementNative && window.__elementNative.onGraphState(" + json + ");");
+    }
     if (auto* ss = context.services().find<SessionService>())
         lastPushedSessionDirty = ss->hasSessionChanged();
 }
@@ -6404,13 +6501,12 @@ String ElementWebViewHost::buildActiveGraphJson() const
         // (keyed on the createIdentifierString form stored in
         // tags::pluginIdentifierString). Internal / el.* nodes won't match and
         // fall through to the name-based heuristic in mapBlockCategory.
-        String pluginCategory;
-        {
-            const String pidString (n.getProperty (tags::pluginIdentifierString).toString());
-            if (pidString.isNotEmpty())
-                if (const auto* desc = findKnownPluginByIdentifier (context.plugins().getKnownPlugins(), pidString))
-                    pluginCategory = desc->category;
-        }
+        // Task 1.3 — O(1) memoised lookup (was a full KnownPluginList linear scan
+        // with a String alloc per entry, per node, per push). The result is
+        // identical to the prior findKnownPluginByIdentifier scan: a hit returns
+        // desc.category, a miss returns the empty string.
+        const String pluginCategory (
+            categoryForPluginIdentifier (n.getProperty (tags::pluginIdentifierString).toString()));
         b->setProperty ("category", mapBlockCategory (n, pluginCategory));
 
         double x = 0, y = 0;

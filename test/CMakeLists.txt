@@ -78,6 +78,10 @@ set_tests_properties(BridgeContractTests PROPERTIES DISABLED TRUE)
 # elementEnterContainer/elementExitContainer natives via invokeForTest — no JS
 # bridge needed, so (unlike BridgeContractTests) it runs in the headless harness.
 add_test(NAME "ContainerDiveTests" COMMAND test_element --run_test=ContainerDiveTests)
+# Wave-3 Task 1.2/1.3 — host-side perf gates (graph-push dedupe + under-root
+# window-chrome listener narrowing + plugin-category O(1) memo). Headless-safe
+# (drives the real host with skipBrowser=true; no JS bridge needed).
+add_test(NAME "HostPushDedupeTests" COMMAND test_element --run_test=HostPushDedupeTests)
 # T10 — "Group selection into a Container" END-TO-END test. Engine-backed
 # (EngineService::groupNodes against the attached RootGraphManager). Serial: it
 # deactivates/reactivates the shared EngineService between cases.

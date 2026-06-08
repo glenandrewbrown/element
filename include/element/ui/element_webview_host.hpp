@@ -77,6 +77,12 @@ public:
 private:
     friend struct ElementWebViewLogForwarder;
     friend class BridgeContractTest;
+    /** Wave-3 Task 1.2/1.3 host-perf gate (test/webview/HostPushDedupeTest.cpp):
+        reads graphPushPendingMs + the push-dedupe cache + the category memo. A
+        DISTINCT friend (not BridgeContractTest) so the test-local wrapper does
+        not collide with the identical global BridgeContractTest defined in the
+        other webview test TUs (one-definition rule). */
+    friend class HostPerfProbe;
 
     void timerCallback() override;
     void valueTreePropertyChanged (juce::ValueTree&, const juce::Identifier&) override;
@@ -92,6 +98,18 @@ private:
 
     bool isUnderActiveGraph (const juce::ValueTree& start) const;
     bool shouldIgnoreSessionRootProperty (const juce::Identifier& prop) const;
+
+public:
+    /** Task 1.2b — true when `prop` is pure window-chrome state (windowX/windowY/
+        windowVisible/windowOnTop) that the React canvas does not render. The
+        under-root property listener skips scheduling a graph push for these
+        (a plugin-window drag writes windowX/windowY every frame). Static + pure
+        so it is unit-testable with no Context. MUST NOT be conflated with
+        shouldIgnoreSessionRootProperty (the ROOT-tree filter). Block-position
+        props (tags::x/tags::y) are deliberately NOT included — they still push. */
+    static bool isWindowChromeProperty (const juce::Identifier& prop) noexcept;
+
+private:
 
     // ── Container dive (P2-A1, host side) ────────────────────────────────────
     /** Navigation stack of nested-container node UUIDs, top-level → deepest.
@@ -118,6 +136,31 @@ private:
         canvas exits to a surviving board instead of pointing at a deleted graph.
         No-op when the removed node is not on the path. Message thread only. */
     void truncateBoardPathOnNodeRemoval (const juce::String& removedUuid);
+
+    // ── Task 1.3 — plugin-category lookup memo (O(N·types) → O(1)) ───────────
+    /** Vendor category by plugin identifier (createIdentifierString form), the
+        ONLY field buildActiveGraphJson reads per node per push. Stored as
+        identifier→category STRING (not a PluginDescription*) because
+        KnownPluginList::getTypes() returns a COPY — a cached pointer into it
+        would dangle. Rebuilt lazily from getKnownPlugins() when
+        pluginCategoryCacheDirty is set; the cache is invalidated on the
+        KnownPluginList ChangeBroadcaster (rescan / recreateFromXml). */
+    mutable std::unordered_map<juce::String, juce::String> pluginCategoryByIdentifier;
+    mutable bool pluginCategoryCacheDirty = true;
+
+    /** O(1) replacement for the per-node findKnownPluginByIdentifier linear scan.
+        Rebuilds the map on first use after invalidation, then looks up. Returns
+        the empty string when the identifier is not in the KnownPluginList — the
+        SAME result the prior linear scan produced (nullptr → empty category).
+        Const + message-thread only (called from buildActiveGraphJson). */
+    juce::String categoryForPluginIdentifier (const juce::String& identifier) const;
+
+    /** Forwards the KnownPluginList ChangeBroadcaster to set
+        pluginCategoryCacheDirty. A dedicated listener object (rather than making
+        the host a ChangeListener) keeps the base-class surface minimal and the
+        teardown ordering explicit (reset in the destructor before context dies). */
+    struct KnownPluginListWatcher;
+    std::unique_ptr<KnownPluginListWatcher> knownPluginListWatcher;
 
     juce::String buildActiveGraphJson() const;
     /** Per-cable levels for Web §2.4 (message thread; reads processor RMS / MIDI activity). */
@@ -168,6 +211,16 @@ private:
     juce::ValueTree attachedSessionRoot;
     bool listenerAttached = false;
     int graphPushPendingMs = 0;
+
+    /** Task 1.2a (perf-diag #2) — last full-graph JSON pushed to the webview via
+        onGraphState. pushGraphSnapshot() skips the evalInBrowser (the IPC +
+        WKWebView parse + the O(n²) JUCE quote-escape) when the freshly-built JSON
+        is byte-identical, mirroring the sentinelcache / meterlanegate::changed
+        dedupe idiom. The build still runs (Task 1.3 cheapens that). Cleared on the
+        session-swap / detach boundaries so a forced full refresh still pushes; the
+        React MOUNT hydration uses elementGetGraphState (a separate, un-deduped
+        path) so a webview reload re-hydrates regardless of this cache. */
+    juce::String lastPushedGraphJson;
 
     /** T3 (⌥+drop add-and-connect): a deferred absolute-position apply for the
         node a just-posted AddPluginMessage is about to create. The add is async
