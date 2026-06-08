@@ -22,6 +22,26 @@ interface SpatialBookmark {
  */
 export type CableRouting = "manhattan" | "bezier";
 
+/**
+ * Drag-resize geometry for the side panels (Task 3.F / brief §4.1, §4.4).
+ *
+ * - `PANEL_MIN_W` / `PANEL_MAX_W` — the sane clamp an OPEN panel's width is held
+ *   within while dragging and when committed to the store.
+ * - `PANEL_SNAP_W` — drag the inner edge narrower than this (~120px, the
+ *   tldraw/Figma threshold from brief §4.1 item 5) and releasing SNAPS the panel
+ *   to its icon rail (collapse) instead of committing a sliver width.
+ *
+ * Exported so AppShell's resize handle and any test reference ONE source of
+ * truth (no drift between the clamp the store enforces and the handle applies).
+ */
+export const PANEL_MIN_W = 180;
+export const PANEL_MAX_W = 560;
+export const PANEL_SNAP_W = 120;
+
+/** Clamp an open-panel width to the sane [MIN, MAX] range. */
+export const clampPanelWidth = (w: number): number =>
+  Math.max(PANEL_MIN_W, Math.min(PANEL_MAX_W, w));
+
 interface AppState {
   mode: AppMode;
   leftPanelOpen: boolean;
@@ -144,9 +164,27 @@ interface AppActions {
    * No-op when there is no snapshot.
    */
   restorePanels: () => void;
+  /**
+   * Set a panel's open/collapsed state DIRECTLY, WITHOUT recording a deliberate
+   * user-collapse. Unlike {@link togglePanel} (which flips state AND sets
+   * `inspectorUserCollapsed` so a manual right-panel toggle is remembered), this
+   * is the SELECTION-DRIVEN setter (Task 3.E / brief §4.3): InspectorHub opens the
+   * right panel on selection and collapses it to the rail on deselection — an
+   * AUTOMATIC behaviour that must NOT masquerade as the user explicitly collapsing
+   * the inspector, so it leaves `inspectorUserCollapsed` untouched. Idempotent (a
+   * no-op `set` to the same value yields the same reference for the slice). Clears
+   * any hide-all snapshot, consistent with the per-panel actions. (W3)
+   */
+  setPanelOpen: (panel: PanelId, open: boolean) => void;
   /** Bump the focus-browser-search nonce (Cmd+F, open-browser). (Task 3.C) */
   requestFocusBrowserSearch: () => void;
-  /** Set a persisted panel width (drag-resize substrate; brief §4.4). */
+  /**
+   * Set a persisted panel width (px), clamped to [PANEL_MIN_W, PANEL_MAX_W].
+   * Committed ONCE on pointer-up by AppShell's drag-resize handle — the live
+   * per-pointermove width is written straight to the DOM (no store churn, no
+   * render storm; brief §4.4 / §4.5, Task 3.F). Sub-threshold drags collapse
+   * the panel via `togglePanel` instead of calling this. (W3)
+   */
   setPanelWidth: (panel: "left" | "right", width: number) => void;
   toggleVirtualKeyboard: () => void;
   setScene: (index: number) => void;
@@ -274,13 +312,38 @@ export const useAppStore = create<AppStore>()(
       };
     }),
 
+  // Selection-driven open/collapse (Task 3.E / brief §4.3). Sets the panel's
+  // open flag WITHOUT touching `inspectorUserCollapsed` — an automatic
+  // open-on-select / collapse-on-deselect must not be remembered as a deliberate
+  // user collapse (that flag is only set by the explicit `togglePanel`). Idempotent:
+  // returns the prior state unchanged when the flag already matches, so a redundant
+  // call causes zero re-renders.
+  setPanelOpen: (panel, open) =>
+    set((s) => {
+      switch (panel) {
+        case "left":
+          return s.leftPanelOpen === open
+            ? s
+            : { leftPanelOpen: open, panelsHiddenSnapshot: null };
+        case "right":
+          return s.rightPanelOpen === open
+            ? s
+            : { rightPanelOpen: open, panelsHiddenSnapshot: null };
+        case "bottom":
+          return s.bottomPanelOpen === open
+            ? s
+            : { bottomPanelOpen: open, panelsHiddenSnapshot: null };
+      }
+    }),
+
   requestFocusBrowserSearch: () =>
     set((s) => ({ focusBrowserSearch: s.focusBrowserSearch + 1 })),
 
   setPanelWidth: (panel, width) =>
-    set(() =>
-      panel === "left" ? { leftWidth: width } : { rightWidth: width },
-    ),
+    set(() => {
+      const w = clampPanelWidth(width);
+      return panel === "left" ? { leftWidth: w } : { rightWidth: w };
+    }),
 
   toggleVirtualKeyboard: () =>
     set((s) => ({ virtualKeyboardOpen: !s.virtualKeyboardOpen })),

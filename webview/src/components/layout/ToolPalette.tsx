@@ -7,10 +7,9 @@ import { usePluginBrowserStore } from "../../stores/usePluginBrowserStore";
 import { useSessionStore } from "../../stores/useSessionStore";
 import { nativeSessionListFiles, nativeSessionOpenPath, nativeSessionRecover, type SessionFileEntry } from "../../bridge/nativeSession";
 import { PaletteSearch } from "./palette/PaletteSearch";
-import { CategoryChips, CATEGORY_FILTERS } from "./palette/CategoryChips";
+import { CATEGORY_FILTERS } from "./palette/CategoryChips";
+import { FacetChips } from "./palette/FacetChips";
 import { ScanControls } from "./palette/ScanControls";
-import { FavouritesSection } from "./palette/FavouritesSection";
-import { RecentsSection } from "./palette/RecentsSection";
 import { MoleculesSection } from "./palette/MoleculesSection";
 import { BoardsSection } from "./palette/BoardsSection";
 import { PluginList } from "./palette/PluginList";
@@ -37,19 +36,29 @@ function RailCategoryIcon({ category, active }: { category: BlockCategory; activ
 /**
  * Edit-mode left browser panel. Tabs: Plugins | Projects.
  *
- * Plugins tab IA (top → bottom):
- *   1. Tab row
- *   2. Search input + gear disclosure → ScanControls
- *   3. Category filter chips
- *   4. Favourites (collapsible, default open, hidden when empty)
- *   5. Recent plugins (collapsible, default open, hidden when empty)
- *   6. ALL PLUGINS — virtualized flat list (list mode) / grid
- *   7. Molecules (collapsible, default collapsed, hidden when empty)
- *   8. Boards (collapsible, default collapsed)
+ * SEARCH-FIRST IA (Task 3.D — re-ranked from the old over-stacked layout):
  *
- * Projects tab: search + Project files (host scan) + Recent Projects.
+ *   ── HEADER (fixed) ──
+ *   1. Tab row + view controls (grid/list/collapse)
+ *   2. Search input (FIRST in the body, full-width, auto-focused via the
+ *      `focusBrowserSearch` nonce) + gear disclosure → ScanControls
+ *   3. Facet CHIPS — 4 categories + ★ Favourites + ⏱ Recent. Favourites and
+ *      Recents are now one-tap FACETS over the one list, NOT stacked
+ *      above-the-fold sections that pushed the primary surface down.
  *
- * Footer: CPU meter only.
+ *   ── SINGLE SCROLL REGION ──
+ *   4. ALL PLUGINS — virtualized flat list (list mode) / grid. This is the
+ *      ONLY scroll region in the body (PluginList owns `flex-1 overflow-y-auto`;
+ *      the body wrapper does not also scroll — no nested-scroll fight).
+ *
+ *   ── FOOTER DISCLOSURE (below the fold, shrink-0) ──
+ *   5. Snippets (collapsible, default collapsed, hidden when empty)
+ *   6. Boards   (collapsible, default collapsed)
+ *
+ *   ── FOOTER ── CPU meter only.
+ *
+ * Projects tab: its own scroll (separate file-browser model) — search +
+ * Recover + Project files (host scan) + Recent Projects.
  */
 export function ToolPalette({
   collapsed = false,
@@ -61,6 +70,9 @@ export function ToolPalette({
   const [browseTab, setBrowseTab] = useState<"plugins" | "projects">("plugins");
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState<BlockCategory | null>(null);
+  // ★ / ⏱ facets (replace the old stacked Favourites/Recents sections).
+  const [favouritesOnly, setFavouritesOnly] = useState(false);
+  const [recentSort, setRecentSort] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"grid" | "list">("list");
   const [showScan, setShowScan] = useState(false);
@@ -89,7 +101,19 @@ export function ToolPalette({
   const activeGraphOutline = useHostExtrasStore((s) => s.activeGraphOutline);
 
   const { plugins, favPlugins, recentPlugins, filtered, favoriteIds } =
-    usePaletteFilters(search, activeCategory);
+    usePaletteFilters(search, activeCategory, { favouritesOnly, recentSort });
+  const hasFavourites = favPlugins.length > 0;
+  const hasRecents = recentPlugins.length > 0;
+
+  // Self-heal a facet whose data has gone away (e.g. the last favourite was
+  // unstarred, or recents cleared) so the single list never gets stuck empty
+  // behind a facet the user can no longer see anything through.
+  useEffect(() => {
+    if (favouritesOnly && !hasFavourites) setFavouritesOnly(false);
+  }, [favouritesOnly, hasFavourites]);
+  useEffect(() => {
+    if (recentSort && !hasRecents) setRecentSort(false);
+  }, [recentSort, hasRecents]);
 
   useEffect(() => {
     void refreshPlugins();
@@ -240,25 +264,29 @@ export function ToolPalette({
           onToggleScan={() => setShowScan((v) => !v)}
         />
 
-        {/* Category chips (Plugins tab only) */}
+        {/* Facet chips (Plugins tab only): 4 categories + ★ Fav + ⏱ Recent */}
         {browseTab === "plugins" ? (
-          <CategoryChips
+          <FacetChips
             activeCategory={activeCategory}
-            onSelect={setActiveCategory}
+            onSelectCategory={setActiveCategory}
+            favouritesOnly={favouritesOnly}
+            onToggleFavourites={() => setFavouritesOnly((v) => !v)}
+            hasFavourites={hasFavourites}
+            recentSort={recentSort}
+            onToggleRecent={() => setRecentSort((v) => !v)}
+            hasRecents={hasRecents}
           />
         ) : null}
       </div>
 
-      {/* ── Scrollable body ── */}
-      <div className="flex-1 overflow-y-auto px-2 py-1 space-y-1 min-h-0">
-        {/* Scan controls disclosure (Plugins tab, gear button toggles) */}
-        {browseTab === "plugins" && showScan ? (
-          <ScanControls />
-        ) : null}
-
-        {/* ── Projects tab ── */}
+      {/* ── Body ──
+          A flex column that does NOT scroll itself. Each tab supplies its own
+          single scroll region so there is never a nested-scroll fight
+          (search-first IA — Task 3.D). */}
+      <div className="flex-1 min-h-0 flex flex-col">
+        {/* ── Projects tab — its own scroll region (file-browser model) ── */}
         {browseTab === "projects" ? (
-          <>
+          <div className="flex-1 min-h-0 overflow-y-auto px-2 py-1 space-y-1">
             {/* Recoverable autosaves (E1) — distinct group + recovery action */}
             {recoverableSessions.length > 0 ? (
               <div className="mb-3 space-y-1">
@@ -329,29 +357,22 @@ export function ToolPalette({
                 </ul>
               </div>
             ) : null}
-          </>
+          </div>
         ) : null}
 
         {/* ── Plugins tab ── */}
         {browseTab === "plugins" ? (
           <>
-            {/* 4. Favourites — collapsible, default open */}
-            <FavouritesSection
-              favPlugins={favPlugins}
-              favoriteIds={favoriteIds}
-              selectedId={selectedId}
-              onSelect={setSelectedId}
-            />
+            {/* Scan controls disclosure (gear button toggles) — above the list,
+                shrink-0 so it never steals the list's scroll height. */}
+            {showScan ? (
+              <div className="px-2 pt-1 shrink-0">
+                <ScanControls />
+              </div>
+            ) : null}
 
-            {/* 5. Recent plugins — collapsible, default open */}
-            <RecentsSection
-              recentPlugins={recentPlugins}
-              favoriteIds={favoriteIds}
-              selectedId={selectedId}
-              onSelect={setSelectedId}
-            />
-
-            {/* 6. ALL PLUGINS — primary surface, virtualized list / grid */}
+            {/* ALL PLUGINS — the primary surface AND the body's single scroll
+                region. PluginList owns `flex-1 overflow-y-auto`. */}
             <PluginList
               plugins={plugins}
               filtered={filtered}
@@ -362,14 +383,22 @@ export function ToolPalette({
               onSelect={setSelectedId}
             />
 
-            {/* 7. Molecules — collapsible, default collapsed */}
-            <MoleculesSection molecules={molecules} />
-
-            {/* 8. Boards — collapsible, default collapsed */}
-            <BoardsSection
-              sessionGraphs={sessionGraphs}
-              activeGraphOutline={activeGraphOutline}
-            />
+            {/* ── Footer disclosure — below the fold, shrink-0 (does NOT
+                compete with the list scroll). Snippets + Boards, both
+                collapsed by default. BoardsSection always renders (it owns the
+                Import/Export .elg actions even with no boards); Snippets only
+                when present. When expanded it can grow up to 40% and scroll
+                internally so it never crowds out the plugin list. ── */}
+            <div
+              className="shrink-0 border-t border-white/5 px-2 py-1 space-y-0.5 max-h-[40%] overflow-y-auto"
+              data-testid="palette-footer-disclosure"
+            >
+              <MoleculesSection molecules={molecules} />
+              <BoardsSection
+                sessionGraphs={sessionGraphs}
+                activeGraphOutline={activeGraphOutline}
+              />
+            </div>
           </>
         ) : null}
       </div>

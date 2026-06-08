@@ -108,9 +108,27 @@ const demoMolecules = [
   { name: "Mid/Side", description: "M/S encoder + processor + decoder" },
 ];
 
+// Group-favourite / recent flags now live ON the row (isFavorite / recentRank)
+// — that is what usePaletteFilters reads (N2 group-aware). The ★/⏱ facet chips
+// are enabled only when at least one row carries them, so the populated seed
+// must set them on the rows (not just the legacy id sets).
+const populatedPlugins = demoPlugins.map((p) => {
+  if (
+    p.identifier === "com.fabfilter.pro-q3.vst3" ||
+    p.identifier === "com.arturia.minimoog-v.au"
+  ) {
+    return { ...p, isFavorite: true };
+  }
+  return p;
+}).map((p) => {
+  if (p.identifier === "com.soundtoys.echoboy.au") return { ...p, recentRank: 0 };
+  if (p.identifier === "com.native.kontakt7.vst3") return { ...p, recentRank: 1 };
+  return p;
+});
+
 function seedPopulated() {
   usePluginBrowserStore.setState({
-    plugins: demoPlugins,
+    plugins: populatedPlugins,
     favoriteIdentifiers: new Set([
       "com.fabfilter.pro-q3.vst3",
       "com.arturia.minimoog-v.au",
@@ -207,7 +225,7 @@ const meta = {
     docs: {
       description: {
         component:
-          "Search-first Edit-mode left browser for adding Blocks. A single search field + category quick-filter chips drive a flat, scannable list (grid or list view) of the real host-scanned AU/VST3/CLAP/LV2 plugins — each a raised neumorphic card with a format badge. Tabs between this Plugins view (favourites, recents, molecules, Boards, .elg import/export) and a Projects view (host-scanned session files). Includes a collapsible Plugin-Scan-&-Paths control group, a collapsed rail, recent sessions, and a live CPU meter. The scan/rescan/paths/format controls are intentionally DISABLED (no native bridge exists yet — see ToolPalette.tsx ScanControls note); the working scan path is the 'Open Preferences' CTA. Reads usePluginBrowserStore, useSessionStore, useHostExtrasStore, and usePerformStore; the mount refreshPlugins() is overridden with a no-op so seeded plugins survive.",
+          "Search-first Edit-mode left browser for adding Blocks (Task 3.D IA re-rank). Search is the FIRST field in the body (auto-focused via the focusBrowserSearch nonce); below it a SINGLE chip row facets the one list — 4 categories + ★ Favourites + ⏱ Recent. Favourites and Recents are one-tap FACETS, not stacked above-the-fold sections, so the virtualized plugin list is the dominant surface and is the body's ONLY scroll region (no nested-scroll fight). Snippets + Boards live in a collapsed footer disclosure below the fold. Each plugin is a raised neumorphic card with a category shape + format badge; a hidden AU duplicate of a VST3 surfaces as a subtle '(also AU)' reveal. Tabs between this Plugins view and a Projects view (host-scanned session files + Recover shelf). Reads usePluginBrowserStore, useSessionStore, useHostExtrasStore, and usePerformStore; the mount refreshPlugins() is overridden with a no-op so seeded plugins survive.",
       },
     },
   },
@@ -614,5 +632,223 @@ export const Synthetic1000: Story = {
       expect(afterClear.length).toBeLessThan(50);
       expect(afterClear.length).toBeGreaterThan(0);
     });
+  },
+};
+
+// ── Search-first IA (Task 3.D) — large library, search is first, list dominates ──
+//
+// Seeds 1000 plugins (with a sprinkle of group-favourites + recents so the
+// facet chips are live) and asserts the search-first contract:
+//   1. The search input is the FIRST focusable element inside the panel body.
+//   2. The virtualized list is the dominant region and mounts only visible rows.
+//   3. Favourites/Recents are CHIPS (toggle buttons), not stacked sections.
+
+function make1000PluginsWithFacets() {
+  return make1000Plugins().map((p, i) => {
+    // ~8 favourites, ~6 recents spread through the list.
+    const out = { ...p };
+    if (i % 137 === 0) out.isFavorite = true;
+    if (i % 173 === 0) out.recentRank = Math.floor(i / 173);
+    return out;
+  });
+}
+
+export const SearchFirstIA: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Search-first IA on a 1000-plugin library (Task 3.D). Asserts (1) the search field is the FIRST focusable in the body, (2) the virtualized list is the dominant region rendering << 1000 rows, and (3) Favourites/Recents are facet CHIPS (toggle buttons), not stacked sections — there is no separate 'Favourites'/'Recent plugins' section heading above the list.",
+      },
+    },
+  },
+  decorators: [
+    (Story) => {
+      seedEmpty();
+      usePluginBrowserStore.setState({
+        plugins: make1000PluginsWithFacets(),
+        favoriteIdentifiers: new Set(),
+        recentIdentifiers: [],
+        refresh: async () => {},
+      });
+      usePerformStore.setState((s) => ({
+        liveHealth: { ...s.liveHealth, cpu: 4.2 },
+      }));
+      return (
+        <div style={{ width: 280, height: 640 }} className="bg-panel">
+          <Story />
+        </div>
+      );
+    },
+  ],
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+
+    // (1) Search FIRST: the search input is the ONLY text input and it sits
+    // ABOVE both the facet chips and the plugin list in document order — i.e.
+    // it is the first thing the eye/keyboard reaches in the content flow, not
+    // buried below stacked sections (the old IA's failure). We compare DOM
+    // positions: search precedes the facet chips, which precede the list.
+    const search = canvas.getByPlaceholderText("Search plugins…");
+    const favChip = canvas.getByRole("button", { name: /show favourites only/i });
+    const listContainer = canvas.getByTestId("plugin-list-virtual");
+    const POS = Node.DOCUMENT_POSITION_FOLLOWING;
+    // search → facet chip
+    expect(
+      search.compareDocumentPosition(favChip) & POS,
+    ).toBeTruthy();
+    // facet chip → list
+    expect(
+      favChip.compareDocumentPosition(listContainer) & POS,
+    ).toBeTruthy();
+    // The search input is the only text input in the panel (no competing field).
+    expect(canvasElement.querySelectorAll('input[type="text"]').length).toBe(1);
+
+    // (2) The virtualized list dominates and mounts only visible rows.
+    const rendered = listContainer.querySelectorAll("[role='button']");
+    expect(rendered.length).toBeLessThan(50);
+    expect(rendered.length).toBeGreaterThan(0);
+
+    // (3) Favourites/Recents are CHIPS (toggle buttons), not stacked sections…
+    await expect(favChip).toBeInTheDocument();
+    await expect(
+      canvas.getByRole("button", { name: /sort by most recently used/i }),
+    ).toBeInTheDocument();
+    // …and there is NO separate section heading pushing the list down.
+    expect(canvas.queryByTestId("favourites-section")).not.toBeInTheDocument();
+    expect(canvas.queryByTestId("recents-section")).not.toBeInTheDocument();
+  },
+};
+
+// ── ★ Favourites facet — filters the one list (group-favourites preserved) ──
+export const FacetFavourites: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "The ★ Favourites facet chip restricts the single list to favourited plugins. Pro-Q 3 (VST3, favourited) shows; the non-favourite EchoBoy is filtered out. Group-favourites are preserved — the facet reads the same group-aware isFavorite the per-card star uses, so a starred AU keeps its VST3-primary family visible.",
+      },
+    },
+  },
+  decorators: [
+    (Story) => {
+      seedPopulated();
+      return (
+        <div style={{ width: 280, height: 640 }} className="bg-panel">
+          <Story />
+        </div>
+      );
+    },
+  ],
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    // Both a favourite and a non-favourite are visible before filtering.
+    await expect(
+      canvas.getByRole("button", { name: /FabFilter Pro-Q 3/ }),
+    ).toBeInTheDocument();
+    await expect(
+      canvas.getByRole("button", { name: /EchoBoy/ }),
+    ).toBeInTheDocument();
+
+    // Toggle the ★ facet on.
+    const favChip = canvas.getByRole("button", { name: /show favourites only/i });
+    await userEvent.click(favChip);
+    await waitFor(() => expect(favChip).toHaveAttribute("aria-pressed", "true"));
+
+    // Favourited plugins remain…
+    await expect(
+      canvas.getByRole("button", { name: /FabFilter Pro-Q 3/ }),
+    ).toBeInTheDocument();
+    await expect(
+      canvas.getByRole("button", { name: /Mini V3/ }),
+    ).toBeInTheDocument();
+    // …non-favourite is filtered out.
+    await waitFor(() =>
+      expect(
+        canvas.queryByRole("button", { name: /EchoBoy/ }),
+      ).not.toBeInTheDocument(),
+    );
+  },
+};
+
+// ── ⏱ Recent facet — sorts the list most-recently-used first ──
+export const FacetRecent: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "The ⏱ Recent facet chip sorts the single list most-recently-used first (Bitwig's default sort). EchoBoy (recentRank 0) and Kontakt 7 (recentRank 1) rise to the top while everything else keeps its order below. The chip is a toggle, not a stacked 'Recent plugins' section.",
+      },
+    },
+  },
+  decorators: [
+    (Story) => {
+      seedPopulated();
+      return (
+        <div style={{ width: 280, height: 640 }} className="bg-panel">
+          <Story />
+        </div>
+      );
+    },
+  ],
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const recentChip = canvas.getByRole("button", {
+      name: /sort by most recently used/i,
+    });
+    await userEvent.click(recentChip);
+    await waitFor(() => expect(recentChip).toHaveAttribute("aria-pressed", "true"));
+
+    // The most-recent plugin is rendered (it's near the top of the windowed
+    // list). We assert it's present after the sort.
+    await expect(
+      canvas.getByRole("button", { name: /EchoBoy/ }),
+    ).toBeInTheDocument();
+    await expect(
+      canvas.getByRole("button", { name: /Kontakt 7/ }),
+    ).toBeInTheDocument();
+  },
+};
+
+// ── Footer disclosure — Snippets + Boards collapsed below the fold ──
+export const FooterDisclosure: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Snippets and Boards are a collapsed footer disclosure below the plugin list (Task 3.D) — not stacked sections competing with it. The disclosures are collapsed by default; expanding 'Snippets' reveals the molecule items without disturbing the list above.",
+      },
+    },
+  },
+  decorators: [
+    (Story) => {
+      seedPopulated();
+      return (
+        <div style={{ width: 280, height: 640 }} className="bg-panel">
+          <Story />
+        </div>
+      );
+    },
+  ],
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+
+    // The footer disclosure region is present, below the list.
+    await waitFor(() =>
+      expect(
+        canvas.getByTestId("palette-footer-disclosure"),
+      ).toBeInTheDocument(),
+    );
+
+    // Snippets collapsed by default → items hidden until expanded.
+    expect(canvas.queryByText("Sidechain Comp")).not.toBeInTheDocument();
+    const snippetsHeader = canvas.getByRole("button", { name: /snippets/i });
+    await userEvent.click(snippetsHeader);
+    await waitFor(() =>
+      expect(canvas.getByText("Sidechain Comp")).toBeInTheDocument(),
+    );
+
+    // The plugin list is still the dominant surface above it.
+    expect(canvas.getByTestId("plugin-list-virtual")).toBeInTheDocument();
   },
 };

@@ -6,7 +6,7 @@ import {
   getBezierPath,
   type EdgeProps,
 } from "@xyflow/react";
-import type { CableData } from "../../data/types";
+import type { CableData, SignalType } from "../../data/types";
 import { useCableMeterStore } from "../../stores/useCableMeterStore";
 import { useAppStore } from "../../stores/useAppStore";
 import { useBusStore } from "../../stores/useBusStore";
@@ -23,6 +23,38 @@ const signalColor: Record<string, string> = {
   midi: "#2BC4C4",
   value: "#E8A838",
 };
+
+// ── Signal type → stroke LINE-STYLE (Task 5.4, research §H/§B) ──
+// A line-style axis layered ON TOP OF the signal colour so cable type is
+// legible (a) at low zoom — where a 1–2px coloured stroke desaturates toward
+// grey — and (b) for colour-blind users, who can't separate the three hues.
+// This is the belt-and-braces match to the Block 4-category SHAPE indicators.
+//   audio → solid · midi → dashed · value/CV → dotted
+// Values are STATIC `stroke-dasharray` strings (NOT animated, NOT per-tick) so
+// the painter guardrail stays green: the dash is a constant attribute per
+// signal type, folded into the bucket-memoised stroke style with no extra
+// per-tick dependency. Dash lengths are tuned in raw px (cables draw in screen
+// space) to stay distinguishable down to ~0.5× zoom without reading as noise.
+const SIGNAL_DASH = {
+  // `undefined` ⇒ React Flow draws a continuous (solid) line.
+  audio: undefined,
+  // Dashed: long mark + clear gap — reads unmistakably as a broken line.
+  midi: "8 5",
+  // Dotted: short mark ≈ stroke width + larger gap — reads as a dot train.
+  value: "2 4",
+} as const satisfies Record<SignalType, string | undefined>;
+
+/**
+ * lineStyleForSignal — the static `stroke-dasharray` for a signal type's
+ * line-style axis (Task 5.4). Pure + exported so the per-type mapping is
+ * unit-testable in isolation. Returns `undefined` (solid) for audio and any
+ * unknown/missing type (audio is the fall-back signal type elsewhere too).
+ */
+export function lineStyleForSignal(
+  signalType: string | undefined,
+): string | undefined {
+  return SIGNAL_DASH[(signalType ?? "audio") as SignalType] ?? undefined;
+}
 
 // ── Channel count → stroke width ──
 
@@ -74,8 +106,12 @@ if (typeof document !== "undefined") {
  * `useGraphStore.edges`, not mounted directly.
  *
  * Use it as the visual carrier of signal semantics: stroke colour encodes the
- * signal type (audio = blue, MIDI = teal, value/CV = orange), width encodes
- * channel count (1/2/6), a dashed stroke marks a sidechain, and the cable's
+ * signal type (audio = blue, MIDI = teal, value/CV = orange) AND a STATIC
+ * line-style axis (Task 5.4 — audio solid / MIDI dashed / value-CV dotted) so
+ * the type survives at low zoom and for colour-blind users (belt-and-braces
+ * with the Block shape indicators), width encodes channel count (1/2/6), a
+ * dedicated dash marks a sidechain (which overrides the type line-style), and
+ * the cable's
  * brightness + a dashed flow-pulse overlay track the live engine RMS level
  * from `useCableMeterStore` (the pulse's march speed and opacity both scale
  * with the real amp, and the overlay is omitted entirely below threshold so an
@@ -217,6 +253,9 @@ function CableComponent({
     }),
     [color, width, ampQ],
   );
+  // Per-signal-type line-style (Task 5.4): audio solid / MIDI dashed / value
+  // dotted. STATIC per type — folded into the memo below with no per-tick dep.
+  const signalDash = lineStyleForSignal(d?.signalType);
   const mainStyle = useMemo<React.CSSProperties>(
     () => ({
       stroke: color,
@@ -224,10 +263,15 @@ function CableComponent({
       // `${color}66` glow softness; the line stroke itself stays full hue above.
       color: `${color}66`,
       strokeWidth: width + ampQ * 1.2,
-      strokeDasharray: isSidechain ? "6 4" : undefined,
+      // Sidechain dash ("6 4") wins over the signal-type line-style: it is a
+      // distinct semantic (key/sidechain input) that predates this axis. For
+      // every NON-sidechain cable the dash now encodes the SIGNAL TYPE
+      // (solid/dashed/dotted) so type survives at low zoom + for colour-blind
+      // users. Dotted value cables use a round cap so each "dot" is a disc.
+      strokeDasharray: isSidechain ? "6 4" : signalDash,
       strokeLinecap: "round",
     }),
-    [color, width, ampQ, isSidechain],
+    [color, width, ampQ, isSidechain, signalDash],
   );
   // Pulse overlay style — identity-stable per bucket. The march DURATION rides
   // the `--pd` custom property (consumed by `.cable-pulse` in CSS) so retiming

@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useReducer } from "react";
 import { EmptyState } from "../../neu";
 import { nativeGraphAddPlugin } from "../../../bridge/nativeGraph";
 import { EV_OPEN_PREFERENCES } from "../../../events";
@@ -47,9 +47,13 @@ export function PluginList({
   onSelect,
 }: PluginListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  // scrollTop is read synchronously from the DOM during render — no state
-  // needed. The div re-renders when the parent re-renders (search/category
-  // change always triggers a re-render).
+  // PluginList now owns the panel's SINGLE scroll region (Task 3.D), so a
+  // scroll no longer rides a parent re-render — we force a cheap local one.
+  // `scrollTop` is still read synchronously from the DOM ref at render time
+  // (no scroll value held in state → no value churn), the tick just schedules
+  // the recompute of the visible window. Search/category/facet changes also
+  // re-render via their own state and recompute the slice.
+  const [, forceTick] = useReducer((n: number) => n + 1, 0);
   const scrollTop = scrollRef.current?.scrollTop ?? 0;
 
   const categoryLabel =
@@ -57,9 +61,12 @@ export function PluginList({
       ? CATEGORY_FILTERS.find((c) => c.cat === activeCategory)?.label
       : "All";
 
-  // ── Section heading ─────────────────────────────────────────────────────────
+  // ── Sticky section heading ────────────────────────────────────────────────
+  // Lives INSIDE the single scroll region (PluginList owns the only scroll now
+  // — Task 3.D), pinned to the top so the "All plugins · N" count stays visible
+  // while the list scrolls. `bg-panel` so rows don't show through behind it.
   const heading = (
-    <div className="text-[9px] font-bold text-text-secondary tracking-widest uppercase px-1 pt-1 pb-1 flex items-center justify-between">
+    <div className="sticky top-0 z-10 bg-panel text-[9px] font-bold text-text-secondary tracking-widest uppercase px-1 pt-1 pb-1 flex items-center justify-between">
       <span>{categoryLabel} plugins</span>
       {filtered.length > 0 ? (
         <span className="text-text-dim tabular font-bold">{filtered.length}</span>
@@ -68,9 +75,11 @@ export function PluginList({
   );
 
   // ── Empty / no-results states ───────────────────────────────────────────────
+  // The list is the panel's SINGLE scroll region (search-first IA): it owns
+  // `flex-1 min-h-0 overflow-y-auto`; the parent body must NOT also scroll.
   if (plugins.length === 0) {
     return (
-      <>
+      <div className="flex-1 min-h-0 overflow-y-auto px-2" data-testid="plugin-list-scroll">
         {heading}
         <div className="px-2 py-4">
           <EmptyState
@@ -90,27 +99,27 @@ export function PluginList({
             }
           />
         </div>
-      </>
+      </div>
     );
   }
 
   if (filtered.length === 0) {
     return (
-      <>
+      <div className="flex-1 min-h-0 overflow-y-auto px-2" data-testid="plugin-list-scroll">
         {heading}
         <div className="px-2 py-3 text-[10px] text-text-dim text-center">
           No plugins match the current filter.
         </div>
-      </>
+      </div>
     );
   }
 
   // ── Grid mode (simple, no virtualization) ───────────────────────────────────
   if (viewMode === "grid") {
     return (
-      <>
+      <div className="flex-1 min-h-0 overflow-y-auto px-2" data-testid="plugin-list-scroll">
         {heading}
-        <div className="grid grid-cols-2 gap-1.5 px-1">
+        <div className="grid grid-cols-2 gap-1.5 px-1 pb-1">
           {filtered.map((plugin) => (
             <PluginCard
               key={plugin.id}
@@ -124,7 +133,7 @@ export function PluginList({
             />
           ))}
         </div>
-      </>
+      </div>
     );
   }
 
@@ -146,41 +155,35 @@ export function PluginList({
   const offsetTop = startIndex * LIST_ROW_H;
 
   return (
-    <>
+    // The single scroll region of the whole browser body (search-first IA —
+    // Task 3.D): `flex-1 min-h-0 overflow-y-auto`. The sticky heading rides
+    // inside it; the parent body intentionally does NOT scroll (no nested
+    // scroll context to fight the expert's wheel).
+    <div
+      ref={scrollRef}
+      className="flex-1 min-h-0 overflow-y-auto px-2"
+      data-testid="plugin-list-virtual"
+      onScroll={forceTick}
+    >
       {heading}
-      {/* Scroll container — fills remaining flex space via flex-1 in parent */}
-      <div
-        ref={scrollRef}
-        className="overflow-y-auto flex-1"
-        data-testid="plugin-list-virtual"
-        onScroll={() => {
-          // Force a synchronous re-render so the slice recalculates.
-          // React batches this; the scrollRef.current.scrollTop read at the
-          // top of this render picks up the new offset.
-          scrollRef.current?.dispatchEvent(
-            new CustomEvent("_palette-scroll-tick", { bubbles: false }),
-          );
-        }}
-      >
-        {/* Full-height spacer so the scrollbar thumb is accurate */}
-        <div style={{ height: totalH, position: "relative" }}>
-          <div style={{ position: "absolute", top: offsetTop, left: 0, right: 0 }}>
-            {slice.map((plugin) => (
-              <div key={plugin.id} style={{ height: LIST_ROW_H }}>
-                <PluginCard
-                  plugin={plugin}
-                  view="list"
-                  selected={plugin.id === selectedId}
-                  isFavourite={favoriteIds.has(plugin.id)}
-                  onSelect={() => onSelect(plugin.id)}
-                  onAdd={() => void nativeGraphAddPlugin(plugin.id)}
-                  onAddVariant={(id) => void nativeGraphAddPlugin(id)}
-                />
-              </div>
-            ))}
-          </div>
+      {/* Full-height spacer so the scrollbar thumb is accurate */}
+      <div style={{ height: totalH, position: "relative" }}>
+        <div style={{ position: "absolute", top: offsetTop, left: 0, right: 0 }}>
+          {slice.map((plugin) => (
+            <div key={plugin.id} style={{ height: LIST_ROW_H }}>
+              <PluginCard
+                plugin={plugin}
+                view="list"
+                selected={plugin.id === selectedId}
+                isFavourite={favoriteIds.has(plugin.id)}
+                onSelect={() => onSelect(plugin.id)}
+                onAdd={() => void nativeGraphAddPlugin(plugin.id)}
+                onAddVariant={(id) => void nativeGraphAddPlugin(id)}
+              />
+            </div>
+          ))}
         </div>
       </div>
-    </>
+    </div>
   );
 }

@@ -210,16 +210,16 @@ const meta = {
     docs: {
       description: {
         component:
-          "Docked tabbed inspector shell (bake-off verdict #6) — Block / Bus / Cable / Health. " +
-          "BLOCK holds the per-Block detail: gradient header, A/B preset compare, parameter sliders, " +
-          "plugin-window embed, bypass/mute controls, metrics, notes, and the inline Script editor for " +
-          "Script Blocks (with nothing selected it shows the Project Overview). BUS shows live per-bus " +
-          "activity (level/volume/sidechain) + an open-editor affordance above the bus auditor — buses " +
-          "are IO send/receive blocks, not wireless cables (Wizard R1). CABLE is the live signal monitor " +
-          "for the selected cable — a faithful digital-VU ladder, peak-hold, dBFS, signal type, channels " +
-          "and sidechain from the real 60Hz useCableMeterStore feed (NOT a routing editor; Wizard R1 P1). " +
-          "HEALTH consolidates engine vitals, host meters, and the log. The docked shell + gradient header " +
-          "come from the mockup; the wiring, stores, and bridge calls are Element's.",
+          "SELECTION-ROUTED inspector (Wave-3 Task 3.E) — the panel follows the selection instead of a " +
+          "top-level tab bar. A Block selected → the per-Block view (gradient header, the within-block " +
+          "Params/I/O/Notes sub-nav, A/B presets, the 📌 pin-to-face controls, parameter sliders, " +
+          "plugin-window embed, bypass/mute, metrics, and the inline Script editor for Script Blocks). A " +
+          "Cable selected → the live signal monitor (faithful digital-VU ladder, peak-hold, dBFS, signal " +
+          "type, channels, sidechain from the real 60Hz useCableMeterStore feed; NOT a routing editor). " +
+          "Nothing selected → a resting view with a sub-nav (Overview · Cables · Buses · Health): the " +
+          "Project Overview, the board-wide live Cable monitor, the IO Bus auditor (buses are send/receive " +
+          "blocks, not wireless cables), and engine vitals + meters + log. The shell can collapse the " +
+          "no-selection panel to an icon rail for max canvas. Wiring, stores, and bridge calls are Element's.",
       },
     },
   },
@@ -275,10 +275,12 @@ export const BlockTab_AudioFx: Story = {
     },
   },
   play: async ({ canvas }) => {
-    // The BLOCK tab is default-active and selected.
-    const blockTab = canvas.getByRole("tab", { name: "BLOCK" });
-    await expect(blockTab).toHaveAttribute("aria-selected", "true");
-    // Header reflects the selected block + its live ACTIVE state.
+    // Task 3.E — selecting a Block routes to the block view (no tab click). The
+    // within-block sub-nav (Params|I/O|Notes) is present and the header reflects
+    // the selected block + its live ACTIVE state.
+    await expect(
+      canvas.getByRole("tablist", { name: /block sections/i }),
+    ).toBeInTheDocument();
     await expect(canvas.getByText("Pro-Q 3")).toBeInTheDocument();
     await expect(canvas.getByText(/ACTIVE/)).toBeInTheDocument();
   },
@@ -364,9 +366,10 @@ export const BlockTab_Script: Story = {
     },
   },
   play: async ({ canvas }) => {
-    // The inline Script editor mounted inside the Block tab — assert on its
-    // unique "Save & Compile" action (the block is itself named "Script", so
-    // that text alone would be ambiguous).
+    // The inline Script editor folds into the Notes sub-view (verdict #6) — open
+    // it via the within-block sub-nav, then assert on its unique "Save & Compile"
+    // action (the block is itself named "Script", so that text alone is ambiguous).
+    await userEvent.click(canvas.getByRole("tab", { name: "Notes" }));
     await expect(canvas.getByText("Save & Compile")).toBeInTheDocument();
   },
 };
@@ -406,14 +409,16 @@ export const BusTab: Story = {
     },
   },
   play: async ({ canvas }) => {
-    await userEvent.click(canvas.getByRole("tab", { name: "BUS" }));
-    await expect(canvas.getByRole("tab", { name: "BUS" })).toHaveAttribute(
+    // Task 3.E — with nothing selected, the IO Bus auditor lives in the resting
+    // "Buses" sub-tab (buses are not a graph selection). Open it via the sub-nav.
+    await userEvent.click(canvas.getByRole("tab", { name: "Buses" }));
+    await expect(canvas.getByRole("tab", { name: "Buses" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
-    // The reworked IO send/receive auditor: "Buses" heading, separate Send +
-    // Receive meters per bus (two seeded), and the open-editor affordance.
-    await expect(canvas.getByText(/^Buses$/)).toBeInTheDocument();
+    // The reworked IO send/receive auditor: separate Send + Receive meters per
+    // bus (two seeded) and the open-editor affordance. (Both the sub-nav tab and
+    // the auditor heading read "Buses", so assert the unambiguous content.)
     await expect(canvas.getAllByText(/SEND →/).length).toBeGreaterThan(0);
     await expect(canvas.getAllByText(/← RECEIVE/).length).toBeGreaterThan(0);
     await expect(
@@ -448,11 +453,7 @@ export const CableTab: Story = {
     },
   },
   play: async ({ canvas }) => {
-    await userEvent.click(canvas.getByRole("tab", { name: "CABLE" }));
-    await expect(canvas.getByRole("tab", { name: "CABLE" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
+    // Task 3.E — selecting a Cable routes straight to the live monitor (no tab).
     // The monitor header identifies the signal type, and the honest gap tile
     // for spectrum is present (proves the no-fake-data rule is surfaced).
     await expect(canvas.getByText("Audio Cable")).toBeInTheDocument();
@@ -484,7 +485,7 @@ export const CableTab_Midi: Story = {
     },
   },
   play: async ({ canvas }) => {
-    await userEvent.click(canvas.getByRole("tab", { name: "CABLE" }));
+    // Selecting the MIDI cable routes straight to its monitor (Task 3.E).
     await expect(canvas.getByText("MIDI Cable")).toBeInTheDocument();
     await expect(canvas.getByText("MIDI ACTIVITY")).toBeInTheDocument();
     // R2 enrichment — the MIDI flow metadata panel auto-shows for non-audio cables.
@@ -518,7 +519,9 @@ export const CableTab_Overview: Story = {
     },
   },
   play: async ({ canvas }) => {
-    await userEvent.click(canvas.getByRole("tab", { name: "CABLE" }));
+    // Task 3.E — with nothing selected, the board-wide cable overview is the
+    // resting "Cables" sub-tab. Open it via the sub-nav.
+    await userEvent.click(canvas.getByRole("tab", { name: "Cables" }));
     await expect(canvas.getByText("Cable Monitor")).toBeInTheDocument();
     // Three demo cables → three rows.
     await expect(canvas.getByText(/3 cables/)).toBeInTheDocument();
@@ -604,7 +607,7 @@ export const CableTab_ValueGate: Story = {
     },
   },
   play: async ({ canvas }) => {
-    await userEvent.click(canvas.getByRole("tab", { name: "CABLE" }));
+    // Selecting the Value/CV cable routes straight to its monitor (Task 3.E).
     await expect(canvas.getByText("Value / CV Cable")).toBeInTheDocument();
     await expect(canvas.getByText("Control flow")).toBeInTheDocument();
     // Inferred routing tags + the conditional flag.
@@ -638,15 +641,18 @@ export const BlockTab_InternalNoParams: Story = {
     },
   },
   play: async ({ canvas }) => {
-    // The relevant sections + the Script fold are present.
-    await expect(canvas.getByText("I/O Ports")).toBeInTheDocument();
-    await expect(canvas.getByText("Save & Compile")).toBeInTheDocument();
-    // Parameters section is omitted once the (empty) bridge fetch resolves —
-    // smart layout hides it rather than showing a placeholder. Wait for the
-    // brief loading window to settle before asserting absence.
+    // Params sub-view (default): the Parameters section is omitted once the
+    // (empty) bridge fetch resolves — smart layout hides it rather than showing a
+    // "no parameters" placeholder. Wait for the brief loading window to settle.
     await waitFor(() =>
       expect(canvas.queryByText("Parameters")).not.toBeInTheDocument(),
     );
+    // I/O sub-view → the signal-coloured port list.
+    await userEvent.click(canvas.getByRole("tab", { name: "I/O" }));
+    await expect(canvas.getByText("I/O Ports")).toBeInTheDocument();
+    // Notes sub-view → the inline Script editor folds in for the Script block.
+    await userEvent.click(canvas.getByRole("tab", { name: "Notes" }));
+    await expect(canvas.getByText("Save & Compile")).toBeInTheDocument();
   },
 };
 
@@ -680,8 +686,10 @@ export const HealthTab: Story = {
     },
   },
   play: async ({ canvas }) => {
-    await userEvent.click(canvas.getByRole("tab", { name: "HEALTH" }));
-    await expect(canvas.getByRole("tab", { name: "HEALTH" })).toHaveAttribute(
+    // Task 3.E — engine Health lives in the resting "Health" sub-tab (it is not a
+    // graph selection; §7 decision keeps vitals reachable from the empty inspector).
+    await userEvent.click(canvas.getByRole("tab", { name: "Health" }));
+    await expect(canvas.getByRole("tab", { name: "Health" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
@@ -690,7 +698,7 @@ export const HealthTab: Story = {
   },
 };
 
-// ── Empty graph (no nodes) — BLOCK tab resting + tab nav still works ──
+// ── Empty graph (no nodes) — resting view + sub-nav still works ──
 export const EmptyGraph: Story = {
   decorators: [
     (Story) => {
@@ -707,21 +715,25 @@ export const EmptyGraph: Story = {
     docs: {
       description: {
         story:
-          "Empty Project (no Blocks): the BLOCK tab shows zero Blocks/Cables in the Project Overview and " +
-          "every tab still mounts cleanly — the inspector on a brand-new Board.",
+          "Empty Project (no Blocks), nothing selected: the resting view shows zero Blocks/Cables in the " +
+          "Project Overview and every resting sub-tab (Overview/Cables/Buses/Health) mounts cleanly — the " +
+          "selection-routed inspector on a brand-new Board.",
       },
     },
   },
   play: async ({ canvas, canvasElement }) => {
-    // Walk all four tabs to prove each mounts without throwing on an empty graph.
-    for (const name of ["BUS", "CABLE", "HEALTH", "BLOCK"]) {
+    // Walk every resting sub-tab to prove each mounts without throwing on an
+    // empty graph (the top-level tab bar is retired — this is the resting sub-nav).
+    for (const name of ["Cables", "Buses", "Health", "Overview"]) {
       await userEvent.click(canvas.getByRole("tab", { name }));
       await expect(canvas.getByRole("tab", { name })).toHaveAttribute(
         "aria-selected",
         "true",
       );
     }
-    const tablist = within(canvasElement).getByRole("tablist");
+    const tablist = within(canvasElement).getByRole("tablist", {
+      name: /inspector overview sections/i,
+    });
     await expect(tablist).toBeInTheDocument();
   },
 };
@@ -844,5 +856,97 @@ export const BlockTab_BigPluginParams: Story = {
     await expect(
       canvas.getByRole("slider", { name: "Mod Rate" }),
     ).toBeInTheDocument();
+  },
+};
+
+// ── BLOCK — 📌 pin-to-face (Task 3.E) ─────────────────────────────────────────
+//
+// A plugin that exposes Value/CV param PORTS (the params-as-ports model, e.g. a
+// reverb's Mix/Decay/Width as CV inputs). The Block view's Params sub-view shows
+// the "Block face" section with a 📌 pin-to-face toggle per REAL param port. The
+// pinned set is the inverse of the Block's `hiddenParams` substrate — toggling a
+// pin writes through `setHiddenParams` (optimistic) and surfaces the param on the
+// Block Macro tier. NOTHING-fake: only real param ports appear; no fabricated
+// values.
+const paramReverb: BlockData = {
+  id: "rev-1",
+  name: "Cloud Reverb",
+  category: "audiofx",
+  format: "VST3",
+  position: { x: 240, y: 140 },
+  ports: [
+    { id: "in-l", type: "audio", direction: "input", label: "In L", connected: true },
+    { id: "in-r", type: "audio", direction: "input", label: "In R", connected: true },
+    { id: "out-l", type: "audio", direction: "output", label: "Out L", connected: true },
+    { id: "out-r", type: "audio", direction: "output", label: "Out R", connected: true },
+    // Value/CV PARAM ports — the pinnable set.
+    { id: "p-mix", type: "value", direction: "input", label: "Mix", connected: false },
+    { id: "p-decay", type: "value", direction: "input", label: "Decay", connected: false },
+    { id: "p-width", type: "value", direction: "input", label: "Width", connected: false },
+  ],
+  cpuLoad: 3.2,
+  latencyMs: 0,
+  bypassed: false,
+  muted: false,
+  muteInput: false,
+  error: false,
+  isMacroTagged: false,
+  // Start with Decay + Width hidden so only Mix is pinned on the face initially.
+  hiddenParams: ["p-decay", "p-width"],
+  collapseTier: "macro",
+};
+
+export const BlockTab_FaceParamsPin: Story = {
+  decorators: [
+    (Story) => {
+      seedNodeSelected(paramReverb);
+      return (
+        <div style={PANEL} className="bg-panel">
+          <Story />
+        </div>
+      );
+    },
+  ],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "BLOCK view, Params sub-view, for a plugin exposing Value/CV param PORTS (Mix/Decay/Width). The " +
+          "'Block face' section lists each REAL param with a 📌 pin-to-face toggle (a thin NeuToggle " +
+          "wrapper). Pinned = surfaced on the Block Macro tier (the inverse of the Block's hiddenParams " +
+          "substrate). Toggling a pin writes through setHiddenParams (optimistic) — NOTHING fabricated: " +
+          "only real param ports appear, never a fake knob/value.",
+      },
+    },
+  },
+  play: async ({ canvas }) => {
+    // The Block face section + its pin count (1 of 3 pinned: Mix shown; Decay +
+    // Width hidden via the seeded hiddenParams).
+    await expect(canvas.getByText(/Block face/i)).toBeInTheDocument();
+    await expect(
+      canvas.getByLabelText(/1 of 3 parameters pinned/i),
+    ).toBeInTheDocument();
+    // Mix is pinned → its labelled group offers "Unpin Mix from Block face" and
+    // the real NeuToggle (role="switch") reads checked.
+    const mixPin = canvas.getByRole("group", { name: /unpin mix from block face/i });
+    await expect(within(mixPin).getByRole("switch")).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    // Decay + Width are unpinned → "Pin … to Block face" + unchecked switch.
+    const decayPin = canvas.getByRole("group", { name: /pin decay to block face/i });
+    const decaySwitch = within(decayPin).getByRole("switch");
+    await expect(decaySwitch).toHaveAttribute("aria-checked", "false");
+    await expect(
+      within(
+        canvas.getByRole("group", { name: /pin width to block face/i }),
+      ).getByRole("switch"),
+    ).toHaveAttribute("aria-checked", "false");
+    // The pin toggle is interactive — clicking writes through setHiddenParams.
+    // (Storybook has no JUCE bridge, so the optimistic store update is rolled
+    // back when the bridgeless call resolves falsy; the persistence + the flip
+    // are covered by the InspectorHub.v2 unit test against the real store. Here
+    // we only assert the control is wired + clickable without throwing.)
+    await userEvent.click(decaySwitch);
   },
 };

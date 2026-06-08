@@ -250,6 +250,112 @@ describe("usePaletteFilters", () => {
       expect(result.current.favoriteIds.has("proeq.au")).toBe(false);
     });
   });
+
+  // ── Task 3.D — ★ / ⏱ facets over the single list ──────────────────────────
+  describe("facet: favouritesOnly (★)", () => {
+    it("does not filter when favouritesOnly is false", () => {
+      storePlugins = group({ "surge.vst3": { isFavorite: true } });
+      const { result } = renderHook(() =>
+        usePaletteFilters("", null, { favouritesOnly: false, recentSort: false }),
+      );
+      expect(result.current.filtered).toHaveLength(4);
+    });
+
+    it("restricts the list to favourited GROUPS when on", () => {
+      storePlugins = group({
+        "surge.vst3": { isFavorite: true },
+        "proeq.au": { isFavorite: true },
+      });
+      const { result } = renderHook(() =>
+        usePaletteFilters("", null, { favouritesOnly: true, recentSort: false }),
+      );
+      expect(result.current.filtered).toHaveLength(2);
+      const ids = result.current.filtered.map((p) => p.id);
+      expect(ids).toContain("surge.vst3");
+      expect(ids).toContain("proeq.au");
+      expect(ids).not.toContain("midi-router.int");
+    });
+
+    it("GROUP-FAVOURITES UNREGRESSED: starring an AU keeps its VST3-primary family under the ★ facet", () => {
+      // The host aggregates the starred AU onto its VST3-primary row
+      // (isFavorite=true on the primary). The ★ facet reads that same
+      // group-aware flag, so the family stays visible — no orphaning.
+      storePlugins = group({
+        "surge.vst3": {
+          isFavorite: true,
+          aliases: ["surge.vst3", "surge.au"],
+          variants: [
+            { format: "VST3", identifier: "surge.vst3" },
+            { format: "AudioUnit", identifier: "surge.au" },
+          ],
+        },
+      });
+      const { result } = renderHook(() =>
+        usePaletteFilters("", null, { favouritesOnly: true, recentSort: false }),
+      );
+      expect(result.current.filtered).toHaveLength(1);
+      expect(result.current.filtered[0].id).toBe("surge.vst3");
+    });
+
+    it("combines with category + search", () => {
+      storePlugins = group({
+        "surge.vst3": { isFavorite: true },
+        "proeq.au": { isFavorite: true },
+      });
+      // favourites-only + category=audiofx → only Pro-Q 3
+      const { result } = renderHook(() =>
+        usePaletteFilters("", "audiofx", {
+          favouritesOnly: true,
+          recentSort: false,
+        }),
+      );
+      expect(result.current.filtered).toHaveLength(1);
+      expect(result.current.filtered[0].id).toBe("proeq.au");
+    });
+  });
+
+  describe("facet: recentSort (⏱)", () => {
+    it("preserves original order when recentSort is false", () => {
+      storePlugins = group({
+        "lfo.int": { recentRank: 0 },
+        "surge.vst3": { recentRank: 1 },
+      });
+      const { result } = renderHook(() =>
+        usePaletteFilters("", null, { favouritesOnly: false, recentSort: false }),
+      );
+      // Original base order: surge, proeq, midi-router, lfo.
+      expect(result.current.filtered.map((p) => p.id)).toEqual([
+        "surge.vst3",
+        "proeq.au",
+        "midi-router.int",
+        "lfo.int",
+      ]);
+    });
+
+    it("sorts recent rows first (best rank first), non-recent after in original order", () => {
+      storePlugins = group({
+        "lfo.int": { recentRank: 0 }, // most recent
+        "midi-router.int": { recentRank: 1 },
+      });
+      const { result } = renderHook(() =>
+        usePaletteFilters("", null, { favouritesOnly: false, recentSort: true }),
+      );
+      const ids = result.current.filtered.map((p) => p.id);
+      // Recent rows ascend by rank…
+      expect(ids[0]).toBe("lfo.int");
+      expect(ids[1]).toBe("midi-router.int");
+      // …non-recent rows keep their original relative order after them.
+      expect(ids.slice(2)).toEqual(["surge.vst3", "proeq.au"]);
+    });
+
+    it("does not drop non-recent rows (sort, not filter)", () => {
+      storePlugins = group({ "lfo.int": { recentRank: 0 } });
+      const { result } = renderHook(() =>
+        usePaletteFilters("", null, { favouritesOnly: false, recentSort: true }),
+      );
+      expect(result.current.filtered).toHaveLength(4);
+    });
+  });
 });
 
 // ── Virtualization window-math tests ─────────────────────────────────────────

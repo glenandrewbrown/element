@@ -52,12 +52,25 @@ vi.mock("../../../stores/useGraphStore", () => ({
       nodes: [],
       edges: [],
       selectedNode: null,
+      selectedEdge: undefined,
+      selectedNodeId: null,
+      selectedEdgeId: null,
       toggleBypass: vi.fn(),
       toggleMute: vi.fn(),
       toggleMuteInput: vi.fn(),
+      selectNode: vi.fn(),
     }),
   ),
   selectSelectedNode: (s: { selectedNode: null }) => s.selectedNode,
+  // Task 3.E: InspectorHub reads selectSelectedEdge at the top level now (the
+  // selection TYPE routes the panel). No edge selected → undefined → the resting
+  // view renders, which is what these no-selection peak-hold tests expect.
+  selectSelectedEdge: (s: { selectedEdge: unknown }) => s.selectedEdge,
+  // The selection-driven auto-collapse effect reads the raw IDs (both null here →
+  // no selection → it collapses the right panel via the real useAppStore, which is
+  // inert for these peak-hold assertions).
+  selectSelectedNodeId: (s: { selectedNodeId: string | null }) => s.selectedNodeId,
+  selectSelectedEdgeId: (s: { selectedEdgeId: string | null }) => s.selectedEdgeId,
   selectNodes: (s: { nodes: unknown[] }) => s.nodes,
   selectEdges: (s: { edges: unknown[] }) => s.edges,
 }));

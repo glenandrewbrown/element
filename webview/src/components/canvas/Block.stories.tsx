@@ -192,6 +192,57 @@ export const TierExpanded: Story = story(
   "EXPANDED tier — the full deep-dive: control deck (here the third-party single activity bar) + heavy FFT embed for built-in audiofx + the \"▸ N params\" lane for params-as-ports plugins. The deliberate expert state, reached by cycling past macro.",
 );
 
+// ── Task 3.E — pinned params surface on the MACRO face ──────────────────────
+//
+// A params-as-ports reverb whose Value/CV param ports are PINNED in the Inspector
+// (📌 pin-to-face) surface on the Macro tier as compact, signal-coloured chips.
+// "Pinned" = NOT in `hiddenParams`. Here Mix + Decay are pinned (shown) and Width
+// is hidden, so the macro face shows two chips. NOTHING-fake: the chips are real
+// param-port labels — never a fabricated value/knob.
+const pinnedReverb = (over: Partial<BlockData> = {}): BlockData =>
+  makeBlock({
+    name: "ValhallaRoom",
+    category: "audiofx",
+    format: "VST3",
+    ports: [
+      { id: "in-l", type: "audio", direction: "input", label: "In", connected: true },
+      { id: "out-l", type: "audio", direction: "output", label: "Out", connected: true },
+      { id: "p-mix", type: "value", direction: "input", label: "Mix", connected: false },
+      { id: "p-decay", type: "value", direction: "input", label: "Decay", connected: false },
+      { id: "p-width", type: "value", direction: "input", label: "Width", connected: false },
+    ],
+    // Width hidden → Mix + Decay are the pinned (face-surfaced) params.
+    hiddenParams: ["p-width"],
+    collapseTier: "macro",
+    ...over,
+  });
+
+export const TierMacroPinnedParams: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "MACRO tier with PINNED params (Task 3.E). The params the user pinned in the Inspector (📌 " +
+          "pin-to-face) surface on the lean Macro face as compact Value/CV-tinted chips — here Mix + Decay " +
+          "(Width is unpinned/hidden). NOTHING-fake: each chip is a REAL param-port label; the macro face " +
+          "never fabricates a knob or value. This is the Block-face half of the Inspector's pin control.",
+      },
+    },
+  },
+  render: () => (
+    <MiniFlow nodes={[flowNode(pinnedReverb())]} nodeTypes={nodeTypes} height={320} />
+  ),
+  play: async ({ canvasElement }) => {
+    const body = within(canvasElement.ownerDocument.body);
+    // The pinned-param strip is present on the macro face with the two pinned
+    // params; the unpinned one (Width) is NOT shown.
+    const strip = await body.findByTestId("block-pinned-params");
+    await expect(within(strip).getByText("Mix")).toBeInTheDocument();
+    await expect(within(strip).getByText("Decay")).toBeInTheDocument();
+    await expect(within(strip).queryByText("Width")).not.toBeInTheDocument();
+  },
+};
+
 export const TierCycle: Story = {
   parameters: {
     docs: {

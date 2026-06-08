@@ -37,7 +37,7 @@ export function MoleculesSection({ molecules }: MoleculesSectionProps) {
 
   return (
     <CollapsibleSection
-      label="Molecules"
+      label={`Snippets (${molecules.length})`}
       defaultOpen={false}
       data-testid="molecules-section"
     >

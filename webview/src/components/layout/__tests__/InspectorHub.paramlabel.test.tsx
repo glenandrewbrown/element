@@ -65,6 +65,8 @@ vi.mock("../../../stores/useGraphStore", () => ({
   selectSelectedNode: (s: { selectedNodeId: string | null; nodes: BlockData[] }) =>
     s.selectedNodeId ? s.nodes.find((n) => n.id === s.selectedNodeId) : undefined,
   selectSelectedEdge: () => undefined,
+  selectSelectedNodeId: (s: { selectedNodeId: string | null }) => s.selectedNodeId,
+  selectSelectedEdgeId: (s: { selectedEdgeId: string | null }) => s.selectedEdgeId,
   selectNodes: (s: { nodes: unknown[] }) => s.nodes,
   selectEdges: (s: { edges: unknown[] }) => s.edges,
 }));

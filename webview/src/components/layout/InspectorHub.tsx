@@ -1,7 +1,5 @@
 import {
-  createContext,
   useCallback,
-  useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -12,6 +10,8 @@ import {
   useGraphStore,
   selectSelectedNode,
   selectSelectedEdge,
+  selectSelectedNodeId,
+  selectSelectedEdgeId,
   selectNodes,
   selectEdges,
 } from "../../stores/useGraphStore";
@@ -20,6 +20,10 @@ import {
   selectLiveHealth,
   selectSessionName,
 } from "../../stores/usePerformStore";
+import {
+  useAppStore,
+  selectInspectorUserCollapsed,
+} from "../../stores/useAppStore";
 import {
   useEngineSnapshotStore,
   selectCpuPercent,
@@ -62,6 +66,7 @@ import { ScriptEditor } from "../canvas/ScriptEditor";
 import { BusInspector } from "./BusInspector";
 import { LiveHealth } from "./LiveHealth";
 import { NeuPromptModal } from "./NeuPromptModal";
+import { PinToFaceToggle } from "./inspector/PinToFaceToggle";
 import { Icon } from "../neu/Icon";
 // Wizard R2 (icon P0): category + function glyphs come from the SINGLE shared
 // source `iconForCategory` (meaningful line icons — piano / faders / branch /
@@ -70,20 +75,13 @@ import { Icon } from "../neu/Icon";
 // ToolPalette, QuickAdd and Inspector never diverge on what a category looks like.
 import { iconForCategory } from "../neu/iconForCategory";
 
-// Verdict #6 — the docked tabbed shell: Block / Bus / Cable / Health. The
-// per-block detail (params, A/B, plugin embed, notes, script) lives under Block;
-// the live BUS activity + auditor under Bus; the live CABLE signal monitor under
-// Cable; engine vitals + meters + log under Health. Wizard R1: Cable is now a
-// real-time monitor (level/peak/signal-type from useCableMeterStore), NOT a
-// routing editor; Bus gains live activity meters + sidechain + open-editor.
-// Every previously-wired surface is re-homed here — nothing is dropped.
-type Tab = "block" | "bus" | "cable" | "health";
-
-// Lets nested tab bodies request a tab switch — e.g. the Bus tab's "Open editor"
-// affordance dives a bus's destination block and jumps to the Block tab so its
-// effects (a reverb on the bus, say) surface for editing. Provided by
-// InspectorHub; consumers no-op if unprovided (e.g. a body rendered in isolation).
-const InspectorTabContext = createContext<((tab: Tab) => void) | null>(null);
+// Task 3.E — the inspector is SELECTION-ROUTED (no top-level tab bar): the
+// selected entity TYPE drives the panel — a Block → the per-Block view (with a
+// within-block Params/I/O/Notes sub-nav + the 📌 pin-to-face controls), a Cable →
+// the live signal monitor, nothing → a resting view (Project overview · Cable
+// monitor · IO Bus auditor · engine Health) that the shell can collapse to the
+// icon rail for max canvas. Every previously-wired surface is still reachable —
+// routed by selection (Block/Cable) or the resting sub-nav.
 
 // Category accent (raw HSL triplet so we can alpha-compose for the gradient
 // header + glow, exactly as Block.tsx resolves its accent). Frozen W0 tokens.
@@ -1807,46 +1805,18 @@ function CableOverview() {
   );
 }
 
-/** Cable tab dispatcher — selected cable → full monitor, else overview. */
-function CableTabBody() {
-  const selectedCable = useGraphStore(selectSelectedEdge) as
-    | CableData
-    | undefined;
-  if (!selectedCable) return <CableOverview />;
-  return <CableMonitor cable={selectedCable} />;
-}
-
 // ════════════════════════════════════════════════════════════════════════
-//  BUS TAB (Wizard R1 #4 + R2) — the IO send/receive auditor (BusInspector).
+//  CABLE (Wizard R1 P1) — the live signal monitor for the SELECTED cable.
+//  Reached by selecting a cable on the canvas (selection-routing, Task 3.E):
+//  CableMonitor renders the full per-edge monitor; CableOverview is the
+//  board-wide live read (every cable as a mini-meter), surfaced from the
+//  no-selection resting view's "Cables" sub-tab.
 //
-//  BusInspector now carries the full live surface: SEPARATE Send + Receive
-//  activity meters per bus (real per-cable RMS / activity), a live volume per
-//  side, sidechain DISPLAY, and a direct "Open editor" affordance that dives the
-//  bus's destination block so its effects (e.g. a reverb) open in the Block tab.
-//
-//  DECISION (Wizard R1 #4): buses are IO blocks that SEND TO / RECEIVE FROM a
-//  named bus (Bus Send / Bus Receive), NOT "wireless cables". All framing here
-//  follows that model — no "wireless" language anywhere. The broader send/receive
-//  Bus-block model is a separate queued task; this surface audits/opens EXISTING
-//  buses and must not contradict the decision.
+//  BUS (Wizard R1 #4 + R2) — the IO send/receive auditor (BusInspector), now
+//  surfaced from the resting "Buses" sub-tab. DECISION (Wizard R1 #4): buses are
+//  IO blocks that SEND TO / RECEIVE FROM a named bus (Bus Send / Bus Receive),
+//  NOT "wireless cables".
 // ════════════════════════════════════════════════════════════════════════
-
-/** Bus tab body — the enriched BusInspector, wired to open a block in the Block tab. */
-function BusTabBody() {
-  const selectNodeOnGraph = useGraphStore((s) => s.selectNode);
-  const setActiveTabRef = useContext(InspectorTabContext);
-
-  // Open a bus's destination block in the Block tab: select it + switch tab.
-  const openBlock = useCallback(
-    (blockId: string) => {
-      selectNodeOnGraph(blockId);
-      setActiveTabRef?.("block");
-    },
-    [selectNodeOnGraph, setActiveTabRef],
-  );
-
-  return <BusInspector onOpenBlock={openBlock} />;
-}
 
 function PluginEditorControls({ block }: { block: BlockData }) {
   const slotRef = useRef<HTMLDivElement>(null);
@@ -1999,18 +1969,110 @@ function HealthSection(props: {
   return <InspectorSection {...props} />;
 }
 
+// ── Face-params (📌 pin-to-face) — Task 3.E ──────────────────────────────────
+//
+// Surfaces the node's REAL Value/CV param ports (the SAME `type === "value"` set
+// `Block.tsx` filters via `hiddenParams`, and the SAME substrate
+// `ParamConfigPopover` toggles) with a per-param `📌` pin-to-face control.
+//
+//   pinned (toggle ON)  = NOT in `hiddenParams` ⇒ surfaced on the Block Macro tier
+//   unpinned (toggle OFF) = present in `hiddenParams` ⇒ hidden from the face
+//
+// The inversion + the FULL-set write live here (mirrors ParamConfigPopover):
+// `setHiddenParams(nodeId, fullHiddenArray)` is optimistic-with-rollback +
+// host-persisted, reconciled on the next snapshot — NOTHING fabricated. The pin
+// affordance is only ever rendered for a param that REALLY exists; a node with no
+// Value/CV param ports renders no pin section at all (no fake knobs/values). This
+// is a separate axis from the plugin `NodeParameterRow` sliders below (which have
+// no face-surfacing substrate yet — Phase 4), so those are not pinnable here.
+function FaceParamsList({ block }: { block: BlockData }) {
+  const setHiddenParams = useGraphStore((s) => s.setHiddenParams);
+
+  const paramPorts = useMemo<Port[]>(
+    () => block.ports.filter((p) => p.type === "value"),
+    [block.ports],
+  );
+  const hiddenSet = useMemo(
+    () => new Set(block.hiddenParams ?? []),
+    [block.hiddenParams],
+  );
+  const pinnedCount = paramPorts.length - hiddenSet.size;
+
+  // setHiddenParams takes the COMPLETE desired hidden set (not a delta), so we
+  // rebuild it from the current set on every toggle — optimistic + host stay in
+  // lock-step (identical contract to ParamConfigPopover.setShown).
+  const setPinned = (portId: string, pinned: boolean) => {
+    const nextHidden = new Set(hiddenSet);
+    if (pinned) nextHidden.delete(portId);
+    else nextHidden.add(portId);
+    void setHiddenParams(block.id, Array.from(nextHidden));
+  };
+
+  return (
+    <div className="space-y-1.5" role="group" aria-label="Pin parameters to Block face">
+      <div className="flex items-center gap-1.5">
+        <span className="text-[9px] text-text-dim leading-snug flex-1">
+          Pinned params show on the Block’s Macro face. These are the node’s real
+          Value/CV parameters.
+        </span>
+        <span
+          className="text-[9px] font-mono tabular-nums text-text-dim shrink-0"
+          aria-label={`${pinnedCount} of ${paramPorts.length} parameters pinned`}
+        >
+          {pinnedCount}/{paramPorts.length}
+        </span>
+      </div>
+      <div className="space-y-1">
+        {paramPorts.map((port) => {
+          const pinned = !hiddenSet.has(port.id);
+          return (
+            <div
+              key={port.id}
+              className="flex items-center gap-2 min-h-[24px] px-1 rounded hover:bg-elevated/60 transition-colors duration-100"
+            >
+              <span
+                className="flex-1 truncate text-[10px] font-mono leading-none"
+                style={{
+                  color: pinned
+                    ? "hsl(var(--foreground))"
+                    : "hsl(var(--muted-foreground))",
+                }}
+                title={`${port.label} · Value/CV ${port.direction}`}
+              >
+                {port.label}
+              </span>
+              <span className="text-[8px] uppercase tracking-wider text-text-dim shrink-0 w-6 text-right">
+                {port.direction === "output" ? "out" : "in"}
+              </span>
+              <PinToFaceToggle
+                pinned={pinned}
+                label={port.label}
+                onChange={(next) => setPinned(port.id, next)}
+              />
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** Within-block sub-views (brief §3.3 — kept as a re-contextualising strip, NOT
+ *  the old top-level tab bar). Params is the dominant surface; I/O + Notes are
+ *  genuine sub-views of the one selected Block. */
+type BlockSubView = "params" | "io" | "notes";
+
 /**
- * The Block tab body — SMART relevance-ordered layout (Wizard R2). Sections are
- * ordered by how often you reach for them and EMPTY ones are hidden entirely so
- * the important info is never buried under dead placeholders ("screen space is
- * precious"):
+ * The Block tab body — SMART relevance-ordered layout (Wizard R2) under a
+ * within-block sub-nav (Params / I/O / Notes — brief §3.3). The header + presets
+ * are always shown; the sub-nav switches the DETAIL below it. EMPTY surfaces are
+ * hidden so the important info is never buried under dead placeholders:
  *
- *   1. Header (always)            5. I/O Ports — collapsed, signal-coloured
- *   2. Presets A/B (always)       6. State (bypass/mute) — collapsed
- *   3. Parameters — only if the   7. Metrics (CPU/latency) — collapsed
- *      node exposes any (or       8. Notes — collapsed, shows • when written
- *      while loading); open       9. Script editor — script Blocks only
- *   4. Plugin window — plugins only (self-gated)
+ *   Header (always)              Params view: Face-params (📌 pin-to-face, only
+ *   Presets A/B (always)           if the node has Value/CV ports) + the plugin
+ *   Sub-nav: Params|I/O|Notes      param sliders + plugin window + State/Metrics
+ *                                I/O view: signal-coloured port list
+ *                                Notes view: free-form note (+ Script for scripts)
  *
  * No Block selected: the Project Overview resting state.
  */
@@ -2022,6 +2084,14 @@ function BlockTabBody({
   const toggleBypass = useGraphStore((s) => s.toggleBypass);
   const toggleMute = useGraphStore((s) => s.toggleMute);
   const toggleMuteInput = useGraphStore((s) => s.toggleMuteInput);
+
+  // Within-block sub-nav (brief §3.3). Resets to Params whenever the selected
+  // Block changes so a context switch always lands on the dominant surface.
+  const [subView, setSubView] = useState<BlockSubView>("params");
+  const blockId = selectedBlock?.id;
+  useEffect(() => {
+    setSubView("params");
+  }, [blockId]);
 
   // Lifted so we can gate the whole Parameters section on the real count.
   // (Hooks must run unconditionally — call before the early return; nodeId is
@@ -2064,216 +2134,388 @@ function BlockTabBody({
       ? "BYPASS"
       : "active";
 
+  // Real Value/CV param ports → the pinnable Face-params set (Task 3.E). Only
+  // shown when the node actually exposes some (NOTHING-fake: a node with none
+  // renders no Face-params section, never a fabricated knob).
+  const hasFaceParams = selectedBlock.ports.some((p) => p.type === "value");
+  const inCount = selectedBlock.ports.filter(
+    (p) => p.direction === "input",
+  ).length;
+  const outCount = selectedBlock.ports.filter(
+    (p) => p.direction === "output",
+  ).length;
+
   return (
     <>
       <BlockHeader block={selectedBlock} />
       <PresetStrip nodeId={selectedBlock.id} />
 
-      {/* PARAMETERS — the primary surface; hidden entirely when the node has
-          none (internal routing / host-only), so no "no parameters" filler. */}
-      {hasParams && (
+      {/* Within-block sub-nav (brief §3.3) — Params | I/O | Notes. Genuine
+          sub-views of the ONE selected Block, NOT the retired top-level
+          Block/Bus/Cable/Health tab bar (that is now selection-routed). */}
+      <BlockSubNav active={subView} onChange={setSubView} accent={accent} />
+
+      {/* ── PARAMS sub-view ── */}
+      {subView === "params" && (
+        <>
+          {/* FACE PARAMS — 📌 pin-to-face for the node's real Value/CV params.
+              Hidden entirely when the node exposes none (no fake slots). The
+              pinned subset surfaces on the Block Macro tier (Block.tsx). */}
+          {hasFaceParams && (
+            <InspectorSection title="Block face" accent={accent} summary="📌">
+              <FaceParamsList block={selectedBlock} />
+            </InspectorSection>
+          )}
+
+          {/* PARAMETERS — the primary surface; hidden entirely when the node has
+              none (internal routing / host-only), so no "no parameters" filler. */}
+          {hasParams && (
+            <InspectorSection
+              title="Parameters"
+              accent={accent}
+              summary={loading ? "…" : params.length}
+            >
+              <div className="p-3 bg-pressed rounded-lg shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] space-y-3">
+                <BlockParameterList
+                  params={params}
+                  loading={loading}
+                  onChangeNorm={setParam}
+                  onReload={reload}
+                />
+              </div>
+            </InspectorSection>
+          )}
+
+          {/* PLUGIN WINDOW — self-gates to null for internal nodes. */}
+          {isPlugin && (
+            <PluginEditorControls key={selectedBlock.id} block={selectedBlock} />
+          )}
+
+          {/* STATE — bypass / mute / mute-inputs. Collapsed when the block is in
+              its default ACTIVE state (the header already says so), but
+              AUTO-OPENS when something is engaged (bypassed / muted / inputs
+              muted) so the live toggle is right there — smart-layout surfacing
+              what's relevant. */}
+          <InspectorSection
+            title="State"
+            accent={accent}
+            defaultOpen={
+              selectedBlock.bypassed ||
+              Boolean(selectedBlock.muted) ||
+              Boolean(selectedBlock.muteInput)
+            }
+            summary={stateSummary}
+          >
+            <div className="grid grid-cols-1 gap-2">
+              <NeuButton
+                variant={selectedBlock.bypassed ? "active" : "default"}
+                size="sm"
+                onClick={() => toggleBypass(selectedBlock.id)}
+              >
+                {selectedBlock.bypassed ? "BYPASSED" : "BYPASS"}
+              </NeuButton>
+              <NeuButton
+                variant={selectedBlock.muted ? "active" : "default"}
+                size="sm"
+                onClick={() => toggleMute(selectedBlock.id)}
+              >
+                {selectedBlock.muted ? "MUTED" : "MUTE"}
+              </NeuButton>
+              <NeuButton
+                variant={selectedBlock.muteInput ? "active" : "default"}
+                size="sm"
+                onClick={() => toggleMuteInput(selectedBlock.id)}
+              >
+                {selectedBlock.muteInput ? "IN MUTED" : "MUTE INPUTS"}
+              </NeuButton>
+            </div>
+          </InspectorSection>
+
+          {/* METRICS — CPU / latency, collapsed. */}
+          <InspectorSection title="Metrics" accent={accent} defaultOpen={false}>
+            <BlockMetrics block={selectedBlock} />
+          </InspectorSection>
+        </>
+      )}
+
+      {/* ── I/O sub-view ── signal-coloured port list. */}
+      {subView === "io" && (
         <InspectorSection
-          title="Parameters"
+          title="I/O Ports"
           accent={accent}
-          summary={loading ? "…" : params.length}
+          summary={`${inCount} · ${outCount}`}
         >
-          <div className="p-3 bg-pressed rounded-lg shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] space-y-3">
-            <BlockParameterList
-              params={params}
-              loading={loading}
-              onChangeNorm={setParam}
-              onReload={reload}
-            />
-          </div>
+          <BlockPortList block={selectedBlock} />
         </InspectorSection>
       )}
 
-      {/* PLUGIN WINDOW — self-gates to null for internal nodes. */}
-      {isPlugin && (
-        <PluginEditorControls key={selectedBlock.id} block={selectedBlock} />
-      )}
-
-      {/* I/O PORTS — signal-coloured, collapsed by default. */}
-      <InspectorSection
-        title="I/O Ports"
-        accent={accent}
-        defaultOpen={false}
-        summary={`${selectedBlock.ports.filter((p) => p.direction === "input").length} · ${selectedBlock.ports.filter((p) => p.direction === "output").length}`}
-      >
-        <BlockPortList block={selectedBlock} />
-      </InspectorSection>
-
-      {/* STATE — bypass / mute / mute-inputs. Collapsed when the block is in its
-          default ACTIVE state (the header already says so), but AUTO-OPENS when
-          something is engaged (bypassed / muted / inputs muted) so the live
-          toggle is right there — smart-layout surfacing what's relevant. */}
-      <InspectorSection
-        title="State"
-        accent={accent}
-        defaultOpen={
-          selectedBlock.bypassed ||
-          Boolean(selectedBlock.muted) ||
-          Boolean(selectedBlock.muteInput)
-        }
-        summary={stateSummary}
-      >
-        <div className="grid grid-cols-1 gap-2">
-          <NeuButton
-            variant={selectedBlock.bypassed ? "active" : "default"}
-            size="sm"
-            onClick={() => toggleBypass(selectedBlock.id)}
+      {/* ── NOTES sub-view ── free-form note + the inline Script editor (folded
+          in for Script Blocks; verdict #6 — the Script tab is retired). */}
+      {subView === "notes" && (
+        <>
+          <InspectorSection
+            title="Notes"
+            accent={accent}
+            summary={hasNote ? "•" : undefined}
           >
-            {selectedBlock.bypassed ? "BYPASSED" : "BYPASS"}
-          </NeuButton>
-          <NeuButton
-            variant={selectedBlock.muted ? "active" : "default"}
-            size="sm"
-            onClick={() => toggleMute(selectedBlock.id)}
-          >
-            {selectedBlock.muted ? "MUTED" : "MUTE"}
-          </NeuButton>
-          <NeuButton
-            variant={selectedBlock.muteInput ? "active" : "default"}
-            size="sm"
-            onClick={() => toggleMuteInput(selectedBlock.id)}
-          >
-            {selectedBlock.muteInput ? "IN MUTED" : "MUTE INPUTS"}
-          </NeuButton>
-        </div>
-      </InspectorSection>
-
-      {/* METRICS — CPU / latency, collapsed. */}
-      <InspectorSection title="Metrics" accent={accent} defaultOpen={false}>
-        <BlockMetrics block={selectedBlock} />
-      </InspectorSection>
-
-      {/* NOTES — collapsed; a • in the summary flags when a note exists so you
-          don't have to open it to know. */}
-      <InspectorSection
-        title="Notes"
-        accent={accent}
-        defaultOpen={false}
-        summary={hasNote ? "•" : undefined}
-      >
-        <BlockNoteEditor block={selectedBlock} />
-      </InspectorSection>
-
-      {/* SCRIPT — folds the editor INTO the Block tab for Script Blocks (verdict
-          #6 — the Script tab is retired; per-block editing belongs to the block).
-          Hidden for every non-script Block. */}
-      {isScriptNode(selectedBlock) && (
-        <InspectorSection title="Script" accent={accent}>
-          <div className="min-h-[360px] rounded-lg overflow-hidden border border-white/5">
-            <ScriptEditor nodeId={selectedBlock.id} />
-          </div>
-        </InspectorSection>
+            <BlockNoteEditor block={selectedBlock} />
+          </InspectorSection>
+          {isScriptNode(selectedBlock) && (
+            <InspectorSection title="Script" accent={accent}>
+              <div className="min-h-[360px] rounded-lg overflow-hidden border border-white/5">
+                <ScriptEditor nodeId={selectedBlock.id} />
+              </div>
+            </InspectorSection>
+          )}
+        </>
       )}
     </>
   );
 }
 
+/** The within-block sub-nav strip (brief §3.3). A 3-segment selector for the one
+ *  selected Block's sub-views — `role="tablist"` for AT, accent micro-glow on the
+ *  active segment (pressed-into-chassis), pure colour/shadow swap (no layout
+ *  shift). NOT the top-level navigation — that follows the selection. */
+function BlockSubNav({
+  active,
+  onChange,
+  accent,
+}: {
+  active: BlockSubView;
+  onChange: (v: BlockSubView) => void;
+  accent: string;
+}) {
+  const items: { id: BlockSubView; label: string }[] = [
+    { id: "params", label: "Params" },
+    { id: "io", label: "I/O" },
+    { id: "notes", label: "Notes" },
+  ];
+  return (
+    <div
+      role="tablist"
+      aria-label="Block sections"
+      className="flex gap-1 p-1 rounded-lg bg-pressed shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)]"
+    >
+      {items.map((it) => {
+        const isActive = active === it.id;
+        return (
+          <button
+            key={it.id}
+            role="tab"
+            aria-selected={isActive}
+            onClick={() => onChange(it.id)}
+            className={[
+              "flex-1 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider t-precision",
+              isActive
+                ? "text-text-primary bg-surface"
+                : "text-text-secondary hover:text-text-primary hover:bg-elevated/60 cursor-pointer",
+            ].join(" ")}
+            style={
+              isActive
+                ? {
+                    boxShadow: `-1px -1px 4px rgba(255,255,255,0.04), 1px 1px 4px rgba(0,0,0,0.35), 0 0 5px ${accent}40`,
+                  }
+                : undefined
+            }
+          >
+            {it.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// The Health column (engine vitals + host meters + log) — reused by the
+// no-selection resting view's "Health" sub-tab. Engine Health is genuinely
+// always-useful, so it stays reachable from the empty inspector (§7 decision:
+// rail-by-default for max canvas, BUT vitals available when the panel is open).
+function HealthBody() {
+  return (
+    <div className="space-y-3">
+      <HealthSection title="Engine vitals">
+        {/* LiveHealth carries its own header + scroller; constrain it so it
+            composes inside the collapsible without a competing full-height
+            frame. */}
+        <div className="rounded-md overflow-hidden bg-pressed shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)]">
+          <LiveHealth />
+        </div>
+      </HealthSection>
+      <HealthSection title="Host meters">
+        <MetersPanel />
+      </HealthSection>
+      <HealthSection title="Engine log" defaultOpen={false}>
+        <LogPanel />
+      </HealthSection>
+    </div>
+  );
+}
+
+// What the no-selection inspector shows. Block/Cable detail is selection-driven
+// (only appears when something IS selected), so the RESTING view offers the
+// always-useful, non-selectable surfaces: the Project overview, the board-wide
+// live Cable monitor, the IO Bus auditor, and engine Health. A small
+// re-contextualising sub-nav swaps between them — these are NOT graph
+// selections, so they can't be selection-routed.
+type RestView = "overview" | "cables" | "buses" | "health";
+
 /**
- * Docked tabbed inspector shell (bake-off verdict #6). Four tabs —
- * **Block / Bus / Cable / Health** — house every previously-wired surface:
+ * Selection-driven inspector (Wave-3 Task 3.E, left-panel brief §3.3 / §6 Phase
+ * E). The top-level `Block | Bus | Cable | Health` TAB BAR is GONE: the panel now
+ * follows the SELECTION instead of asking the user to pick a tab —
  *
- *  • **Block**  — per-Block detail: gradient header, A/B preset compare,
- *    parameter sliders, plugin-window embed, bypass/mute controls, metrics,
- *    notes, and the inline Script editor for Script Blocks. With nothing
- *    selected, the resting Project Overview.
- *  • **Bus**    — live per-bus activity (level/volume/sidechain) + an
- *    open-editor affordance, above the bus auditor (BusInspector). Buses are
- *    IO send/receive blocks, NOT wireless cables (Wizard R1 decision #4).
- *  • **Cable**  — the live signal monitor for the selected cable(s): a faithful
- *    digital-VU ladder, peak-hold, dBFS, signal type, channels and sidechain,
- *    all from the real 60Hz `useCableMeterStore` feed. With nothing selected, a
- *    board-wide live overview. NOT a routing editor (Wizard R1 P1).
- *  • **Health** — engine vitals (LiveHealth), host meters, and the log tail.
+ *  • a **Block** selected → the per-Block view (gradient header, the within-block
+ *    Params / I/O / Notes sub-nav, A/B presets, the 📌 pin-to-face controls, the
+ *    plugin param sliders + window, bypass/mute, metrics, and the inline Script
+ *    editor for Script Blocks). A **loading** node shows the honest loading state
+ *    (no fabricated params) — loading-node contract.
+ *  • a **Cable** selected → the live signal monitor (the faithful VU ladder,
+ *    peak-hold, dBFS, signal type, channels, sidechain, spectrum) — unchanged
+ *    from the prior Cable tab, now reached by SELECTING the cable.
+ *  • **nothing** selected → a resting view (Project overview · IO Bus auditor ·
+ *    engine Health) that the shell can auto-collapse to the icon rail for max
+ *    canvas (AppShell owns the panel↔rail collapse via `rightPanelOpen`; it
+ *    respects an explicit user collapse via `inspectorUserCollapsed`, brief §4.3).
  *
- * Mockup supplies the docked-shell layout + gradient header; the wiring,
- * stores, and bridge calls are Element's. Nothing from the prior tab set
- * (Inspector / Script / Cables / Log / Meters) is dropped.
+ * Nothing from the prior tab set (Block / Bus / Cable / Health / Script / Log /
+ * Meters) is dropped — every surface is still reachable, just routed by selection
+ * (Block/Cable) or the resting sub-nav (overview/buses/health).
  */
 export function InspectorHub() {
-  const [activeTab, setActiveTab] = useState<Tab>("block");
   const selectedBlock = useGraphStore(selectSelectedNode);
+  const selectedEdge = useGraphStore(selectSelectedEdge) as
+    | CableData
+    | undefined;
+  const selectNodeOnGraph = useGraphStore((s) => s.selectNode);
 
-  const tabs: { id: Tab; label: string }[] = [
-    { id: "block", label: "BLOCK" },
-    { id: "bus", label: "BUS" },
-    { id: "cable", label: "CABLE" },
-    { id: "health", label: "HEALTH" },
-  ];
+  // Raw selection IDs (NOT the resolved objects, which get a fresh reference on
+  // every 60Hz snapshot) — a stable signal for the selection-driven effects.
+  const selectedNodeId = useGraphStore(selectSelectedNodeId);
+  const selectedEdgeId = useGraphStore(selectSelectedEdgeId);
+  const hasSelection = selectedNodeId !== null || selectedEdgeId !== null;
+
+  // Resting (no-selection) sub-view. Defaults to the Project overview; reset to
+  // it whenever a selection clears so deselecting always lands on the overview.
+  const [restView, setRestView] = useState<RestView>("overview");
+  useEffect(() => {
+    if (!hasSelection) setRestView("overview");
+  }, [hasSelection]);
+
+  // ── Selection-driven auto-collapse/expand (brief Phase E §4.3) ──────────────
+  // The "max canvas" win: the right panel follows the selection.
+  //   • a selection appears → ensure the inspector is OPEN, and
+  //   • the selection clears → collapse it to the 40px rail (AppShell renders the
+  //     rail whenever `rightPanelOpen` is false),
+  // EXCEPT when the user has DELIBERATELY collapsed the inspector
+  // (`inspectorUserCollapsed`, set only by the explicit Cmd+2 / chevron toggle):
+  // then we never fight them — no auto-open, no auto-collapse — and we never clear
+  // that flag here (only the explicit re-open clears it). `setPanelOpen` is the
+  // selection-driven setter that leaves `inspectorUserCollapsed` untouched (unlike
+  // `togglePanel`, which records a user collapse). Idempotent in the store, so a
+  // steady selection state issues no redundant writes.
+  const inspectorUserCollapsed = useAppStore(selectInspectorUserCollapsed);
+  const setPanelOpen = useAppStore((s) => s.setPanelOpen);
+  useEffect(() => {
+    if (inspectorUserCollapsed) return; // respect a deliberate user collapse
+    setPanelOpen("right", hasSelection);
+  }, [hasSelection, inspectorUserCollapsed, setPanelOpen]);
+
+  // The selection TYPE drives the panel. selectEdge/selectNode are mutually
+  // exclusive in the store (each clears the other), so a Cable read wins only
+  // when a cable is genuinely selected.
+  const mode: "cable" | "block" | "rest" = selectedEdge
+    ? "cable"
+    : selectedBlock
+      ? "block"
+      : "rest";
+
+  // The BusInspector's "open editor" affordance selects a destination Block; under
+  // selection-routing that selection alone re-routes the panel to the Block view,
+  // so the legacy tab-switch callback just needs to ensure the node is selected.
+  const openBlockFromBus = useCallback(
+    (blockId: string) => {
+      selectNodeOnGraph(blockId);
+    },
+    [selectNodeOnGraph],
+  );
 
   return (
     <div
       className="flex flex-col h-full"
       style={{ background: "hsl(var(--panel))" }}
+      data-inspector-mode={mode}
     >
-      <div
-        className="flex border-b border-panel-border text-[10px] font-bold tracking-tight text-text-secondary shrink-0"
-        role="tablist"
-        aria-label="Inspector sections"
-      >
-        {tabs.map((tab) => {
-          const isActive = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              role="tab"
-              aria-selected={isActive}
-              onClick={() => setActiveTab(tab.id)}
-              className={[
-                "flex-1 py-3 text-center t-precision relative",
-                isActive
-                  ? "text-text-primary bg-surface"
-                  : "hover:bg-white/5 hover:text-text-primary cursor-pointer",
-              ].join(" ")}
-            >
-              {tab.label}
-              {/* Active underline — a thin accent rail, neumorphic docked-shell
-                  cue (mockup) rather than a hard border-box. */}
-              {isActive && (
-                <span
-                  className="absolute left-0 right-0 bottom-0 h-[2px]"
-                  style={{
-                    background: "hsl(var(--cat-instrument))",
-                    boxShadow: "0 0 6px hsl(var(--cat-instrument) / 0.55)",
-                  }}
-                />
-              )}
-            </button>
-          );
-        })}
-      </div>
-
-      <InspectorTabContext.Provider value={setActiveTab}>
       <div className="flex-1 overflow-y-auto p-4 space-y-6">
-        {activeTab === "block" && <BlockTabBody selectedBlock={selectedBlock} />}
+        {mode === "cable" && <CableMonitor cable={selectedEdge!} />}
 
-        {activeTab === "bus" && <BusTabBody />}
+        {mode === "block" && <BlockTabBody selectedBlock={selectedBlock} />}
 
-        {activeTab === "cable" && <CableTabBody />}
-
-        {activeTab === "health" && (
-          <div className="space-y-3">
-            <HealthSection title="Engine vitals">
-              {/* LiveHealth carries its own header + scroller; constrain it so
-                  it composes inside the collapsible without a competing
-                  full-height frame. */}
-              <div className="rounded-md overflow-hidden bg-pressed shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)]">
-                <LiveHealth />
-              </div>
-            </HealthSection>
-            <HealthSection title="Host meters">
-              <MetersPanel />
-            </HealthSection>
-            <HealthSection title="Engine log" defaultOpen={false}>
-              <LogPanel />
-            </HealthSection>
-          </div>
+        {mode === "rest" && (
+          <>
+            {/* Resting sub-nav — overview / buses / health. These are the
+                non-selectable always-useful surfaces; the panel can collapse to
+                the rail here for max canvas (AppShell, §4.3). */}
+            <RestNav active={restView} onChange={setRestView} />
+            {restView === "overview" && <ProjectOverview />}
+            {restView === "cables" && <CableOverview />}
+            {restView === "buses" && <BusInspector onOpenBlock={openBlockFromBus} />}
+            {restView === "health" && <HealthBody />}
+          </>
         )}
       </div>
-      </InspectorTabContext.Provider>
+    </div>
+  );
+}
+
+/** The resting-view sub-nav (overview / buses / health). Same neumorphic
+ *  segmented language as the within-block sub-nav; `role="tablist"` for AT. */
+function RestNav({
+  active,
+  onChange,
+}: {
+  active: RestView;
+  onChange: (v: RestView) => void;
+}) {
+  const items: { id: RestView; label: string }[] = [
+    { id: "overview", label: "Overview" },
+    { id: "cables", label: "Cables" },
+    { id: "buses", label: "Buses" },
+    { id: "health", label: "Health" },
+  ];
+  const accent = "hsl(var(--cat-instrument))";
+  return (
+    <div
+      role="tablist"
+      aria-label="Inspector overview sections"
+      className="flex gap-1 p-1 rounded-lg bg-pressed shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)]"
+    >
+      {items.map((it) => {
+        const isActive = active === it.id;
+        return (
+          <button
+            key={it.id}
+            role="tab"
+            aria-selected={isActive}
+            onClick={() => onChange(it.id)}
+            className={[
+              "flex-1 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider t-precision",
+              isActive
+                ? "text-text-primary bg-surface"
+                : "text-text-secondary hover:text-text-primary hover:bg-elevated/60 cursor-pointer",
+            ].join(" ")}
+            style={
+              isActive
+                ? {
+                    boxShadow: `-1px -1px 4px rgba(255,255,255,0.04), 1px 1px 4px rgba(0,0,0,0.35), 0 0 5px ${accent}40`,
+                  }
+                : undefined
+            }
+          >
+            {it.label}
+          </button>
+        );
+      })}
     </div>
   );
 }

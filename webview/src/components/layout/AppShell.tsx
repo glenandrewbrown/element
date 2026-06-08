@@ -1,6 +1,10 @@
-import { type ReactNode } from "react";
+import { type ReactNode, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useAppStore } from "../../stores/useAppStore";
+import {
+  useAppStore,
+  PANEL_SNAP_W,
+  clampPanelWidth,
+} from "../../stores/useAppStore";
 import { usePerformStore, selectMapMode } from "../../stores/usePerformStore";
 import { Breadcrumb } from "./Breadcrumb";
 import { BlockTabStrip } from "./BlockTabStrip";
@@ -40,36 +44,182 @@ const BOTTOM_EDIT_H = 64;
 const BOTTOM_PERFORM_H = 180;
 const STATUS_H = 24;
 
+// ── Drag-to-resize handle (Task 3.F / brief §4.1, §4.4, §4.5) ──
+//
+// A 5px hit-strip on a panel's INNER edge. The whole point is the painter/perf
+// rule: dragging it must NOT re-render React per pointermove. So on pointerdown
+// we capture the pointer and grab the live DOM nodes (the panel <aside> + the
+// canvas <main>), and every pointermove writes their geometry DIRECTLY to
+// `.style` — no setState, no Zustand write. The store is touched exactly once,
+// on pointerup, via `setPanelWidth` (commit) or `togglePanel` (snap-collapse).
+// Releasing clears the inline overrides so React/store state takes the geometry
+// back over cleanly on the next render.
+interface ResizeHandleProps {
+  side: "left" | "right";
+  /** The panel <aside> being resized (width is written here live). */
+  asideRef: React.RefObject<HTMLElement | null>;
+  /** The canvas <main> whose inset must track the panel edge live. */
+  mainRef: React.RefObject<HTMLElement | null>;
+  /** Commit the final clamped width on pointer-up. */
+  onCommit: (width: number) => void;
+  /** Collapse to the rail (sub-threshold drop). */
+  onCollapse: () => void;
+}
+
+function ResizeHandle({
+  side,
+  asideRef,
+  mainRef,
+  onCommit,
+  onCollapse,
+}: ResizeHandleProps) {
+  const isLeft = side === "left";
+  // Per-drag scratch state — refs (not React state) so updating them never
+  // schedules a render. `willSnap` + `liveW` are read back on pointerup to
+  // decide collapse-vs-commit and WHICH width to commit. We read the committed
+  // width from `liveW` (not the DOM) because pointerup clears the inline width
+  // first, after which a getBoundingClientRect would report the stale React
+  // prop width, not the dragged-to width.
+  const drag = useRef<{
+    startX: number;
+    startW: number;
+    willSnap: boolean;
+    liveW: number;
+  }>({ startX: 0, startW: 0, willSnap: false, liveW: 0 });
+
+  const onPointerMove = useCallback(
+    (e: React.PointerEvent) => {
+      const aside = asideRef.current;
+      if (!aside) return;
+      const dx = e.clientX - drag.current.startX;
+      // Inner edge: dragging the LEFT panel's right edge rightwards widens it;
+      // the RIGHT panel's left edge leftwards widens it (mirror the sign).
+      const raw = drag.current.startW + (isLeft ? dx : -dx);
+      const willSnap = raw < PANEL_SNAP_W;
+      // Below the snap threshold we pin the live preview to the rail width so
+      // the panel visibly parks at the rail (tldraw/Figma) rather than shrinking
+      // into a sliver; above it we clamp to the sane open range.
+      const liveW = willSnap ? COLLAPSED_W : clampPanelWidth(raw);
+      drag.current.willSnap = willSnap;
+      drag.current.liveW = liveW;
+      // Direct DOM write — the perf-critical path. No React here.
+      aside.style.width = `${liveW}px`;
+      aside.dataset.willSnap = willSnap ? "true" : "false";
+      const main = mainRef.current;
+      if (main) main.style[isLeft ? "left" : "right"] = `${liveW}px`;
+    },
+    [asideRef, mainRef, isLeft],
+  );
+
+  const endDrag = useCallback(
+    (e: React.PointerEvent) => {
+      const aside = asideRef.current;
+      (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
+      const { willSnap, liveW, startW } = drag.current;
+      // Hand geometry back to React/store: clear the inline overrides we wrote
+      // during the drag BEFORE the store update so there's no flash of the
+      // stale committed width.
+      if (aside) {
+        aside.style.width = "";
+        delete aside.dataset.willSnap;
+      }
+      const main = mainRef.current;
+      if (main) {
+        main.style[isLeft ? "left" : "right"] = "";
+        main.style.transition = ""; // re-enable the CSS ease for open/snap
+      }
+      if (willSnap) {
+        onCollapse();
+      } else {
+        // `liveW` is 0 only if no pointermove fired (a pure click) — keep the
+        // existing width in that case rather than committing 0.
+        onCommit(clampPanelWidth(liveW || startW));
+      }
+    },
+    [asideRef, mainRef, isLeft, onCommit, onCollapse],
+  );
+
+  const onPointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      e.preventDefault();
+      const aside = asideRef.current;
+      if (!aside) return;
+      drag.current = {
+        startX: e.clientX,
+        startW: aside.getBoundingClientRect().width,
+        willSnap: false,
+        liveW: 0,
+      };
+      // Kill the canvas inset's CSS ease for the drag — otherwise <main> lags
+      // the panel edge by the 200ms transition. Restored on pointer-up so the
+      // snap-collapse / open animation still eases.
+      const main = mainRef.current;
+      if (main) main.style.transition = "none";
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    },
+    [asideRef, mainRef],
+  );
+
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label={`Resize ${isLeft ? "browser" : "inspector"} panel`}
+      data-testid={`resize-handle-${side}`}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={endDrag}
+      onPointerCancel={endDrag}
+      // 5px hit-strip pinned to the inner edge, full height. `cursor-col-resize`
+      // signals draggability; a faint accent line appears on hover (one-shot
+      // transition-colors only — painter rule, no animated shadow/blur).
+      className={[
+        "absolute top-0 bottom-0 z-50 w-[5px] cursor-col-resize group",
+        isLeft ? "right-[-2px]" : "left-[-2px]",
+      ].join(" ")}
+    >
+      <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-px bg-transparent group-hover:bg-accent-blue/40 transition-colors" />
+    </div>
+  );
+}
+
 // ── Panel wrappers ──
 
 interface PanelSlotProps {
   children: ReactNode;
   panelKey: string;
   width: number;
+  asideRef?: React.RefObject<HTMLElement | null>;
+  /** Optional inner-edge resize handle (Task 3.F). */
+  handle?: ReactNode;
 }
 
-function LeftSlot({ children, panelKey, width }: PanelSlotProps) {
+function LeftSlot({ children, panelKey, width, asideRef, handle }: PanelSlotProps) {
   return (
     <motion.aside
       key={panelKey}
+      ref={asideRef as React.Ref<HTMLElement>}
       {...slideLeft}
-      className="fixed left-0 z-40 bg-panel border-r border-white/5 flex flex-col shadow-[4px_0_12px_rgba(0,0,0,0.2)] overflow-hidden"
+      className="fixed left-0 z-40 bg-panel border-r border-white/5 flex flex-col shadow-[4px_0_12px_rgba(0,0,0,0.2)] overflow-visible"
       style={{ top: TOOLBAR_H, bottom: 0, width }}
     >
-      {children}
+      <div className="flex-1 flex flex-col overflow-hidden">{children}</div>
+      {handle}
     </motion.aside>
   );
 }
 
-function RightSlot({ children, panelKey, width }: PanelSlotProps) {
+function RightSlot({ children, panelKey, width, asideRef, handle }: PanelSlotProps) {
   return (
     <motion.aside
       key={panelKey}
+      ref={asideRef as React.Ref<HTMLElement>}
       {...slideRight}
-      className="fixed right-0 z-40 bg-panel border-l border-white/5 flex flex-col shadow-[-4px_0_12px_rgba(0,0,0,0.2)] overflow-hidden"
+      className="fixed right-0 z-40 bg-panel border-l border-white/5 flex flex-col shadow-[-4px_0_12px_rgba(0,0,0,0.2)] overflow-visible"
       style={{ top: TOOLBAR_H, bottom: 0, width }}
     >
-      {children}
+      <div className="flex-1 flex flex-col overflow-hidden">{children}</div>
+      {handle}
     </motion.aside>
   );
 }
@@ -171,7 +321,15 @@ export function AppShell({
   const requestFocusBrowserSearch = useAppStore(
     (s) => s.requestFocusBrowserSearch,
   );
+  const setPanelWidth = useAppStore((s) => s.setPanelWidth);
   const mapMode = usePerformStore(selectMapMode);
+
+  // Live DOM targets for the drag-resize handles — the handle writes width /
+  // inset straight to these during pointermove (no React state per move; the
+  // perf-critical painter rule). React/store own them again once a drag ends.
+  const mainRef = useRef<HTMLElement>(null);
+  const leftAsideRef = useRef<HTMLElement>(null);
+  const rightAsideRef = useRef<HTMLElement>(null);
 
   const isEdit = mode === "edit";
   const bottomH = isEdit ? BOTTOM_EDIT_H : BOTTOM_PERFORM_H;
@@ -224,6 +382,16 @@ export function AppShell({
             key={`left-${mode}`}
             panelKey={`left-${mode}`}
             width={leftWidth}
+            asideRef={leftAsideRef}
+            handle={
+              <ResizeHandle
+                side="left"
+                asideRef={leftAsideRef}
+                mainRef={mainRef}
+                onCommit={(w) => setPanelWidth("left", w)}
+                onCollapse={() => togglePanel("left")}
+              />
+            }
           >
             {leftContent}
           </LeftSlot>
@@ -247,6 +415,16 @@ export function AppShell({
             key={`right-${mode}`}
             panelKey={`right-${mode}`}
             width={rightWidth}
+            asideRef={rightAsideRef}
+            handle={
+              <ResizeHandle
+                side="right"
+                asideRef={rightAsideRef}
+                mainRef={mainRef}
+                onCommit={(w) => setPanelWidth("right", w)}
+                onCollapse={() => togglePanel("right")}
+              />
+            }
           >
             {rightContent}
           </RightSlot>
@@ -278,6 +456,7 @@ export function AppShell({
 
       {/* ── Canvas (center fill) ── */}
       <main
+        ref={mainRef}
         className="absolute overflow-hidden flex flex-col"
         style={{
           top: TOOLBAR_H,

@@ -115,19 +115,122 @@ function signalStory(signalType: SignalType, doc: string): Story {
   };
 }
 
-// Signal types — audio (blue), midi (teal), value/CV (orange).
+// Signal types — colour AND line-style (Task 5.4): audio = blue SOLID,
+// midi = teal DASHED, value/CV = orange DOTTED. The line-style axis makes the
+// type legible at low zoom and for colour-blind users (belt-and-braces with
+// the Block 4-category shapes); the dash is a STATIC attribute per type, never
+// animated (the flow-pulse march is a separate, activity-gated overlay).
 export const Audio: Story = signalStory(
   "audio",
-  "Audio Cable — blue stroke. The default signal type; verifies audio routing reads as blue.",
+  "Audio Cable — blue, SOLID line (Task 5.4). The default signal type; a continuous stroke is the audio line-style.",
 );
 export const Midi: Story = signalStory(
   "midi",
-  "MIDI Cable — teal stroke. Distinguishes note/CC routing from audio at a glance.",
+  "MIDI Cable — teal, DASHED line (Task 5.4). The dash distinguishes note/CC routing from audio even at low zoom / for colour-blind users.",
 );
 export const Value: Story = signalStory(
   "value",
-  "Value/CV Cable — orange stroke. The third signal type, carrying control data independent of MIDI.",
+  "Value/CV Cable — orange, DOTTED line (Task 5.4). The dot train marks the third signal type (control data) independent of colour.",
 );
+
+// ── Task 5.4 — line-style axis comparison (colour-blind + low-zoom) ──
+// All three signal types stacked so a reviewer can verify the distinct
+// SOLID / DASHED / DOTTED line-styles at a glance — the belt-and-braces axis
+// that makes cable type survive at low zoom and for colour-blind users. The
+// dashes are STATIC per type (no per-tick animation): this is a static attr,
+// not the activity-gated flow-pulse. The right-hand column repeats the rows in
+// a desaturating greyscale filter to simulate colour-blindness — the line-style
+// alone still tells the three types apart.
+export const LineStyleAxis: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Line-style axis (Task 5.4) — audio SOLID · MIDI DASHED · value/CV DOTTED. " +
+          "Left column shows colour + line-style together; the right column applies a " +
+          "greyscale + reduced-contrast filter to simulate colour-blindness, proving the " +
+          "line-style alone differentiates the three signal types when the hues collapse. " +
+          "Dashes are static per type — NOT the activity-gated flow-pulse.",
+      },
+    },
+  },
+  render: () => {
+    const ROW_H = 70;
+    const rows: SignalType[] = ["audio", "midi", "value"];
+    const labelFor: Record<SignalType, string> = {
+      audio: "Audio · solid",
+      midi: "MIDI · dashed",
+      value: "Value/CV · dotted",
+    };
+    // Two side-by-side MiniFlow boards: full-colour, then colour-blind sim.
+    const board = (sim: boolean) => {
+      const cbNodes: Node[] = rows.flatMap((sig, i) => [
+        {
+          id: `${sim ? "sim" : "col"}-src-${i}`,
+          type: "terminal",
+          position: { x: 0, y: i * ROW_H + 20 },
+          data: { label: sim ? "" : labelFor[sig] },
+        },
+        {
+          id: `${sim ? "sim" : "col"}-dst-${i}`,
+          type: "terminal",
+          position: { x: 260, y: i * ROW_H + 20 },
+          data: { label: "" },
+        },
+      ]);
+      const cbEdges: Edge[] = rows.map((sig, i) => ({
+        id: `${sim ? "sim" : "col"}-cab-${i}`,
+        source: `${sim ? "sim" : "col"}-src-${i}`,
+        target: `${sim ? "sim" : "col"}-dst-${i}`,
+        type: "cable",
+        data: makeCable({ id: `${sim ? "sim" : "col"}-cab-${i}`, signalType: sig }),
+      }));
+      return (
+        <div
+          style={{
+            flex: 1,
+            position: "relative",
+            // grayscale + lowered contrast ≈ a colour-blind / low-zoom desat view.
+            filter: sim ? "grayscale(1) contrast(0.8)" : undefined,
+          }}
+        >
+          <div
+            style={{
+              position: "absolute",
+              top: 6,
+              left: 10,
+              zIndex: 10,
+              fontSize: 11,
+              fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+              color: "#8E8E93",
+            }}
+          >
+            {sim ? "colour-blind sim (greyscale)" : "colour + line-style"}
+          </div>
+          <MiniFlow
+            nodes={cbNodes}
+            edges={cbEdges}
+            edgeTypes={edgeTypes}
+            nodeTypes={nodeTypes}
+            height={rows.length * ROW_H + 50}
+          />
+        </div>
+      );
+    };
+    return (
+      <div style={{ display: "flex", width: "100%", height: rows.length * ROW_H + 50 }}>
+        {board(false)}
+        {board(true)}
+      </div>
+    );
+  },
+  decorators: [
+    (Story) => {
+      resetStores();
+      return <Story />;
+    },
+  ],
+};
 
 // 6-channel surround cable renders at max stroke width.
 export const SurroundSixChannel: Story = {

@@ -1069,6 +1069,57 @@ function ParamLaneToggle({
   );
 }
 
+// ── Pinned-param face strip (Task 3.E) ──────────────────────────────────────
+//
+// Surfaces the params the user explicitly PINNED in the Inspector onto the Block
+// Macro tier. The pinnable set is the node's REAL Value/CV param ports (the same
+// `type === "value"` set Block filters via `hiddenParams`); a port is "pinned"
+// when it is NOT hidden. The Inspector's 📌 toggle writes that set; here we just
+// READ the resolved visible-param ports and show them as compact, signal-coloured
+// chips.
+//
+// NOTHING-fake (Glen's hard rule): a chip shows ONLY a real param port's real
+// label — never a fabricated value or knob (live param VALUES are Phase 4). The
+// chips are read-only labels (the live control surface is the expanded deck /
+// param-port lane); their job is to tell you, at the lean macro glance, WHICH
+// params this Block has promoted to its face. Renders nothing when none are
+// pinned, so an unpinned Block keeps its minimal macro height.
+//
+// PAINTER LAW: the chip background/border are STATIC inline styles derived from
+// the (identity-stable) Value/CV accent — they do NOT change per 60Hz tick (no
+// `level`/meter input here), so this is not a per-tick repaint. The strip is a
+// one-shot render on a pin/unpin or a snapshot port change.
+function PinnedParamFace({ ports }: { ports: Port[] }) {
+  if (ports.length === 0) return null;
+  const accent = portColor.value; // Value/CV signal colour (#E8A838)
+  return (
+    <div
+      data-testid="block-pinned-params"
+      className="block-body flex flex-wrap items-center gap-1 px-2 pb-1 relative z-[5]"
+    >
+      {ports.map((p) => (
+        <span
+          key={p.id}
+          className="font-mono leading-none whitespace-nowrap overflow-hidden text-ellipsis px-1.5 py-0.5 rounded-[3px]"
+          style={{
+            fontSize: "8.5px",
+            maxWidth: 84,
+            // Pinned chip — a recessed Value/CV-tinted pill (the param IS a
+            // Value/CV port, so the accent is honest, not decorative). Static.
+            color: accent,
+            background: `${accent}14`,
+            border: `1px solid ${accent}40`,
+            letterSpacing: "0.02em",
+          }}
+          title={`Pinned param: ${p.label} · ${p.direction === "output" ? "out" : "in"}`}
+        >
+          {p.label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function BlockComponent({ data, selected }: NodeProps) {
   const d = data as unknown as BlockData;
   const cat = catConfig[d.category] ?? catConfig.instrument;
@@ -1636,23 +1687,28 @@ function BlockComponent({ data, selected }: NodeProps) {
           (rendered by the shared port-lane block below), MINUS the full control
           deck / heavy embed / param-port wall. This is the wasted-space fix:
           the block stays scannable + wireable without the bulky deck. The well
-          here is identical to 'title' (one honest bar); the only added density
-          vs title is the labelled essential ports below. NOTHING-fake: real
-          ports + real activity only — NO fabricated param knobs (live params are
-          Phase 4, pinned-param slots are Task 3.E). */}
+          here is identical to 'title' (one honest bar). NOTHING-fake: real ports
+          + real activity only — NO fabricated param knobs. Task 3.E ADDS the
+          pinned-param strip below the well: the params the user explicitly
+          PINNED in the Inspector (the non-hidden Value/CV param ports) surface
+          here as compact labelled chips — real ports + real labels only, never a
+          fabricated value (live param values are Phase 4). */}
       {!isLoading && showCompactPortLane ? (
-        <div
-          data-testid="block-macro-well"
-          className="block-body flex items-center px-2 relative z-[5]"
-          style={{ height: 22 }}
-        >
-          <SignalActivityBar
-            level={meterLevel}
-            signal={primarySignalOf(d.ports)}
-            active={active}
-            stale={meterState === "stale"}
-          />
-        </div>
+        <>
+          <div
+            data-testid="block-macro-well"
+            className="block-body flex items-center px-2 relative z-[5]"
+            style={{ height: 22 }}
+          >
+            <SignalActivityBar
+              level={meterLevel}
+              signal={primarySignalOf(d.ports)}
+              active={active}
+              stale={meterState === "stale"}
+            />
+          </div>
+          <PinnedParamFace ports={[...paramInputs, ...paramOutputs]} />
+        </>
       ) : null}
 
       {/* Control deck — content-driven (A-1), zoom-INVARIANT (2a). Renders ONLY

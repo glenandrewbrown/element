@@ -111,12 +111,23 @@ vi.mock("../../../stores/useGraphStore", () => ({
       nodes: mockSelectedNode ? [mockSelectedNode] : [],
       edges: [],
       selectedNode: mockSelectedNode,
+      selectedEdge: undefined,
+      selectedNodeId: mockSelectedNode?.id ?? null,
+      selectedEdgeId: null,
       toggleBypass: vi.fn(),
       toggleMute: vi.fn(),
       toggleMuteInput: vi.fn(),
+      selectNode: vi.fn(),
     }),
   ),
   selectSelectedNode: (s: { selectedNode: BlockData | null }) => s.selectedNode,
+  // Task 3.E: InspectorHub now reads selectSelectedEdge at the top level (the
+  // selection TYPE routes the panel). No edge is selected in these PresetStrip
+  // tests, so it resolves to undefined → the block view renders as before.
+  selectSelectedEdge: (s: { selectedEdge: unknown }) => s.selectedEdge,
+  // Raw selection IDs for the selection-driven auto-collapse effect.
+  selectSelectedNodeId: (s: { selectedNodeId: string | null }) => s.selectedNodeId,
+  selectSelectedEdgeId: (s: { selectedEdgeId: string | null }) => s.selectedEdgeId,
   selectNodes: (s: { nodes: unknown[] }) => s.nodes,
   selectEdges: (s: { edges: unknown[] }) => s.edges,
 }));

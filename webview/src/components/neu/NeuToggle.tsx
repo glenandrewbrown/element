@@ -25,6 +25,12 @@ interface NeuToggleProps {
   color?: "blue" | "orange" | "teal";
   /** Optional className appended to the switch. */
   className?: string;
+  /**
+   * Accessible name for the switch. The control is icon-only (a sliding dot), so
+   * a wrapping label/group does not give AT the switch's OWN name — pass this so
+   * screen readers announce what the toggle governs (e.g. "Pin Mix to Block face").
+   */
+  "aria-label"?: string;
 }
 
 /**
@@ -38,6 +44,7 @@ export function NeuToggle({
   onChange,
   color = "blue",
   className = "",
+  "aria-label": ariaLabel,
 }: NeuToggleProps) {
   const { track, glow } = colorMap[color];
 
@@ -45,6 +52,7 @@ export function NeuToggle({
     <button
       role="switch"
       aria-checked={active}
+      aria-label={ariaLabel}
       onClick={() => onChange(!active)}
       className={[
         "relative w-6 h-3 rounded-full transition-colors duration-150",

@@ -393,23 +393,23 @@ describe("<ToolPalette /> — molecules", () => {
     mockCpuLoad = 0;
   });
 
-  it("renders Molecules section header when molecules exist", () => {
+  it("renders Snippets section header when molecules exist", () => {
     renderPalette();
-    // Molecules section defaults to collapsed — the header button is visible
-    expect(screen.getByRole("button", { name: /molecules/i })).toBeInTheDocument();
+    // Snippets (molecules) section defaults to collapsed — header button visible
+    expect(screen.getByRole("button", { name: /snippets/i })).toBeInTheDocument();
   });
 
-  it("expanding Molecules section shows molecule items", () => {
+  it("expanding Snippets section shows molecule items", () => {
     renderPalette();
-    // Expand the collapsed Molecules section
-    fireEvent.click(screen.getByRole("button", { name: /molecules/i }));
+    // Expand the collapsed Snippets section
+    fireEvent.click(screen.getByRole("button", { name: /snippets/i }));
     expect(screen.getByText("Reverb Chain")).toBeInTheDocument();
   });
 
   it("clicking a molecule calls nativeMoleculeInsert with name and viewport-centre default", async () => {
     renderPalette();
     // Expand first
-    fireEvent.click(screen.getByRole("button", { name: /molecules/i }));
+    fireEvent.click(screen.getByRole("button", { name: /snippets/i }));
     fireEvent.click(screen.getByRole("button", { name: "Reverb Chain" }));
     await waitFor(() => {
       expect(mockMoleculeInsert).toHaveBeenCalledTimes(1);
@@ -424,10 +424,12 @@ describe("<ToolPalette /> — molecules", () => {
     });
   });
 
-  it("does NOT render Molecules section when molecules array is empty", () => {
+  it("does NOT render Snippets section when molecules array is empty", () => {
     mockHostExtrasState.molecules = [];
     renderPalette();
-    expect(screen.queryByText(/^molecules$/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /snippets/i }),
+    ).not.toBeInTheDocument();
   });
 });
 

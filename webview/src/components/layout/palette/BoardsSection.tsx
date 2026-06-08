@@ -41,7 +41,7 @@ export function BoardsSection({ sessionGraphs, activeGraphOutline }: BoardsSecti
     // Always render with import/export even when no boards exist.
     return (
       <CollapsibleSection
-        label="Boards"
+        label={sessionGraphs.length > 0 ? `Boards (${sessionGraphs.length})` : "Boards"}
         defaultOpen={false}
         data-testid="boards-section"
       >
