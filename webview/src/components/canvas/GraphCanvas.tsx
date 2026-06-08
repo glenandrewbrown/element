@@ -1294,6 +1294,13 @@ export function GraphCanvas() {
         nodesConnectable={isEdit}
         elementsSelectable={true}
         selectionOnDrag={isEdit}
+        // D1 (Glen feel-test): SELECT is the primary cursor — left-drag on the
+        // pane draws a marquee, not a pan. Panning ("grab") is the middle/right
+        // mouse button, or hold Space and drag — never the bare left button.
+        // This is React Flow's official "Figma-like" recipe. Perform mode has no
+        // marquee, so left-drag there stays a pan for navigation.
+        panOnDrag={isEdit ? [1, 2] : true}
+        panActivationKeyCode="Space"
         selectionMode={SelectionMode.Partial}
         snapToGrid={snapEnabled}
         snapGrid={[gridSize, gridSize]}
