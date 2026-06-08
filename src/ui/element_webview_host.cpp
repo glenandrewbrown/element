@@ -2466,6 +2466,43 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
         });
 
     registerFn (
+        Identifier ("elementGraphSpliceCable"),
+        [this, postCompletion] (const Array<var>& args, auto completion) {
+            // args: [aId, aOut, newId, newIn, newOut, bId, bIn] — splice the new
+            // block INTO cable A→B as ONE undoable op (A→new→B). See
+            // SpliceConnectionMessage; mirrors elementGraphConnect's resolution.
+            bool ok = false;
+            if (args.size() >= 7)
+            {
+                if (auto sess = context.session())
+                {
+                    const Graph G (currentBoard());
+                    if (G.isGraph())
+                    {
+                        const Node a  = findNodeByUuidInGraph (G, args[0].toString());
+                        const Node nw = findNodeByUuidInGraph (G, args[2].toString());
+                        const Node b  = findNodeByUuidInGraph (G, args[5].toString());
+                        const int ap  = parsePortHandleIndex (args[1].toString(), "out-");
+                        const int nip = parsePortHandleIndex (args[3].toString(), "in-");
+                        const int nop = parsePortHandleIndex (args[4].toString(), "out-");
+                        const int bp  = parsePortHandleIndex (args[6].toString(), "in-");
+                        if (a.isValid() && nw.isValid() && b.isValid()
+                            && ap >= 0 && nip >= 0 && nop >= 0 && bp >= 0)
+                        {
+                            context.services().postMessage (
+                                new SpliceConnectionMessage (
+                                    (uint32_t) a.getNodeId(),  (uint32_t) ap,
+                                    (uint32_t) nw.getNodeId(), (uint32_t) nip, (uint32_t) nop,
+                                    (uint32_t) b.getNodeId(),  (uint32_t) bp, G));
+                            ok = true;
+                        }
+                    }
+                }
+            }
+            postCompletion (completion, ok);
+        });
+
+    registerFn (
         Identifier ("elementGraphMoveNodes"),
         [this, postCompletion] (const Array<var>& args, auto completion) {
             int count = 0;

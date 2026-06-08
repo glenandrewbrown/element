@@ -206,4 +206,15 @@ void RemoveConnectionMessage::createActions (Services& app, OwnedArray<UndoableA
     actions.add (new RemoveConnectionAction (app, target, sourceNode, sourcePort, destNode, destPort));
 }
 
+void SpliceConnectionMessage::createActions (Services& app, OwnedArray<UndoableAction>& actions) const
+{
+    // Remove the original A→B first so the engine never momentarily sees B's
+    // input contested, then wire A→new and new→B. All three actions are
+    // performed inside ONE GuiService::handleMessage transaction, so a single
+    // undo restores the original A→B cable (task #23).
+    actions.add (new RemoveConnectionAction (app, target, aNode, aPort, bNode, bPort));
+    actions.add (new AddConnectionAction (app, target, aNode, aPort, newNode, newInPort));
+    actions.add (new AddConnectionAction (app, target, newNode, newOutPort, bNode, bPort));
+}
+
 } // namespace element

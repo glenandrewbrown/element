@@ -11,6 +11,8 @@ import {
   canBlockSpliceCable,
   pickSplicePorts,
   planSplice,
+  planSpliceAtomic,
+  type AtomicSplicePlan,
   type SpliceBlock,
 } from "../cableSplice";
 import type { CableData, Port } from "../../data/types";
@@ -111,5 +113,54 @@ describe("cableSplice — planSplice ops (A→new→B, original gone)", () => {
     const ops = planSplice(midiOnly, midiCable);
     expect(ops).not.toBeNull();
     expect(ops![1]).toMatchObject({ kind: "connect", target: "midi" });
+  });
+});
+
+describe("cableSplice — planSpliceAtomic (single undoable native call)", () => {
+  it("returns the one 7-field plan that wires A→new→B in a single call", () => {
+    const plan = planSpliceAtomic(audioFx, audioCable);
+    expect(plan).not.toBeNull();
+    expect(plan).toEqual<AtomicSplicePlan>({
+      aId: "A",
+      aPort: "out-0",
+      newId: "fx",
+      newInPort: "in-0",
+      newOutPort: "out-0",
+      bId: "B",
+      bPort: "in-0",
+    });
+  });
+
+  it("preserves the original cable's exact source and target ports", () => {
+    const plan = planSpliceAtomic(audioFx, audioCable)!;
+    expect(plan.aId).toBe(audioCable.source);
+    expect(plan.aPort).toBe(audioCable.sourcePort);
+    expect(plan.bId).toBe(audioCable.target);
+    expect(plan.bPort).toBe(audioCable.targetPort);
+  });
+
+  it("agrees with planSplice on the chosen splice ports (one source of truth)", () => {
+    const plan = planSpliceAtomic(audioFx, audioCable)!;
+    const ports = pickSplicePorts(audioFx, audioCable.signalType)!;
+    expect(plan.newInPort).toBe(ports.inPortId);
+    expect(plan.newOutPort).toBe(ports.outPortId);
+  });
+
+  it("returns null for an incompatible block (NOTHING-fake)", () => {
+    expect(planSpliceAtomic(midiOnly, audioCable)).toBeNull();
+  });
+
+  it("returns null when the block is one of the cable's own endpoints", () => {
+    const asSource: SpliceBlock = { ...audioFx, id: "A" };
+    const asTarget: SpliceBlock = { ...audioFx, id: "B" };
+    expect(planSpliceAtomic(asSource, audioCable)).toBeNull();
+    expect(planSpliceAtomic(asTarget, audioCable)).toBeNull();
+  });
+
+  it("splices a MIDI cable through a MIDI-capable block", () => {
+    const midiCable = { ...audioCable, signalType: "midi" as const };
+    const plan = planSpliceAtomic(midiOnly, midiCable);
+    expect(plan).not.toBeNull();
+    expect(plan!.newId).toBe("midi");
   });
 });

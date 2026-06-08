@@ -112,6 +112,41 @@ export async function nativeGraphDisconnect(
   return r === true;
 }
 
+/**
+ * Splice a block INTO an existing cable as a SINGLE undoable operation: the
+ * host removes the original A→B cable and adds A→new and new→B inside ONE
+ * `SpliceConnectionMessage`, which `GuiService::handleMessage` performs in a
+ * single `beginNewTransaction()` — so one undo restores the original cable
+ * (task #23, Glen Q7 "adding blocks into existing chains must be seamless").
+ *
+ * Ports follow the bridge handle convention: `aOutPort`/`newOutPort` are
+ * "out-N", `newInPort`/`bInPort` are "in-N". Resolves true when the host posted
+ * the splice; resolves false (without posting) on a host lacking the native, so
+ * the caller can fall back to three separate connect/disconnect calls.
+ *
+ * C++ bridge: elementGraphSpliceCable(aId, aOut, newId, newIn, newOut, bId, bIn)
+ */
+export async function nativeGraphSpliceCable(
+  aId: string,
+  aOutPort: string,
+  newId: string,
+  newInPort: string,
+  newOutPort: string,
+  bId: string,
+  bInPort: string,
+): Promise<boolean> {
+  const r = await invokeElementNative("elementGraphSpliceCable", [
+    aId,
+    aOutPort,
+    newId,
+    newInPort,
+    newOutPort,
+    bId,
+    bInPort,
+  ]);
+  return r === true;
+}
+
 export async function nativeGraphMoveNodes(
   moves: Array<{ id: string; x: number; y: number }>,
 ): Promise<number> {

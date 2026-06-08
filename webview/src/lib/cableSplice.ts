@@ -193,3 +193,51 @@ export function planSplice(
     },
   ];
 }
+
+/**
+ * The flattened argument set for the ATOMIC splice — one native call
+ * (`nativeGraphSpliceCable`) instead of `planSplice`'s three. The host posts a
+ * single `SpliceConnectionMessage` whose actions (remove A→B, add A→new, add
+ * new→B) all land in ONE `GuiService` undo transaction, so a single undo
+ * restores the original cable (task #23 — Glen Q7 "seamless"). `planSplice`
+ * remains the back-compat fallback for hosts without the splice native.
+ *
+ * `a*` = the original cable's source side, `b*` = its target side, `new*` = the
+ * spliced block's chosen in/out ports (same ports `planSplice` picks).
+ */
+export interface AtomicSplicePlan {
+  aId: string;
+  aPort: string;
+  newId: string;
+  newInPort: string;
+  newOutPort: string;
+  bId: string;
+  bPort: string;
+}
+
+/**
+ * Build the single-call plan that splices `block` into `cable` atomically.
+ * Returns `null` under exactly the same conditions as {@link planSplice} (the
+ * block is a cable endpoint, or lacks an in/out port of the cable's type) so
+ * the highlight gate and the executed plan never disagree.
+ */
+export function planSpliceAtomic(
+  block: SpliceBlock,
+  cable: Pick<
+    CableData,
+    "source" | "sourcePort" | "target" | "targetPort" | "signalType"
+  >,
+): AtomicSplicePlan | null {
+  if (block.id === cable.source || block.id === cable.target) return null;
+  const ports = pickSplicePorts(block, cable.signalType);
+  if (!ports) return null;
+  return {
+    aId: cable.source,
+    aPort: cable.sourcePort,
+    newId: block.id,
+    newInPort: ports.inPortId,
+    newOutPort: ports.outPortId,
+    bId: cable.target,
+    bPort: cable.targetPort,
+  };
+}

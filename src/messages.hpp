@@ -143,6 +143,34 @@ public:
     void createActions (Services& app, juce::OwnedArray<juce::UndoableAction>& actions) const override;
 };
 
+/** Splice a node INTO an existing connection as a SINGLE undoable operation.
+    Removes the original A→B cable and adds A→new and new→B. Because
+    GuiService::handleMessage performs ALL of one message's actions inside a
+    single UndoManager::beginNewTransaction(), a single undo restores the
+    original A→B cable (task #23 — "adding blocks into existing chains must be
+    seamless"). Ports are graph port indices (the same units AddConnectionMessage
+    uses): aPort/newOutPort are outputs, newInPort/bPort are inputs. */
+class SpliceConnectionMessage : public AppMessage
+{
+public:
+    SpliceConnectionMessage (uint32_t aNode_, uint32_t aPort_,
+                             uint32_t newNode_, uint32_t newInPort_, uint32_t newOutPort_,
+                             uint32_t bNode_, uint32_t bPort_,
+                             const Node& t = Node())
+        : aNode (aNode_), aPort (aPort_),
+          newNode (newNode_), newInPort (newInPort_), newOutPort (newOutPort_),
+          bNode (bNode_), bPort (bPort_), target (t)
+    {
+    }
+
+    const uint32_t aNode, aPort;
+    const uint32_t newNode, newInPort, newOutPort;
+    const uint32_t bNode, bPort;
+    const Node target;
+
+    void createActions (Services& app, juce::OwnedArray<juce::UndoableAction>& actions) const override;
+};
+
 class AddNodeMessage : public juce::Message
 {
 public:

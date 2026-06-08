@@ -39,6 +39,7 @@ import {
   nativeGraphConnect,
   nativeGraphAddPluginConnected,
   nativeGraphDisconnect,
+  nativeGraphSpliceCable,
   nativeGraphMoveNodes,
   nativeGraphRenameNode,
   nativeGraphSetViewport,
@@ -71,7 +72,7 @@ import {
 } from "../../lib/autoFitExtent";
 import {
   findSpliceCandidate,
-  planSplice,
+  planSpliceAtomic,
   type CableGeometry,
 } from "../../lib/cableSplice";
 import { isSnippetDrag, parseSnippetDrop } from "../../lib/snippetDrag";
@@ -779,25 +780,21 @@ export function GraphCanvas() {
           .getState()
           .nodes.find((b) => b.id === node.id);
         if (cable && block) {
-          const ops = planSplice(block, cable);
-          if (ops) {
-            for (const op of ops) {
-              if (op.kind === "disconnect") {
-                void nativeGraphDisconnect(
-                  op.source,
-                  op.sourcePort,
-                  op.target,
-                  op.targetPort,
-                );
-              } else {
-                void nativeGraphConnect(
-                  op.source,
-                  op.sourcePort,
-                  op.target,
-                  op.targetPort,
-                );
-              }
-            }
+          // Splice the block into the cable as ONE undoable operation: the host
+          // posts a single SpliceConnectionMessage (remove A→B, add A→new, add
+          // new→B) which GuiService performs in one undo transaction, so a
+          // single undo restores the cable (task #23 / Glen Q7 "seamless").
+          const atomic = planSpliceAtomic(block, cable);
+          if (atomic) {
+            void nativeGraphSpliceCable(
+              atomic.aId,
+              atomic.aPort,
+              atomic.newId,
+              atomic.newInPort,
+              atomic.newOutPort,
+              atomic.bId,
+              atomic.bPort,
+            );
           }
         }
         // A splice supersedes ghost suggestions — discard them, don't also wire.
