@@ -36,6 +36,7 @@ const { mockGraphStore } = vi.hoisted(() => {
     toggleBypass: vi.fn(),
     toggleMute: vi.fn(),
     setCollapsed: vi.fn(),
+    setCollapseTier: vi.fn(),
     selectNode: vi.fn(),
   };
   return { mockGraphStore: store };
@@ -134,43 +135,191 @@ describe("<Block /> (gaps)", () => {
     expect(bBtn).toBeInTheDocument();
   });
 
-  // ── Persisted COMPACT tier (Decision A-2a — replaces zoom-compact) ─────────────
-  // Collapse is now a deliberate, persisted per-node state (d.collapsed), NOT a
-  // zoom artifact. Collapsed = header (with chevron + B/M still present) + a
-  // single activity well (D5), no control deck/embed/full port lane.
+  // ── Persisted THREE collapse tiers (Task 2.4) ─────────────────────────────────
+  // Collapse is a deliberate, persisted per-node TIER (d.collapseTier), NOT a
+  // zoom artifact. title = header + single activity well; macro = lean default
+  // (header + well + COMPACT essential-I/O port lane, NO control deck/embed/
+  // param wall); expanded = full deck + embed + "▸ N params" lane. Double-click
+  // title (and the chevron) CYCLES title→macro→expanded→title via setCollapseTier.
 
-  it("collapsed block keeps the header + shows the single activity well (D5)", () => {
+  it("TITLE tier keeps the header + shows the single activity well (D5), no deck", () => {
     renderBlock({ name: "Pro-Q 3", category: "audiofx", collapseTier: "title" });
-    // Header (and thus the name + B/M + the collapse chevron) STAYS — the
-    // compact tier is header+well, never "name + dot".
+    // Header (name + B/M + chevron) STAYS — title is header+well, never "name+dot".
     expect(screen.getByText("Pro-Q 3")).toBeInTheDocument();
     expect(screen.getByTitle("Bypass")).toBeInTheDocument();
     expect(screen.getByTitle("Mute")).toBeInTheDocument();
     expect(screen.getByTestId("collapse-chevron")).toBeInTheDocument();
-    // D5: the activity well STAYS in the collapsed state (real signal bar).
-    expect(screen.getAllByTestId("signal-activity-bar").length).toBeGreaterThan(0);
+    // D5: the activity well STAYS at title (real signal bar).
+    expect(screen.getAllByTestId("signal-activity-bar").length).toBe(1);
   });
 
-  it("collapse chevron toggles the persisted collapse state via setCollapsed", () => {
-    renderBlock({ id: "b-col", collapseTier: "macro" });
+  it("MACRO tier (lean default) shows the activity well but NO full control deck", () => {
+    // A third-party plugin's full deck is the single activity bar inside the
+    // 54px control-deck body; at macro that deck must NOT mount — only the
+    // 22px macro well does. We assert exactly ONE activity bar (the macro well)
+    // and that the macro-well marker is present (deck body would add a 2nd bar).
+    renderBlock({
+      name: "ValhallaRoom",
+      category: "audiofx",
+      format: "VST3",
+      collapseTier: "macro",
+      ports: [
+        { id: "in-l", type: "audio", direction: "input", label: "In", connected: true },
+        { id: "out-l", type: "audio", direction: "output", label: "Out", connected: false },
+      ],
+    });
+    expect(screen.getByTestId("block-macro-well")).toBeInTheDocument();
+    // Exactly one activity bar (the macro well) — the third-party control deck
+    // (which would render its own bar) is suppressed at macro.
+    expect(screen.getAllByTestId("signal-activity-bar").length).toBe(1);
+    // The essential I/O Handles are present (cablable lean tier).
+    expect(screen.getByTestId("handle-in-l")).toBeInTheDocument();
+    expect(screen.getByTestId("handle-out-l")).toBeInTheDocument();
+  });
+
+  it("MACRO never shows fabricated param knobs (nothing-fake) or the param toggle", () => {
+    // A built-in INT node with a registered inline face would, at expanded,
+    // render knobs; at macro the deck is gone entirely. And a value/CV param
+    // port must NOT surface a "▸ N params" toggle at macro (expanded only).
+    renderBlock({
+      category: "audiofx",
+      format: "INT",
+      collapseTier: "macro",
+      ports: [
+        { id: "in", type: "audio", direction: "input", label: "In", connected: true },
+        { id: "p0", type: "value", direction: "input", label: "Mix", connected: false },
+      ],
+    });
+    // No param-lane toggle at macro (it is expanded-only).
+    expect(screen.queryByLabelText(/parameter port/i)).toBeNull();
+    // No knob deck (the control-deck body does not mount at macro).
+    expect(screen.queryByTestId("block-embed")).toBeNull();
+  });
+
+  it("EXPANDED tier mounts the full deck + the '▸ N params' lane for param ports", () => {
+    renderBlock({
+      category: "audiofx",
+      format: "INT",
+      collapseTier: "expanded",
+      ports: [
+        { id: "in", type: "audio", direction: "input", label: "In", connected: true },
+        { id: "p0", type: "value", direction: "input", label: "Mix", connected: false },
+      ],
+    });
+    // The param wall collapses behind a "▸ N params" toggle (present only when
+    // expanded). Its aria-label mentions "parameter port".
+    expect(screen.getByLabelText(/parameter port/i)).toBeInTheDocument();
+  });
+
+  it("chevron CYCLES the tier via setCollapseTier (title→macro→expanded→title)", () => {
+    // title → macro
+    const a = renderBlock({ id: "b-t", collapseTier: "title" });
     fireEvent.click(screen.getByTestId("collapse-chevron"));
-    expect(mockGraphStore.setCollapsed).toHaveBeenCalledWith("b-col", true);
+    expect(mockGraphStore.setCollapseTier).toHaveBeenLastCalledWith("b-t", "macro");
+    a.unmount();
+    // macro → expanded
+    const b = renderBlock({ id: "b-m", collapseTier: "macro" });
+    fireEvent.click(screen.getByTestId("collapse-chevron"));
+    expect(mockGraphStore.setCollapseTier).toHaveBeenLastCalledWith("b-m", "expanded");
+    b.unmount();
+    // expanded → title (wraps)
+    renderBlock({ id: "b-e", collapseTier: "expanded" });
+    fireEvent.click(screen.getByTestId("collapse-chevron"));
+    expect(mockGraphStore.setCollapseTier).toHaveBeenLastCalledWith("b-e", "title");
   });
 
-  it("collapsed block renders without crashing for all categories", () => {
+  it("DOUBLE-CLICK on the title cycles the tier via setCollapseTier", () => {
+    renderBlock({ id: "b-dc", collapseTier: "macro" });
+    fireEvent.doubleClick(screen.getByTestId("block-title"));
+    expect(mockGraphStore.setCollapseTier).toHaveBeenLastCalledWith("b-dc", "expanded");
+  });
+
+  it("absent collapseTier defaults to MACRO (lean) — well present, no full deck", () => {
+    renderBlock({
+      name: "Default",
+      category: "audiofx",
+      format: "VST3",
+      ports: [
+        { id: "in", type: "audio", direction: "input", label: "In", connected: false },
+        { id: "out", type: "audio", direction: "output", label: "Out", connected: false },
+      ],
+    });
+    expect(screen.getByTestId("block-macro-well")).toBeInTheDocument();
+    expect(screen.getAllByTestId("signal-activity-bar").length).toBe(1);
+  });
+
+  it("all three tiers render without crashing for all categories", () => {
     for (const cat of ["instrument", "audiofx", "midifx", "modulator"] as const) {
-      expect(() => renderBlock({ category: cat, collapseTier: "title" })).not.toThrow();
+      for (const t of ["title", "macro", "expanded"] as const) {
+        expect(() => renderBlock({ category: cat, collapseTier: t })).not.toThrow();
+      }
     }
+  });
+
+  // ── Collapsed-socket rule (contract §5) — collapsing must NOT drop cables ──────
+  // At the title tier a CONNECTED Block must keep rendering its port Handles so
+  // the engine Arc's endpoints still draw — the cable must not visually vanish.
+
+  it("CONNECTED block at TITLE still renders its port Handles (collapsed-socket)", () => {
+    renderBlock({
+      category: "audiofx",
+      format: "VST3",
+      collapseTier: "title",
+      ports: [
+        { id: "in-l", type: "audio", direction: "input", label: "In", connected: true },
+        { id: "out-l", type: "audio", direction: "output", label: "Out", connected: true },
+      ],
+    });
+    // Both Handles present even though the Block is collapsed to title — the
+    // connection's endpoints still resolve so the cable keeps drawing.
+    expect(screen.getByTestId("handle-in-l")).toBeInTheDocument();
+    expect(screen.getByTestId("handle-out-l")).toBeInTheDocument();
+  });
+
+  // ── Loading node (loading-node contract §4/§7) ────────────────────────────────
+  // loadState==='loading' → pinned to title: name + "loading…", NO ports/meters.
+
+  it("LOADING node shows name + 'loading…' and NO ports or meters", () => {
+    renderBlock({
+      name: "BigSynth",
+      category: "instrument",
+      format: "VST3",
+      loadState: "loading",
+      collapseTier: "expanded", // must be IGNORED — loading pins to title
+      ports: [
+        { id: "in-l", type: "audio", direction: "input", label: "In", connected: false },
+        { id: "out-l", type: "audio", direction: "output", label: "Out", connected: false },
+      ],
+    });
+    // Name (header) + honest loading indicator.
+    expect(screen.getByText("BigSynth")).toBeInTheDocument();
+    expect(screen.getByTestId("block-loading")).toBeInTheDocument();
+    expect(screen.getByText("loading…")).toBeInTheDocument();
+    // NO meters / activity bars while loading (nothing-fake — no signal yet).
+    expect(screen.queryByTestId("signal-activity-bar")).toBeNull();
+    expect(screen.queryByTestId("rms-meter")).toBeNull();
+    // NO ports/handles while loading (loading node is not cable-targetable).
+    expect(screen.queryByTestId("handle-in-l")).toBeNull();
+    expect(screen.queryByTestId("handle-out-l")).toBeNull();
+    // The chevron is disabled while loading (tier is pinned).
+    expect(screen.getByTestId("collapse-chevron")).toBeDisabled();
+  });
+
+  it("LOADING node: chevron does NOT change the tier (pinned)", () => {
+    renderBlock({ id: "b-load", loadState: "loading", collapseTier: "macro" });
+    fireEvent.click(screen.getByTestId("collapse-chevron"));
+    expect(mockGraphStore.setCollapseTier).not.toHaveBeenCalled();
   });
 
   // ── Heavy embed mount rule (2a — no longer zoom-gated) ─────────────────────────
   // BlockEmbed (live meter + FFT) mounts ONLY for a built-in audiofx node with a
   // real audio output, never for third-party plugins or by zoom.
 
-  it("audiofx BUILT-IN with audio out renders BlockEmbed", () => {
+  it("audiofx BUILT-IN with audio out renders BlockEmbed (expanded tier)", () => {
     renderBlock({
       format: "INT",
       category: "audiofx",
+      collapseTier: "expanded", // the heavy FFT embed mounts only when expanded
       ports: [
         { id: "out-0", label: "L", direction: "output", type: "audio", connected: false },
       ],
@@ -182,6 +331,7 @@ describe("<Block /> (gaps)", () => {
     renderBlock({
       format: "VST3",
       category: "audiofx",
+      collapseTier: "expanded",
       ports: [
         { id: "out-0", label: "L", direction: "output", type: "audio", connected: false },
       ],
@@ -236,13 +386,14 @@ describe("<Block /> (gaps)", () => {
 
   // ── MIDI / modulator deck body ────────────────────────────────────────────────
 
-  it("midifx block with no knob params shows 'MIDI · routing' text", () => {
-    renderBlock({ category: "midifx", format: "INT", name: "MIDI Router" });
+  it("midifx block with no knob params shows 'MIDI · routing' text (expanded)", () => {
+    // The MIDI/modulator status row lives in the control deck → expanded tier.
+    renderBlock({ category: "midifx", format: "INT", name: "MIDI Router", collapseTier: "expanded" });
     expect(screen.getByText("MIDI · routing")).toBeInTheDocument();
   });
 
-  it("modulator block with no knob params shows 'Modulation' text", () => {
-    renderBlock({ category: "modulator", format: "INT", name: "LFO" });
+  it("modulator block with no knob params shows 'Modulation' text (expanded)", () => {
+    renderBlock({ category: "modulator", format: "INT", name: "LFO", collapseTier: "expanded" });
     expect(screen.getByText("Modulation")).toBeInTheDocument();
   });
 
@@ -295,7 +446,10 @@ describe("<Block /> (gaps)", () => {
   // Handle is NOT in the DOM until the lane is expanded. (Audio/MIDI stay
   // essential + always visible — asserted above.)
   it("value/CV port is collapsed behind the param toggle by default (lean)", () => {
+    // The "▸ N params" lane lives at the EXPANDED tier (Task 2.4 — macro/title
+    // show only essential I/O, no param wall + no toggle).
     renderBlock({
+      collapseTier: "expanded",
       ports: [{ id: "in-0", label: "Cutoff", direction: "input", type: "value", connected: false }],
     });
     // The param port row + its Handle are hidden while collapsed…
@@ -311,6 +465,7 @@ describe("<Block /> (gaps)", () => {
   // the visible pill (inner span) stays 13px — visual size unchanged.
   it("param toggle hit target is ≥30px tall while the visible pill stays 13px", () => {
     renderBlock({
+      collapseTier: "expanded",
       ports: [{ id: "in-0", label: "Cutoff", direction: "input", type: "value", connected: false }],
     });
     const toggle = screen.getByRole("button", { name: /show 1 parameter port/i });
@@ -323,6 +478,7 @@ describe("<Block /> (gaps)", () => {
 
   it("clicking the expanded (30px) hit area toggles the param lane", () => {
     renderBlock({
+      collapseTier: "expanded",
       ports: [{ id: "in-0", label: "Cutoff", direction: "input", type: "value", connected: false }],
     });
     // Click the BUTTON itself (the invisible 30px band), not the inner pill.
@@ -332,6 +488,7 @@ describe("<Block /> (gaps)", () => {
 
   it("value/CV port Handle reveals after clicking the param toggle", () => {
     renderBlock({
+      collapseTier: "expanded",
       ports: [{ id: "in-0", label: "Cutoff", direction: "input", type: "value", connected: false }],
     });
     fireEvent.click(screen.getByRole("button", { name: /show 1 parameter port/i }));
@@ -427,6 +584,7 @@ describe("<Block /> (gaps)", () => {
 
   it("dense node defaults to a collapsed '▸ N params' pill (param ports hidden)", () => {
     renderBlock({
+      collapseTier: "expanded", // param wall + "▸ N params" pill is expanded-only
       ports: [
         { id: "in-0", label: "In", direction: "input", type: "audio", connected: false },
         { id: "p-mix", label: "Mix", direction: "input", type: "value", connected: false },
@@ -443,6 +601,7 @@ describe("<Block /> (gaps)", () => {
 
   it("expanding the '▸ N params' pill reveals the param-port lane", () => {
     renderBlock({
+      collapseTier: "expanded",
       ports: [
         { id: "in-0", label: "In", direction: "input", type: "audio", connected: false },
         { id: "p-mix", label: "Mix", direction: "input", type: "value", connected: false },

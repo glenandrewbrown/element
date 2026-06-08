@@ -37,6 +37,10 @@ import { useInstancesStore } from "../stores/useInstancesStore";
 type EngineBlock = {
   id: string;
   name: string;
+  /** Task 3.A — catalog PluginDescription.name; host emits it only when known
+   *  AND it differs from `name` (i.e. the Block was renamed). Drives the muted
+   *  "Renamed from: <catalog>" line in the Inspector header. */
+  catalogName?: string;
   x?: number;
   y?: number;
   bypassed?: boolean;
@@ -61,6 +65,11 @@ type EngineBlock = {
   collapseTier?: "title" | "macro" | "expanded";
   /** Legacy boolean (pre-Wave-3). Read for back-compat migration only. */
   collapsed?: boolean;
+  /** Transient node lifecycle state (loading-node contract; Phase 4 async load).
+   *  Host emits "loading" while the real processor is instantiating, "ready"
+   *  (or omits the key) once it has swapped in. ABSENT ⇒ "ready" (back-compat:
+   *  every node that predates async-load decodes as ready). */
+  loadState?: "loading" | "ready";
   /** Internal node identifier, e.g. "element.compare" (all blocks). */
   identifier?: string;
   /** Engine-truth integer mode for element.compare / element.logic only. */
@@ -250,6 +259,16 @@ function mapBlock(b: EngineBlock): BlockData {
   return {
     id: b.id,
     name: b.name,
+    // Task 3.A — carry the catalog name only when it is a real, differing string
+    // (defence-in-depth: the host already gates the emit on `!= name`, but a
+    // legacy/odd snapshot must never surface a "Renamed from:" line equal to the
+    // live name). `name` remains the single source for the displayed title.
+    catalogName:
+      typeof b.catalogName === "string" &&
+      b.catalogName.length > 0 &&
+      b.catalogName !== b.name
+        ? b.catalogName
+        : undefined,
     category: (b as any).category ?? inferCategory(b),
     format: typeof (b as any).format === "string" ? (b as any).format : inferFormat(b),
     position: { x: b.x ?? 0, y: b.y ?? 0 },
@@ -290,6 +309,10 @@ function mapBlock(b: EngineBlock): BlockData {
         : b.collapsed === true
           ? "title"
           : "macro",
+    // Transient lifecycle (loading-node contract §1.2). ONLY the explicit
+    // "loading" string flips it; anything else — including an absent key — is
+    // "ready" (back-compat: every node that predates async-load is ready).
+    loadState: b.loadState === "loading" ? "loading" : "ready",
     // Internal node identifier (all blocks) + engine-truth integer mode for
     // the built-in logic/comparator nodes. intMode is left undefined unless the
     // host actually emitted it (no fake value for non-logic blocks).

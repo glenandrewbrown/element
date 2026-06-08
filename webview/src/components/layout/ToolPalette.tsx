@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Icon } from "../neu/Icon";
 import { categoryIconName } from "../neu/iconForCategory";
 import type { BlockCategory } from "../../data/types";
+import { useAppStore } from "../../stores/useAppStore";
 import { usePluginBrowserStore } from "../../stores/usePluginBrowserStore";
 import { useSessionStore } from "../../stores/useSessionStore";
 import { nativeSessionListFiles, nativeSessionOpenPath, nativeSessionRecover, type SessionFileEntry } from "../../bridge/nativeSession";
@@ -64,6 +65,22 @@ export function ToolPalette({
   const [viewMode, setViewMode] = useState<"grid" | "list">("list");
   const [showScan, setShowScan] = useState(false);
   const [sessionFiles, setSessionFiles] = useState<SessionFileEntry[]>([]);
+
+  // Focus-on-demand: Cmd+F / open-browser bump `focusBrowserSearch`; we focus
+  // the real <input> via this ref when the nonce changes (Task 3.C) — no DOM
+  // query. The first render is skipped so opening the app doesn't auto-steal
+  // focus into the browser.
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const focusNonce = useAppStore((s) => s.focusBrowserSearch);
+  const seenFocusNonce = useRef(focusNonce);
+  useEffect(() => {
+    if (focusNonce === seenFocusNonce.current) return;
+    seenFocusNonce.current = focusNonce;
+    // Search lives on the Plugins tab; jump there so there's an input to focus.
+    setBrowseTab("plugins");
+    searchInputRef.current?.focus();
+    searchInputRef.current?.select();
+  }, [focusNonce]);
 
   const refreshPlugins = usePluginBrowserStore((s) => s.refresh);
   const recentFiles = useSessionStore((s) => s.recentFiles);
@@ -215,6 +232,7 @@ export function ToolPalette({
 
         {/* Search row + gear disclosure */}
         <PaletteSearch
+          ref={searchInputRef}
           tab={browseTab}
           value={search}
           onChange={setSearch}

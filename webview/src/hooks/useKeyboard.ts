@@ -243,13 +243,41 @@ export function useKeyboard({
             return;
           }
 
+          // ── Cmd+\ / Cmd+Opt+\ — Figma-muscle panel-toggle aliases (Task 3.C,
+          // brief §4.2). `Cmd+\` toggles the LEFT browser (alias for Cmd+1);
+          // adding Option toggles the RIGHT inspector (alias for Cmd+2). Both
+          // share key "\\"; the altKey distinguishes them. Per-panel control is
+          // kept deliberate (Ableton-12 lesson) — these are aliases, not a
+          // single master toggle.
+          case "\\": {
+            e.preventDefault();
+            useAppStore.getState().togglePanel(e.altKey ? "right" : "left");
+            return;
+          }
+
+          // ── Cmd+. — hide ALL panels → full-bleed canvas; press again restores
+          // the prior layout (Task 3.C, brief §4.2, Figma presentation key). The
+          // store remembers the pre-hide per-panel state so restore is exact.
+          // Verified non-colliding with any existing binding (grep useKeyboard).
+          case ".": {
+            e.preventDefault();
+            const app = useAppStore.getState();
+            if (app.panelsHiddenSnapshot) app.restorePanels();
+            else app.hideAllPanels();
+            return;
+          }
+
           case "f": {
             e.preventDefault();
-            // Focus the search input in ToolPalette
-            const searchInput = document.querySelector<HTMLInputElement>(
-              'aside input[placeholder*="Search"]',
-            );
-            searchInput?.focus();
+            // Focus the browser search via a store nonce (Task 3.C) — replaces
+            // the brittle `document.querySelector('aside input[placeholder*=
+            // "Search"]')` DOM query that broke on any markup change and was
+            // invisible to tests. ToolPalette subscribes to focusBrowserSearch
+            // and focuses its real <input>. If the browser is collapsed, open it
+            // first so there is an input to focus (search-first, brief §4.2).
+            const app = useAppStore.getState();
+            if (!app.leftPanelOpen) app.togglePanel("left");
+            app.requestFocusBrowserSearch();
             return;
           }
 

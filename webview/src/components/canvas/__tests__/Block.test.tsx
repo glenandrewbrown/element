@@ -133,6 +133,7 @@ describe("<Block />", () => {
     renderBlock({
       format: "INT",
       category: "instrument", // miscategorised hardware MIDI input
+      collapseTier: "expanded", // the RMS deck only mounts at the expanded tier
       ports: [
         { id: "out-m", label: "MIDI", direction: "output", type: "midi", connected: false },
       ],
@@ -141,11 +142,13 @@ describe("<Block />", () => {
   });
 
   it("shows VU meters when a BUILT-IN block has an audio output", () => {
-    // The dual-RMS strip is the BUILT-IN audio deck. Third-party plugins get
-    // the single signal-activity bar (2b) instead — see the dedicated test.
+    // The dual-RMS strip is the BUILT-IN audio deck (mounts at the EXPANDED
+    // tier — Task 2.4; macro/title show only the lean activity well). Third-
+    // party plugins get the single signal-activity bar (2b) — separate test.
     renderBlock({
       format: "INT",
       category: "instrument",
+      collapseTier: "expanded",
       ports: [
         { id: "out-0", label: "L", direction: "output", type: "audio", connected: false },
       ],
@@ -156,10 +159,11 @@ describe("<Block />", () => {
   it("never shows a VU on an audio-output-device shape (audio INPUTS only)", () => {
     // Output device: audio ins, no audio outs — the output-RMS feed has no
     // data for it, so an honest face shows no meter (input-side RMS bridge is
-    // the named follow-up). Built-in path (the RMS deck).
+    // the named follow-up). Built-in path (the RMS deck), expanded tier.
     renderBlock({
       format: "INT",
       category: "audiofx",
+      collapseTier: "expanded",
       ports: [
         { id: "in-0", label: "L", direction: "input", type: "audio", connected: true },
         { id: "in-1", label: "R", direction: "input", type: "audio", connected: true },
@@ -172,6 +176,7 @@ describe("<Block />", () => {
     renderBlock({
       format: "INT",
       category: "midifx",
+      collapseTier: "expanded", // the "Pass-through" status row is in the deck
       ports: [
         { id: "out-m", label: "MIDI", direction: "output", type: "midi", connected: false },
       ],

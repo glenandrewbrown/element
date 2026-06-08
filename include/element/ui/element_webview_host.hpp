@@ -161,12 +161,36 @@ private:
     mutable std::unordered_map<juce::String, juce::String> pluginCategoryByIdentifier;
     mutable bool pluginCategoryCacheDirty = true;
 
+    /** Task 3.A — catalog `PluginDescription.name` by plugin identifier, the
+        SAME field the browser's `BrowserPlugin.name` uses (never descriptiveName).
+        Populated in the SAME pass as pluginCategoryByIdentifier (one getTypes()
+        copy) and gated by the SAME pluginCategoryCacheDirty flag, so the snapshot
+        can emit a block's catalog name without a per-node linear scan. The
+        webview shows it as the muted "Renamed from: <catalog>" line when the
+        user-renamed block.name diverges from this catalog name. */
+    mutable std::unordered_map<juce::String, juce::String> pluginNameByIdentifier;
+
     /** O(1) replacement for the per-node findKnownPluginByIdentifier linear scan.
         Rebuilds the map on first use after invalidation, then looks up. Returns
         the empty string when the identifier is not in the KnownPluginList — the
         SAME result the prior linear scan produced (nullptr → empty category).
         Const + message-thread only (called from buildActiveGraphJson). */
     juce::String categoryForPluginIdentifier (const juce::String& identifier) const;
+
+    /** Task 3.A — catalog name for a plugin identifier (createIdentifierString
+        form), from the same memo as categoryForPluginIdentifier. Empty when the
+        identifier is not a scanned third-party plugin (internal / IO / el.* nodes
+        have no KnownPluginList entry — their on-canvas name IS the catalog name,
+        so no "renamed from" line applies and an empty result is correct).
+        Const + message-thread only. */
+    juce::String catalogNameForPluginIdentifier (const juce::String& identifier) const;
+
+    /** Task 3.A — lazily rebuild BOTH identifier→category and identifier→catalog
+        -name memos from ONE getKnownPlugins().getTypes() copy when
+        pluginCategoryCacheDirty. Shared by categoryForPluginIdentifier and
+        catalogNameForPluginIdentifier so the snapshot pays the scan at most once
+        per invalidation. Const + message-thread only. */
+    void rebuildPluginIdentifierCaches() const;
 
     /** Forwards the KnownPluginList ChangeBroadcaster to set
         pluginCategoryCacheDirty. A dedicated listener object (rather than making

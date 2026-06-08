@@ -257,8 +257,20 @@ public:
         if (! data.isValid() || object == nullptr)
             return;
         data.setProperty (tags::id, static_cast<int64> (object->nodeId), nullptr)
-            .setProperty (tags::object, object.get(), nullptr)
-            .setProperty (tags::name, object->getName(), nullptr);
+            .setProperty (tags::object, object.get(), nullptr);
+
+        // Task 3.A (name single-source): tags::name is the node's display name and
+        // the SINGLE field the webview snapshot emits (element_webview_host.cpp
+        // → n.getName()), shown identically on the canvas Block title AND the
+        // inspector header. The authoritative source is the catalog
+        // PluginDescription.name stamped by GraphManager::addNode
+        // (graphmanager.cpp:458, desc->name) and any later user rename (Cmd+R).
+        // Binding fires for sub-graphs/Containers and on session load; only SEED
+        // the name from object->getName() when none is present yet, NEVER clobber
+        // an existing catalog/user name with the Processor's reported name — that
+        // would be a SECOND emit source and could diverge the two surfaces.
+        if (! data.hasProperty (tags::name) || data.getProperty (tags::name).toString().isEmpty())
+            data.setProperty (tags::name, object->getName(), nullptr);
     }
 
 private:

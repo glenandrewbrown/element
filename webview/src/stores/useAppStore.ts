@@ -27,6 +27,43 @@ interface AppState {
   leftPanelOpen: boolean;
   rightPanelOpen: boolean;
   bottomPanelOpen: boolean;
+  /**
+   * Persisted panel widths (px). Defaulted to 260 / 280 to match the prior
+   * hardcoded AppShell constants. State (not constants) so a future drag-to-
+   * resize can write them; for now they are stable defaults that round-trip
+   * through persistence (Task 3.B / brief §4.4). (W3)
+   */
+  leftWidth: number;
+  rightWidth: number;
+  /**
+   * Did the user EXPLICITLY collapse the inspector (chevron / keybind), as
+   * opposed to it being auto-collapsed because nothing is selected? Tracked
+   * separately from `rightPanelOpen` so a selection-driven auto-expand can
+   * respect a deliberate user collapse and not "fight the user" (brief §4.3).
+   * Persisted. (W3)
+   */
+  inspectorUserCollapsed: boolean;
+  /**
+   * Monotonic nonce bumped whenever something asks the browser search input to
+   * take focus (Cmd+F, opening the browser via Cmd+1/Cmd+\). ToolPalette
+   * subscribes and focuses its real `<input>` on change — replacing the brittle
+   * `document.querySelector('aside input[placeholder*="Search"]')` DOM query
+   * that broke the moment the markup changed and was invisible to tests
+   * (brief §4.2, Task 3.C). Session-only — never persisted. (W3)
+   */
+  focusBrowserSearch: number;
+  /**
+   * Snapshot of {left,right,bottom}PanelOpen captured the moment `hideAllPanels`
+   * fires, so `restorePanels` (Cmd+. pressed again) can put the prior layout
+   * back instead of blindly re-opening everything. `null` when not in the
+   * hide-all state. Session-only — never persisted (a reload starts from the
+   * persisted per-panel state, not mid-hide). (W3)
+   */
+  panelsHiddenSnapshot: {
+    left: boolean;
+    right: boolean;
+    bottom: boolean;
+  } | null;
   virtualKeyboardOpen: boolean;
   activeScene: number;
   openBlockTabs: string[];
@@ -95,6 +132,22 @@ interface AppState {
 interface AppActions {
   toggleMode: () => void;
   togglePanel: (panel: PanelId) => void;
+  /**
+   * Hide ALL panels → full-bleed canvas (Cmd+. — brief §4.2). Captures the
+   * current per-panel open state in `panelsHiddenSnapshot` so it can be
+   * restored. Idempotent: if a snapshot already exists (we are already hidden)
+   * it does nothing, so a held key / double-fire can't lose the real layout.
+   */
+  hideAllPanels: () => void;
+  /**
+   * Restore the layout captured by `hideAllPanels` (Cmd+. pressed again).
+   * No-op when there is no snapshot.
+   */
+  restorePanels: () => void;
+  /** Bump the focus-browser-search nonce (Cmd+F, open-browser). (Task 3.C) */
+  requestFocusBrowserSearch: () => void;
+  /** Set a persisted panel width (drag-resize substrate; brief §4.4). */
+  setPanelWidth: (panel: "left" | "right", width: number) => void;
   toggleVirtualKeyboard: () => void;
   setScene: (index: number) => void;
   openBlockTab: (blockId: string) => void;
@@ -123,6 +176,11 @@ export const useAppStore = create<AppStore>()(
   leftPanelOpen: true,
   rightPanelOpen: true,
   bottomPanelOpen: true,
+  leftWidth: 260,
+  rightWidth: 280,
+  inspectorUserCollapsed: false,
+  focusBrowserSearch: 0,
+  panelsHiddenSnapshot: null,
   virtualKeyboardOpen: false,
   activeScene: 0,
   openBlockTabs: [],
@@ -164,15 +222,65 @@ export const useAppStore = create<AppStore>()(
 
   togglePanel: (panel) =>
     set((s) => {
+      // Any explicit per-panel toggle exits the "hide-all" state — the user is
+      // taking manual control again, so the stale snapshot must not linger and
+      // later resurrect a layout they've since edited.
       switch (panel) {
         case "left":
-          return { leftPanelOpen: !s.leftPanelOpen };
+          return { leftPanelOpen: !s.leftPanelOpen, panelsHiddenSnapshot: null };
         case "right":
-          return { rightPanelOpen: !s.rightPanelOpen };
+          // Track whether the user DELIBERATELY collapsed the inspector so the
+          // selection-driven auto-expand (brief §4.3) can respect it. Closing
+          // it → userCollapsed; opening it → clear the flag.
+          return {
+            rightPanelOpen: !s.rightPanelOpen,
+            inspectorUserCollapsed: s.rightPanelOpen,
+            panelsHiddenSnapshot: null,
+          };
         case "bottom":
-          return { bottomPanelOpen: !s.bottomPanelOpen };
+          return {
+            bottomPanelOpen: !s.bottomPanelOpen,
+            panelsHiddenSnapshot: null,
+          };
       }
     }),
+
+  hideAllPanels: () =>
+    set((s) => {
+      // Idempotent — already hidden (snapshot present) → no-op so a repeat / held
+      // key can't overwrite the real layout with the all-hidden one.
+      if (s.panelsHiddenSnapshot) return s;
+      return {
+        panelsHiddenSnapshot: {
+          left: s.leftPanelOpen,
+          right: s.rightPanelOpen,
+          bottom: s.bottomPanelOpen,
+        },
+        leftPanelOpen: false,
+        rightPanelOpen: false,
+        bottomPanelOpen: false,
+      };
+    }),
+
+  restorePanels: () =>
+    set((s) => {
+      const snap = s.panelsHiddenSnapshot;
+      if (!snap) return s;
+      return {
+        leftPanelOpen: snap.left,
+        rightPanelOpen: snap.right,
+        bottomPanelOpen: snap.bottom,
+        panelsHiddenSnapshot: null,
+      };
+    }),
+
+  requestFocusBrowserSearch: () =>
+    set((s) => ({ focusBrowserSearch: s.focusBrowserSearch + 1 })),
+
+  setPanelWidth: (panel, width) =>
+    set(() =>
+      panel === "left" ? { leftWidth: width } : { rightWidth: width },
+    ),
 
   toggleVirtualKeyboard: () =>
     set((s) => ({ virtualKeyboardOpen: !s.virtualKeyboardOpen })),
@@ -212,17 +320,28 @@ export const useAppStore = create<AppStore>()(
   toggleFlowDebug: () => set((s) => ({ flowDebug: !s.flowDebug })),
     }),
     {
+      // Panel layout persistence (Task 3.B / brief §4.4): collapse state, widths
+      // and the explicit-inspector-collapse flag survive reload (localStorage,
+      // per-app — per-project is a later nice-to-have). NOT persisted: the
+      // session-only signals (focusBrowserSearch nonce, panelsHiddenSnapshot —
+      // a reload should start from the saved per-panel state, never mid-hide)
+      // and everything that was already session-only (cableRouting, flowDebug,
+      // canvasHint, autoTidyOnAdd, snapToGrid, openBlockTabs, …).
+      //
       // SHELVED (D3, hide-UI keep-code) — see FINISH-APP-PLAN. Perform mode is
-      // removed from the MVP UI, so there is no longer any Edit/Perform state
-      // worth persisting (G-19 persisted `mode` to survive reload). Partialize
-      // now persists nothing, and `merge` coerces any legacy persisted
-      // `mode: "perform"` back to "edit" so a previously-saved Perform layout
-      // can't resurrect the now-unmounted perform panels. To restore Perform
-      // mode, re-add `partialize: (s) => ({ mode: s.mode })` and drop the merge
-      // coercion.
+      // removed from the MVP UI, so `mode` is NOT persisted, and `merge` coerces
+      // any legacy persisted `mode: "perform"` back to "edit" so a previously-
+      // saved Perform layout can't resurrect the now-unmounted perform panels.
       name: "element-app-ui",
       storage: createJSONStorage(() => localStorage),
-      partialize: () => ({}),
+      partialize: (s) => ({
+        leftPanelOpen: s.leftPanelOpen,
+        rightPanelOpen: s.rightPanelOpen,
+        bottomPanelOpen: s.bottomPanelOpen,
+        leftWidth: s.leftWidth,
+        rightWidth: s.rightWidth,
+        inspectorUserCollapsed: s.inspectorUserCollapsed,
+      }),
       merge: (persisted, current) => ({
         ...current,
         ...(persisted as Partial<AppStore>),
@@ -242,6 +361,13 @@ export const selectIsPerformMode = (s: AppStore) => s.mode === "perform";
 export const selectLeftPanel = (s: AppStore) => s.leftPanelOpen;
 export const selectRightPanel = (s: AppStore) => s.rightPanelOpen;
 export const selectBottomPanel = (s: AppStore) => s.bottomPanelOpen;
+export const selectLeftWidth = (s: AppStore) => s.leftWidth;
+export const selectRightWidth = (s: AppStore) => s.rightWidth;
+export const selectInspectorUserCollapsed = (s: AppStore) =>
+  s.inspectorUserCollapsed;
+export const selectFocusBrowserSearch = (s: AppStore) => s.focusBrowserSearch;
+export const selectPanelsHidden = (s: AppStore) =>
+  s.panelsHiddenSnapshot !== null;
 export const selectVirtualKeyboardOpen = (s: AppStore) => s.virtualKeyboardOpen;
 export const selectActiveScene = (s: AppStore) => s.activeScene;
 export const selectOpenBlockTabs = (s: AppStore) => s.openBlockTabs;

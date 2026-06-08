@@ -3,13 +3,17 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import React from "react";
 
 const mockTogglePanel = vi.fn();
+const mockRequestFocusBrowserSearch = vi.fn();
 
 let appStoreState = {
   mode: "edit" as "edit" | "perform",
   leftPanelOpen: true,
   rightPanelOpen: true,
   bottomPanelOpen: true,
+  leftWidth: 260,
+  rightWidth: 280,
   togglePanel: mockTogglePanel,
+  requestFocusBrowserSearch: mockRequestFocusBrowserSearch,
 };
 let mapMode = false;
 
@@ -55,7 +59,10 @@ describe("AppShell — panel rendering (edit mode, all open)", () => {
       leftPanelOpen: true,
       rightPanelOpen: true,
       bottomPanelOpen: true,
+      leftWidth: 260,
+      rightWidth: 280,
       togglePanel: mockTogglePanel,
+      requestFocusBrowserSearch: mockRequestFocusBrowserSearch,
     };
     mapMode = false;
     vi.clearAllMocks();
@@ -103,39 +110,52 @@ describe("AppShell — panel rendering (edit mode, all open)", () => {
   });
 });
 
-describe("AppShell — collapsed rails", () => {
+describe("AppShell — collapsed rails (unified PanelRail)", () => {
   beforeEach(() => {
     appStoreState = {
       mode: "edit",
       leftPanelOpen: false,
       rightPanelOpen: false,
       bottomPanelOpen: false,
+      leftWidth: 260,
+      rightWidth: 280,
       togglePanel: mockTogglePanel,
+      requestFocusBrowserSearch: mockRequestFocusBrowserSearch,
     };
     mapMode = false;
     vi.clearAllMocks();
   });
 
-  it("renders left collapsed rail when leftPanelOpen is false", () => {
+  it("renders the left PanelRail (browser) when leftPanelOpen is false", () => {
     render(<AppShell><div /></AppShell>);
-    expect(screen.getByLabelText("Expand left panel")).toBeInTheDocument();
+    expect(screen.getByLabelText("Expand browser")).toBeInTheDocument();
+    expect(screen.getByTestId("panel-rail-left")).toBeInTheDocument();
   });
 
-  it("clicking left rail calls togglePanel('left')", () => {
+  it("clicking the left rail expand button calls togglePanel('left') AND focuses search", () => {
     render(<AppShell><div /></AppShell>);
-    fireEvent.click(screen.getByLabelText("Expand left panel"));
+    fireEvent.click(screen.getByLabelText("Expand browser"));
     expect(mockTogglePanel).toHaveBeenCalledWith("left");
+    // Search-first: expanding the browser focuses its search (brief §4.2).
+    expect(mockRequestFocusBrowserSearch).toHaveBeenCalled();
   });
 
-  it("renders right collapsed rail when rightPanelOpen is false", () => {
+  it("renders the right PanelRail (inspector) when rightPanelOpen is false", () => {
     render(<AppShell><div /></AppShell>);
-    expect(screen.getByLabelText("Expand right panel")).toBeInTheDocument();
+    expect(screen.getByLabelText("Expand inspector")).toBeInTheDocument();
+    expect(screen.getByTestId("panel-rail-right")).toBeInTheDocument();
   });
 
-  it("clicking right rail calls togglePanel('right')", () => {
+  it("clicking the right rail expand button calls togglePanel('right')", () => {
     render(<AppShell><div /></AppShell>);
-    fireEvent.click(screen.getByLabelText("Expand right panel"));
+    fireEvent.click(screen.getByLabelText("Expand inspector"));
     expect(mockTogglePanel).toHaveBeenCalledWith("right");
+  });
+
+  it("the blank drag-handle rail is gone (no generic 'Expand left/right panel' label)", () => {
+    render(<AppShell><div /></AppShell>);
+    expect(screen.queryByLabelText("Expand left panel")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Expand right panel")).not.toBeInTheDocument();
   });
 
   it("bottom panel not rendered when bottomPanelOpen is false", () => {
@@ -151,7 +171,10 @@ describe("AppShell — perform mode", () => {
       leftPanelOpen: true,
       rightPanelOpen: true,
       bottomPanelOpen: true,
+      leftWidth: 260,
+      rightWidth: 280,
       togglePanel: mockTogglePanel,
+      requestFocusBrowserSearch: mockRequestFocusBrowserSearch,
     };
     mapMode = false;
     vi.clearAllMocks();
@@ -193,7 +216,10 @@ describe("AppShell — map mode banner", () => {
       leftPanelOpen: true,
       rightPanelOpen: true,
       bottomPanelOpen: false,
+      leftWidth: 260,
+      rightWidth: 280,
       togglePanel: mockTogglePanel,
+      requestFocusBrowserSearch: mockRequestFocusBrowserSearch,
     };
     mapMode = true;
     vi.clearAllMocks();
@@ -212,7 +238,10 @@ describe("AppShell — default placeholder panels", () => {
       leftPanelOpen: true,
       rightPanelOpen: true,
       bottomPanelOpen: true,
+      leftWidth: 260,
+      rightWidth: 280,
       togglePanel: mockTogglePanel,
+      requestFocusBrowserSearch: mockRequestFocusBrowserSearch,
     };
     mapMode = false;
     vi.clearAllMocks();

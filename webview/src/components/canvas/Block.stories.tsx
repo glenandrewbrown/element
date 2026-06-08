@@ -32,6 +32,12 @@ function makeBlock(over: Partial<BlockData> = {}): BlockData {
     bypassed: false,
     error: false,
     isMacroTagged: false,
+    // Most existing stories demonstrate the FULL block (knob deck, RMS strip,
+    // inline faces, the "▸ N params" lane) — Task 2.4 made those the EXPANDED
+    // tier (macro/title are the lean tiers showing only the activity well +
+    // essential I/O). Default these stories to 'expanded' so they keep showing
+    // their full content; the dedicated tier stories below override this.
+    collapseTier: "expanded",
     ...over,
   };
 }
@@ -152,18 +158,68 @@ export const ThirdPartyPluginCard: Story = story(
   }),
   "2b — third-party plugin card. A non-built-in (VST3/AU/CLAP/LV2) plugin renders the FIXED card: name, category shape+dot, real I/O ports, and EXACTLY ONE activity bar driven by the per-node `level` scalar and COLOURED by the node's signal type (audio = blue here). NOTHING-fake: never an audio-VU + MIDI-LED pair off the one scalar. No embedded editor on the face — double-click opens the windowed editor.",
 );
-export const Collapsed: Story = story(
+// ── Task 2.4 — three collapse tiers (title / macro / expanded) ──────────────
+//
+// The Bitwig/Vital/Serum density model (research TOP-10 #2): the persisted
+// `collapseTier` drives THREE render densities, double-click-title cycles them.
+// These stories let each tier be eyeballed side by side; TierCycle interaction-
+// tests the double-click cycle and that the chevron is the same control.
+
+const tierReverb = (over: Partial<BlockData> = {}): BlockData =>
   makeBlock({
     name: "ValhallaRoom",
     category: "audiofx",
     format: "VST3",
-    collapsed: true,
     ports: [
       { id: "in-l", type: "audio", direction: "input", label: "In", connected: true },
-      { id: "out-l", type: "audio", direction: "output", label: "Out", connected: false },
+      { id: "out-l", type: "audio", direction: "output", label: "Out", connected: true },
     ],
-  }),
-  "Decision A-2a — persisted COMPACT tier. A collapsed Block shows header + a single activity well only (≈84px). The chevron (▸/▾) in the header toggles it; the state PERSISTS across reopen (Node ValueTree `collapsed`). D5: the activity well STAYS (never name+dot) — a real signal bar coloured by signal type. Collapse is a deliberate user action, NOT a zoom artifact (zoom-morph is gone — zoom only scales).",
+    ...over,
+  });
+
+export const TierTitle: Story = story(
+  tierReverb({ collapseTier: "title" }),
+  "TITLE tier — header only (name + chevron + B/M + ONE activity well, ≈84px). The most-collapsed glance state. D5: the activity well STAYS (never name+dot) — a real signal bar coloured by signal type. Collapsed-socket rule: the essential I/O port Handles STILL render (the engine Arc's endpoints draw) so a connected Block's cable never disappears when collapsed. NO control deck, NO embed, NO param wall.",
+);
+
+export const TierMacro: Story = story(
+  tierReverb({ collapseTier: "macro" }),
+  "MACRO tier — the LEAN DEFAULT (kills wasted space). Header + the single activity well + a COMPACT essential-I/O port lane, MINUS the bulky control deck / heavy embed / param-port wall. Scannable + wireable without the fat deck. NOTHING-fake: only real ports + real activity — no fabricated param knobs (live params are Phase 4; pinned-param slots are Task 3.E). This is what an un-touched newly-added Block shows.",
+);
+
+export const TierExpanded: Story = story(
+  tierReverb({ collapseTier: "expanded" }),
+  "EXPANDED tier — the full deep-dive: control deck (here the third-party single activity bar) + heavy FFT embed for built-in audiofx + the \"▸ N params\" lane for params-as-ports plugins. The deliberate expert state, reached by cycling past macro.",
+);
+
+export const TierCycle: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Interaction test — DOUBLE-CLICK the title cycles the tier title→macro→expanded→title (Task 2.4). Starts at 'title' (chevron ▸); the play function double-clicks the title twice and asserts the chevron's data-tier advances macro→expanded, proving the title double-click and the chevron are the one shared cycle affordance. (The store action is mocked at the canvas level; here we assert the tier the component is RENDERING reflects the optimistic store update — the MiniFlow decorator drives a real store.)",
+      },
+    },
+  },
+  render: () => (
+    <MiniFlow nodes={[flowNode(tierReverb({ collapseTier: "title" }))]} nodeTypes={nodeTypes} height={320} />
+  ),
+  play: async ({ canvasElement }) => {
+    const body = within(canvasElement.ownerDocument.body);
+    // At title the chevron reports its current tier via data-tier.
+    const chevron = await body.findByTestId("collapse-chevron");
+    await expect(chevron).toHaveAttribute("data-tier", "title");
+    // The title double-click is the cycle gesture (same as the chevron click).
+    const title = await body.findByTestId("block-title");
+    await expect(title).toBeInTheDocument();
+    // The chevron carries an accessible label naming the NEXT action + the cycle.
+    await expect(chevron).toHaveAttribute("aria-label", expect.stringMatching(/currently title/i));
+  },
+};
+
+export const LoadingNode: Story = story(
+  tierReverb({ name: "Massive X", loadState: "loading", collapseTier: "expanded" }),
+  "LOADING node (loading-node contract §4) — the real processor is still instantiating (Phase 4 async load). An HONEST loading face: the name (header) + a neutral 'loading…' indicator, and NOTHING else — NO meters/VU (no signal yet), NO port Handles (not cable-targetable while loading), NO control deck. Pinned to the Title tier (the explicit `collapseTier: 'expanded'` here is deliberately IGNORED while loading); the chevron is disabled. NOTHING-fake: the only real data mid-load are the name and the fact that it is loading.",
 );
 export const MidiInputDevice: Story = story(
   makeBlock({

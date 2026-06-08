@@ -5,6 +5,7 @@ import { usePerformStore, selectMapMode } from "../../stores/usePerformStore";
 import { Breadcrumb } from "./Breadcrumb";
 import { BlockTabStrip } from "./BlockTabStrip";
 import { MirrorPanel } from "./MirrorPanel";
+import { PanelRail, PANEL_RAIL_W } from "./PanelRail";
 
 // ── Shared transition config ──
 
@@ -26,12 +27,15 @@ const slideRight = {
 };
 
 // ── Layout constants ──
+//
+// Panel widths are no longer hardcoded here — they come from the persisted
+// store (`leftWidth`/`rightWidth`, defaulted to 260/280), so collapse state +
+// widths survive reload and a future drag-resize can write them (Task 3.B /
+// brief §4.4). The COLLAPSED width is the shared `PANEL_RAIL_W` (40px) so the
+// canvas inset never drifts from what the rail actually renders.
 
 const TOOLBAR_H = 40;
-const LEFT_W = 260;
-const LEFT_COLLAPSED_W = 36;
-const RIGHT_W = 280;
-const RIGHT_COLLAPSED_W = 36;
+const COLLAPSED_W = PANEL_RAIL_W;
 const BOTTOM_EDIT_H = 64;
 const BOTTOM_PERFORM_H = 180;
 const STATUS_H = 24;
@@ -41,28 +45,29 @@ const STATUS_H = 24;
 interface PanelSlotProps {
   children: ReactNode;
   panelKey: string;
+  width: number;
 }
 
-function LeftSlot({ children, panelKey }: PanelSlotProps) {
+function LeftSlot({ children, panelKey, width }: PanelSlotProps) {
   return (
     <motion.aside
       key={panelKey}
       {...slideLeft}
       className="fixed left-0 z-40 bg-panel border-r border-white/5 flex flex-col shadow-[4px_0_12px_rgba(0,0,0,0.2)] overflow-hidden"
-      style={{ top: TOOLBAR_H, bottom: 0, width: LEFT_W }}
+      style={{ top: TOOLBAR_H, bottom: 0, width }}
     >
       {children}
     </motion.aside>
   );
 }
 
-function RightSlot({ children, panelKey }: PanelSlotProps) {
+function RightSlot({ children, panelKey, width }: PanelSlotProps) {
   return (
     <motion.aside
       key={panelKey}
       {...slideRight}
       className="fixed right-0 z-40 bg-panel border-l border-white/5 flex flex-col shadow-[-4px_0_12px_rgba(0,0,0,0.2)] overflow-hidden"
-      style={{ top: TOOLBAR_H, bottom: 0, width: RIGHT_W }}
+      style={{ top: TOOLBAR_H, bottom: 0, width }}
     >
       {children}
     </motion.aside>
@@ -73,7 +78,11 @@ function BottomSlot({
   children,
   panelKey,
   height,
-}: PanelSlotProps & { height: number }) {
+}: {
+  children: ReactNode;
+  panelKey: string;
+  height: number;
+}) {
   return (
     <motion.footer
       key={panelKey}
@@ -91,34 +100,27 @@ function BottomSlot({
 }
 
 // ── Collapsed rail ──
+//
+// The blank 36px drag-handle `CollapsedRail` is GONE (brief §1.3) — both
+// collapsed panels now render the shared `PanelRail` (40px Activity-Bar icon
+// rail). A thin `RailDock` fixes that rail to the correct edge with the same
+// geometry the old pill used.
 
-function CollapsedRail({
+function RailDock({
   side,
-  onClick,
+  children,
 }: {
   side: "left" | "right";
-  onClick: () => void;
+  children: ReactNode;
 }) {
   const isLeft = side === "left";
   return (
-    <button
-      type="button"
-      aria-label={`Expand ${side} panel`}
-      className={[
-        "fixed z-40 bg-panel flex flex-col items-center pt-3 cursor-pointer",
-        isLeft
-          ? "left-0 border-r border-white/5"
-          : "right-0 border-l border-white/5",
-      ].join(" ")}
-      style={{
-        top: TOOLBAR_H,
-        bottom: 0,
-        width: isLeft ? LEFT_COLLAPSED_W : RIGHT_COLLAPSED_W,
-      }}
-      onClick={onClick}
+    <div
+      className={`fixed z-40 ${isLeft ? "left-0" : "right-0"}`}
+      style={{ top: TOOLBAR_H, bottom: 0, width: COLLAPSED_W }}
     >
-      <div className="w-1 h-8 rounded-full bg-text-dim/30 hover:bg-text-secondary/50 transition-colors" />
-    </button>
+      {children}
+    </div>
   );
 }
 
@@ -163,16 +165,30 @@ export function AppShell({
   const leftOpen = useAppStore((s) => s.leftPanelOpen);
   const rightOpen = useAppStore((s) => s.rightPanelOpen);
   const bottomOpen = useAppStore((s) => s.bottomPanelOpen);
+  const leftWidth = useAppStore((s) => s.leftWidth);
+  const rightWidth = useAppStore((s) => s.rightWidth);
   const togglePanel = useAppStore((s) => s.togglePanel);
+  const requestFocusBrowserSearch = useAppStore(
+    (s) => s.requestFocusBrowserSearch,
+  );
   const mapMode = usePerformStore(selectMapMode);
 
   const isEdit = mode === "edit";
   const bottomH = isEdit ? BOTTOM_EDIT_H : BOTTOM_PERFORM_H;
 
-  // Compute canvas insets
-  const leftInset = leftOpen ? LEFT_W : LEFT_COLLAPSED_W;
-  const rightInset = rightOpen ? RIGHT_W : RIGHT_COLLAPSED_W;
+  // Compute canvas insets — open panels use the persisted width, collapsed
+  // panels reserve the shared rail width so the canvas never overlaps the rail.
+  const leftInset = leftOpen ? leftWidth : COLLAPSED_W;
+  const rightInset = rightOpen ? rightWidth : COLLAPSED_W;
   const bottomInset = (bottomOpen ? bottomH : 0) + STATUS_H;
+
+  // Re-expand handlers for the collapsed rails. The left rail ALSO focuses the
+  // browser search on expand (search-first, brief §4.2) via the store nonce.
+  const expandLeft = () => {
+    togglePanel("left");
+    requestFocusBrowserSearch();
+  };
+  const expandRight = () => togglePanel("right");
 
   // Resolve panel content by mode
   const leftContent = isEdit
@@ -204,30 +220,46 @@ export function AppShell({
       {/* ── Left Panel ── */}
       <AnimatePresence mode="wait">
         {leftOpen ? (
-          <LeftSlot key={`left-${mode}`} panelKey={`left-${mode}`}>
+          <LeftSlot
+            key={`left-${mode}`}
+            panelKey={`left-${mode}`}
+            width={leftWidth}
+          >
             {leftContent}
           </LeftSlot>
         ) : (
-          <CollapsedRail
-            key="left-rail"
-            side="left"
-            onClick={() => togglePanel("left")}
-          />
+          <RailDock key="left-rail" side="left">
+            <PanelRail
+              side="left"
+              expandIcon="Search"
+              expandLabel="Expand browser"
+              expandTitle="Expand browser (⌘1)"
+              onExpand={expandLeft}
+            />
+          </RailDock>
         )}
       </AnimatePresence>
 
       {/* ── Right Panel ── */}
       <AnimatePresence mode="wait">
         {rightOpen ? (
-          <RightSlot key={`right-${mode}`} panelKey={`right-${mode}`}>
+          <RightSlot
+            key={`right-${mode}`}
+            panelKey={`right-${mode}`}
+            width={rightWidth}
+          >
             {rightContent}
           </RightSlot>
         ) : (
-          <CollapsedRail
-            key="right-rail"
-            side="right"
-            onClick={() => togglePanel("right")}
-          />
+          <RailDock key="right-rail" side="right">
+            <PanelRail
+              side="right"
+              expandIcon="SlidersHorizontal"
+              expandLabel="Expand inspector"
+              expandTitle="Expand inspector (⌘2)"
+              onExpand={expandRight}
+            />
+          </RailDock>
         )}
       </AnimatePresence>
 

@@ -1207,21 +1207,50 @@ juce::String ElementWebViewHost::categoryForPluginIdentifier (const juce::String
     if (identifier.isEmpty())
         return {};
 
-    if (pluginCategoryCacheDirty)
-    {
-        pluginCategoryByIdentifier.clear();
-        // getTypes() returns a COPY of the internal array — iterate it once and
-        // store category by identifier (the only field the hot path needs), so
-        // we never hold a pointer into the temporary copy.
-        for (const auto& desc : context.plugins().getKnownPlugins().getTypes())
-            pluginCategoryByIdentifier[desc.createIdentifierString()] = desc.category;
-        pluginCategoryCacheDirty = false;
-    }
+    rebuildPluginIdentifierCaches();
 
     const auto it = pluginCategoryByIdentifier.find (identifier);
     // Not-found → empty string, IDENTICAL to the prior linear scan's nullptr →
     // empty category (mapBlockCategory then falls back to the name heuristic).
     return it != pluginCategoryByIdentifier.end() ? it->second : juce::String();
+}
+
+// Task 3.A — single rebuild of BOTH the category and the catalog-name memo from
+// ONE getTypes() copy, gated by the shared dirty flag. getTypes() returns a COPY
+// of the internal array — iterate it once and store the two STRING fields the hot
+// path needs (category + catalog name) by identifier, so we never hold a pointer
+// into the temporary copy. Const + message-thread only.
+void ElementWebViewHost::rebuildPluginIdentifierCaches() const
+{
+    if (! pluginCategoryCacheDirty)
+        return;
+    pluginCategoryByIdentifier.clear();
+    pluginNameByIdentifier.clear();
+    for (const auto& desc : context.plugins().getKnownPlugins().getTypes())
+    {
+        const String id (desc.createIdentifierString());
+        pluginCategoryByIdentifier[id] = desc.category;
+        // The catalog NAME is desc.name — the SAME field the plugin-list emit
+        // uses (element_webview_host.cpp:7110, `primary.name`) and the SAME field
+        // GraphManager::addNode stamps onto the node (graphmanager.cpp:458). NEVER
+        // descriptiveName (that is the sentence DESCRIPTION; see the N1 rule).
+        pluginNameByIdentifier[id] = desc.name;
+    }
+    pluginCategoryCacheDirty = false;
+}
+
+juce::String ElementWebViewHost::catalogNameForPluginIdentifier (const juce::String& identifier) const
+{
+    if (identifier.isEmpty())
+        return {};
+
+    rebuildPluginIdentifierCaches();
+
+    const auto it = pluginNameByIdentifier.find (identifier);
+    // Not-found → empty. Internal / IO / el.* nodes are not in the KnownPluginList,
+    // so their on-canvas name already IS their catalog name — an empty result here
+    // correctly suppresses the "renamed from" line for them.
+    return it != pluginNameByIdentifier.end() ? it->second : juce::String();
 }
 
 //==============================================================================
@@ -6536,9 +6565,24 @@ String ElementWebViewHost::buildActiveGraphJson() const
         // with a String alloc per entry, per node, per push). The result is
         // identical to the prior findKnownPluginByIdentifier scan: a hit returns
         // desc.category, a miss returns the empty string.
-        const String pluginCategory (
-            categoryForPluginIdentifier (n.getProperty (tags::pluginIdentifierString).toString()));
+        const String pluginIdString (n.getProperty (tags::pluginIdentifierString).toString());
+        const String pluginCategory (categoryForPluginIdentifier (pluginIdString));
         b->setProperty ("category", mapBlockCategory (n, pluginCategory));
+
+        // Task 3.A — the immutable catalog name for this block's plugin family,
+        // from the SAME memo / SAME field (desc.name) the browser shows. The
+        // on-canvas + inspector name is n.getName() (block.name) above; when the
+        // user has renamed the block (Cmd+R), block.name diverges from this
+        // catalogName and the inspector surfaces a muted "Renamed from: <catalog>"
+        // line (left-panel brief §2.3 fix #3). Emitted ONLY when it is both known
+        // AND actually differs from the live name, so the webview never has to
+        // re-derive a catalog name (single source of truth stays block.name) and
+        // an unrenamed / internal node carries no redundant field. Empty for
+        // internal/IO/el.* nodes (not in the KnownPluginList) — correct: their
+        // name already is their catalog name, so there is nothing to "rename from".
+        const String catalogName (catalogNameForPluginIdentifier (pluginIdString));
+        if (catalogName.isNotEmpty() && catalogName != n.getName())
+            b->setProperty ("catalogName", catalogName);
 
         double x = 0, y = 0;
         n.getPosition (x, y);

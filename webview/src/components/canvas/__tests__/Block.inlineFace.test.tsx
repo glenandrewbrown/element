@@ -61,6 +61,9 @@ function makeData(overrides: Partial<BlockData> = {}): BlockData {
     bypassed: false,
     error: false,
     isMacroTagged: false,
+    // The curated inline face lives in the control deck → the EXPANDED tier
+    // (Task 2.4: macro/title show only the lean activity well, no deck).
+    collapseTier: "expanded",
     ...overrides,
   };
 }

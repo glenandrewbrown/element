@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import type { ReactNode } from "react";
+import { expect } from "storybook/test";
 import { AppShell } from "./AppShell";
 import { useAppStore } from "../../stores/useAppStore";
 import { usePerformStore } from "../../stores/usePerformStore";
@@ -26,12 +27,16 @@ import { usePerformStore } from "../../stores/usePerformStore";
 // (length 1 → Breadcrumb renders null) and openBlockTabs defaults to []
 // (→ BlockTabStrip renders null). Perform-mode stories skip both children.
 
-function seed(mode: "edit" | "perform", mapMode = false) {
+function seed(
+  mode: "edit" | "perform",
+  mapMode = false,
+  panels: { left?: boolean; right?: boolean; bottom?: boolean } = {},
+) {
   useAppStore.setState({
     mode,
-    leftPanelOpen: true,
-    rightPanelOpen: true,
-    bottomPanelOpen: true,
+    leftPanelOpen: panels.left ?? true,
+    rightPanelOpen: panels.right ?? true,
+    bottomPanelOpen: panels.bottom ?? true,
   });
   usePerformStore.setState({ mapModeActive: mapMode });
 }
@@ -83,6 +88,35 @@ export const EditMode: Story = {
       return <Story />;
     },
   ],
+};
+
+// ── Edit mode, BOTH side panels collapsed → the unified PanelRails ──
+export const CollapsedRails: Story = {
+  args: { children: canvas },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Both side panels collapsed (owner feedback #8 — 'both panels collapsible, lean, max canvas'). Each shows the unified 40px PanelRail (Search glyph for the browser, Sliders glyph for the inspector) instead of the old blank drag-handle pill — collapse hides content, not access. The Board canvas reclaims the freed width.",
+      },
+    },
+  },
+  render: (args) => host(<AppShell {...args} />),
+  decorators: [
+    (Story) => {
+      seed("edit", false, { left: false, right: false, bottom: true });
+      return <Story />;
+    },
+  ],
+  play: async ({ canvas }) => {
+    // Both rails present and labelled (a11y); the blank pill is gone.
+    await expect(
+      canvas.getByRole("button", { name: "Expand browser" }),
+    ).toBeInTheDocument();
+    await expect(
+      canvas.getByRole("button", { name: "Expand inspector" }),
+    ).toBeInTheDocument();
+  },
 };
 
 // ── Perform mode: stage layout (taller bottom panel, perform-mode canvas) ──

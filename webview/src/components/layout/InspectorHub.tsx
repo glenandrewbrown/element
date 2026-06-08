@@ -401,17 +401,40 @@ function BlockHeader({ block }: { block: BlockData }) {
 
   const portSummary = `${block.ports.filter((p) => p.direction === "input").length} in · ${block.ports.filter((p) => p.direction === "output").length} out`;
 
-  const stateLabel = block.muted
-    ? "MUTED"
-    : block.bypassed
-      ? "BYPASS"
-      : "ACTIVE";
-  const stateColor = block.muted
-    ? "hsl(var(--status-clip))"
-    : block.bypassed
-      ? "hsl(var(--muted-foreground))"
-      : "hsl(var(--status-ok))";
-  const stateGlyph = block.muted ? "✕" : block.bypassed ? "○" : "●";
+  // Loading-node contract §4/§7: a node still instantiating shows an HONEST
+  // "loading…" state — name (already its final catalog name, §5) + indicator,
+  // never a fabricated ACTIVE/port read. The inspector renders no params for it
+  // (gated in BlockTabBody); here we just swap the live-state read for the
+  // honest loading indicator so the header never claims ACTIVE before it is.
+  const isLoading = block.loadState === "loading";
+
+  // Task 3.A §2.3 fix #3: when the user has renamed the Block, `block.name`
+  // diverges from the immutable catalog name. The host emits `catalogName` ONLY
+  // in that case (and never equal to `name`). Surface it as a muted secondary
+  // line so the rename is explicit, WITHOUT merging the two fields — the
+  // displayed title above stays `block.name`, the single source of truth.
+  const renamedFrom =
+    typeof block.catalogName === "string" &&
+    block.catalogName.length > 0 &&
+    block.catalogName !== name
+      ? block.catalogName
+      : null;
+
+  const stateLabel = isLoading
+    ? "LOADING…"
+    : block.muted
+      ? "MUTED"
+      : block.bypassed
+        ? "BYPASS"
+        : "ACTIVE";
+  const stateColor = isLoading
+    ? "hsl(var(--muted-foreground))"
+    : block.muted
+      ? "hsl(var(--status-clip))"
+      : block.bypassed
+        ? "hsl(var(--muted-foreground))"
+        : "hsl(var(--status-ok))";
+  const stateGlyph = isLoading ? "◌" : block.muted ? "✕" : block.bypassed ? "○" : "●";
 
   return (
     <div
@@ -431,7 +454,10 @@ function BlockHeader({ block }: { block: BlockData }) {
         }}
       >
         <FunctionIcon name={name} category={category} size={14} />
-        <span className="text-[12px] font-bold truncate flex-1 leading-none tracking-wide">
+        <span
+          data-testid="inspector-block-name"
+          className="text-[12px] font-bold truncate flex-1 leading-none tracking-wide"
+        >
           {name}
         </span>
         <span
@@ -458,6 +484,16 @@ function BlockHeader({ block }: { block: BlockData }) {
           {stateGlyph} {stateLabel}
         </span>
       </div>
+      {/* Task 3.A §2.3 fix #3 — muted "Renamed from: <catalog>" line, shown only
+          when the user renamed the Block (block.name ≠ catalog name). Makes the
+          two-name relationship explicit without conflating the fields. */}
+      {renamedFrom && (
+        <div className="px-2.5 pb-1.5 -mt-0.5">
+          <span className="text-[9px] text-text-dim italic" title={`Catalog name: ${renamedFrom}`}>
+            Renamed from: <span className="not-italic font-medium">{renamedFrom}</span>
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -1995,6 +2031,27 @@ function BlockTabBody({
 
   if (!selectedBlock) {
     return <ProjectOverview />;
+  }
+
+  // Loading-node contract §7: selecting a `loading` node renders an HONEST
+  // loading state — the header (which already shows the real catalog name + a
+  // "loading…" indicator) plus a short honest note. NO parameter rows, NO
+  // preset strip, NO plugin embed, NO port/state/metrics sections: none of that
+  // data is real until the processor is instantiated (NOTHING-fake). On `ready`
+  // the next snapshot flips loadState and the normal body renders.
+  if (selectedBlock.loadState === "loading") {
+    return (
+      <>
+        <BlockHeader block={selectedBlock} />
+        <div
+          className="text-[10px] text-text-dim py-6 text-center"
+          role="status"
+          aria-label="Block loading"
+        >
+          Loading… parameters and ports appear once the plugin is ready.
+        </div>
+      </>
+    );
   }
 
   const accent = `hsl(${catAccent[selectedBlock.category]})`;

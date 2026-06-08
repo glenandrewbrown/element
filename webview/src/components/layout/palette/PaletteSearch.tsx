@@ -1,3 +1,4 @@
+import { forwardRef } from "react";
 import { Icon } from "../../neu/Icon";
 import { NeuInput } from "../../neu";
 
@@ -11,16 +12,18 @@ interface PaletteSearchProps {
 
 /**
  * Search row with gear/disclosure affordance that toggles ScanControls.
- * The placeholder always contains "Search" so useKeyboard Cmd+F selector
- * `aside input[placeholder*="Search"]` keeps working.
+ *
+ * Forwards a ref to the underlying search `<input>` so the browser can be
+ * focused programmatically via the `focusBrowserSearch` store nonce (Cmd+F /
+ * open-browser, Task 3.C) — replacing the brittle `placeholder*="Search"` DOM
+ * query. The placeholder still contains "Search" for humans, but focus no
+ * longer depends on that string.
  */
-export function PaletteSearch({
-  tab,
-  value,
-  onChange,
-  showScan,
-  onToggleScan,
-}: PaletteSearchProps) {
+export const PaletteSearch = forwardRef<HTMLInputElement, PaletteSearchProps>(
+  function PaletteSearch(
+    { tab, value, onChange, showScan, onToggleScan },
+    ref,
+  ) {
   const placeholder =
     tab === "plugins" ? "Search plugins…" : "Search project files…";
 
@@ -28,6 +31,7 @@ export function PaletteSearch({
     <div className="flex items-center gap-1">
       <div className="relative flex-1">
         <NeuInput
+          ref={ref}
           placeholder={placeholder}
           value={value}
           onChange={onChange}
@@ -56,4 +60,5 @@ export function PaletteSearch({
       ) : null}
     </div>
   );
-}
+  },
+);

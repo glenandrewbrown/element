@@ -14,7 +14,25 @@ export interface Port {
 export interface BlockData {
   [key: string]: unknown; // React Flow compat
   id: string;
+  /**
+   * The Block's DISPLAY name and the SINGLE source of truth for naming a placed
+   * Block — rendered identically by the canvas Block title and the Inspector
+   * header (Task 3.A / left-panel brief §2). Hydrated from the graph snapshot
+   * (`n.getName()`); mutated by in-place rename (Cmd+R). NEVER re-derived from
+   * the plugin catalog (`usePluginBrowserStore`) — the catalog names un-placed
+   * plugins, a different object that is allowed to differ from a renamed instance.
+   */
   name: string;
+  /**
+   * Task 3.A — the immutable catalog `PluginDescription.name` for this Block's
+   * plugin family (the SAME field the browser's `BrowserPlugin.name` shows; NEVER
+   * `descriptiveName`). The host emits it ONLY when it is known AND differs from
+   * the live `name` (i.e. the user renamed the Block). The Inspector header then
+   * shows a muted "Renamed from: <catalogName>" line so the rename relationship is
+   * explicit without merging the two fields. Absent for internal/IO/unrenamed
+   * Blocks (their `name` already IS the catalog name).
+   */
+  catalogName?: string;
   category: BlockCategory;
   format: PluginFormat;
   position: { x: number; y: number };
@@ -60,6 +78,17 @@ export interface BlockData {
    * the old boolean is migrated: collapsed=true → 'title', false → 'macro'.
    */
   collapseTier?: "title" | "macro" | "expanded";
+  /**
+   * Transient node lifecycle state (Wave-3 loading-node contract; Phase 4 async
+   * plugin load emits it). "loading" = the real processor is still being
+   * instantiated: the Block shows an honest loading face (name + "loading…"),
+   * exposes NO connectable ports, and is pinned to the Title-only tier (the
+   * 3-tier cycle does not apply while loading). "ready" = the real processor is
+   * live and ports/meters are real. ABSENT ⇒ "ready" — every node that predates
+   * async-load decodes as ready (back-compat). NOTHING-fake: while loading, the
+   * only real data are the name and the fact that it is loading.
+   */
+  loadState?: "loading" | "ready";
   /**
    * Internal node identifier from the engine snapshot (e.g. "element.compare").
    * Present for all blocks; lets inline Block controls branch on built-in type.

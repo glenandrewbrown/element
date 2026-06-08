@@ -775,31 +775,58 @@ function SignalActivityBar({
   );
 }
 
-// ── Collapse chevron (D3 affordance matrix) ─────────────────────────────────
+// ── Collapse chevron (D3 affordance matrix + Task 2.4 three-tier cycle) ──────
 //
-// Header affordance toggling the persisted collapse state (Decision A-2a).
-// D3 {rest/hover/active/focus}: rest = dim ink glyph; hover = brightens +
-// subtle backing; active(collapsed) = category micro-glow so the collapsed
-// state reads from the header alone; focus = high-contrast ring (G5 a11y, not
-// shadow-only). Pure glyph swap ▸/▾ (no rotate) honours the SNAP motion rule.
+// Header affordance CYCLING the persisted collapse tier (title→macro→expanded→
+// title). One click === one double-click on the title: it advances the tier.
+// The glyph reflects the CURRENT tier so the header alone tells you where you
+// are: ▸ (title, fully collapsed) · ◂▸ → use ▹ (macro, lean) · ▾ (expanded,
+// full). Pure glyph swap (no rotate) honours the SNAP motion rule. D3
+// {rest/hover/active/focus}: rest = dim ink glyph; hover = brightens + subtle
+// backing; active(title) = category micro-glow so the collapsed state reads
+// from the header alone; focus = high-contrast ring (G5 a11y, not shadow-only).
+const TIER_GLYPH: Record<"title" | "macro" | "expanded", string> = {
+  title: "▸", // fully collapsed — points right ("there is more, click to open")
+  macro: "▹", // lean middle — hollow chevron reads as a partial open
+  expanded: "▾", // fully open — points down
+};
+const TIER_NEXT_LABEL: Record<"title" | "macro" | "expanded", string> = {
+  title: "Expand block to lean view",
+  macro: "Expand block to full view",
+  expanded: "Collapse block to title",
+};
 function CollapseChevron({
-  collapsed,
+  tier,
   accent,
-  onToggle,
+  onCycle,
+  disabled = false,
 }: {
-  collapsed: boolean;
+  tier: "title" | "macro" | "expanded";
   accent: string;
-  onToggle: (e: React.MouseEvent) => void;
+  onCycle: (e: React.MouseEvent) => void;
+  disabled?: boolean;
 }) {
   const [hover, setHover] = useState(false);
+  const atTitle = tier === "title";
   return (
     <button
       type="button"
       data-testid="collapse-chevron"
-      aria-label={collapsed ? "Expand block" : "Collapse block"}
-      aria-expanded={!collapsed}
-      title={collapsed ? "Expand (show controls)" : "Collapse (header only)"}
-      onClick={onToggle}
+      data-tier={tier}
+      aria-label={
+        disabled ? "Block loading" : `${TIER_NEXT_LABEL[tier]} (currently ${tier})`
+      }
+      // Three-state control — `aria-expanded` can't express 3 tiers, so report
+      // the current tier via aria-label + data-tier and only mark fully-expanded
+      // as expanded for AT that key off the boolean.
+      aria-expanded={tier === "expanded"}
+      disabled={disabled}
+      title={
+        disabled
+          ? "Loading…"
+          : `${TIER_NEXT_LABEL[tier]} — title → lean → full → title`
+      }
+      onClick={onCycle}
       onDoubleClick={(e) => { e.stopPropagation(); }}
       onMouseDown={(e) => { e.stopPropagation(); }}
       onMouseEnter={() => setHover(true)}
@@ -808,19 +835,22 @@ function CollapseChevron({
       style={{
         width: 14,
         height: 14,
-        color: collapsed
-          ? "#15151A"
-          : hover
-            ? "rgba(21,21,26,0.95)"
-            : "rgba(21,21,26,0.62)",
-        background: hover ? "rgba(0,0,0,0.14)" : "transparent",
-        boxShadow: collapsed ? `0 0 4px ${accent}` : undefined,
+        color: disabled
+          ? "rgba(21,21,26,0.35)"
+          : atTitle
+            ? "#15151A"
+            : hover
+              ? "rgba(21,21,26,0.95)"
+              : "rgba(21,21,26,0.62)",
+        background: hover && !disabled ? "rgba(0,0,0,0.14)" : "transparent",
+        boxShadow: atTitle && !disabled ? `0 0 4px ${accent}` : undefined,
         transition: "color 120ms ease, background 120ms ease",
+        cursor: disabled ? "default" : "pointer",
         ["--tw-ring-color" as string]: accent,
       }}
     >
       <span aria-hidden className="leading-none font-bold" style={{ fontSize: 9 }}>
-        {collapsed ? "▸" : "▾"}
+        {TIER_GLYPH[tier]}
       </span>
     </button>
   );
@@ -1049,21 +1079,43 @@ function BlockComponent({ data, selected }: NodeProps) {
   // single-activity-bar card (2b), never an embedded editor on the face.
   const isThirdParty = d.format !== "INT";
 
-  // ── Persisted collapse state (Decision A-2a, Glen Q1: PERSISTS across reopen) ──
+  // ── Persisted collapse TIER (Decision A-2a + Task 2.4 — three tiers) ──
   // Replaces the old zoom-driven content swap (2a — kill zoom-morph): a Block
   // renders ONE content-driven (A-1) height and zoom only SCALES it (React Flow
-  // transform). The "compact" tier is now a DELIBERATE user collapse, not a
-  // zoom artifact. The collapse TIER is engine-persisted (hydrated from the Node
-  // ValueTree as `collapseTier`, Task 2.0). Until Task 2.4 renders all three
-  // tiers, the existing render is driven by a 2-state `collapsed` boolean derived
-  // from the tier: 'title' = collapsed (header + activity well only, ≈84px, D5);
-  // 'macro'/'expanded' = expanded. The chevron toggles title<->macro via the
-  // back-compat `setCollapsed` alias (which maps to setCollapseTier).
-  const collapsed = (d.collapseTier ?? "macro") === "title";
-  const setCollapsed = useGraphStore((s) => s.setCollapsed);
-  const toggleCollapsed = (e: React.MouseEvent) => {
+  // transform). The collapse TIER is engine-persisted (hydrated from the Node
+  // ValueTree as `collapseTier`, Task 2.0) and is now a real 3-state enum
+  // (research TOP-10 #2 — the Bitwig/Vital/Serum density model):
+  //   • 'title'    = header only (name + chevron + B/M + the single activity
+  //                  well, ≈84px). The most-collapsed glance state. Cables stay
+  //                  routable (collapsed-socket rule §5 — port Handles persist).
+  //   • 'macro'    = LEAN DEFAULT — header + activity well + a COMPACT port lane
+  //                  (essential audio/MIDI I/O only), MINUS the full control deck
+  //                  / embed / param-port wall. Kills wasted space (owner's pain)
+  //                  while keeping the block scannable + wireable. NOTHING-fake:
+  //                  only real ports + real activity, never fabricated knobs.
+  //   • 'expanded' = full control deck + heavy embed + the "▸ N params" lane.
+  // A LOADING node (loading-node contract §4/§7) is PINNED to 'title' until ready
+  // (name + "loading…", no ports/meters); the cycle does not apply mid-load.
+  const isLoading = d.loadState === "loading";
+  const tier: "title" | "macro" | "expanded" = isLoading
+    ? "title"
+    : (d.collapseTier ?? "macro");
+  const setCollapseTier = useGraphStore((s) => s.setCollapseTier);
+  // Render gates derived from the tier (kept as named booleans so the body JSX
+  // below reads cleanly): the single activity well shows at title AND macro;
+  // the full control deck + embed + param-port wall show ONLY when expanded.
+  const showActivityWell = tier === "title";
+  const showCompactPortLane = tier === "macro"; // essential I/O only, no deck
+  const isExpanded = tier === "expanded";
+  // Double-click the title/header CYCLES title→macro→expanded→title (Task 2.4).
+  // The chevron reuses the same cycle so the header carries one consistent
+  // affordance. Pinned while loading (no tier change until ready).
+  const cycleTier = (e: React.MouseEvent) => {
     e.stopPropagation();
-    void setCollapsed(d.id, !collapsed);
+    if (isLoading) return;
+    const next: "title" | "macro" | "expanded" =
+      tier === "title" ? "macro" : tier === "macro" ? "expanded" : "title";
+    void setCollapseTier(d.id, next);
   };
 
   // ── Header state actions (verdict 1) — real engine wiring for B/M ──
@@ -1367,8 +1419,17 @@ function BlockComponent({ data, selected }: NodeProps) {
     <div
       style={{
         // `layout style` (not `content`) — keeps per-node layout/style isolation
-        // for React Flow perf WITHOUT paint-clipping. The chassis itself uses
-        // overflow-hidden (below) so wells half-tuck and overlays clip cleanly.
+        // for React Flow perf WITHOUT paint-clipping. The root is NOT clipped
+        // (overflow-visible, below): clipping it with overflow-hidden severed the
+        // port `<Handle>` hit-areas, which protrude past the chassis edge (the
+        // PortRow wells sit at left/right:-7), so the handle CENTRE fell through
+        // to the canvas pane and cable-drag was unreliable / "can't fan out"
+        // (Wave-3 Task 2.2). The chassis rounding survives without root clipping:
+        // the background + box-shadow honour `borderRadius`, and every decorative
+        // child that reaches a corner (header, load bar, state overlays) already
+        // self-rounds via `borderRadius: "inherit"`. The well half-tuck visual is
+        // a function of the well's -7 position, NOT of the parent clip, so it is
+        // unchanged.
         contain: "layout style",
         borderRadius: chassisRadius[d.category],
         // Drives the subtle category-colour hover glow (.neu-sculpt-hover);
@@ -1380,7 +1441,11 @@ function BlockComponent({ data, selected }: NodeProps) {
         // `.nodeblock-v3` scopes the mockup tokens/classes to this subtree.
         // Hover swaps `.neu-sculpt` → `.neu-sculpt-hover` (lighter gradient +
         // stronger shadow, NO size/layout change). Selected → category glow.
-        "nodeblock-v3 w-52 overflow-hidden flex flex-col relative t-precision",
+        // overflow-VISIBLE (not hidden): the port `<Handle>`s protrude past the
+        // chassis edge and MUST stay un-clipped so their hit-area (centre) is
+        // clickable — Wave-3 Task 2.2 (multi-cable fan-out). Decorative corner
+        // rounding is preserved by the children themselves (see style note above).
+        "nodeblock-v3 w-52 overflow-visible flex flex-col relative t-precision",
         selected
           ? `neu-glow-${d.category}`
           : hovered
@@ -1416,11 +1481,16 @@ function BlockComponent({ data, selected }: NodeProps) {
         <FunctionIcon name={d.name} category={d.category} />
         {/* Title hints editability on hover (cursor + subtle underline) so the
             rename affordance is discoverable; the actual edit is keyboard-driven
-            (Cmd+R/Cmd+T → in-place editor) to avoid colliding with the
-            double-click dive gesture. */}
+            (Cmd+R/Cmd+T → in-place editor). DOUBLE-CLICK the title CYCLES the
+            collapse tier (title→macro→expanded→title, Task 2.4) — the canvas
+            dive-in gesture is double-click on the BLOCK BODY, so consuming the
+            title's dblclick here (stopPropagation in cycleTier) keeps the two
+            distinct. Pinned while loading. */}
         <span
+          data-testid="block-title"
           className="text-[11px] font-bold truncate flex-1 leading-none tracking-wide cursor-text hover:underline decoration-white/30 underline-offset-2"
-          title="Rename (⌘R)"
+          title="Rename (⌘R) · double-click to change density"
+          onDoubleClick={cycleTier}
         >
           {d.name}
         </span>
@@ -1499,20 +1569,55 @@ function BlockComponent({ data, selected }: NodeProps) {
             title="Mute"
           />
           <CollapseChevron
-            collapsed={collapsed}
+            tier={tier}
             accent={accentHsl}
-            onToggle={toggleCollapsed}
+            onCycle={cycleTier}
+            disabled={isLoading}
           />
         </div>
       </div>
 
-      {/* ── COMPACT tier (Decision A-2a, persisted collapse) ──
-          When collapsed the Block shows header + a single activity well only
-          (≈84px total). D5: the activity well STAYS (never "name + dot") — a
-          single honest bar off the real `level` scalar, coloured by the node's
-          signal type. NO control deck, NO embed, NO full port lane. Transition
-          is a SNAP (locked motion rule — width/height are never animated). */}
-      {collapsed ? (
+      {/* ── Loading face (loading-node contract §4) ──
+          A node whose real processor is still instantiating renders an HONEST
+          loading face: name (already in the header above) + a "loading…"
+          indicator, and NOTHING else — no meters, no param controls. The port
+          lane + control deck + embed below are all suppressed while loading
+          (the node also exposes no connectable ports — see the port-lane block).
+          NOTHING-fake: the only real data mid-load are the name and the fact
+          that it is loading. */}
+      {isLoading ? (
+        <div
+          data-testid="block-loading"
+          className="block-body flex items-center gap-1.5 px-2 relative z-[5]"
+          style={{ height: 22 }}
+        >
+          {/* Neutral neumorphic shimmer dot + label — no glass, no signal hue
+              (no signal exists yet). A quiet pulse keyed on a CSS class (not a
+              per-tick inline animation) so the painter guard stays green. */}
+          <span
+            aria-hidden
+            className="block-loading-dot shrink-0"
+            style={{ width: 6, height: 6, borderRadius: "50%" }}
+          />
+          <span
+            className="text-[10px] font-mono lowercase tracking-wide leading-none"
+            style={{ color: "hsl(var(--muted-foreground))" }}
+          >
+            loading…
+          </span>
+        </div>
+      ) : null}
+
+      {/* ── Activity well (title + macro tiers) ──
+          At 'title' (header only) AND 'macro' (lean default) the Block shows a
+          single honest activity well — one bar off the real `level` scalar,
+          coloured by the node's primary signal type (D5: never "name + dot").
+          NO control deck, NO embed, NO param-port wall (those are 'expanded'
+          only). The macro tier ADDS the compact essential-I/O port lane below
+          (rendered by the shared port-lane block) — that lean middle is what
+          kills the wasted space. Transition is a SNAP (locked motion rule —
+          width/height are never animated). */}
+      {!isLoading && showActivityWell ? (
         <div
           className="block-body flex items-center px-2 relative z-[5]"
           style={{ height: 22 }}
@@ -1526,15 +1631,40 @@ function BlockComponent({ data, selected }: NodeProps) {
         </div>
       ) : null}
 
-      {/* Control deck — content-driven (A-1), zoom-INVARIANT (2a). Renders
-          whenever the Block is NOT collapsed; zoom only scales it.
+      {/* ── Macro tier — lean default (Task 2.4) ──
+          header + the single activity well + a COMPACT essential-I/O port lane
+          (rendered by the shared port-lane block below), MINUS the full control
+          deck / heavy embed / param-port wall. This is the wasted-space fix:
+          the block stays scannable + wireable without the bulky deck. The well
+          here is identical to 'title' (one honest bar); the only added density
+          vs title is the labelled essential ports below. NOTHING-fake: real
+          ports + real activity only — NO fabricated param knobs (live params are
+          Phase 4, pinned-param slots are Task 3.E). */}
+      {!isLoading && showCompactPortLane ? (
+        <div
+          data-testid="block-macro-well"
+          className="block-body flex items-center px-2 relative z-[5]"
+          style={{ height: 22 }}
+        >
+          <SignalActivityBar
+            level={meterLevel}
+            signal={primarySignalOf(d.ports)}
+            active={active}
+            stale={meterState === "stale"}
+          />
+        </div>
+      ) : null}
+
+      {/* Control deck — content-driven (A-1), zoom-INVARIANT (2a). Renders ONLY
+          at the 'expanded' tier (Task 2.4 — macro/title show just the activity
+          well; the full deck is the deliberate expert deep-dive).
           • THIRD-PARTY (non-INT plugin, 2b): the fixed card body = ONE honest
             activity bar off `level`, coloured by signal type. No knobs, no
             second meter, NO embedded editor (double-click opens the windowed
             editor). The conflated-scalar trap: exactly ONE indicator.
           • BUILT-IN: curated inline face (T5) → indexed knobs + RMS strip →
             audio meter strip → MIDI/mod status (the mockup's two-branch body). */}
-      {!collapsed && (
+      {isExpanded && (
         <div
           className="block-body flex items-center gap-1.5 px-2 relative z-[5]"
           style={{ height: 54 }}
@@ -1632,8 +1762,10 @@ function BlockComponent({ data, selected }: NodeProps) {
           audio-thread tap to exactly these on-screen blocks). Third-party
           plugins get the single activity card instead (2b) and NEVER an embed;
           non-audio built-ins are covered by the deck above. Honest + perf-safe:
-          the spectrum tap is scoped to visible audiofx blocks only. */}
-      {!collapsed && !isThirdParty && d.category === "audiofx" && hasAudioOut && (
+          the spectrum tap is scoped to visible audiofx blocks only. Task 2.4:
+          gated on 'expanded' (the heavy FFT strip is the full deep-dive — macro
+          / title keep the lean activity well only). */}
+      {isExpanded && !isThirdParty && d.category === "audiofx" && hasAudioOut && (
         <BlockEmbed nodeId={d.id} category={d.category} />
       )}
 
@@ -1644,8 +1776,18 @@ function BlockComponent({ data, selected }: NodeProps) {
           LEAN (Glen, 2026-06-03): essential audio/MIDI I/O always shows; the
           Value/CV param-port wall collapses behind a "▸ N params" toggle so a
           params-heavy plugin doesn't dump 18 rows by default. Lane height tracks
-          exactly what's shown — lean when collapsed, grows on expand. */}
-      {(() => {
+          exactly what's shown — lean when collapsed, grows on expand.
+
+          TASK 2.4 — three-tier behaviour:
+          • LOADING: the port lane is SUPPRESSED entirely (the loading node
+            exposes NO connectable ports — loading-node contract §3/§4).
+          • title + macro: essential audio/MIDI I/O Handles STAY (collapsed-
+            socket rule §5 — a connected Block keeps rendering its port Handles
+            so the engine Arc's endpoints still draw; the cable must not vanish).
+            The param-port wall + "▸ N params" toggle are HIDDEN (only essential
+            I/O at these lean tiers).
+          • expanded: the full lean lane incl. the "▸ N params" toggle. */}
+      {!isLoading && (() => {
         const essentialRows = Math.max(
           essentialInputs.length,
           essentialOutputs.length,
@@ -1655,11 +1797,11 @@ function BlockComponent({ data, selected }: NodeProps) {
         // essential I/O. Param rows (when expanded) stack below the toggle.
         const toggleTop = essentialRows * PORT_LANE_H + PORT_LANE_H / 2 + 2;
         const paramBaseRow = essentialRows + (hasParamPorts ? 1 : 0);
-        // Collapsed (compact tier): keep ONLY essential I/O ports so the block
-        // stays cablable, but drop the param pill + param rows (the ≈84px
-        // compact face is header + activity well + essential I/O, never the
-        // full param wall). Expanded: the usual lean lane.
-        const showParamLane = hasParamPorts && !collapsed;
+        // The param-port wall + "▸ N params" toggle appear ONLY at the expanded
+        // tier. title + macro keep ONLY essential I/O so the Block stays
+        // cablable (collapsed-socket rule) without dumping the param wall —
+        // that lean lane is the wasted-space fix. Expanded: the usual lean lane.
+        const showParamLane = hasParamPorts && isExpanded;
         const shownRows =
           essentialRows +
           (showParamLane ? 1 : 0) +
@@ -1731,7 +1873,10 @@ function BlockComponent({ data, selected }: NodeProps) {
 
       {/* Load bar — thin status rail at the chassis foot (mockup). Bypassed
           keeps a lit (dimmed-green) rail = signal passes THROUGH; muted greys
-          out = hard block. z-40 so it stays above the bypass dim. */}
+          out = hard block. z-40 so it stays above the bypass dim. Suppressed
+          while loading — no signal flows yet, so an honest loading face shows
+          no status rail (loading-node contract §4: nothing-fake). */}
+      {!isLoading && (
       <div
         className="shrink-0 relative z-40"
         style={{
@@ -1753,6 +1898,7 @@ function BlockComponent({ data, selected }: NodeProps) {
             : "none",
         }}
       />
+      )}
 
       {/* R3 — sandbox crash badge. Honest: only renders when the host has
           pushed a real crashed/loadFailed/error event for this block's UUID.
