@@ -525,6 +525,15 @@ export type ElementNativeHooks = {
    * node id, so a later double-click on that Block takes the toggle's CLOSE
    * branch and dead-ends instead of re-opening. (P1-A reopen fix) */
   onEmbeddedEditorClosed?: () => void;
+  /**
+   * Host pushes this once the embedded plugin editor is actually MOUNTED and
+   * ready (Wave-3 Phase 4 Task 4.2). It carries the node UUID that now owns the
+   * embed. The webview uses it to finalise its mirror
+   * (`useAppStore.embeddedEditorNodeId`) without the interim retry-poll backoff
+   * that the synchronous-add era needed (the plugin's AudioProcessor used to be
+   * absent for a few frames after the node appeared). Fired exactly once per
+   * successful open, AFTER the editor exists. */
+  onEmbeddedEditorReady?: (nodeId: string) => void;
 };
 
 declare global {
@@ -713,6 +722,16 @@ export function useJuceBridge() {
         // embedded". Idempotent with the optimistic clear in
         // nativePluginEditorClose(). (P1-A reopen fix)
         useAppStore.getState().setEmbeddedEditorNodeId(null);
+      },
+      onEmbeddedEditorReady: (nodeId: string) => {
+        prev.onEmbeddedEditorReady?.(nodeId);
+        // Host confirmed the embedded editor is mounted (Phase 4 Task 4.2). Set
+        // the mirror to this node so the double-click toggle + ✕ pill + Esc agree
+        // an editor is open. Replaces the interim retry-poll backoff: the open
+        // call is now single-shot and this push is the authoritative "it's open"
+        // signal. Idempotent with the optimistic set in nativePluginEditorOpen().
+        if (typeof nodeId === "string" && nodeId.length > 0)
+          useAppStore.getState().setEmbeddedEditorNodeId(nodeId);
       },
     };
 

@@ -178,6 +178,11 @@ static const juce::Identifier workspace = "workspace";
 static const juce::Identifier externalSync = "externalSync";
 
 static const juce::Identifier updater = "updater";
+// Wave-3 Phase 4 — transient async-plugin-load marker. RUNTIME-ONLY: set true on
+// the placeholder node while createPluginInstanceAsync is in flight, cleared on the
+// in-place swap to the real processor. STRIPPED on save by Node::sanitizeProperties
+// (never round-trips to .els — a saved "loading" node would be a nothing-fake violation).
+static const juce::Identifier loading = "loading";
 static const juce::Identifier code = "code";
 static const juce::Identifier source = "source";
 static const juce::Identifier scripts = "scripts";

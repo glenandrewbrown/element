@@ -327,6 +327,12 @@ add_test(NAME "RenderNanosTests"               COMMAND test_element --run_test=R
 add_test(NAME "GraphNodeRenderSafetyTests" COMMAND test_element --run_test=GraphNodeRenderSafetyTests)
 set_tests_properties(GraphNodeRenderSafetyTests PROPERTIES RUN_SERIAL TRUE TIMEOUT 120)
 
+# Wave-3 Phase 4 — async plugin load + UUID-preserving in-place swap. Drives the
+# JUCE message loop (createPluginInstanceAsync completion is a posted message), so
+# RUN_SERIAL to avoid contending the shared MessageManager with other suites.
+add_test(NAME "AsyncPluginLoadTests"       COMMAND test_element --run_test=AsyncPluginLoadTests)
+set_tests_properties(AsyncPluginLoadTests PROPERTIES RUN_SERIAL TRUE TIMEOUT 120)
+
 # P4 sandbox default-on chain (ccg-fix-team-brief-2026-06-06, Worker 5).
 # Helper-binary resolution order: env override -> bundle Contents/Helpers ->
 # executable-adjacent -> honest failure (never re-exec the host in production).

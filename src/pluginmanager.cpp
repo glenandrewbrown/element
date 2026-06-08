@@ -1127,6 +1127,43 @@ Processor* PluginManager::createGraphNode (const PluginDescription& desc, String
     return nullptr;
 }
 
+void PluginManager::createGraphNodeAsync (const PluginDescription& desc, GraphNodeCreationCallback callback)
+{
+    jassert (callback);
+
+    // Only real JUCE plugin formats (VST3/AU/LV2/CLAP/VST) instantiate
+    // asynchronously — getAudioPluginFormat returns the format for those and
+    // nullptr for "Internal" and NodeProvider-backed formats. Internal/IO/
+    // NodeFactory nodes are cheap to build, so they take the synchronous path
+    // (callback invoked inline) — no behaviour change for them.
+    auto* format = getAudioPluginFormat (desc.pluginFormatName);
+    if (format == nullptr)
+    {
+        String errorMsg;
+        Processor* node = createGraphNode (desc, errorMsg);
+        callback (node, errorMsg);
+        return;
+    }
+
+    // External plugin → async. JUCE invokes the completion callback on the
+    // MESSAGE THREAD (juce_AudioPluginFormatManager.h: "called on the message
+    // thread"), so the GraphManager swap that consumes `callback` is safe to
+    // touch the model/engine. enableAllBuses() mirrors the synchronous
+    // createGraphNode path (and folds perf-diag #8 off the blocking add).
+    getAudioPluginFormats().createPluginInstanceAsync (
+        desc, priv->sampleRate, priv->blockSize, [callback] (std::unique_ptr<AudioPluginInstance> instance, const String& error) {
+            if (instance != nullptr)
+            {
+                instance->enableAllBuses();
+                callback (NodeFactory::wrap (instance.release()), String());
+            }
+            else
+            {
+                callback (nullptr, error);
+            }
+        });
+}
+
 Processor* PluginManager::createSandboxedGraphNode (const PluginDescription& desc, String& errorMsg)
 {
     // Phase D Gate 1.5 (2026-05-08): cross-process sandbox IPC is now stable.

@@ -1,12 +1,13 @@
 /**
  * Tests for bridge/nativePluginEditor.ts.
  *
- * Covers nativePluginEditorOpen (retry loop returns true on first success,
- * false when all retries fail), nativePluginEditorClose, nativePluginEditorSetBounds,
+ * Covers nativePluginEditorOpen (Wave-3 Phase 4 Task 4.2: SINGLE-SHOT — returns
+ * true when the one host call succeeds, false otherwise; the interim retry-poll
+ * backoff was removed), nativePluginEditorClose, nativePluginEditorSetBounds,
  * and nativePluginEditorFloat (void wrappers).
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   installJuceBridgeMock,
   type JuceBridgeMock,
@@ -16,28 +17,24 @@ import {
   nativePluginEditorFloat,
   nativePluginEditorOpen,
   nativePluginEditorSetBounds,
-  PLUGIN_EDITOR_OPEN_DELAYS_MS,
 } from "../nativePluginEditor";
 import { useAppStore } from "../../stores/useAppStore";
 
-describe("nativePluginEditorOpen", () => {
+describe("nativePluginEditorOpen (single-shot — Task 4.2)", () => {
   let bridge: JuceBridgeMock;
 
   beforeEach(() => {
     bridge = installJuceBridgeMock();
-    vi.useFakeTimers();
   });
 
   afterEach(() => {
-    vi.useRealTimers();
     bridge.uninstall();
+    useAppStore.getState().setEmbeddedEditorNodeId(null);
   });
 
-  it("happy path: returns true immediately when first call succeeds", async () => {
+  it("happy path: returns true and sets the mirror when the one call succeeds", async () => {
     bridge.mock.mockResolvedValueOnce(true);
-    const promise = nativePluginEditorOpen("node-1", 0, 0, 400, 300);
-    await vi.runAllTimersAsync();
-    const result = await promise;
+    const result = await nativePluginEditorOpen("node-1", 0, 0, 400, 300);
     expect(result).toBe(true);
     expect(bridge.mock).toHaveBeenCalledWith("elementPluginEditorOpen", [
       "node-1",
@@ -46,25 +43,21 @@ describe("nativePluginEditorOpen", () => {
       400,
       300,
     ]);
+    // Optimistic mirror set on success (re-affirmed by onEmbeddedEditorReady).
+    expect(useAppStore.getState().embeddedEditorNodeId).toBe("node-1");
   });
 
-  it("error path: returns false when all retries return false", async () => {
-    bridge.mock.mockResolvedValue(false);
-    const promise = nativePluginEditorOpen("node-bad", 0, 0, 400, 300);
-    await vi.runAllTimersAsync();
-    const result = await promise;
+  it("error path: returns false and does NOT set the mirror when the call fails", async () => {
+    bridge.mock.mockResolvedValueOnce(false);
+    const result = await nativePluginEditorOpen("node-bad", 0, 0, 400, 300);
     expect(result).toBe(false);
+    expect(useAppStore.getState().embeddedEditorNodeId).toBeNull();
   });
 
-  it("retries and succeeds on the second attempt", async () => {
-    bridge.mock
-      .mockResolvedValueOnce(false)
-      .mockResolvedValueOnce(true);
-    const promise = nativePluginEditorOpen("node-1", 0, 0, 400, 300);
-    await vi.runAllTimersAsync();
-    const result = await promise;
-    expect(result).toBe(true);
-    expect(bridge.mock).toHaveBeenCalledTimes(2);
+  it("is single-shot: the host is called exactly once (no retry backoff)", async () => {
+    bridge.mock.mockResolvedValue(false);
+    await nativePluginEditorOpen("node-1", 0, 0, 400, 300);
+    expect(bridge.mock).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -267,39 +260,28 @@ describe("BUG 1: open → ✕-close → reopen toggle consistency", () => {
     expect(useAppStore.getState().embeddedEditorNodeId).toBe(N);
   });
 
-  it("reopen recovers when the host's first open attempt returns false (retry backoff)", async () => {
+  it("single-shot: a failed open leaves the mirror clear; the NEXT double-click opens", async () => {
     const N = "valhalla";
     await doubleClick(N);
     await nativePluginEditorClose();
     expect(useAppStore.getState().embeddedEditorNodeId).toBeNull();
 
-    // First reopen attempt fails (transient C++ false); the retry loop's next
-    // attempt succeeds. Mirror ends correct, editor up.
+    // Task 4.2: the open is single-shot (no retry backoff). A transient host
+    // false (e.g. the node is still loading and has no editor) does NOT open and
+    // leaves the mirror null — so the toggle stays on the OPEN branch.
     host.failNextOpen = true;
+    await doubleClick(N);
+    expect(useAppStore.getState().embeddedEditorNodeId).toBeNull();
+    expect(host.editor).toBeNull();
+    // Exactly one open attempt was made for that double-click (no retries).
+    const callsBefore = bridge.callsOf("elementPluginEditorOpen").length;
+
+    // The user double-clicks again; the node is now ready → the single open
+    // succeeds and the mirror is set.
     await doubleClick(N);
     expect(useAppStore.getState().embeddedEditorNodeId).toBe(N);
     expect(host.editor).not.toBeNull();
-    // The open path tried at least twice for the reopen.
-    expect(bridge.callsOf("elementPluginEditorOpen").length).toBeGreaterThanOrEqual(3);
-  });
-});
-
-// ── Task 1.5 (Wave-3 perf): editor-open backoff delay contract ───────────────
-describe("PLUGIN_EDITOR_OPEN_DELAYS_MS — backoff array (Task 1.5)", () => {
-  it("is [0, 80, 160, 320, 640] — tightened from [0,150,400,800,1500]", () => {
-    // Directly assert the exported constant. Any regression (restoring the old
-    // 2.9s schedule) immediately turns this test RED.
-    expect(PLUGIN_EDITOR_OPEN_DELAYS_MS).toEqual([0, 80, 160, 320, 640]);
-  });
-
-  it("worst-case total wait is ≤ 1200 ms", () => {
-    const total = (PLUGIN_EDITOR_OPEN_DELAYS_MS as readonly number[]).reduce((a, b) => a + b, 0);
-    // Old schedule summed to 2850 ms; new schedule sums to 1200 ms.
-    expect(total).toBe(1200);
-    expect(total).toBeLessThanOrEqual(1200);
-  });
-
-  it("has exactly 5 retry slots", () => {
-    expect(PLUGIN_EDITOR_OPEN_DELAYS_MS.length).toBe(5);
+    // Each double-click issued exactly ONE open call.
+    expect(bridge.callsOf("elementPluginEditorOpen").length).toBe(callsBefore + 1);
   });
 });
