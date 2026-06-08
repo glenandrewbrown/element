@@ -27,7 +27,7 @@ vi.mock("../../bridge/nativeGraph", () => ({
   nativeGraphSetNodeColor: vi.fn(async () => true),
   nativeGraphSetOversample: vi.fn(async () => true),
   nativeGraphSetNodeHiddenParams: vi.fn(async () => true),
-  nativeGraphSetNodeCollapsed: vi.fn(async () => true),
+  nativeGraphSetNodeCollapseTier: vi.fn(async () => true),
   nativeGraphReplacePlugin: vi.fn(async () => true),
   nativeEnterContainer: vi.fn(async () => true),
   nativeExitContainer: vi.fn(async () => true),
@@ -40,7 +40,7 @@ import {
   nativeEnterContainer,
   nativeExitContainer,
   nativeGraphSetNodeHiddenParams,
-  nativeGraphSetNodeCollapsed,
+  nativeGraphSetNodeCollapseTier,
 } from "../../bridge/nativeGraph";
 
 const makeBlock = (id: string, x = 0, y = 0): BlockData => ({
@@ -184,45 +184,64 @@ describe("useGraphStore", () => {
     expect(nativeGraphSetNodeHiddenParams).toHaveBeenCalledWith("n1", []);
   });
 
-  // ── Persisted collapse state (Decision A-2a, Glen Q1) ──────────────────────
+  // ── Persisted collapse TIER (Wave-3 Task 2.0; widens the legacy bool) ───────
 
-  it("hydrateFromEngine preserves the per-node collapsed flag (round-trip)", () => {
-    // Simulates a save/load: the snapshot carries collapsed=true and the store
-    // must keep it (ValueTree persistence echoed back through the snapshot).
-    const node: BlockData = { ...makeBlock("n1"), collapsed: true };
+  it("hydrateFromEngine preserves the per-node collapseTier (round-trip)", () => {
+    // Simulates a save/load: the snapshot carries collapseTier="title" and the
+    // store must keep it (ValueTree persistence echoed back through the snapshot).
+    const node: BlockData = { ...makeBlock("n1"), collapseTier: "title" };
     useGraphStore.getState().hydrateFromEngine({ nodes: [node], edges: [] });
-    expect(useGraphStore.getState().nodes[0].collapsed).toBe(true);
+    expect(useGraphStore.getState().nodes[0].collapseTier).toBe("title");
   });
 
-  it("idle re-hydrate with the SAME collapsed flag is a no-op (reuses node refs)", () => {
+  it("idle re-hydrate with the SAME collapseTier is a no-op (reuses node refs)", () => {
     // Perf contract: a static graph pushes NOTHING even with the new field —
-    // an identical re-hydrate (incl. collapsed) reuses the previous node array
+    // an identical re-hydrate (incl. collapseTier) reuses the previous node array
     // reference (reconcileArray), so subscribers never re-run.
-    const node: BlockData = { ...makeBlock("n1"), collapsed: true };
+    const node: BlockData = { ...makeBlock("n1"), collapseTier: "title" };
     useGraphStore.getState().hydrateFromEngine({ nodes: [node], edges: [] });
     const first = useGraphStore.getState().nodes;
     useGraphStore.getState().hydrateFromEngine({
-      nodes: [{ ...makeBlock("n1"), collapsed: true }],
+      nodes: [{ ...makeBlock("n1"), collapseTier: "title" }],
       edges: [],
     });
     expect(useGraphStore.getState().nodes).toBe(first); // same reference = idle no-op
   });
 
-  it("setCollapsed optimistically flips the flag + persists via the native", async () => {
+  it("setCollapseTier optimistically sets the tier + persists via the native", async () => {
     useGraphStore.setState({ nodes: [makeBlock("n1")] });
-    await useGraphStore.getState().setCollapsed("n1", true);
-    expect(useGraphStore.getState().nodes[0].collapsed).toBe(true);
-    expect(nativeGraphSetNodeCollapsed).toHaveBeenCalledWith("n1", true);
+    await useGraphStore.getState().setCollapseTier("n1", "expanded");
+    expect(useGraphStore.getState().nodes[0].collapseTier).toBe("expanded");
+    expect(nativeGraphSetNodeCollapseTier).toHaveBeenCalledWith("n1", "expanded");
   });
 
-  it("setCollapsed reverts the optimistic flip when the bridge rejects", async () => {
-    (nativeGraphSetNodeCollapsed as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
-      false,
-    );
-    useGraphStore.setState({ nodes: [{ ...makeBlock("n1"), collapsed: false }] });
+  it("setCollapseTier reverts the optimistic set when the bridge rejects", async () => {
+    (
+      nativeGraphSetNodeCollapseTier as ReturnType<typeof vi.fn>
+    ).mockResolvedValueOnce(false);
+    useGraphStore.setState({
+      nodes: [{ ...makeBlock("n1"), collapseTier: "macro" }],
+    });
+    await useGraphStore.getState().setCollapseTier("n1", "title");
+    // Bridge said no → the local tier rolls back (prevTier) so nothing fake
+    // is left on screen.
+    expect(useGraphStore.getState().nodes[0].collapseTier).toBe("macro");
+  });
+
+  it("back-compat setCollapsed(true) delegates to setCollapseTier('title')", async () => {
+    useGraphStore.setState({ nodes: [makeBlock("n1")] });
     await useGraphStore.getState().setCollapsed("n1", true);
-    // Bridge said no → the local flag rolls back so nothing fake is left on screen.
-    expect(useGraphStore.getState().nodes[0].collapsed).toBe(false);
+    expect(useGraphStore.getState().nodes[0].collapseTier).toBe("title");
+    expect(nativeGraphSetNodeCollapseTier).toHaveBeenCalledWith("n1", "title");
+  });
+
+  it("back-compat setCollapsed(false) delegates to setCollapseTier('macro')", async () => {
+    useGraphStore.setState({
+      nodes: [{ ...makeBlock("n1"), collapseTier: "title" }],
+    });
+    await useGraphStore.getState().setCollapsed("n1", false);
+    expect(useGraphStore.getState().nodes[0].collapseTier).toBe("macro");
+    expect(nativeGraphSetNodeCollapseTier).toHaveBeenCalledWith("n1", "macro");
   });
 
   // ── updateNodePositions ───────────────────────────────────────────────────

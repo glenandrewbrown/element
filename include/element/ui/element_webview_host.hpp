@@ -109,6 +109,19 @@ public:
         props (tags::x/tags::y) are deliberately NOT included — they still push. */
     static bool isWindowChromeProperty (const juce::Identifier& prop) noexcept;
 
+    /** Task 2.0 — validate a wire collapse-tier string to one of the three
+        known values, coercing any unknown/empty input to "macro" (the lean
+        default). Static + pure so it is unit-testable with no Context. */
+    static juce::String validateCollapseTier (const juce::String& tier);
+
+    /** Task 2.0 — read the persisted collapse tier off a Node ValueTree for the
+        graph snapshot, coercing legacy state. If the node has a valid
+        "collapseTier" string, return it (validated); else if it carries the
+        legacy "collapsed" bool, coerce true→"title" / false→"macro"; else
+        "macro" (the lean default). Mirrors the JS mapBlock migration (both read
+        paths coerce identically — critic CRITICAL-3). Static + pure. */
+    static juce::String readCollapseTier (const juce::ValueTree& node);
+
 private:
 
     // ── Container dive (P2-A1, host side) ────────────────────────────────────

@@ -465,20 +465,23 @@ export async function nativeGraphSetNodeHiddenParams(
 }
 
 /**
- * Set a Block's persisted collapse state (Decision A-2a, Glen Q1 2026-06-07 —
- * collapse PERSISTS across reopen). The host stores it verbatim on the Node
- * ValueTree as the "collapsed" boolean property (mirrors "userNote"/
- * "userHiddenParams") so the layout survives project save/load and reconciles on
- * the next snapshot (`collapsed` field). Write-on-click only ⇒ the field joins
- * the coalesced graph push and a static graph still pushes nothing.
+ * Set a Block's persisted collapse TIER (Wave-3 Task 2.0; widens the legacy
+ * `collapsed` boolean). `tier` is "title" (header only) / "macro" (header +
+ * curated Macro row, the lean default) / "expanded" (full control deck). The
+ * host stores it verbatim on the Node ValueTree as the "collapseTier" string
+ * property (and dual-writes a derived legacy "collapsed" bool for old-build
+ * round-trip — see contract §4.1) so the tier survives project save/load and
+ * reconciles on the next snapshot (`collapseTier` field). Write-on-click only ⇒
+ * the field joins the coalesced graph push and a static graph still pushes
+ * nothing.
  */
-export async function nativeGraphSetNodeCollapsed(
+export async function nativeGraphSetNodeCollapseTier(
   nodeId: string,
-  collapsed: boolean,
+  tier: "title" | "macro" | "expanded",
 ): Promise<boolean> {
-  const r = await invokeElementNative("elementNodeSetCollapsed", [
+  const r = await invokeElementNative("elementNodeSetCollapseTier", [
     nodeId,
-    collapsed,
+    tier,
   ]);
   return r === true;
 }

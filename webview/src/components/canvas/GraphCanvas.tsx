@@ -66,6 +66,15 @@ import {
 } from "./autoRouteSuggestions";
 import { computeAutoLayout } from "../../lib/autoLayout";
 import {
+  resolveCollisions,
+  DEFAULT_COLLISION_MARGIN,
+  type CollisionRect,
+} from "../../lib/resolveCollisions";
+import {
+  BLOCK_REF_WIDTH,
+  BLOCK_REF_HEIGHT,
+} from "./autoRouteSuggestions";
+import {
   nextAutoFitExtent,
   extentForBounds,
   type Extent,
@@ -119,6 +128,33 @@ const categoryColor: Record<string, string> = {
   midifx: "#2BC4C4",
   modulator: "#A87FE0",
 };
+
+// ── No-overlap (Task 2.3) ──
+// The gutter resolveCollisions leaves between Blocks on a drop / spawn nudge.
+// Single source of truth so the runtime nudge and any test assert the same.
+const COLLISION_MARGIN = DEFAULT_COLLISION_MARGIN;
+
+/**
+ * Build the rectangular collision set for the live Block nodes (Task 2.3).
+ * Blocks are RECTANGLES at varying collapse-tier heights, so we feed real
+ * AABBs (measured size where React Flow has it, the reference size otherwise)
+ * into resolveCollisions — never circular forceCollide. Comment frames are
+ * skipped (they're backgrounds, not Blocks).
+ */
+function collisionRectsFromNodes(rfNodes: Node[]): CollisionRect[] {
+  const rects: CollisionRect[] = [];
+  for (const n of rfNodes) {
+    if (n.type === "comment") continue;
+    rects.push({
+      id: n.id,
+      x: n.position.x,
+      y: n.position.y,
+      width: n.measured?.width ?? BLOCK_REF_WIDTH,
+      height: n.measured?.height ?? BLOCK_REF_HEIGHT,
+    });
+  }
+  return rects;
+}
 
 // ── Convert our BlockData[] to React Flow Node[] ──
 
@@ -375,6 +411,20 @@ export function GraphCanvas() {
   // node the user is moving) and the near-edge auto-fit pan (never pan under a
   // live drag). Set on drag-start, cleared on drag-stop.
   const draggingRef = useRef(false);
+
+  // ── Live "intersecting" glow set (Task 2.3, painter-safe) ──
+  // The ids of nodes the dragged Block currently overlaps (React Flow
+  // getIntersectingNodes). We toggle a `.node-intersecting` CSS CLASS on those
+  // nodes — and only when the SET *changes* (not every drag frame) — so the
+  // glow is a class flip, never a per-tick inline shadow (painter guard). The
+  // ref holds the last-applied set so we can diff cheaply and clear on stop.
+  const intersectingRef = useRef<Set<string>>(new Set());
+
+  // Skip the next post-spawn resolve pass once — set right after WE persist a
+  // resolve (drag-stop / spawn nudge) so the snapshot that echoes our own move
+  // back doesn't re-trigger another pass (and so an ELK-Tidy relayout owns the
+  // de-overlap when the toggle is ON). Compared against the live block count.
+  const lastSpawnResolveCountRef = useRef(blocks.length);
 
   // Auto-tidy-on-add debounce timer + the block count at the last settle, so we
   // relayout only on a genuine ADD (count increased), not a delete/move.
@@ -634,6 +684,53 @@ export function GraphCanvas() {
     void nativeGraphMoveNodes(positions);
   }, [applyTidyGlide, updateNodePositions]);
 
+  // ── Intersecting-glow class toggle (Task 2.3, painter-safe) ──
+  // Apply `.node-intersecting` to exactly the nodes in `next`, and remove it
+  // from any node that just left the set. We DIFF against intersectingRef and
+  // bail when the set is unchanged, so this writes to React Flow's node array
+  // ONLY on a genuine enter/leave transition — never on every drag frame. The
+  // glow itself is a single static CSS rule (no inline shadow), so the painter
+  // guards stay green. Empty `next` clears the glow.
+  const applyIntersectingClass = useCallback(
+    (next: Set<string>) => {
+      const prev = intersectingRef.current;
+      if (prev.size === next.size) {
+        let identical = true;
+        for (const id of next) {
+          if (!prev.has(id)) {
+            identical = false;
+            break;
+          }
+        }
+        if (identical) return; // set unchanged → no DOM/React write this frame.
+      }
+      intersectingRef.current = next;
+      // Defensive optional-access (mirrors flowToScreenPosition) so a non-RF
+      // environment is a no-op rather than a throw.
+      const setNodesFn = (
+        reactFlow as unknown as {
+          setNodes?: (updater: (nds: Node[]) => Node[]) => void;
+        }
+      ).setNodes;
+      if (typeof setNodesFn !== "function") return;
+      setNodesFn((nds) =>
+        nds.map((n) => {
+          const want = next.has(n.id);
+          const has = n.className?.includes("node-intersecting") ?? false;
+          if (want === has) return n; // class already correct — no-op.
+          const base = (n.className ?? "")
+            .replace(/\s*node-intersecting/g, "")
+            .trim();
+          return {
+            ...n,
+            className: want ? `${base} node-intersecting`.trim() : base,
+          };
+        }),
+      );
+    },
+    [reactFlow],
+  );
+
   // Drag-start: mark a drag in flight + cancel any pending auto-tidy pass. This
   // is constraint (d) — "a manual drag DURING the debounce window cancels that
   // relayout pass" — so a deliberately-moved Block is never yanked back (Q3).
@@ -655,6 +752,7 @@ export function GraphCanvas() {
       if (!isEdit || node.type === "comment") {
         if (suggestionsRef.current.length > 0) clearSuggestions();
         if (spliceTargetRef.current !== null) setSpliceTargetEdgeId(null);
+        if (intersectingRef.current.size > 0) applyIntersectingClass(new Set());
         return;
       }
       const now =
@@ -739,6 +837,29 @@ export function GraphCanvas() {
       }
       if (spliceId !== spliceTargetRef.current) setSpliceTargetEdgeId(spliceId);
 
+      // ── Live intersecting-glow set (Task 2.3) ──
+      // Ask React Flow which nodes the dragged Block currently overlaps and
+      // toggle the `.node-intersecting` class on them. applyIntersectingClass
+      // diffs the set and writes nodes ONLY on an enter/leave change, so this
+      // is cheap (no per-frame node-array churn) and painter-safe (a class, not
+      // an inline shadow). Comment frames are excluded from the glow set.
+      const getIntersecting = (
+        reactFlow as unknown as {
+          getIntersectingNodes?: (n: Node, partially?: boolean) => Node[];
+        }
+      ).getIntersectingNodes;
+      if (typeof getIntersecting === "function") {
+        const hits = getIntersecting(node, true);
+        const hitSet = new Set<string>();
+        for (const h of hits) {
+          if (h.type === "comment") continue;
+          hitSet.add(h.id);
+        }
+        // Include the dragged node itself so BOTH sides of an overlap glow.
+        if (hitSet.size > 0) hitSet.add(node.id);
+        applyIntersectingClass(hitSet);
+      }
+
       // Discoverability (T8): advertise the accept gestures in the status
       // footer while ghosts are live; clear when they vanish mid-drag.
       const app = useAppStore.getState();
@@ -751,7 +872,7 @@ export function GraphCanvas() {
         app.setCanvasHint(null);
       }
     },
-    [isEdit, reactFlow, clearSuggestions],
+    [isEdit, reactFlow, clearSuggestions, applyIntersectingClass],
   );
 
   const onNodeDragStop = useCallback(
@@ -799,6 +920,7 @@ export function GraphCanvas() {
         }
         // A splice supersedes ghost suggestions — discard them, don't also wire.
         clearSuggestions();
+        applyIntersectingClass(new Set()); // drop the live overlap glow on stop.
         const p = node.position;
         updateNodePositions([{ id: node.id, x: p.x, y: p.y }]);
         void nativeGraphMoveNodes([{ id: node.id, x: p.x, y: p.y }]);
@@ -820,6 +942,9 @@ export function GraphCanvas() {
         }
       }
       clearSuggestions();
+      // Drop the live overlap glow the instant the drag ends (the resolve below
+      // makes the overlap go away anyway, but clear the class immediately).
+      applyIntersectingClass(new Set());
 
       // React Flow fires onNodeDragStop ONCE per drag operation but passes
       // all participating nodes as `draggedNodes` (the primary plus every
@@ -830,6 +955,7 @@ export function GraphCanvas() {
         draggedNodes && draggedNodes.length > 0 ? draggedNodes : [node];
 
       const blockMoves: Array<{ id: string; x: number; y: number }> = [];
+      const draggedBlockIds = new Set<string>();
       for (const n of all) {
         const p = n.position;
         if (n.type === "comment") {
@@ -853,14 +979,77 @@ export function GraphCanvas() {
           });
         } else {
           blockMoves.push({ id: n.id, x: p.x, y: p.y });
+          draggedBlockIds.add(n.id);
         }
       }
-      if (blockMoves.length > 0) {
-        updateNodePositions(blockMoves);
-        void nativeGraphMoveNodes(blockMoves);
+
+      // ── No-overlap resolve on drop (Task 2.3) — ONE-SHOT, not per-tick ──
+      // Owner feedback #1: Blocks must never end up overlapping. Run the pure
+      // rectangular resolver ONCE here on drag-STOP (never in onNodeDrag — a
+      // per-tick resolve is a perf regression AND fights ELK Tidy). The
+      // just-dropped Block(s) are the movable set; every other Block is pinned,
+      // so a Block dropped ON a neighbour is the one nudged clear (the neighbour
+      // stays put). resolveCollisions is pure + framework-free; we feed it the
+      // live measured AABBs and persist only the positions that actually moved.
+      let finalBlockMoves = blockMoves;
+      // Only resolve a SINGLE-Block drop. A multi-select drag is a deliberate
+      // GROUP move — the user arranged those Blocks relative to each other, so
+      // we must not reflow them against one another here (that's ELK Tidy's job
+      // / the user's). The plan's acceptance is the single "dropped a Block ON
+      // another" case. getNodes is accessed defensively (mirrors the
+      // flowToScreenPosition optional-access pattern) so a non-RF environment
+      // simply skips the nudge rather than throwing.
+      const getNodesFn = (
+        reactFlow as unknown as { getNodes?: () => Node[] }
+      ).getNodes;
+      if (
+        draggedBlockIds.size === 1 &&
+        blockMoves.length === 1 &&
+        typeof getNodesFn === "function"
+      ) {
+        const moved = blockMoves[0];
+        // Live rects, with the just-dropped position applied (RF mutates node
+        // positions in place during a drag, but be explicit so a stale frame
+        // can't feed the resolver an old position).
+        const rects = collisionRectsFromNodes(getNodesFn.call(reactFlow)).map(
+          (r) => (r.id === moved.id ? { ...r, x: moved.x, y: moved.y } : r),
+        );
+        if (rects.length > 1 && rects.some((r) => r.id === moved.id)) {
+          // Pin every OTHER Block → only the dropped Block moves to clear an
+          // overlap (the neighbour it landed on stays put).
+          const fixed = new Set(
+            rects.map((r) => r.id).filter((id) => id !== moved.id),
+          );
+          const resolved = resolveCollisions(rects, {
+            margin: COLLISION_MARGIN,
+            fixed,
+          });
+          const r = resolved.find((x) => x.id === moved.id);
+          if (r) {
+            // Snap to whole px so positions stay clean/deterministic.
+            finalBlockMoves = [
+              { id: moved.id, x: Math.round(r.x), y: Math.round(r.y) },
+            ];
+          }
+        }
+      }
+
+      if (finalBlockMoves.length > 0) {
+        // Mark our own move so the snapshot echo doesn't re-trigger the spawn
+        // resolve pass (the count is unchanged by a move, but keep the marker
+        // in sync defensively).
+        lastSpawnResolveCountRef.current = useGraphStore.getState().nodes.length;
+        updateNodePositions(finalBlockMoves);
+        void nativeGraphMoveNodes(finalBlockMoves);
       }
     },
-    [updateNodePositions, updateCommentBoxLayout, clearSuggestions],
+    [
+      updateNodePositions,
+      updateCommentBoxLayout,
+      clearSuggestions,
+      applyIntersectingClass,
+      reactFlow,
+    ],
   );
 
   // Real Cables + (while dragging) ghost suggestions. Ghosts are concatenated
@@ -1181,6 +1370,67 @@ export function GraphCanvas() {
     }, AUTO_TIDY_DEBOUNCE_MS);
   }, [blocks.length, autoTidyOnAdd, runTidy]);
 
+  // ── No-overlap on new-Block spawn (Task 2.3, part b) ──
+  // A freshly-added Block must never spawn overlapping an existing one (owner
+  // feedback #1 + the spawn-position defect). When ELK "Tidy"-on-add is ON it
+  // already relayouts the whole Board (and guarantees no overlap), so we ONLY
+  // run the spawn nudge when Tidy is OFF — otherwise the two would fight (the
+  // resolve is the per-add layer UNDER ELK, never a competing relayout). On a
+  // genuine ADD (count increased) we resolve the NEW Block(s) against the
+  // existing ones (existing pinned) and persist only the new Block(s) that
+  // actually had to move. Deferred a frame so React Flow has measured the new
+  // node's real size before we compute its AABB.
+  const spawnResolveTimerRef = useRef<
+    ReturnType<typeof setTimeout> | undefined
+  >(undefined);
+  useEffect(() => {
+    const prev = lastSpawnResolveCountRef.current;
+    lastSpawnResolveCountRef.current = blocks.length;
+    if (autoTidyOnAdd) return; // ELK Tidy owns de-overlap when it's ON.
+    if (blocks.length <= prev) return; // not an add (delete/move/no-op).
+    if (draggingRef.current) return; // never nudge under a live drag.
+    if (spawnResolveTimerRef.current !== undefined) {
+      clearTimeout(spawnResolveTimerRef.current);
+    }
+    const addedCount = blocks.length - prev;
+    spawnResolveTimerRef.current = setTimeout(() => {
+      spawnResolveTimerRef.current = undefined;
+      if (draggingRef.current) return; // a drag began during the defer.
+      const rfNodes = reactFlow.getNodes();
+      const rects = collisionRectsFromNodes(rfNodes);
+      if (rects.length <= 1) return;
+      // The NEW Blocks are the LAST `addedCount` in snapshot order (the host
+      // appends added nodes), which RF preserves. Resolve those, pin the rest.
+      const storeNodes = useGraphStore.getState().nodes;
+      const newIds = new Set(
+        storeNodes.slice(Math.max(0, storeNodes.length - addedCount)).map(
+          (n) => n.id,
+        ),
+      );
+      const fixed = new Set(
+        rects.map((r) => r.id).filter((id) => !newIds.has(id)),
+      );
+      const resolved = resolveCollisions(rects, {
+        margin: COLLISION_MARGIN,
+        fixed,
+      });
+      // Persist only the NEW Blocks whose position actually changed.
+      const moves: Array<{ id: string; x: number; y: number }> = [];
+      const origById = new Map(rects.map((r) => [r.id, r]));
+      for (const r of resolved) {
+        if (!newIds.has(r.id)) continue;
+        const o = origById.get(r.id);
+        const nx = Math.round(r.x);
+        const ny = Math.round(r.y);
+        if (!o || o.x !== nx || o.y !== ny) moves.push({ id: r.id, x: nx, y: ny });
+      }
+      if (moves.length > 0) {
+        updateNodePositions(moves);
+        void nativeGraphMoveNodes(moves);
+      }
+    }, 120);
+  }, [blocks.length, autoTidyOnAdd, reactFlow, updateNodePositions]);
+
   // Clear the auto-tidy/glide timers on unmount.
   useEffect(
     () => () => {
@@ -1189,6 +1439,9 @@ export function GraphCanvas() {
       }
       if (glideTimerRef.current !== undefined) {
         clearTimeout(glideTimerRef.current);
+      }
+      if (spawnResolveTimerRef.current !== undefined) {
+        clearTimeout(spawnResolveTimerRef.current);
       }
     },
     [],

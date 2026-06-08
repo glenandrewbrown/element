@@ -140,7 +140,7 @@ describe("<Block /> (gaps)", () => {
   // single activity well (D5), no control deck/embed/full port lane.
 
   it("collapsed block keeps the header + shows the single activity well (D5)", () => {
-    renderBlock({ name: "Pro-Q 3", category: "audiofx", collapsed: true });
+    renderBlock({ name: "Pro-Q 3", category: "audiofx", collapseTier: "title" });
     // Header (and thus the name + B/M + the collapse chevron) STAYS — the
     // compact tier is header+well, never "name + dot".
     expect(screen.getByText("Pro-Q 3")).toBeInTheDocument();
@@ -152,14 +152,14 @@ describe("<Block /> (gaps)", () => {
   });
 
   it("collapse chevron toggles the persisted collapse state via setCollapsed", () => {
-    renderBlock({ id: "b-col", collapsed: false });
+    renderBlock({ id: "b-col", collapseTier: "macro" });
     fireEvent.click(screen.getByTestId("collapse-chevron"));
     expect(mockGraphStore.setCollapsed).toHaveBeenCalledWith("b-col", true);
   });
 
   it("collapsed block renders without crashing for all categories", () => {
     for (const cat of ["instrument", "audiofx", "midifx", "modulator"] as const) {
-      expect(() => renderBlock({ category: cat, collapsed: true })).not.toThrow();
+      expect(() => renderBlock({ category: cat, collapseTier: "title" })).not.toThrow();
     }
   });
 
@@ -194,7 +194,7 @@ describe("<Block /> (gaps)", () => {
     renderBlock({
       format: "INT",
       category: "audiofx",
-      collapsed: true,
+      collapseTier: "title",
       ports: [
         { id: "out-0", label: "L", direction: "output", type: "audio", connected: false },
       ],

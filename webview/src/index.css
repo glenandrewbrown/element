@@ -577,6 +577,20 @@ body {
   animation: snippetDropIn 150ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+/* No-overlap intersecting glow (Task 2.3 — owner feedback #1). While a Block is
+   dragged so it OVERLAPS a neighbour, GraphCanvas toggles `.node-intersecting`
+   on both the dragged Block and the ones it covers — and ONLY when the
+   intersection SET changes (a class flip, not a per-frame inline shadow), so
+   the painter guards stay green. The glow is a single STATIC compositor-only
+   rule (a soft red drop-shadow): it reads "these are on top of each other; let
+   go and they'll separate". On drag-STOP resolveCollisions nudges them apart
+   and the class clears. Red = the universal "collision" cue; it is transient
+   drag feedback, never a persistent chassis colour, so it does not break the
+   one-dark-material design law. */
+.react-flow__node.node-intersecting {
+  filter: drop-shadow(0 0 7px rgba(229, 80, 80, 0.55));
+}
+
 /* ============================================================
    WAVE-2 A — SIGNAL ACTIVITY BAR (SignalActivityBar in Block.tsx)
    Painter-law compliant: ALL per-segment styling lives here.

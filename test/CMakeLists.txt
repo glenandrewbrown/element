@@ -82,6 +82,10 @@ add_test(NAME "ContainerDiveTests" COMMAND test_element --run_test=ContainerDive
 # window-chrome listener narrowing + plugin-category O(1) memo). Headless-safe
 # (drives the real host with skipBrowser=true; no JS bridge needed).
 add_test(NAME "HostPushDedupeTests" COMMAND test_element --run_test=HostPushDedupeTests)
+# Wave-3 Task 2.0 — collapse-tier persisted-state contract (dual-sided migration).
+# PURE static host helpers (validateCollapseTier / readCollapseTier) — no Context
+# or message thread, so it runs in the headless harness with no fixture.
+add_test(NAME "CollapseTierContractTests" COMMAND test_element --run_test=CollapseTierContractTests)
 # T10 — "Group selection into a Container" END-TO-END test. Engine-backed
 # (EngineService::groupNodes against the attached RootGraphManager). Serial: it
 # deactivates/reactivates the shared EngineService between cases.

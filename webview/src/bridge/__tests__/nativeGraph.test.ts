@@ -40,7 +40,7 @@ import {
   nativeGraphRenameNode,
   nativeGraphSetNodeNote,
   nativeGraphSetNodeHiddenParams,
-  nativeGraphSetNodeCollapsed,
+  nativeGraphSetNodeCollapseTier,
   nativeGraphCommentAdd,
   nativeGraphCommentUpsert,
   nativeGraphCommentDelete,
@@ -392,18 +392,25 @@ const booleanCases: BoolCase[] = [
     nativeName: "elementGraphSetNodeHiddenParams",
     args: ["n", ""],
   },
-  // Persisted collapse (Decision A-2a) — boolean crosses the bridge verbatim.
+  // Persisted collapse TIER (Task 2.0) — the tier string crosses the bridge
+  // verbatim to elementNodeSetCollapseTier.
   {
-    name: "nativeGraphSetNodeCollapsed (collapse)",
-    call: () => nativeGraphSetNodeCollapsed("n", true),
-    nativeName: "elementNodeSetCollapsed",
-    args: ["n", true],
+    name: "nativeGraphSetNodeCollapseTier (title)",
+    call: () => nativeGraphSetNodeCollapseTier("n", "title"),
+    nativeName: "elementNodeSetCollapseTier",
+    args: ["n", "title"],
   },
   {
-    name: "nativeGraphSetNodeCollapsed (expand)",
-    call: () => nativeGraphSetNodeCollapsed("n", false),
-    nativeName: "elementNodeSetCollapsed",
-    args: ["n", false],
+    name: "nativeGraphSetNodeCollapseTier (macro)",
+    call: () => nativeGraphSetNodeCollapseTier("n", "macro"),
+    nativeName: "elementNodeSetCollapseTier",
+    args: ["n", "macro"],
+  },
+  {
+    name: "nativeGraphSetNodeCollapseTier (expanded)",
+    call: () => nativeGraphSetNodeCollapseTier("n", "expanded"),
+    nativeName: "elementNodeSetCollapseTier",
+    args: ["n", "expanded"],
   },
   {
     name: "nativeGraphCommentAdd (defaults)",

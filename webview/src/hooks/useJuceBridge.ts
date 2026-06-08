@@ -56,7 +56,10 @@ type EngineBlock = {
   note?: string;
   /** CSV of hidden param-port ids (persisted "userHiddenParams"). */
   hiddenParams?: string;
-  /** Persisted collapse state (ValueTree "collapsed"; Decision A-2a). */
+  /** Persisted collapse tier (ValueTree "collapseTier"; Task 2.0). Host may
+   *  still emit a legacy "collapsed" boolean from an old .els — see migration. */
+  collapseTier?: "title" | "macro" | "expanded";
+  /** Legacy boolean (pre-Wave-3). Read for back-compat migration only. */
   collapsed?: boolean;
   /** Internal node identifier, e.g. "element.compare" (all blocks). */
   identifier?: string;
@@ -275,10 +278,18 @@ function mapBlock(b: EngineBlock): BlockData {
             .map((s) => s.trim())
             .filter((s) => s.length > 0)
         : [],
-    // Persisted collapse state (Decision A-2a). The host emits a real boolean
-    // ("collapsed" ValueTree property); absent/falsy → false (expanded — the
-    // default). Round-trips save/load via the Node ValueTree.
-    collapsed: b.collapsed === true,
+    // Collapse tier (Task 2.0). Prefer the new "collapseTier"; migrate a legacy
+    // boolean snapshot (collapsed=true → "title", false → "macro"); default to
+    // "macro" (lean) when neither is present. Mirrors the host read-path
+    // coercion (defence-in-depth on BOTH read paths — critic CRITICAL-3).
+    collapseTier:
+      b.collapseTier === "title" ||
+      b.collapseTier === "macro" ||
+      b.collapseTier === "expanded"
+        ? b.collapseTier
+        : b.collapsed === true
+          ? "title"
+          : "macro",
     // Internal node identifier (all blocks) + engine-truth integer mode for
     // the built-in logic/comparator nodes. intMode is left undefined unless the
     // host actually emitted it (no fake value for non-logic blocks).

@@ -2918,16 +2918,19 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             postCompletion (completion, ok);
         });
 
-    // Per-block persisted collapse state (Decision A-2a, Glen Q1 2026-06-07:
-    // collapse PERSISTS across reopen). Stored as a "collapsed" boolean
-    // ValueTree property on the Node — mirrors "userNote"/"userHiddenParams"
-    // exactly — so a deliberately-collapsed Block survives session save/load.
-    // Read back into the snapshot as `collapsed` (see block-emit below).
-    //   args[0] = nodeUuid  : String
-    //   args[1] = collapsed : bool
+    // Per-block persisted collapse TIER (Wave-3 Task 2.0; widens the legacy
+    // "collapsed" bool). Stored as a "collapseTier" string ValueTree property on
+    // the Node — mirrors "userNote"/"userHiddenParams" — so a deliberately-tiered
+    // Block survives session save/load. DUAL-WRITE (contract §4.1): also keep a
+    // derived legacy "collapsed" bool (tier=="title") in sync, so an OLD build
+    // opening a NEW .els still reads a sensible collapsed/expanded state
+    // (forward-tolerant, lossy-but-safe). Read back into the snapshot as
+    // `collapseTier` (see block-emit below, via readCollapseTier).
+    //   args[0] = nodeUuid : String
+    //   args[1] = tier     : String ("title"|"macro"|"expanded"; unknown→"macro")
     //   → bool
     registerFn (
-        Identifier ("elementNodeSetCollapsed"),
+        Identifier ("elementNodeSetCollapseTier"),
         [this, postCompletion] (const Array<var>& args, auto completion) {
             bool ok = false;
             if (args.size() >= 2)
@@ -2940,7 +2943,10 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                         Node n = findNodeByUuidInGraph (G, args[0].toString());
                         if (n.isValid())
                         {
-                            n.setProperty (Identifier ("collapsed"), (bool) args[1]);
+                            const String tier = validateCollapseTier (args[1].toString());
+                            n.setProperty (Identifier ("collapseTier"), tier);
+                            // Dual-write the derived legacy bool for old-build round-trip.
+                            n.setProperty (Identifier ("collapsed"), tier == "title");
                             ok = true;
                         }
                     }
@@ -6080,6 +6086,31 @@ bool ElementWebViewHost::isWindowChromeProperty (const Identifier& prop) noexcep
         || prop == tags::windowOnTop;
 }
 
+String ElementWebViewHost::validateCollapseTier (const String& tier)
+{
+    // Task 2.0 — the persisted collapse tier is a string union; clamp any
+    // unknown/empty value to the lean default ("macro"). Kept pure + static so
+    // the host test gates it directly (mirrors isWindowChromeProperty).
+    if (tier == "title" || tier == "macro" || tier == "expanded")
+        return tier;
+    return "macro";
+}
+
+String ElementWebViewHost::readCollapseTier (const ValueTree& node)
+{
+    // Task 2.0 — read-path migration (contract §3.1). Prefer the new
+    // "collapseTier" string (validated); else coerce a legacy "collapsed" bool
+    // (true→"title", false→"macro"); else "macro" (the lean default). This is
+    // the C++ side of the dual-sided migration — it coerces IDENTICALLY to the
+    // JS mapBlock path (critic CRITICAL-3) so an old .els opened by a new host,
+    // or a legacy bool ever forwarded to JS, both land on the same tier.
+    if (node.hasProperty (Identifier ("collapseTier")))
+        return validateCollapseTier (node.getProperty (Identifier ("collapseTier")).toString());
+    if (node.hasProperty (Identifier ("collapsed")))
+        return (bool) node.getProperty (Identifier ("collapsed")) ? "title" : "macro";
+    return "macro";
+}
+
 void ElementWebViewHost::valueTreePropertyChanged (ValueTree& tree, const Identifier& prop)
 {
     auto sess = context.session();
@@ -6538,12 +6569,14 @@ String ElementWebViewHost::buildActiveGraphJson() const
         // BlockData.hiddenParams and filters those Value/CV ports off the Block.
         // Empty when none hidden → BlockData.hiddenParams [] → all params shown.
         b->setProperty ("hiddenParams", n.getProperty (Identifier ("userHiddenParams"), "").toString());
-        // Persisted collapse state (Decision A-2a, Glen Q1: collapse PERSISTS
-        // across reopen). Real boolean from the Node ValueTree "collapsed"
-        // property (write-on-click via elementNodeSetCollapsed); default false
-        // (expanded). The webview renders the compact header+activity-well face
-        // when true (BlockData.collapsed). Round-trips save/load with the tree.
-        b->setProperty ("collapsed", (bool) n.getProperty (Identifier ("collapsed"), false));
+        // Persisted collapse TIER (Wave-3 Task 2.0; widens the legacy "collapsed"
+        // bool). readCollapseTier() emits "collapseTier" from the Node ValueTree,
+        // coercing a legacy "collapsed" bool (true→"title", false→"macro") and
+        // defaulting absent → "macro" (the lean default) — the C++ side of the
+        // dual-sided migration (contract §3.1), coercing identically to JS
+        // mapBlock. Write-on-click via elementNodeSetCollapseTier. Round-trips
+        // save/load with the tree.
+        b->setProperty ("collapseTier", readCollapseTier (n.data()));
 
         // Per-block CPU load + latency. Latency comes from
         // `Processor::getLatencySamples()` (already aggregates host-reported,

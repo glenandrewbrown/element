@@ -251,20 +251,51 @@ describe("mapBlock field mapping", () => {
     ]);
   });
 
-  // ── collapsed boolean (Decision A-2a — persisted collapse) ──
-  it("defaults collapsed to false when the host omits it", () => {
+  // ── collapseTier migration (Wave-3 Task 2.0 — dual-sided, JS read path) ──
+  it("defaults collapseTier to 'macro' (lean) when the host omits both fields", () => {
     mountHook();
     pushSnapshot({ blocks: [{ id: "b1", name: "X" }], cables: [] });
-    expect(useGraphStore.getState().nodes[0]?.collapsed).toBe(false);
+    expect(useGraphStore.getState().nodes[0]?.collapseTier).toBe("macro");
   });
 
-  it("maps a real collapsed=true boolean through (round-trip from ValueTree)", () => {
+  it("migrates a legacy collapsed=true boolean → 'title'", () => {
     mountHook();
     pushSnapshot({
       blocks: [{ id: "b1", name: "X", collapsed: true }],
       cables: [],
     });
-    expect(useGraphStore.getState().nodes[0]?.collapsed).toBe(true);
+    expect(useGraphStore.getState().nodes[0]?.collapseTier).toBe("title");
+  });
+
+  it("migrates a legacy collapsed=false boolean → 'macro'", () => {
+    mountHook();
+    pushSnapshot({
+      blocks: [{ id: "b1", name: "X", collapsed: false }],
+      cables: [],
+    });
+    expect(useGraphStore.getState().nodes[0]?.collapseTier).toBe("macro");
+  });
+
+  it("passes a real collapseTier through (round-trip from ValueTree)", () => {
+    mountHook();
+    for (const tier of ["title", "macro", "expanded"] as const) {
+      pushSnapshot({
+        blocks: [{ id: "b1", name: "X", collapseTier: tier }],
+        cables: [],
+      });
+      expect(useGraphStore.getState().nodes[0]?.collapseTier).toBe(tier);
+    }
+  });
+
+  it("prefers collapseTier over a conflicting legacy collapsed bool", () => {
+    mountHook();
+    // New field present + an old bool that would coerce differently → the new
+    // field wins (host is the source of truth; the bool is migration-only).
+    pushSnapshot({
+      blocks: [{ id: "b1", name: "X", collapseTier: "expanded", collapsed: true }],
+      cables: [],
+    });
+    expect(useGraphStore.getState().nodes[0]?.collapseTier).toBe("expanded");
   });
 
   // ── identifier + intMode (P0 — inline logic/comparator controls) ──

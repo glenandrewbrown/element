@@ -11,7 +11,7 @@ import {
   nativeGraphSetOversample,
   nativeGraphReplacePlugin,
   nativeGraphSetNodeHiddenParams,
-  nativeGraphSetNodeCollapsed,
+  nativeGraphSetNodeCollapseTier,
   nativeEnterContainer,
   nativeExitContainer,
 } from "../bridge/nativeGraph";
@@ -246,12 +246,23 @@ interface GraphActions {
    */
   setHiddenParams: (nodeId: string, hiddenIds: string[]) => Promise<void>;
   /**
-   * Set a Block's persisted collapse state (Decision A-2a, Glen Q1 — collapse
-   * PERSISTS across reopen). Optimistic-with-rollback (mirrors setHiddenParams):
-   * the local `collapsed` flag flips immediately, then the bridge persists the
-   * boolean on the Node ValueTree; if the bridge rejects/throws the flag reverts
+   * Set a Block's persisted collapse TIER (Wave-3 Task 2.0; widens the legacy
+   * `collapsed` boolean). `tier` is "title" / "macro" (lean default) /
+   * "expanded". Optimistic-with-rollback (mirrors setHiddenParams): the local
+   * `collapseTier` flips immediately, then the bridge persists the string on the
+   * Node ValueTree; if the bridge rejects/throws the tier reverts (via `prevTier`)
    * so a no-op never leaves a fabricated state on screen. The next snapshot
    * reconciles authoritatively. Write-on-click only ⇒ joins the coalesced push.
+   */
+  setCollapseTier: (
+    nodeId: string,
+    tier: "title" | "macro" | "expanded",
+  ) => Promise<void>;
+  /**
+   * Back-compat shim (Wave-3 Task 2.0): the legacy boolean API delegates to
+   * {@link setCollapseTier} (`true → 'title'`, `false → 'macro'`) so the existing
+   * Block.tsx callsite keeps compiling until Task 2.4 replaces it with the
+   * 3-way tier cycle. Prefer `setCollapseTier` in new code.
    */
   setCollapsed: (nodeId: string, collapsed: boolean) => Promise<void>;
   /**
@@ -597,36 +608,48 @@ export const useGraphStore = create<GraphStore>()((set) => ({
     }
   },
 
-  setCollapsed: async (nodeId, collapsed) => {
-    let prev: boolean | undefined;
+  setCollapseTier: async (nodeId, tier) => {
+    let prevTier: "title" | "macro" | "expanded" | undefined;
     set((s) => {
       const node = s.nodes.find((n) => n.id === nodeId);
-      prev = node?.collapsed;
+      prevTier = node?.collapseTier;
       return {
-        nodes: s.nodes.map((n) => (n.id === nodeId ? { ...n, collapsed } : n)),
+        nodes: s.nodes.map((n) =>
+          n.id === nodeId ? { ...n, collapseTier: tier } : n,
+        ),
       };
     });
     try {
-      const ok = await nativeGraphSetNodeCollapsed(nodeId, collapsed);
+      const ok = await nativeGraphSetNodeCollapseTier(nodeId, tier);
       if (!ok) {
         logBridgeError(
-          "useGraphStore.setCollapsed",
-          `bridge rejected collapsed ${nodeId} → ${collapsed}`,
+          "useGraphStore.setCollapseTier",
+          `bridge rejected collapseTier ${nodeId} → ${tier}`,
         );
         set((s) => ({
           nodes: s.nodes.map((n) =>
-            n.id === nodeId ? { ...n, collapsed: prev } : n,
+            n.id === nodeId ? { ...n, collapseTier: prevTier } : n,
           ),
         }));
       }
     } catch (err) {
-      logBridgeError("useGraphStore.setCollapsed", err);
+      logBridgeError("useGraphStore.setCollapseTier", err);
       set((s) => ({
         nodes: s.nodes.map((n) =>
-          n.id === nodeId ? { ...n, collapsed: prev } : n,
+          n.id === nodeId ? { ...n, collapseTier: prevTier } : n,
         ),
       }));
     }
+  },
+
+  // Back-compat shim (Task 2.0) — the legacy boolean delegates to the tier
+  // action so Block.tsx's existing callsite compiles unchanged until Task 2.4
+  // swaps it for the 3-way cycle. true → 'title' (header only), false → 'macro'
+  // (lean default). Mirrors the migration coercion used on both read paths.
+  setCollapsed: async (nodeId, collapsed) => {
+    await useGraphStore
+      .getState()
+      .setCollapseTier(nodeId, collapsed ? "title" : "macro");
   },
 
   replacePlugin: async (nodeId, pluginIdentifier) => {

@@ -1070,8 +1070,18 @@ function usePeakHold(level: number, resetKey: string | undefined): number {
 
   useEffect(() => {
     let raf = 0;
+    let running = false;
+
     const tick = () => {
       const live = levelRef.current;
+      // Idle early-out (perf-diag #5 / Task 1.4): when both the live level and
+      // the held peak are zero, stop re-queuing the rAF. The loop re-arms via
+      // the store subscription below when a non-zero level arrives.
+      if (live === 0 && peakRef.current === 0) {
+        running = false;
+        raf = 0;
+        return;
+      }
       let next = peakRef.current;
       if (live >= next) {
         next = live; // instant attack to a new peak
@@ -1084,12 +1094,60 @@ function usePeakHold(level: number, resetKey: string | undefined): number {
       }
       raf = requestAnimationFrame(tick);
     };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, []);
+
+    // `forceArm` is true when called from the store subscription with a
+    // confirmed non-zero level — we skip the levelRef guard in that case
+    // because levelRef may not have updated yet (React batching).
+    const startLoop = (forceArm = false) => {
+      if (running) return;
+      // Only arm if there is actually a non-zero level to track. This prevents
+      // spurious arm on a steady-silent cable immediately after mount.
+      if (!forceArm && levelRef.current === 0 && peakRef.current === 0) return;
+      running = true;
+      raf = requestAnimationFrame(tick);
+    };
+
+    // Initial arm — only start if there is something to decay from the first
+    // frame (non-zero level). If the cable is silent, we stay stopped until
+    // the store subscription below wakes us.
+    if (levelRef.current !== 0 || peakRef.current !== 0) {
+      running = true;
+      raf = requestAnimationFrame(tick);
+    }
+
+    // Re-arm subscription: watch the cable-meter store for a non-zero level
+    // push on this cable and restart the rAF loop if it has gone idle.
+    // Mirror the useBlockNodeLevelBallistic stopIfIdle/ensureRunning pattern.
+    const edgeId = resetKey;
+    const unsub = edgeId
+      ? useCableMeterStore.subscribe((state) => {
+          const lv = state.levels[edgeId] ?? 0;
+          // forceArm=true: we have confirmed a non-zero level from the store;
+          // bypass the levelRef guard which may lag due to React batching.
+          if (lv > 0) startLoop(true);
+        })
+      : undefined;
+
+    return () => {
+      if (raf !== 0) cancelAnimationFrame(raf);
+      running = false;
+      raf = 0;
+      unsub?.();
+    };
+  // resetKey changing tears down and re-creates the rAF effect, which is
+  // correct: a new cable gets a fresh loop with cleared state from the
+  // sibling effect above.
+  }, [resetKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return peak;
 }
+
+/**
+ * Test-only export so the hook can be driven via renderHook without mounting
+ * the full InspectorHub component tree. NOT part of the public surface.
+ * @internal
+ */
+export { usePeakHold as __usePeakHoldForTest };
 
 // Small signal-coloured icon used in the Cable/Bus monitor headers — the
 // MEANINGFUL signal glyph (audio waveform / MIDI note / CV wave), drawn through

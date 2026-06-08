@@ -1053,11 +1053,13 @@ function BlockComponent({ data, selected }: NodeProps) {
   // Replaces the old zoom-driven content swap (2a — kill zoom-morph): a Block
   // renders ONE content-driven (A-1) height and zoom only SCALES it (React Flow
   // transform). The "compact" tier is now a DELIBERATE user collapse, not a
-  // zoom artifact. `d.collapsed` is the engine-persisted boolean (hydrated from
-  // the Node ValueTree); `setCollapsed` flips it write-on-click (optimistic +
-  // ValueTree persist) so the layout survives save/load. Collapsed = header +
-  // activity well only (≈84px, D5 — the well STAYS, never name+dot).
-  const collapsed = d.collapsed ?? false;
+  // zoom artifact. The collapse TIER is engine-persisted (hydrated from the Node
+  // ValueTree as `collapseTier`, Task 2.0). Until Task 2.4 renders all three
+  // tiers, the existing render is driven by a 2-state `collapsed` boolean derived
+  // from the tier: 'title' = collapsed (header + activity well only, ≈84px, D5);
+  // 'macro'/'expanded' = expanded. The chevron toggles title<->macro via the
+  // back-compat `setCollapsed` alias (which maps to setCollapseTier).
+  const collapsed = (d.collapseTier ?? "macro") === "title";
   const setCollapsed = useGraphStore((s) => s.setCollapsed);
   const toggleCollapsed = (e: React.MouseEvent) => {
     e.stopPropagation();
