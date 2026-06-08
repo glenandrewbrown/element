@@ -12,7 +12,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderHook, waitFor } from "@testing-library/react";
-import { useNodeSpectrum } from "../useNodeSpectrum";
+import { useNodeSpectrum, POLL_INTERVAL_MS } from "../useNodeSpectrum";
 import {
   nativeGetNodeSpectrum,
   nativeSetNodeSpectrumWanted,
@@ -85,5 +85,12 @@ describe("useNodeSpectrum", () => {
     // Give the poll loop a chance to run a couple of iterations.
     await waitFor(() => expect(mockGet).toHaveBeenCalled());
     expect(result.current).toEqual([]);
+  });
+
+  // ── Task 1.1 (Wave-3 perf): poll cadence contract ────────────────────────
+  it("POLL_INTERVAL_MS is 66 ms (~15 Hz, Task 1.1)", () => {
+    // Directly assert the exported constant so any future regression
+    // (accidentally restoring 33) immediately fails this test RED.
+    expect(POLL_INTERVAL_MS).toBe(66);
   });
 });

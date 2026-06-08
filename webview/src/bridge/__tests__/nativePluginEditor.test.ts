@@ -16,6 +16,7 @@ import {
   nativePluginEditorFloat,
   nativePluginEditorOpen,
   nativePluginEditorSetBounds,
+  PLUGIN_EDITOR_OPEN_DELAYS_MS,
 } from "../nativePluginEditor";
 import { useAppStore } from "../../stores/useAppStore";
 
@@ -280,5 +281,25 @@ describe("BUG 1: open → ✕-close → reopen toggle consistency", () => {
     expect(host.editor).not.toBeNull();
     // The open path tried at least twice for the reopen.
     expect(bridge.callsOf("elementPluginEditorOpen").length).toBeGreaterThanOrEqual(3);
+  });
+});
+
+// ── Task 1.5 (Wave-3 perf): editor-open backoff delay contract ───────────────
+describe("PLUGIN_EDITOR_OPEN_DELAYS_MS — backoff array (Task 1.5)", () => {
+  it("is [0, 80, 160, 320, 640] — tightened from [0,150,400,800,1500]", () => {
+    // Directly assert the exported constant. Any regression (restoring the old
+    // 2.9s schedule) immediately turns this test RED.
+    expect(PLUGIN_EDITOR_OPEN_DELAYS_MS).toEqual([0, 80, 160, 320, 640]);
+  });
+
+  it("worst-case total wait is ≤ 1200 ms", () => {
+    const total = (PLUGIN_EDITOR_OPEN_DELAYS_MS as readonly number[]).reduce((a, b) => a + b, 0);
+    // Old schedule summed to 2850 ms; new schedule sums to 1200 ms.
+    expect(total).toBe(1200);
+    expect(total).toBeLessThanOrEqual(1200);
+  });
+
+  it("has exactly 5 retry slots", () => {
+    expect(PLUGIN_EDITOR_OPEN_DELAYS_MS.length).toBe(5);
   });
 });

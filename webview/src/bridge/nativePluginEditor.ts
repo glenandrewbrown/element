@@ -7,10 +7,12 @@ import { useAppStore } from "../stores/useAppStore";
  * happens when a freshly added plugin's `AudioProcessor` is not yet
  * instantiated even though its node already exists in the graph
  * snapshot. Bounded retries close the T-P6-3 race without requiring a
- * new C++ push channel. Total worst-case wait ≈ 2.9 s; returns
- * immediately on first success.
+ * new C++ push channel. Total worst-case wait ≈ 1.2 s (Task 1.5,
+ * Wave-3 perf; was 2.9 s); returns immediately on first success.
  */
-const PLUGIN_EDITOR_OPEN_DELAYS_MS = [0, 150, 400, 800, 1500] as const;
+// INTERIM: removed by Task 4.2 (host editor ready-push)
+// Exported for test assertions only — do not use outside this module.
+export const PLUGIN_EDITOR_OPEN_DELAYS_MS = [0, 80, 160, 320, 640] as const;
 
 export async function nativePluginEditorOpen(
   nodeId: string,

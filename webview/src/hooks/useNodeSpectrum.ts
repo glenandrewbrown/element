@@ -6,9 +6,11 @@ import {
 
 /** Below this absolute delta a bin change is visually imperceptible. */
 const BIN_EPSILON = 0.004;
-/** Poll cadence — ~30Hz is plenty for a spectrum strip and halves bridge
- *  chatter vs the 60Hz meter channel. */
-const POLL_INTERVAL_MS = 33;
+/** Poll cadence — ~15Hz is plenty for a spectrum strip; halves bridge
+ *  chatter vs the prior 30Hz setting and quarters it vs the 60Hz meter
+ *  channel. Task 1.1 (Wave-3 perf).
+ *  Exported for test assertions only — do not use outside this module. */
+export const POLL_INTERVAL_MS = 66;
 
 const EMPTY: number[] = [];
 
@@ -24,7 +26,7 @@ function binsChanged(prev: number[], next: number[]): boolean {
 /**
  * Live per-node FFT spectrum (G3-B item 1). While `active` is true and `nodeId`
  * is set, this subscribes the node's spectrum (so the audio thread starts
- * copying samples — zero cost otherwise) and polls the host ~30Hz for the
+ * copying samples — zero cost otherwise) and polls the host ~15Hz for the
  * latest magnitude frame. On unmount or when `active` flips false it
  * unsubscribes so the audio thread stops computing for a node nobody is viewing.
  *
