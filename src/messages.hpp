@@ -171,6 +171,46 @@ public:
     void createActions (Services& app, juce::OwnedArray<juce::UndoableAction>& actions) const override;
 };
 
+/** Wave-3 Task 5.1 — insert a brand-new Reroute "knot" INTO an existing cable
+    A→B as a SINGLE undoable operation (double-click a Cable). Unlike
+    SpliceConnectionMessage (which splices an EXISTING node, resolved by id at
+    construction time), the reroute node does not exist yet — so this carries the
+    reroute's PluginDescription and the single action ADDS it server-side, then
+    removes A→B and wires A→reroute→B. Because the whole thing is ONE
+    UndoableAction, a single undo removes the reroute and restores the original
+    A→B cable.
+
+    The reroute's in/out ports are resolved by PortType at perform() time (the
+    node's real ports only exist after the add), choosing the first input + first
+    output of `signalType` ("audio" | "midi" | "value"). aPort is the source
+    side's output graph port index; bPort is the target side's input graph port
+    index (same units AddConnectionMessage uses). */
+class InsertRerouteMessage : public AppMessage
+{
+public:
+    InsertRerouteMessage (const Node& graph_,
+                          const juce::PluginDescription& reroute_,
+                          uint32_t aNode_, uint32_t aPort_,
+                          uint32_t bNode_, uint32_t bPort_,
+                          const juce::String& signalType_,
+                          double x_, double y_)
+        : graph (graph_), reroute (reroute_),
+          aNode (aNode_), aPort (aPort_),
+          bNode (bNode_), bPort (bPort_),
+          signalType (signalType_), x (x_), y (y_)
+    {
+    }
+
+    const Node graph;
+    const juce::PluginDescription reroute;
+    const uint32_t aNode, aPort;
+    const uint32_t bNode, bPort;
+    const juce::String signalType;
+    const double x, y;
+
+    void createActions (Services& app, juce::OwnedArray<juce::UndoableAction>& actions) const override;
+};
+
 class AddNodeMessage : public juce::Message
 {
 public:

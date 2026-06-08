@@ -2570,6 +2570,85 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             postCompletion (completion, ok);
         });
 
+    // Wave-3 Task 5.1 — double-click a Cable → drop a Reroute "knot" at the
+    // cursor that splices the cable A→B through it, ATOMICALLY (one undo). The
+    // reroute node does not exist yet, so unlike elementGraphSpliceCable this
+    // CREATES the reroute server-side (where it has the uuid) AND splices in one
+    // undoable InsertRerouteMessage. The reroute TYPE is chosen by the cable's
+    // signal type: "audio" → element.audioReroute, "midi" → element.midiReroute,
+    // else (value/CV) → element.reroute. Its in/out ports are resolved by
+    // PortType inside the action (post-add). The drop coords are honoured by the
+    // SAME deferred-position machinery (pendingConnectedAdd) the ⌥+drop add uses.
+    //   args[0] = aId      : String  (source node uuid)
+    //   args[1] = aOutPort : String  ("out-N")
+    //   args[2] = bId      : String  (target node uuid)
+    //   args[3] = bInPort  : String  ("in-N")
+    //   args[4] = signalType : String ("audio" | "midi" | "value")
+    //   args[5] = x        : double  (flow-space)
+    //   args[6] = y        : double  (flow-space)
+    //   → bool. Honest false on ANY resolution failure (unknown nodes/ports, or
+    //     the reroute identifier not in the KnownPluginList).
+    registerFn (
+        Identifier ("elementGraphInsertReroute"),
+        [this, postCompletion] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 7)
+            {
+                if (auto sess = context.session())
+                {
+                    const Node graph (currentBoard());
+                    const Graph G (graph);
+                    if (G.isGraph())
+                    {
+                        const Node a = findNodeByUuidInGraph (G, args[0].toString());
+                        const Node b = findNodeByUuidInGraph (G, args[2].toString());
+                        const int ap = parsePortHandleIndex (args[1].toString(), "out-");
+                        const int bp = parsePortHandleIndex (args[3].toString(), "in-");
+                        const String signalType (args[4].toString());
+                        const double flowX = (double) args[5];
+                        const double flowY = (double) args[6];
+
+                        // Reroute identifier by signal type (mirrors the strings
+                        // in include/element/node.h EL_NODE_ID_*REROUTE).
+                        String rerouteId ("element.reroute");
+                        if (signalType == "audio")
+                            rerouteId = "element.audioReroute";
+                        else if (signalType == "midi")
+                            rerouteId = "element.midiReroute";
+
+                        if (a.isValid() && b.isValid() && ap >= 0 && bp >= 0)
+                        {
+                            if (const auto* desc = findKnownPluginByIdentifier (context.plugins().getKnownPlugins(), rerouteId))
+                            {
+                                // Record the deferred absolute-position apply
+                                // BEFORE posting (the add is async): the timer
+                                // finds the single NEW node on this board and
+                                // setPosition()s it to the drop point.
+                                pendingConnectedAdd.active = true;
+                                pendingConnectedAdd.flowX = flowX;
+                                pendingConnectedAdd.flowY = flowY;
+                                pendingConnectedAdd.waitedTicks = 0;
+                                pendingConnectedAdd.boardPathSnapshot = boardPath;
+                                pendingConnectedAdd.preExistingUuids.clearQuick();
+                                for (int i = 0; i < G.getNumNodes(); ++i)
+                                    pendingConnectedAdd.preExistingUuids.add (G.getNode (i).getUuidString());
+
+                                context.services().postMessage (
+                                    new InsertRerouteMessage (
+                                        graph, *desc,
+                                        (uint32_t) a.getNodeId(), (uint32_t) ap,
+                                        (uint32_t) b.getNodeId(), (uint32_t) bp,
+                                        signalType, flowX, flowY));
+                                scheduleGraphPush (40);
+                                ok = true;
+                            }
+                        }
+                    }
+                }
+            }
+            postCompletion (completion, ok);
+        });
+
     registerFn (
         Identifier ("elementGraphMoveNodes"),
         [this, postCompletion] (const Array<var>& args, auto completion) {

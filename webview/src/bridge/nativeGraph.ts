@@ -147,6 +147,53 @@ export async function nativeGraphSpliceCable(
   return r === true;
 }
 
+/**
+ * Wave-3 Task 5.1 — double-click a Cable → drop a Reroute "knot" at the cursor
+ * that splices the cable A→B through it, ATOMICALLY (single undo). Unlike
+ * {@link nativeGraphSpliceCable} (which splices an EXISTING node), the reroute
+ * node does NOT exist yet — so the host CREATES it server-side (where it has the
+ * uuid) AND splices in ONE undoable `InsertRerouteMessage`. One undo removes the
+ * reroute and restores the original A→B cable.
+ *
+ * The reroute TYPE is chosen host-side from `signalType`: "audio" →
+ * element.audioReroute, "midi" → element.midiReroute, else element.reroute; its
+ * in/out ports are resolved by PortType inside the action. The new knot is
+ * positioned at the flow-space `(x, y)` cursor point via the same deferred-apply
+ * the ⌥+drop add uses — never fabricated client-side.
+ *
+ *   aId       — UUID of the cable's source Block
+ *   aOutPort  — source output handle ("out-N")
+ *   bId       — UUID of the cable's target Block
+ *   bInPort   — target input handle ("in-N")
+ *   signalType— the cable's signal type ("audio" | "midi" | "value")
+ *   x, y      — FLOW-space coords for the new knot (reactFlow.screenToFlowPosition)
+ *
+ * Returns false (honest) on any host-side resolution failure (unknown
+ * node/port, or the reroute identifier not in the known-plugin list).
+ *
+ * C++ bridge: elementGraphInsertReroute
+ */
+export async function nativeGraphInsertReroute(
+  aId: string,
+  aOutPort: string,
+  bId: string,
+  bInPort: string,
+  signalType: string,
+  x: number,
+  y: number,
+): Promise<boolean> {
+  const r = await invokeElementNative("elementGraphInsertReroute", [
+    aId,
+    aOutPort,
+    bId,
+    bInPort,
+    signalType,
+    x,
+    y,
+  ]);
+  return r === true;
+}
+
 export async function nativeGraphMoveNodes(
   moves: Array<{ id: string; x: number; y: number }>,
 ): Promise<number> {

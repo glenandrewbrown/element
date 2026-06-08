@@ -378,6 +378,22 @@ export function useKeyboard({
             return;
           }
 
+          // ── Cmd/Ctrl+G — group selection into a Container (Task 5.2, alias
+          // for Cmd+Shift+D). Same guard: filter to block-type nodes only;
+          // 0-block selection is a silent no-op; 1-block passes through so the
+          // "need-2" refusal surfaces in the StatusBar.
+          case "g":
+          case "G": {
+            const selected = reactFlow
+              .getNodes()
+              .filter((n) => n.selected && n.type === "block")
+              .map((n) => n.id);
+            if (selected.length === 0) return;
+            e.preventDefault();
+            groupSelectionWithFeedback(selected);
+            return;
+          }
+
           // SHELVED (D3, hide-UI keep-code) — see FINISH-APP-PLAN. The
           // Cmd/Ctrl+Shift+M "toggle Edit/Perform mode" shortcut is removed:
           // Perform mode is shelved and the app is locked to Edit. Restore by

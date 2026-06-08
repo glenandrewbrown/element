@@ -40,6 +40,7 @@ import {
   nativeGraphAddPluginConnected,
   nativeGraphDisconnect,
   nativeGraphSpliceCable,
+  nativeGraphInsertReroute,
   nativeGraphMoveNodes,
   nativeGraphRenameNode,
   nativeGraphSetViewport,
@@ -82,6 +83,7 @@ import {
 import {
   findSpliceCandidate,
   planSpliceAtomic,
+  rerouteIdentifierForSignal,
   type CableGeometry,
 } from "../../lib/cableSplice";
 import { isSnippetDrag, parseSnippetDrop } from "../../lib/snippetDrag";
@@ -515,6 +517,45 @@ export function GraphCanvas() {
       selectEdge(edge.id);
     },
     [selectEdge],
+  );
+
+  /**
+   * Task 5.1 — double-click a Cable → drop a Reroute "knot" at the cursor that
+   * splices the cable A→B through it (ATOMIC, single undo). The reroute TYPE is
+   * chosen by the cable's signal type host-side (Audio→AudioReroute,
+   * MIDI→MidiReroute, else plain Reroute). The new node lands at the flow-space
+   * cursor point; the host creates the reroute server-side (where it has the
+   * uuid) and splices in ONE undoable action, so this is NOTHING-fake — no
+   * client-side node fabrication. No-op in perform mode (gated like onConnect).
+   *
+   * The cable endpoints come straight off the RF edge (its `data` IS the
+   * CableData): source/sourceHandle = A out-port, target/targetHandle = B
+   * in-port. Edge double-click is excluded from the "navigate UP" pane gesture
+   * by onPaneDoubleClick's `.react-flow__edge` guard, so the two never collide.
+   */
+  const onEdgeDoubleClick = useCallback(
+    (event: MouseEvent, edge: Edge) => {
+      if (!isEdit) return;
+      event.stopPropagation();
+      const cable = edge.data as CableData | undefined;
+      const signalType: SignalType = cable?.signalType ?? "audio";
+      const aOutPort = edge.sourceHandle ?? "out-0";
+      const bInPort = edge.targetHandle ?? "in-0";
+      const flow = reactFlow.screenToFlowPosition({
+        x: event.clientX,
+        y: event.clientY,
+      });
+      void nativeGraphInsertReroute(
+        edge.source,
+        aOutPort,
+        edge.target,
+        bInPort,
+        signalType,
+        flow.x,
+        flow.y,
+      );
+    },
+    [isEdit, reactFlow],
   );
 
   const onPaneClick = useCallback(() => {
@@ -1534,6 +1575,7 @@ export function GraphCanvas() {
         onNodeDrag={isEdit ? onNodeDrag : undefined}
         onNodeDragStop={onNodeDragStop}
         onEdgeClick={onEdgeClick}
+        onEdgeDoubleClick={isEdit ? onEdgeDoubleClick : undefined}
         onEdgeContextMenu={onEdgeContextMenu}
         onPaneClick={onPaneClick}
         onDoubleClick={onPaneDoubleClick}
@@ -1669,6 +1711,29 @@ export function GraphCanvas() {
               ? (pluginId) => {
                   void nativeGraphAddPluginConnected(
                     pluginId,
+                    pendingConnect.flowX,
+                    pendingConnect.flowY,
+                    pendingConnect.originNodeId,
+                    pendingConnect.originPortId,
+                    pendingConnect.originIsSource,
+                  );
+                  setPendingConnect(null);
+                  setContextMenu(null);
+                }
+              : undefined
+          }
+          onAddReroute={
+            pendingConnect
+              ? () => {
+                  // Task 5.1 — drag-off-port → empty canvas → "Add Reroute":
+                  // drop a signal-correct Reroute knot AT the cursor and atomically
+                  // auto-connect it to the origin port (reuses the ⌥+drop atomic
+                  // add+connect host action — NOTHING-fake, one undoable step).
+                  const id = rerouteIdentifierForSignal(
+                    pendingConnect.originSignalType ?? "value",
+                  );
+                  void nativeGraphAddPluginConnected(
+                    id,
                     pendingConnect.flowX,
                     pendingConnect.flowY,
                     pendingConnect.originNodeId,

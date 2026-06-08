@@ -3,7 +3,7 @@ import { Breadcrumb } from "./Breadcrumb";
 import { useGraphStore } from "../../stores/useGraphStore";
 
 // Breadcrumb reads breadcrumbStack from useGraphStore.
-// Seed via decorator; component renders null at depth ≤ 1.
+// Seed via decorator. Always renders — shows a root crumb at depth ≤ 1.
 
 const meta = {
   title: "Layout/Breadcrumb",
@@ -13,7 +13,7 @@ const meta = {
     docs: {
       description: {
         component:
-          "Breadcrumb trail for the current depth inside nested Boards (Containers/Portals). Clicking an earlier crumb pops back up to that level. Renders nothing at the root (depth ≤ 1), so it can live permanently above the canvas. Driven by the graph store's breadcrumb stack.",
+          "Breadcrumb trail for the current depth inside nested Boards (Containers/Portals). Always visible — at the root Board it shows a single non-clickable location indicator. Clicking an ancestor crumb pops back to that level. Driven by the graph store's breadcrumb stack.",
       },
     },
   },
@@ -27,16 +27,16 @@ function seedBreadcrumbs(stack: string[]) {
   useGraphStore.setState((s) => ({ ...s, breadcrumbStack: stack }));
 }
 
-// Root only — renders nothing (depth ≤ 1).
+// Root only — always shows "Board" regardless of the engine-provided session name.
 export const RootOnly: Story = {
   decorators: [
     (Story) => {
-      seedBreadcrumbs(["Root"]);
+      // The engine typically pushes the session/project name as the first crumb,
+      // but the component always replaces index 0 with "Board" — this is a canvas
+      // nav tool, not a session title display.
+      seedBreadcrumbs(["My Project"]);
       return (
         <div className="bg-canvas w-full">
-          <div className="text-text-dim text-[10px] px-4 py-2">
-            (Breadcrumb renders nothing at root — depth ≤ 1)
-          </div>
           <Story />
         </div>
       );
@@ -46,7 +46,29 @@ export const RootOnly: Story = {
     docs: {
       description: {
         story:
-          "At the root Board the breadcrumb is intentionally absent (depth ≤ 1). Documents the no-render guard so it is not mistaken for a bug.",
+          "At the root Board the breadcrumb always shows 'Board' as a single non-clickable location indicator, regardless of what the engine pushes as the session name. No back navigation — there is nowhere above to go.",
+      },
+    },
+  },
+};
+
+// Root with empty store (pre-hydration fallback) — also shows 'Board'.
+export const RootEmptyStore: Story = {
+  decorators: [
+    (Story) => {
+      seedBreadcrumbs([]);
+      return (
+        <div className="bg-canvas w-full">
+          <Story />
+        </div>
+      );
+    },
+  ],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Pre-hydration state where the store has an empty breadcrumb stack. The component normalises to a single 'Board' crumb so the bar is never empty.",
       },
     },
   },
@@ -68,7 +90,7 @@ export const TwoLevels: Story = {
     docs: {
       description: {
         story:
-          "First level of nesting (Root → Container A) — the minimum case where the breadcrumb appears, with the trailing crumb shown as the current, non-clickable level.",
+          "First level of nesting (Root → Container A) — the minimum case where the breadcrumb shows an ancestor crumb, with the trailing crumb shown as the current, non-clickable level.",
       },
     },
   },

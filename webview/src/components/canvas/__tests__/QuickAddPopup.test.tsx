@@ -400,4 +400,31 @@ describe("<QuickAddPopup />", () => {
     await waitFor(() => screen.getByText("Surge XT"));
     expect(screen.getByText("Surge XT").className).toContain("font-semibold");
   });
+
+  // ── Task 5.1 — pinned "Add Reroute" first-class quick option ───────────────
+
+  it("does NOT render the Add Reroute row when onAddReroute is omitted", () => {
+    render(<QuickAddPopup {...defaultProps} />);
+    expect(screen.queryByTestId("quick-add-reroute")).not.toBeInTheDocument();
+  });
+
+  it("renders a pinned Add Reroute row when onAddReroute is provided", () => {
+    const onAddReroute = vi.fn();
+    render(
+      <QuickAddPopup {...defaultProps} portType="audio" onAddReroute={onAddReroute} />,
+    );
+    const row = screen.getByTestId("quick-add-reroute");
+    expect(row).toBeInTheDocument();
+    expect(row).toHaveTextContent("Add Reroute");
+  });
+
+  it("clicking Add Reroute fires the callback then closes", () => {
+    const onAddReroute = vi.fn();
+    render(
+      <QuickAddPopup {...defaultProps} portType="audio" onAddReroute={onAddReroute} />,
+    );
+    fireEvent.click(screen.getByTestId("quick-add-reroute"));
+    expect(onAddReroute).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
 });

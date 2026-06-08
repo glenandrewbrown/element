@@ -1381,26 +1381,40 @@ function BlockComponent({ data, selected }: NodeProps) {
             ⤢
           </span>
         </div>
-        {/* Honest in-canvas preview (P3-B): a Container holds a REAL nested
-            Board whose contents we do not mirror here — so show the real child
-            count (engine getNumNodes()), not invented node identities. The dive
-            (double-click) opens the actual Board. NOTHING-fake: no placeholder
-            grid, no fabricated per-child labels. */}
+        {/* Honest in-canvas affordance (P3-B / Task 5.3): a Container is a
+            nested Board. Show its REAL boundary-I/O signature (essential ports
+            only, and ONLY when real ports exist — never a fabricated/assumed
+            "audio in → out" label) plus the REAL child count. Double-click
+            dives into the actual nested Board. */}
         {(() => {
           const n = d.containerNodeCount ?? 0;
-          const label =
-            n > 0
-              ? `${n} ${n === 1 ? "Block" : "Blocks"} — open to edit`
-              : "Empty — open to edit";
+          const childText =
+            n === 0
+              ? "Empty — open to edit"
+              : `${n} ${n === 1 ? "Block" : "Blocks"} — open to edit`;
+          // Real boundary I/O: essential (non-param/value) ports only — reuse
+          // the same essentialInputs/Outputs the port lane derives (single
+          // predicate, no drift). Omit the signature entirely when there is no
+          // real I/O — no fake 0 ▸ 0.
+          const essIn = essentialInputs.length;
+          const essOut = essentialOutputs.length;
+          const hasIO = essIn > 0 || essOut > 0;
           return (
             <div
-              className="h-14 rounded bg-[#252529] border border-white/5 flex items-center justify-center gap-2 text-[11px] text-text-secondary"
+              className="h-14 rounded bg-[#252529] border border-white/5 flex flex-col items-center justify-center gap-1 text-[11px] text-text-secondary"
               style={{ boxShadow: shadowRaised }}
             >
-              <span aria-hidden className="text-[13px] opacity-70">
-                ▦
-              </span>
-              <span className="tabular-nums">{label}</span>
+              {hasIO && (
+                <span
+                  className="font-bold text-[12px] text-text-primary/70"
+                  aria-label={`${essIn} in to ${essOut} out`}
+                >
+                  {essIn}
+                  <span className="mx-1.5 text-text-dim">▸</span>
+                  {essOut}
+                </span>
+              )}
+              <span className="text-text-secondary">{childText}</span>
             </div>
           );
         })()}

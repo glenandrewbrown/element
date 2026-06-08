@@ -182,3 +182,45 @@ describe("useKeyboard — Cmd+Shift+D group chord", () => {
     expect(mockGroup).toHaveBeenCalledWith(["a"]);
   });
 });
+
+describe("useKeyboard — Cmd+G group alias (Task 5.2)", () => {
+  it("≥2 selected blocks → groupSelectionWithFeedback with the selected ids", async () => {
+    mockGetNodes.mockReturnValue([flow("a"), flow("b"), { id: "c", selected: false, type: "block" }]);
+    mount();
+    await act(async () => fireKey("g", { metaKey: true }));
+    expect(mockGroup).toHaveBeenCalledWith(["a", "b"]);
+  });
+
+  it("1 selected block → groupSelectionWithFeedback called so refusal surfaces", async () => {
+    mockGetNodes.mockReturnValue([flow("a")]);
+    mount();
+    await act(async () => fireKey("g", { metaKey: true }));
+    expect(mockGroup).toHaveBeenCalledWith(["a"]);
+  });
+
+  it("0 selected blocks → groupSelectionWithFeedback not called", async () => {
+    mockGetNodes.mockReturnValue([]);
+    mount();
+    await act(async () => fireKey("g", { metaKey: true }));
+    expect(mockGroup).not.toHaveBeenCalled();
+  });
+
+  it("Cmd+Shift+G also triggers group — meta+shift block has no 'g' handler, falls through to meta switch", async () => {
+    // Cmd+Shift+G: meta+shift block checks lower==="d" (no), l/r/t/b/h/v (no),
+    // falls through; the `if (meta) switch` then fires case "G" → group.
+    mockGetNodes.mockReturnValue([flow("a"), flow("b")]);
+    mount();
+    await act(async () => fireKey("G", { metaKey: true, shiftKey: true }));
+    expect(mockGroup).toHaveBeenCalledWith(["a", "b"]);
+  });
+
+  it("Cmd+G and Cmd+Shift+D both dispatch for the same ≥2 selection", async () => {
+    mockGetNodes.mockReturnValue([flow("x"), flow("y")]);
+    mount();
+    await act(async () => fireKey("d", { metaKey: true, shiftKey: true }));
+    await act(async () => fireKey("g", { metaKey: true }));
+    expect(mockGroup).toHaveBeenCalledTimes(2);
+    expect(mockGroup).toHaveBeenNthCalledWith(1, ["x", "y"]);
+    expect(mockGroup).toHaveBeenNthCalledWith(2, ["x", "y"]);
+  });
+});

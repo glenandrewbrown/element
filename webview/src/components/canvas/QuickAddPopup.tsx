@@ -68,6 +68,13 @@ export interface QuickAddPopupProps {
    * the default `nativeGraphAddPlugin(id)` insert and owns dismissal.
    */
   onPick?: (pluginId: string) => void;
+  /**
+   * Task 5.1 — optional "Add Reroute" first-class quick option (drag-off-port →
+   * empty canvas). When provided, a pinned signal-coloured row sits at the top
+   * of the popup so the user can drop a signal-correct Reroute knot at the cursor
+   * in one keystroke/click WITHOUT searching for it. Owns its own dismissal.
+   */
+  onAddReroute?: () => void;
   /** Dismiss the popup (backdrop click, Escape, or after a Block is inserted). */
   onClose: () => void;
 }
@@ -99,6 +106,7 @@ export function QuickAddPopup({
   y,
   portType: portTypeProp,
   onPick,
+  onAddReroute,
   onClose,
 }: QuickAddPopupProps) {
   const [search, setSearch] = useState("");
@@ -399,6 +407,45 @@ export function QuickAddPopup({
               />
             </div>
           </div>
+
+          {/* ── Task 5.1 — pinned "Add Reroute" quick option (drag-off-port) ── */}
+          {onAddReroute && (
+            <button
+              type="button"
+              data-testid="quick-add-reroute"
+              onClick={() => {
+                onAddReroute();
+                onClose();
+              }}
+              title="Drop a reroute knot here and connect it"
+              className="shrink-0 flex items-center gap-2 px-2.5 h-9 border-b border-white/5 text-left transition-colors hover:bg-elevated cursor-pointer"
+            >
+              <span
+                aria-hidden
+                className="shrink-0 inline-flex items-center justify-center w-5 h-5 rounded"
+                style={
+                  signalHsl
+                    ? {
+                        backgroundColor: `hsl(${signalHsl} / 0.18)`,
+                        color: `hsl(${signalHsl})`,
+                        boxShadow: `0 0 6px hsl(${signalHsl} / 0.30)`,
+                      }
+                    : undefined
+                }
+              >
+                <Icon name="Cable" size={12} strokeWidth={2} />
+              </span>
+              <span className="flex-1 min-w-0">
+                <span className="block text-[11px] font-medium text-text-primary leading-tight">
+                  Add Reroute
+                </span>
+                <span className="block text-[9px] text-text-dim leading-tight">
+                  Drop a {portType ? SIGNAL_LABEL[portType] : "signal"} knot at
+                  the cursor
+                </span>
+              </span>
+            </button>
+          )}
 
           {/* ── Body — rail + results ──────────────────────────────────────── */}
           <div className="flex-1 flex min-h-0">

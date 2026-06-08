@@ -22,6 +22,24 @@
 
 import type { CableData, Port, SignalType } from "../data/types";
 
+/**
+ * Wave-3 Task 5.1 — internal Reroute node identifiers (must match the C++
+ * EL_NODE_ID_*REROUTE strings in include/element/node.h). Picking the reroute
+ * TYPE by the cable's signal type keeps the knot signal-correct: an audio cable
+ * splices through an Audio Reroute, a MIDI cable through a MIDI Reroute, and a
+ * Value/CV cable through the plain Reroute.
+ */
+export const REROUTE_IDENTIFIER: Record<SignalType, string> = {
+  audio: "element.audioReroute",
+  midi: "element.midiReroute",
+  value: "element.reroute",
+};
+
+/** The signal-correct Reroute node identifier for a cable's signal type. */
+export function rerouteIdentifierForSignal(signalType: SignalType): string {
+  return REROUTE_IDENTIFIER[signalType] ?? REROUTE_IDENTIFIER.value;
+}
+
 /** Minimal block shape the splice logic needs (subset of BlockData). */
 export interface SpliceBlock {
   id: string;

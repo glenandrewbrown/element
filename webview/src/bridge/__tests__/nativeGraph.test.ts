@@ -24,6 +24,7 @@ import {
   nativeSessionGetGraphTree,
   nativeGraphAddPlugin,
   nativeGraphAddPluginConnected,
+  nativeGraphInsertReroute,
   nativeGraphRemoveNode,
   nativeGraphConnect,
   nativeGraphDisconnect,
@@ -281,6 +282,16 @@ const booleanCases: BoolCase[] = [
       nativeGraphAddPluginConnected("vst3:synth", -40, 12.5, "n-dst", "in-1", false),
     nativeName: "elementGraphAddPluginConnected",
     args: ["vst3:synth", -40, 12.5, "n-dst", "in-1", false],
+  },
+  // Task 5.1 — double-click a Cable → atomic insert-reroute-knot (the reroute is
+  // created host-side and spliced into A→B in one undo). Marshalls the cable
+  // endpoints (a out / b in), the signal type, and the flow-space cursor point.
+  {
+    name: "nativeGraphInsertReroute",
+    call: () =>
+      nativeGraphInsertReroute("n-a", "out-0", "n-b", "in-0", "audio", 120, 90),
+    nativeName: "elementGraphInsertReroute",
+    args: ["n-a", "out-0", "n-b", "in-0", "audio", 120, 90],
   },
   {
     name: "nativeGraphDisconnect",
