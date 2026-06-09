@@ -530,12 +530,25 @@ uint32 GraphManager::addNode (const PluginDescription* desc, double rx, double r
         ValueTree data = ! object->isGraph() ? ValueTree (types::Node)
                                              : Node::createDefaultGraph (desc->name).data();
 
+        // UltraQA naming (CONTRACT 2): never stamp an EMPTY name. Internal/IO catalog
+        // names are curated non-empty (InternalNodeNamingTests), but guard for defence
+        // in depth so a blank desc->name can't land here as "" (which stabilizeProperty
+        // would NOT heal to "Node" since the prop is already present — INV-naming §(b)).
+        // Fall back desc->name → object name → descriptiveName, leaving node.cpp:495's
+        // "Node" as the genuine last resort (only when no name is present at all).
+        String syncName (desc->name.trim());
+        if (syncName.isEmpty())
+            syncName = object->getName().trim();
+        if (syncName.isEmpty())
+            syncName = desc->descriptiveName.trim();
+
         data.setProperty (tags::id, static_cast<int64> (nodeId), nullptr)
             .setProperty (tags::format, desc->pluginFormatName, nullptr)
             .setProperty (tags::identifier, desc->fileOrIdentifier, nullptr)
-            .setProperty (tags::type, object->getTypeString(), nullptr)
-            .setProperty (tags::name, desc->name, nullptr)
-            .setProperty (tags::object, object, nullptr)
+            .setProperty (tags::type, object->getTypeString(), nullptr);
+        if (syncName.isNotEmpty())
+            data.setProperty (tags::name, syncName, nullptr);
+        data.setProperty (tags::object, object, nullptr)
             .setProperty (tags::updater, new NodeModelUpdater (*this, data, object), nullptr)
             .setProperty (tags::relativeX, rx, nullptr)
             .setProperty (tags::relativeY, ry, nullptr)
@@ -601,10 +614,20 @@ uint32 GraphManager::addExternalPluginAsync (const PluginDescription& desc, doub
     // carries the stable id and the React Block mounts once and never re-keys
     // across the loading→ready swap (CRITICAL-1 / contract §2.2).
     const String finalUuid (Uuid().toString());
+    // UltraQA naming (CONTRACT 2): never stamp an EMPTY name onto the placeholder —
+    // a plugin scanned with PluginDescription.name=="" would otherwise show as
+    // "(unnamed)"/blank (INV-naming §(b)) and, pre-fix, the swap never corrected it.
+    // Fall back desc.name → descriptiveName → "Plugin". swapInLoadedProcessor still
+    // re-affirms from the real loaded name on ready.
+    String placeholderName (desc.name.trim());
+    if (placeholderName.isEmpty())
+        placeholderName = desc.descriptiveName.trim();
+    if (placeholderName.isEmpty())
+        placeholderName = "Plugin";
     data.setProperty (tags::uuid, finalUuid, nullptr)
         .setProperty (tags::format, desc.pluginFormatName, nullptr)
         .setProperty (tags::identifier, desc.fileOrIdentifier, nullptr)
-        .setProperty (tags::name, desc.name, nullptr)
+        .setProperty (tags::name, placeholderName, nullptr)
         .setProperty (tags::relativeX, rx, nullptr)
         .setProperty (tags::relativeY, ry, nullptr)
         .setProperty (tags::pluginIdentifierString, desc.createIdentifierString(), nullptr)
@@ -716,6 +739,31 @@ void GraphManager::swapInLoadedProcessor (const String& nodeUuid, uint32 placeho
     nodeData.setProperty (tags::id, static_cast<int64> (added->nodeId), nullptr);
     setupNode (nodeData, added);
     node.resetPorts();
+
+    // UltraQA naming (CONTRACT 2): re-affirm tags::name from the LOADED instance's
+    // real plugin name when the placeholder stamp was weak — empty, the literal
+    // "Node"/"node", or our own "Plugin" sentinel (stamped at the async placeholder
+    // when desc.name was empty at scan time). Pre-fix the swap never rewrote the name,
+    // so an instrument added with an empty catalog name showed "Node"/blank forever
+    // (INV-naming §(a)). A user-supplied rename (or a real catalog name like "Serum")
+    // is a meaningful non-sentinel string and is preserved untouched. uuid is NOT
+    // written, so the React Block does not re-key.
+    {
+        const String current (nodeData.getProperty (tags::name).toString().trim());
+        const bool weak = current.isEmpty()
+                          || current.equalsIgnoreCase ("Node")
+                          || current == "Plugin";
+        if (weak)
+        {
+            String resolved (added->getName().trim());
+            if (resolved.isEmpty())
+                resolved = desc.name.trim();
+            if (resolved.isEmpty())
+                resolved = desc.descriptiveName.trim();
+            if (resolved.isNotEmpty())
+                nodeData.setProperty (tags::name, resolved, nullptr);
+        }
+    }
 
     applyAddedNodeProcessorSetup (processor, added, node);
 

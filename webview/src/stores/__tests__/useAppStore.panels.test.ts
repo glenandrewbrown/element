@@ -97,14 +97,17 @@ describe("useAppStore — panel layout (Task 3.B)", () => {
   });
 
   it("a live collapse is written through to storage (the persist payload)", () => {
-    // The store WRITE side: collapsing the left panel + the inspector lands the
-    // collapsed booleans in the persisted payload (so a future reload can read
-    // them). The READ side is covered by the re-hydrate test below.
+    // The store WRITE side: panel state lands in the persisted payload (so a
+    // future reload can read it). The READ side is covered by re-hydrate below.
+    // #4b: a manual OPEN of the inspector records inspectorUserCollapsed=TRUE
+    // (the flag means "I'm in manual control" so the auto-collapse effect early-
+    // returns). Open the right panel from closed to land `true` in storage.
+    useAppStore.setState({ rightPanelOpen: false, inspectorUserCollapsed: false });
     useAppStore.getState().togglePanel("left"); // leftPanelOpen → false
-    useAppStore.getState().togglePanel("right"); // rightPanelOpen → false, userCollapsed → true
+    useAppStore.getState().togglePanel("right"); // rightPanelOpen → true, userCollapsed → true
     expect(persistedState()).toMatchObject({
       leftPanelOpen: false,
-      rightPanelOpen: false,
+      rightPanelOpen: true,
       inspectorUserCollapsed: true,
     });
   });
@@ -132,9 +135,31 @@ describe("useAppStore — panel layout (Task 3.B)", () => {
     const s = useAppStore.getState();
     expect(s.leftPanelOpen).toBe(false);
     expect(s.rightPanelOpen).toBe(false);
-    expect(s.inspectorUserCollapsed).toBe(true);
+    // #4b normalization: a persisted-CLOSED right panel must NOT hydrate with
+    // inspectorUserCollapsed=true (that combo strands the user — auto-follow is
+    // suppressed AND the panel is shut, so selecting a Block can't open it). The
+    // merge coerces it to FALSE so auto-follow + manual open both work again.
+    expect(s.inspectorUserCollapsed).toBe(false);
     // mode is always coerced back to "edit" by the merge (Perform shelved).
     expect(s.mode).toBe("edit");
+  });
+
+  it("re-hydrate keeps inspectorUserCollapsed=true when the right panel is persisted OPEN", async () => {
+    // The normalization only fires when the panel is CLOSED. A persisted-OPEN
+    // inspector with the manual-control flag set (the user opened it by hand)
+    // must KEEP the flag so the auto-collapse effect doesn't fight them.
+    seedPersisted({
+      leftPanelOpen: true,
+      rightPanelOpen: true,
+      bottomPanelOpen: true,
+      leftWidth: 260,
+      rightWidth: 280,
+      inspectorUserCollapsed: true,
+    });
+    await useAppStore.persist.rehydrate();
+    const s = useAppStore.getState();
+    expect(s.rightPanelOpen).toBe(true);
+    expect(s.inspectorUserCollapsed).toBe(true);
   });
 
   it("re-hydrate restores persisted widths", async () => {
@@ -232,15 +257,23 @@ describe("useAppStore — panel layout (Task 3.B)", () => {
 
   // ── inspectorUserCollapsed tracking ──────────────────────────────────────
 
-  it("togglePanel('right') closing the inspector sets inspectorUserCollapsed", () => {
-    useAppStore.setState({ rightPanelOpen: true, inspectorUserCollapsed: false });
-    useAppStore.getState().togglePanel("right"); // close
+  // #4b — the flag means "the user is in manual control" (the auto-collapse
+  // effect early-returns when it is true). So a manual OPEN sets it TRUE (don't
+  // auto-fight my open) and a manual CLOSE sets it FALSE (resume auto-follow:
+  // selecting re-opens, deselecting collapses). This is the inverse of the
+  // pre-fix derivation, which left the flag FALSE on open and caused the stuck
+  // right panel (the effect re-slammed it shut when nothing was selected).
+  it("togglePanel('right') opening the inspector sets inspectorUserCollapsed (manual control)", () => {
+    useAppStore.setState({ rightPanelOpen: false, inspectorUserCollapsed: false });
+    useAppStore.getState().togglePanel("right"); // open
+    expect(useAppStore.getState().rightPanelOpen).toBe(true);
     expect(selectInspectorUserCollapsed(useAppStore.getState())).toBe(true);
   });
 
-  it("togglePanel('right') opening the inspector clears inspectorUserCollapsed", () => {
-    useAppStore.setState({ rightPanelOpen: false, inspectorUserCollapsed: true });
-    useAppStore.getState().togglePanel("right"); // open
+  it("togglePanel('right') closing the inspector clears inspectorUserCollapsed (resume auto-follow)", () => {
+    useAppStore.setState({ rightPanelOpen: true, inspectorUserCollapsed: true });
+    useAppStore.getState().togglePanel("right"); // close
+    expect(useAppStore.getState().rightPanelOpen).toBe(false);
     expect(selectInspectorUserCollapsed(useAppStore.getState())).toBe(false);
   });
 

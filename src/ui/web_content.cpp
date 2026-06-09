@@ -36,6 +36,17 @@ WebContent::WebContent (Context& ctx) : Content (ctx)
     webHost->setWebShell (this);
     addAndMakeVisible (*webHost);
 
+    // Bug #5 — the V3 web UI renders its OWN header/toolbar + status row inside the webview,
+    // so the inherited native JUCE chrome (Content::Toolbar transport bar on top,
+    // Content::StatusBar device/engine footer on the bottom — created unconditionally in the
+    // Content base ctor) is redundant doubled chrome that also steals the top 40px + bottom
+    // 28px from the webview via Content::resized(). Hide both here so the webview fills the
+    // whole window. The native objects still exist (so any toolBar/statusBar pokes stay valid)
+    // and StandardContent (classic UI) is untouched. Each setter re-runs resized(), so by the
+    // time we fall through, resizeContent() has the full local bounds for webHost.
+    setToolbarVisible (false);
+    setStatusBarVisible (false);
+
     if (auto eng = context().audio())
         eng->setWebPeakMeterFifo (&webHost->getMeteringFifo());
 

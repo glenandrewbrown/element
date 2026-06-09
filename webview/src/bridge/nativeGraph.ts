@@ -454,7 +454,18 @@ export async function nativeGraphRenameNode(
   nodeId: string,
   name: string,
 ): Promise<boolean> {
-  const r = await invokeElementNative("elementGraphRenameNode", [nodeId, name]);
+  // CONTRACT 2 — reject an empty / whitespace-only rename so a cleared or
+  // mid-typed field never persists a blank "" / stray name (the host emits
+  // getDisplayName which would then fall through to "(unnamed)"). Keep the old
+  // name by NOT calling the bridge and reporting failure; callers roll back to
+  // the prior label. The host guards this too (defence-in-depth), but stopping
+  // it client-side avoids a needless round-trip + snapshot churn.
+  const trimmed = name.trim();
+  if (trimmed.length === 0) return false;
+  const r = await invokeElementNative("elementGraphRenameNode", [
+    nodeId,
+    trimmed,
+  ]);
   return r === true;
 }
 

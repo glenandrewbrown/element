@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useReactFlow } from "@xyflow/react";
 import { useShallow } from "zustand/react/shallow";
 import { useGraphStore } from "../../stores/useGraphStore";
@@ -13,6 +13,7 @@ import {
 } from "../../bridge/nativeGraph";
 import { computeAutoLayout } from "../../lib/autoLayout";
 import { Icon } from "../neu";
+import { NeuPromptModal } from "../layout/NeuPromptModal";
 
 export interface CanvasContextMenuProps {
   /** Viewport (clientX/clientY) coordinates of the right-click; the menu is fixed-positioned here and clamped to stay on-screen. */
@@ -97,6 +98,15 @@ export function CanvasContextMenu({
   );
 
   const setCanvasHint = useAppStore((s) => s.setCanvasHint);
+
+  // #4c — snippet-name capture via the in-app modal (window.prompt() is null in
+  // JUCE's WKWebView). `onClose` UNMOUNTS this menu (GraphCanvas sets canvasMenu
+  // = null), which would tear the modal down too — so we keep the menu mounted
+  // while the modal is up (its popup is hidden + its outside-click/Escape
+  // listeners suppressed below), snapshot the selected ids, and only call
+  // `onClose` once the modal resolves.
+  const [snippetPromptOpen, setSnippetPromptOpen] = useState(false);
+  const [snippetPendingIds, setSnippetPendingIds] = useState<string[]>([]);
   const hintTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined,
   );
@@ -105,6 +115,11 @@ export function CanvasContextMenu({
   const gridSize = useHostExtrasStore((s) => s.canvas.gridSize);
 
   useEffect(() => {
+    // Suppress the menu's outside-click + Escape dismissal while the snippet
+    // modal owns the screen — the modal has its own Escape/Cancel, and an
+    // outside-mousedown on the modal must NOT unmount this menu (which would
+    // tear the modal down with it). (#4c)
+    if (snippetPromptOpen) return;
     const handleMouseDown = (event: MouseEvent) => {
       if (ref.current && !ref.current.contains(event.target as Node)) {
         onClose();
@@ -119,7 +134,7 @@ export function CanvasContextMenu({
       document.removeEventListener("mousedown", handleMouseDown);
       document.removeEventListener("keydown", handleEscape);
     };
-  }, [onClose]);
+  }, [onClose, snippetPromptOpen]);
 
   // ── Action handlers (every enabled item invokes a real store/bridge call) ──
 
@@ -143,25 +158,36 @@ export function CanvasContextMenu({
   }, [flowPosition, onClose]);
 
   const handleSaveAsSnippet = useCallback(() => {
-    onClose();
     if (selectedNodeIds.length === 0) {
+      onClose();
       showHint("Select one or more Blocks first, then save as Snippet.");
       return;
     }
-    const name = window.prompt(
-      `Save ${selectedNodeIds.length} selected block${selectedNodeIds.length === 1 ? "" : "s"} as Snippet:`,
-      "My Snippet",
-    );
-    if (!name || name.trim() === "") return;
-
-    void nativeMoleculeSave(name.trim(), selectedNodeIds).then((ok) => {
-      showHint(
-        ok
-          ? `Snippet "${name.trim()}" saved.`
-          : `Failed to save Snippet "${name.trim()}".`,
-      );
-    });
+    // Keep the menu mounted (do NOT onClose yet) so it can host the modal;
+    // snapshot the selection and open the in-app name modal.
+    setSnippetPendingIds(selectedNodeIds);
+    setSnippetPromptOpen(true);
   }, [selectedNodeIds, showHint, onClose]);
+
+  const handleSnippetConfirm = useCallback(
+    (name: string) => {
+      setSnippetPromptOpen(false);
+      const ids = snippetPendingIds;
+      onClose();
+      if (ids.length === 0) return;
+      void nativeMoleculeSave(name, ids).then((ok) => {
+        showHint(
+          ok ? `Snippet "${name}" saved.` : `Failed to save Snippet "${name}".`,
+        );
+      });
+    },
+    [snippetPendingIds, showHint, onClose],
+  );
+
+  const handleSnippetCancel = useCallback(() => {
+    setSnippetPromptOpen(false);
+    onClose();
+  }, [onClose]);
 
   const handlePaste = useCallback(() => {
     void nativeGraphPasteNodes();
@@ -232,9 +258,13 @@ export function CanvasContextMenu({
     left: Math.min(position.x, window.innerWidth - 232),
     top: Math.min(position.y, window.innerHeight - estimatedHeight),
     zIndex: 9999,
+    // While the snippet modal owns the screen, keep this menu MOUNTED (so the
+    // modal it hosts isn't torn down) but visually hidden. (#4c)
+    ...(snippetPromptOpen ? { display: "none" } : {}),
   };
 
   return (
+    <>
     <div
       ref={ref}
       style={menuStyle}
@@ -361,6 +391,21 @@ export function CanvasContextMenu({
         />
       </div>
     </div>
+
+      {/* #4c — snippet-name capture modal (window.prompt() is null in WKWebView).
+          Hosted here while the menu stays mounted; confirm fires the real
+          elementMoleculeSave bridge, then closes the menu. */}
+      <NeuPromptModal
+        open={snippetPromptOpen}
+        title="Save selection as Snippet"
+        description={`Name this Snippet (${snippetPendingIds.length} block${snippetPendingIds.length === 1 ? "" : "s"}).`}
+        placeholder="My Snippet"
+        defaultValue="My Snippet"
+        confirmLabel="Save"
+        onConfirm={handleSnippetConfirm}
+        onCancel={handleSnippetCancel}
+      />
+    </>
   );
 }
 

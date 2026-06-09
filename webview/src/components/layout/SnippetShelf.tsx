@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useHostExtrasStore } from "../../stores/useHostExtrasStore";
 import { useGraphStore } from "../../stores/useGraphStore";
@@ -9,6 +9,7 @@ import {
 } from "../../bridge/nativeGraph";
 import { nativeTransportPanic } from "../../bridge/nativeGraph";
 import { NeuButton, Icon } from "../neu";
+import { NeuPromptModal } from "./NeuPromptModal";
 import { setSnippetDragData, snippetInsertDefault } from "../../lib/snippetDrag";
 
 /** Duration (ms) the StatusBar hint stays visible after a save attempt. */
@@ -54,9 +55,18 @@ export function SnippetShelf() {
   );
 
   // ── Save-as-Snippet ────────────────────────────────────────────────────────
-  // NOTE: No native `elementMoleculeSave` bridge exists yet.
-  // Feature-detected so the WV side is wired and degrades gracefully.
-  // LEAD REPORT: need C++ native `elementMoleculeSave(name, nodeIds[]) → bool`.
+  // Naming runs through the in-app NeuPromptModal — `window.prompt()` returns
+  // null in JUCE's WKWebView (no runJavaScriptTextInputPanel UIDelegate), which
+  // silently no-op'd every save (#4c root cause A). On confirm we call the real
+  // `elementMoleculeSave` bridge; the host re-pushes the snapshot so the
+  // SNIPPETS count + thumbnails update from engine truth (NOTHING-fake).
+
+  // The selection snapshotted at the moment the modal opens — the selection
+  // could change underneath an open modal otherwise, and a drop should save
+  // exactly what was selected at drop time.
+  const [promptOpen, setPromptOpen] = useState(false);
+  const [pendingIds, setPendingIds] = useState<string[]>([]);
+  const [dragOver, setDragOver] = useState(false);
 
   const showHint = useCallback(
     (msg: string) => {
@@ -71,25 +81,78 @@ export function SnippetShelf() {
     [setCanvasHint],
   );
 
-  const handleSaveAsSnippet = useCallback(() => {
-    if (selectedNodeIds.length === 0) {
-      showHint("Select one or more Blocks first, then save as Snippet.");
-      return;
-    }
-    const name = window.prompt("Snippet name:", "My Snippet");
-    if (!name || name.trim() === "") return;
+  // Open the name modal for the given ids (button OR drop). Empty selection →
+  // honest hint, no modal.
+  const openSavePrompt = useCallback(
+    (ids: string[]) => {
+      if (ids.length === 0) {
+        showHint("Select one or more Blocks first, then save as Snippet.");
+        return;
+      }
+      setPendingIds(ids);
+      setPromptOpen(true);
+    },
+    [showHint],
+  );
 
-    void nativeMoleculeSave(name.trim(), selectedNodeIds).then((ok) => {
-      showHint(
-        ok
-          ? `Snippet "${name.trim()}" saved.`
-          : `Failed to save Snippet "${name.trim()}".`,
-      );
-    });
-  }, [selectedNodeIds, showHint]);
+  const handleSaveAsSnippet = useCallback(() => {
+    openSavePrompt(selectedNodeIds);
+  }, [openSavePrompt, selectedNodeIds]);
+
+  const handlePromptConfirm = useCallback(
+    (name: string) => {
+      setPromptOpen(false);
+      const ids = pendingIds;
+      if (ids.length === 0) return;
+      void nativeMoleculeSave(name, ids).then((ok) => {
+        showHint(
+          ok ? `Snippet "${name}" saved.` : `Failed to save Snippet "${name}".`,
+        );
+      });
+    },
+    [pendingIds, showHint],
+  );
+
+  // ── Drop target: drag selected Blocks onto the shelf → save a Snippet ───────
+  // React Flow node drags are pointer-based (no dataTransfer), so the drop saves
+  // the CURRENT selection — drag the selected blocks down onto the shelf and
+  // name them. We accept any drag-over (preventDefault enables the drop) and
+  // resolve the selection at drop time.
+  const handleShelfDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+    setDragOver(true);
+  }, []);
+
+  const handleShelfDragLeave = useCallback(
+    (e: React.DragEvent<HTMLDivElement>) => {
+      // Ignore leave events bubbling from children — only clear when the pointer
+      // actually exits the shelf bounds.
+      if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+      setDragOver(false);
+    },
+    [],
+  );
+
+  const handleShelfDrop = useCallback(
+    (e: React.DragEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      setDragOver(false);
+      openSavePrompt(selectedNodeIds);
+    },
+    [openSavePrompt, selectedNodeIds],
+  );
 
   return (
-    <div className="h-full flex items-center gap-4 px-6 overflow-x-auto select-none">
+    <div
+      className={[
+        "h-full flex items-center gap-4 px-6 overflow-x-auto select-none transition-colors",
+        dragOver ? "bg-accent-blue/10" : "",
+      ].join(" ")}
+      onDragOver={handleShelfDragOver}
+      onDragLeave={handleShelfDragLeave}
+      onDrop={handleShelfDrop}
+    >
       {/* Label */}
       <div className="shrink-0 flex items-center gap-2 mr-4">
         <Icon name="Puzzle" size={14} className="text-accent-orange" aria-hidden />
@@ -159,6 +222,18 @@ export function SnippetShelf() {
       <NeuButton variant="panic" size="sm" onClick={() => void nativeTransportPanic()}>
         PANIC
       </NeuButton>
+
+      {/* Snippet-name prompt (in-app modal — window.prompt() is null in WKWebView). */}
+      <NeuPromptModal
+        open={promptOpen}
+        title="Save as Snippet"
+        description={`Name this Snippet (${pendingIds.length} block${pendingIds.length === 1 ? "" : "s"}).`}
+        placeholder="My Snippet"
+        defaultValue="My Snippet"
+        confirmLabel="Save"
+        onConfirm={handlePromptConfirm}
+        onCancel={() => setPromptOpen(false)}
+      />
     </div>
   );
 }

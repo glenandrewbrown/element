@@ -53,6 +53,11 @@ const { capturedProps, capturedMinimapProps, mockStore, mockAppStore, mockHostEx
     };
     const reactFlow = {
       fitView: vi.fn(),
+      // onNodeContextMenu (#3a) snapshots the live RF selection to decide whether
+      // a right-click sits inside a ≥2 marquee. Real RF always provides getNodes;
+      // default to an empty (no-selection) set so a single-node RC takes the
+      // select-then-menu path.
+      getNodes: vi.fn(() => [] as Array<{ id: string; selected?: boolean }>),
       screenToFlowPosition: vi.fn(() => ({ x: 0, y: 0 })),
       // In-place rename anchors at the block's screen position via this
       // transform; return a recognisable offset so the positioning test can
@@ -247,8 +252,13 @@ describe("GraphCanvas (gaps)", () => {
     const node = { id: "b1", type: "block", data: { name: "Surge XT" } };
     const evt = { clientX: 300, clientY: 150 };
     act(() => (capturedProps.onNodeDoubleClick as Function)(evt, node));
+    // CONTRACT 1: opens at a small sane DEFAULT (480×320) and snaps to the
+    // plugin's REAL native size once the host reports embeddedEditorSize. The
+    // click is the TOP of the overlay (drag handle); the native editor sits
+    // FLUSH below the handle at clientY + EDITOR_HANDLE_HEIGHT (26) → y=176, so
+    // there is no gap. (Was the old non-adapting hardcoded 720×480.)
     expect(mockNativePluginEditor.nativePluginEditorOpen).toHaveBeenCalledWith(
-      "b1", 300, 150, 720, 480,
+      "b1", 300, 176, 480, 320,
     );
     expect(mockNativeGraph.nativeEnterContainer).not.toHaveBeenCalled();
   });

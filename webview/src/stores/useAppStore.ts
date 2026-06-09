@@ -117,6 +117,20 @@ interface AppState {
    */
   embeddedEditorNodeId: string | null;
   /**
+   * REAL native pixel size of the currently-embedded plugin editor, or `null`
+   * when none is open. Single global slot for the ONE open editor (the host
+   * only ever embeds one plugin editor at a time, keyed by
+   * `embeddedEditorNodeId`) — per-node is unnecessary. Set by the host pushes
+   * `onEmbeddedEditorReady(nodeId, w, h)` (first mount) and
+   * `onEmbeddedEditorResize(nodeId, w, h)` (plugin self-resizes), cleared to
+   * `null` on `onEmbeddedEditorClosed` in lock-step with `embeddedEditorNodeId`.
+   * The CANVAS lane (GraphCanvas/EditorDragHandle) reads this to size the docked
+   * overlay box + drag-handle at the editor's true size — NOTHING-fake: no
+   * hardcoded 720×480 once the host has reported a real size. Transient — never
+   * persisted (no editor is open immediately after reload). (CONTRACT 1)
+   */
+  embeddedEditorSize: { w: number; h: number } | null;
+  /**
    * Flow-Debug mode: when true, every Cable renders a live mid-cable chip —
    * audio dB / signed CV value / MIDI activity / dim "—" when no signal —
    * the "see what's passing where" overlay (logic-routing-flow-debug plan).
@@ -198,6 +212,9 @@ interface AppActions {
   markHostReady: () => void;
   requestGraphStateRefresh: () => void;
   setEmbeddedEditorNodeId: (nodeId: string | null) => void;
+  /** Set the REAL native editor size (host ready/resize push), or `null` to
+   *  clear it (host close). (CONTRACT 1) */
+  setEmbeddedEditorSize: (size: { w: number; h: number } | null) => void;
   setCanvasHint: (hint: string | null) => void;
   toggleAutoTidyOnAdd: () => void;
   setAutoTidyOnAdd: (on: boolean) => void;
@@ -227,6 +244,7 @@ export const useAppStore = create<AppStore>()(
   hostReady: false,
   refreshNonce: 0,
   embeddedEditorNodeId: null,
+  embeddedEditorSize: null,
   flowDebug: false,
   canvasHint: null,
   // Glen Q3 — auto-tidy ships ON by default ("blocks should clean themselves up
@@ -248,6 +266,8 @@ export const useAppStore = create<AppStore>()(
 
   setEmbeddedEditorNodeId: (nodeId) => set({ embeddedEditorNodeId: nodeId }),
 
+  setEmbeddedEditorSize: (size) => set({ embeddedEditorSize: size }),
+
   requestGraphStateRefresh: () =>
     set((s) => ({ refreshNonce: s.refreshNonce + 1 })),
 
@@ -266,15 +286,26 @@ export const useAppStore = create<AppStore>()(
       switch (panel) {
         case "left":
           return { leftPanelOpen: !s.leftPanelOpen, panelsHiddenSnapshot: null };
-        case "right":
-          // Track whether the user DELIBERATELY collapsed the inspector so the
-          // selection-driven auto-expand (brief §4.3) can respect it. Closing
-          // it → userCollapsed; opening it → clear the flag.
+        case "right": {
+          // #4b — a manual toggle puts the user in DELIBERATE control of the
+          // inspector, which the selection-driven auto-collapse effect
+          // (InspectorHub :2419) must then stop fighting. That effect early-
+          // returns when `inspectorUserCollapsed` is true, so:
+          //   • OPENING  (rightPanelOpen false→true) MUST set the flag TRUE so
+          //     the effect doesn't immediately re-collapse it when nothing is
+          //     selected (the old `s.rightPanelOpen`=false bug: rail/Cmd+2/chevron
+          //     open did nothing because the effect re-slammed it shut).
+          //   • CLOSING  (true→false) sets the flag FALSE so auto-follow resumes
+          //     — selecting a Block re-opens; deselecting collapses to the rail.
+          // i.e. the flag tracks "panel is now open by my hand" = !rightPanelOpen
+          // at toggle time (the post-toggle open state).
+          const willOpen = !s.rightPanelOpen;
           return {
-            rightPanelOpen: !s.rightPanelOpen,
-            inspectorUserCollapsed: s.rightPanelOpen,
+            rightPanelOpen: willOpen,
+            inspectorUserCollapsed: willOpen,
             panelsHiddenSnapshot: null,
           };
+        }
         case "bottom":
           return {
             bottomPanelOpen: !s.bottomPanelOpen,
@@ -405,11 +436,28 @@ export const useAppStore = create<AppStore>()(
         rightWidth: s.rightWidth,
         inspectorUserCollapsed: s.inspectorUserCollapsed,
       }),
-      merge: (persisted, current) => ({
-        ...current,
-        ...(persisted as Partial<AppStore>),
-        mode: "edit",
-      }),
+      merge: (persisted, current) => {
+        const p = (persisted ?? {}) as Partial<AppStore>;
+        // #4b normalization — never strand a user with an un-openable inspector.
+        // The right panel is driven by BOTH `rightPanelOpen` and the manual-
+        // control flag `inspectorUserCollapsed` (the auto-follow effect early-
+        // returns when the flag is true). If a previous build persisted the
+        // panel CLOSED with the flag TRUE, the auto-follow stays suppressed AND
+        // the panel is shut → selecting a Block can't open it. Coerce: a
+        // persisted-closed right panel must hydrate with the flag FALSE so
+        // auto-follow + manual open both work. (Opening always re-sets the flag
+        // true via togglePanel, so an open panel keeps its persisted flag.)
+        const inspectorUserCollapsed =
+          p.rightPanelOpen === false ? false : p.inspectorUserCollapsed;
+        return {
+          ...current,
+          ...p,
+          ...(inspectorUserCollapsed !== undefined
+            ? { inspectorUserCollapsed }
+            : {}),
+          mode: "edit",
+        };
+      },
     },
   ),
 );
@@ -436,3 +484,7 @@ export const selectActiveScene = (s: AppStore) => s.activeScene;
 export const selectOpenBlockTabs = (s: AppStore) => s.openBlockTabs;
 export const selectEmbeddedEditorNodeId = (s: AppStore) =>
   s.embeddedEditorNodeId;
+/** CONTRACT 1 — CANVAS lane reads this to size the docked editor overlay +
+ *  drag-handle at the plugin editor's REAL native size. `null` until the host
+ *  reports a size via onEmbeddedEditorReady/Resize. */
+export const selectEmbeddedEditorSize = (s: AppStore) => s.embeddedEditorSize;

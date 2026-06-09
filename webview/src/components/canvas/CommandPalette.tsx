@@ -8,6 +8,7 @@ import {
 } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { NeuInput, Icon } from "../neu";
+import { NeuPromptModal } from "../layout/NeuPromptModal";
 import { useShallow } from "zustand/react/shallow";
 import { useGraphStore } from "../../stores/useGraphStore";
 import { useAppStore } from "../../stores/useAppStore";
@@ -114,6 +115,13 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
   const [activeIndex, setActiveIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  // #4c — snippet-name capture via the in-app modal (window.prompt() is null in
+  // JUCE's WKWebView). The palette closes when the command runs (runAndClose),
+  // so the modal lives at the component root and renders OUTSIDE the `open` gate;
+  // we snapshot the selected ids at command time so a later selection change
+  // can't alter what gets saved.
+  const [snippetPromptOpen, setSnippetPromptOpen] = useState(false);
+  const [snippetPendingIds, setSnippetPendingIds] = useState<string[]>([]);
 
   const nodes = useGraphStore((s) => s.nodes);
   const selectNode = useGraphStore((s) => s.selectNode);
@@ -295,21 +303,10 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
             : "Select blocks first",
         onSelect: runAndClose(() => {
           if (selectedNodeIds.length === 0) return;
-          const name = window.prompt("Snippet name:", "My Snippet");
-          if (!name || name.trim() === "") return;
-          void nativeMoleculeSave(name.trim(), selectedNodeIds).then((ok) => {
-            useAppStore
-              .getState()
-              .setCanvasHint(
-                ok
-                  ? `Snippet "${name.trim()}" saved.`
-                  : `Failed to save Snippet "${name.trim()}".`,
-              );
-            setTimeout(
-              () => useAppStore.getState().setCanvasHint(null),
-              3000,
-            );
-          });
+          // Snapshot the selection, close the palette (runAndClose), then open
+          // the in-app name modal — the actual save fires on confirm.
+          setSnippetPendingIds(selectedNodeIds);
+          setSnippetPromptOpen(true);
         }),
       },
     ];
@@ -457,10 +454,25 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
 
   let runningIndex = 0;
 
+  const handleSnippetConfirm = (name: string) => {
+    setSnippetPromptOpen(false);
+    const ids = snippetPendingIds;
+    if (ids.length === 0) return;
+    void nativeMoleculeSave(name, ids).then((ok) => {
+      useAppStore
+        .getState()
+        .setCanvasHint(
+          ok ? `Snippet "${name}" saved.` : `Failed to save Snippet "${name}".`,
+        );
+      setTimeout(() => useAppStore.getState().setCanvasHint(null), 3000);
+    });
+  };
+
   return (
-    <AnimatePresence>
-      {open && (
-        <>
+    <>
+      <AnimatePresence>
+        {open && (
+          <>
           <motion.div
             className="fixed inset-0 z-[60] bg-canvas/80"
             variants={overlayVariants}
@@ -607,7 +619,22 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
             </div>
           </motion.div>
         </>
-      )}
-    </AnimatePresence>
+        )}
+      </AnimatePresence>
+
+      {/* #4c — snippet-name capture modal (window.prompt() is null in WKWebView).
+          Lives outside the `open` gate so it survives the palette closing on
+          command run; confirm fires the real elementMoleculeSave bridge. */}
+      <NeuPromptModal
+        open={snippetPromptOpen}
+        title="Save selection as Snippet"
+        description={`Name this Snippet (${snippetPendingIds.length} block${snippetPendingIds.length === 1 ? "" : "s"}).`}
+        placeholder="My Snippet"
+        defaultValue="My Snippet"
+        confirmLabel="Save"
+        onConfirm={handleSnippetConfirm}
+        onCancel={() => setSnippetPromptOpen(false)}
+      />
+    </>
   );
 }

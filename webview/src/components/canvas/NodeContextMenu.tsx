@@ -22,6 +22,15 @@ interface NodeContextMenuProps {
   nodeId: string;
   /** Viewport (clientX/clientY) coordinates of the right-click; the menu is fixed-positioned here and clamped to stay on-screen. */
   position: { x: number; y: number };
+  /**
+   * #3a — block ids that were multi-selected when the menu opened, snapshotted
+   * by GraphCanvas's `onNodeContextMenu` BEFORE any `selectNode` collapse. When
+   * provided this is the authoritative selection (the menu must NOT re-read
+   * React Flow, which the store→RF rebuild may have collapsed to one node).
+   * ≥2 ⇒ multi-select actions (Group / Align / Distribute / "N Blocks" copy).
+   * Falls back to a live RF read only when omitted (defensive).
+   */
+  selectedBlockIds?: string[];
   /** Called to dismiss the menu (outside click, Escape, or after an action completes). */
   onClose: () => void;
 }
@@ -98,6 +107,7 @@ function normaliseHostColorToRgb(raw: string | undefined): string | undefined {
 export function NodeContextMenu({
   nodeId,
   position,
+  selectedBlockIds: selectedBlockIdsProp,
   onClose,
 }: NodeContextMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
@@ -123,12 +133,18 @@ export function NodeContextMenu({
   const [configuring, setConfiguring] = useState(false);
 
   const reactFlow = useReactFlow();
+  // #3a — prefer the open-time snapshot from GraphCanvas (the marquee selection
+  // captured BEFORE `selectNode` could collapse it). Fall back to a live RF read
+  // only if the prop is omitted (defensive — keeps the menu usable in isolation,
+  // e.g. Storybook). The snapshot decouples the menu from the store→RF rebuild
+  // race that previously hid the Group item.
   const selectedBlockIds = useMemo(() => {
+    if (selectedBlockIdsProp != null) return selectedBlockIdsProp;
     return reactFlow
       .getNodes()
       .filter((n) => n.selected && n.type === "block")
       .map((n) => n.id);
-  }, [reactFlow, nodeId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [reactFlow, nodeId, selectedBlockIdsProp]); // eslint-disable-line react-hooks/exhaustive-deps
   const multiSelect = selectedBlockIds.length >= 2;
   const canDistribute = selectedBlockIds.length >= 3;
 

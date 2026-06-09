@@ -74,6 +74,20 @@ PluginDescription testEchoDescription()
     return d;
 }
 
+// A description with an EMPTY catalog name (a plugin scanned with name=="") — the
+// format still resolves on fileOrIdentifier == kTestEchoIdentifier, so the async add
+// proceeds and the loaded instance's real getName() is kTestEchoIdentifier. Used to
+// prove the UltraQA naming contract: the placeholder is never blank, and the swap
+// re-affirms the real plugin name (not "Node"/blank). NB: leaving descriptiveName
+// empty too forces the data layer to fall back to the loaded instance name.
+PluginDescription testEchoDescriptionNoName()
+{
+    PluginDescription d (testEchoDescription());
+    d.name = String();
+    d.descriptiveName = String();
+    return d;
+}
+
 // A real, prepared GraphManager driving a root-graph model. setNodeModel enforces
 // the 4 default IO nodes, recorded as `baseNodeCount` so tests assert DELTAS and
 // resolve the plugin under test by UUID (not by index).
@@ -332,6 +346,73 @@ BOOST_AUTO_TEST_CASE (delete_while_loading_then_callback_is_safe)
 
     // No node resurrected; no crash.
     BOOST_CHECK_EQUAL (g.mgr.getNumNodes(), g.baseNodeCount);
+}
+
+// ── UltraQA naming (CONTRACT 2) ──────────────────────────────────────────────
+// A plugin added with a non-empty catalog name keeps it on the loading placeholder
+// AND after the swap (the real instance name matches, so no spurious rewrite).
+BOOST_AUTO_TEST_CASE (loaded_block_name_is_plugin_name_not_node)
+{
+    ensureTestFormatRegistered();
+    ManagedGraph g;
+
+    const auto desc = testEchoDescription();
+    const uint32 nodeId = g.mgr.addNode (&desc, 0.5, 0.5, 0);
+    BOOST_REQUIRE (nodeId != EL_INVALID_NODE);
+
+    const Node loading = g.mgr.getNodeModelForId (nodeId);
+    BOOST_REQUIRE (loading.isValid());
+    const String uuid = loading.getUuidString();
+    // Placeholder carries the catalog name immediately — never blank, never "Node".
+    BOOST_CHECK_EQUAL (loading.getName().toStdString(), String (kTestEchoIdentifier).toStdString());
+
+    const bool ready = pumpUntil ([&] {
+        const Node n (g.modelNodeByUuid (uuid));
+        return n.isValid() && ! (bool) n.getProperty (tags::loading, false);
+    });
+    BOOST_REQUIRE (ready);
+
+    const Node after (g.modelNodeByUuid (uuid));
+    BOOST_REQUIRE (after.isValid());
+    // After swap the name is the loaded instance's real name (still not "Node"/blank).
+    BOOST_CHECK (after.getName().isNotEmpty());
+    BOOST_CHECK (! after.getName().equalsIgnoreCase ("Node"));
+    BOOST_CHECK_EQUAL (after.getName().toStdString(), String (kTestEchoIdentifier).toStdString());
+}
+
+// An EMPTY catalog name must NOT produce a blank/"(unnamed)"/"Node" block: the
+// placeholder stamp is guarded to a non-empty sentinel, and the swap re-affirms the
+// LOADED instance's real name (INV-naming §(a)/(b) — the historical async-load bug).
+BOOST_AUTO_TEST_CASE (empty_catalog_name_heals_to_real_plugin_name_on_swap)
+{
+    ensureTestFormatRegistered();
+    ManagedGraph g;
+
+    const auto desc = testEchoDescriptionNoName();
+    BOOST_REQUIRE (desc.name.isEmpty()); // precondition: scanned with no name
+    const uint32 nodeId = g.mgr.addNode (&desc, 0.5, 0.5, 0);
+    BOOST_REQUIRE (nodeId != EL_INVALID_NODE);
+
+    const Node loading = g.mgr.getNodeModelForId (nodeId);
+    BOOST_REQUIRE (loading.isValid());
+    const String uuid = loading.getUuidString();
+    // CONTRACT 2: the placeholder name is never empty even when desc.name was empty.
+    BOOST_CHECK (loading.getName().isNotEmpty());
+
+    const bool ready = pumpUntil ([&] {
+        const Node n (g.modelNodeByUuid (uuid));
+        return n.isValid() && ! (bool) n.getProperty (tags::loading, false);
+    });
+    BOOST_REQUIRE (ready);
+
+    const Node after (g.modelNodeByUuid (uuid));
+    BOOST_REQUIRE (after.isValid());
+    // Healed to the loaded instance's real name — not blank, not "Node", not the
+    // "Plugin" sentinel the empty placeholder fell back to.
+    BOOST_CHECK (after.getName().isNotEmpty());
+    BOOST_CHECK (! after.getName().equalsIgnoreCase ("Node"));
+    BOOST_CHECK (after.getName() != "Plugin");
+    BOOST_CHECK_EQUAL (after.getName().toStdString(), String (kTestEchoIdentifier).toStdString());
 }
 
 BOOST_AUTO_TEST_SUITE_END()

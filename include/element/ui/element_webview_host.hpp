@@ -31,7 +31,8 @@ struct ElementWebViewLogForwarder;
 */
 class ElementWebViewHost final : public juce::Component,
                                  private juce::Timer,
-                                 private juce::ValueTree::Listener {
+                                 private juce::ValueTree::Listener,
+                                 private juce::ComponentListener {
 public:
     /** If skipBrowser is true, the WebBrowserComponent is not created (used only by unit tests). */
     explicit ElementWebViewHost (Context& ctx, bool skipBrowser = false);
@@ -91,6 +92,16 @@ private:
     void valueTreeChildOrderChanged (juce::ValueTree&, int, int) override;
     void valueTreeParentChanged (juce::ValueTree&) override;
     void valueTreeRedirected (juce::ValueTree&) override;
+
+    /** CONTRACT 1 — embedded-editor self-resize feedback. Attached ONLY to the
+        live pluginEmbedEditor while an embed is up. When the embedded plugin
+        editor changes its own size AFTER open (e.g. Kontakt expanding a panel),
+        push onEmbeddedEditorResize(uuid,w,h) to the webview so the docked overlay
+        + drag-handle track the real size. Guarded against re-entrancy from
+        pluginEditorSetBounds (the webview-driven reposition) via
+        applyingWebviewEmbedBounds, and only emits on an actual size delta.
+        Message thread (all JUCE component callbacks are). */
+    void componentMovedOrResized (juce::Component& component, bool wasMoved, bool wasResized) override;
 
     void attachSessionListener();
     void detachSessionListener();
@@ -304,6 +315,31 @@ private:
     std::unique_ptr<juce::Component> pluginEmbedEditor;
     juce::Rectangle<int> pluginEmbedBounds;
     juce::String pluginEmbedNodeUuid;
+
+    /** CONTRACT 1 — last (w,h) reported to the webview via onEmbeddedEditorReady /
+        onEmbeddedEditorResize for the current embed. Used to suppress duplicate
+        resize pushes (only emit on an actual size delta). Reset when the embed is
+        torn down. */
+    int pluginEmbedReportedW = 0;
+    int pluginEmbedReportedH = 0;
+
+    /** CONTRACT 1 — true WHILE rebuildPluginEmbedLayout() is applying a
+        webview-driven bounds (open / pluginEditorSetBounds / resized). The
+        componentMovedOrResized listener checks this and skips emitting
+        onEmbeddedEditorResize, so the webview's own setBounds is never echoed back
+        as a "plugin self-resize" (kills the setBounds→resized→report→setBounds
+        oscillation). Message-thread only flag. */
+    bool applyingWebviewEmbedBounds = false;
+
+    /** CONTRACT 1 — attach/detach the size-feedback ComponentListener to the live
+        pluginEmbedEditor. Detach is called before every pluginEmbedEditor.reset()
+        so the listener never dangles. */
+    void attachEmbedSizeListener();
+    void detachEmbedSizeListener();
+    /** CONTRACT 1 — push onEmbeddedEditorResize(uuid,w,h) to the webview when the
+        size differs from the last reported size. No-op on no-delta / no embed /
+        empty uuid. Message thread. */
+    void notifyEmbeddedEditorSizeChanged();
 
     /** Map of registered bridge function name → callable.
         Populated during construction alongside opts.withNativeFunction so

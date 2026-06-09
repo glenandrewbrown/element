@@ -32,42 +32,53 @@ class PluginWindowContent : public Component,
                             public Button::Listener
 {
 public:
-    PluginWindowContent (Component* const _editor, const Node& _node)
-        : editor (_editor), object (_node.getObject()), node (_node)
+    PluginWindowContent (Component* const _editor, const Node& _node, bool _docked = false)
+        : docked (_docked), editor (_editor), object (_node.getObject()), node (_node)
     {
         nativeEditor = nullptr != dynamic_cast<AudioProcessorEditor*> (_editor) && nullptr == dynamic_cast<GenericAudioProcessorEditor*> (_editor);
 
-        toolbar.reset (new PluginWindowToolbar());
-        addAndMakeVisible (toolbar.get());
-        toolbar->setBounds (0, 0, getWidth(), 24);
+        // Docked (WebView overlay): suppress the floating-window toolbar + its buttons.
+        // The webview draws its own drag handle on top, so this internal chrome would be
+        // redundant AND would offset the editor downward (the "gap" under the handle).
+        // When docked the editor fills the panel flush from the top-left and the panel's
+        // reported size equals the editor's REAL size (see updateSize()/resized()).
+        if (! docked)
+        {
+            toolbar.reset (new PluginWindowToolbar());
+            addAndMakeVisible (toolbar.get());
+            toolbar->setBounds (0, 0, getWidth(), 24);
+        }
 
         addAndMakeVisible (editor.get());
         editor->addComponentListener (this);
 
-        addAndMakeVisible (nodeButton);
-        nodeButton.setButtonText ("n");
-        nodeButton.setColour (TextButton::buttonOnColourId, Colours::red);
-        nodeButton.addListener (this);
+        if (! docked)
+        {
+            addAndMakeVisible (nodeButton);
+            nodeButton.setButtonText ("n");
+            nodeButton.setColour (TextButton::buttonOnColourId, Colours::red);
+            nodeButton.addListener (this);
 
-        addAndMakeVisible (powerButton);
-        powerButton.setColour (SettingButton::backgroundOnColourId,
-                               findColour (SettingButton::backgroundColourId));
-        powerButton.setColour (SettingButton::backgroundColourId, Colors::toggleBlue);
-        powerButton.getToggleStateValue().referTo (node.getPropertyAsValue (tags::bypass));
-        powerButton.setClickingTogglesState (true);
-        powerButton.addListener (this);
+            addAndMakeVisible (powerButton);
+            powerButton.setColour (SettingButton::backgroundOnColourId,
+                                   findColour (SettingButton::backgroundColourId));
+            powerButton.setColour (SettingButton::backgroundColourId, Colors::toggleBlue);
+            powerButton.getToggleStateValue().referTo (node.getPropertyAsValue (tags::bypass));
+            powerButton.setClickingTogglesState (true);
+            powerButton.addListener (this);
 
-        addAndMakeVisible (onTopButton);
-        onTopButton.setButtonText ("^");
-        onTopButton.setTooltip ("Keep plugin window on top of others");
-        onTopButton.addListener (this);
+            addAndMakeVisible (onTopButton);
+            onTopButton.setButtonText ("^");
+            onTopButton.setTooltip ("Keep plugin window on top of others");
+            onTopButton.addListener (this);
 
-        addAndMakeVisible (muteButton);
-        muteButton.setYesNoText ("M", "M");
-        muteButton.setColour (SettingButton::backgroundOnColourId, Colors::toggleRed);
-        muteButton.getToggleStateValue().referTo (node.getPropertyAsValue (tags::mute));
-        muteButton.setClickingTogglesState (true);
-        muteButton.addListener (this);
+            addAndMakeVisible (muteButton);
+            muteButton.setYesNoText ("M", "M");
+            muteButton.setColour (SettingButton::backgroundOnColourId, Colors::toggleRed);
+            muteButton.getToggleStateValue().referTo (node.getPropertyAsValue (tags::mute));
+            muteButton.setClickingTogglesState (true);
+            muteButton.addListener (this);
+        }
 
         updateSize();
     }
@@ -103,16 +114,41 @@ public:
 
     void updateSize()
     {
-        const int height = jmax (editor->getHeight(), 100) + toolbar->getHeight();
+        if (docked)
+        {
+            // Report the plugin editor's REAL size verbatim (no toolbar band, no padding) so
+            // the WebView host can adopt it as the dock's true size and the drag handle can
+            // match its width exactly. A self-resizing plugin (e.g. Kontakt) propagates its new
+            // size up through here -> the host's ComponentListener on this panel.
+            setSize (jmax (editor->getWidth(), 1), jmax (editor->getHeight(), 1));
+            return;
+        }
+
+        const int toolbarH = (toolbar != nullptr) ? toolbar->getHeight() : 0;
+        const int height = jmax (editor->getHeight(), 100) + toolbarH;
         setSize (editor->getWidth(), height + 4);
     }
 
     void resized() override
     {
         editor->removeComponentListener (this);
+
+        if (docked)
+        {
+            // Fill the dock flush from the top-left (no toolbar band, no inset) so there is no
+            // gap under the webview's drag handle and a resizable editor stretches to the box.
+            // The host sizes this panel to the editor's real size, so for a fixed-size native
+            // editor this is the editor's own size (a no-op); for a resizable one it fills.
+            auto r (getLocalBounds());
+            if (! resizeInternalType (r))
+                editor->setBounds (r);
+            editor->addComponentListener (this);
+            return;
+        }
+
         auto r (getLocalBounds().reduced (2));
 
-        if (toolbar->getThickness())
+        if (toolbar != nullptr && toolbar->getThickness())
         {
             auto r2 = r.removeFromTop (toolbar->getThickness());
             toolbar->setBounds (r2);
@@ -222,6 +258,7 @@ private:
     SettingButton onTopButton;
     SettingButton muteButton;
     Value bypassValue;
+    bool docked = false;
     bool nativeEditor = false;
     std::unique_ptr<Component> editor, leftPanel, rightPanel;
     ProcessorPtr object;
@@ -415,7 +452,7 @@ void PluginWindow::closeButtonPressed()
     gui.closePluginWindow (this);
 }
 
-std::unique_ptr<Component> createPluginEditorPanel (GuiService& gui, const Node& node)
+std::unique_ptr<Component> createPluginEditorPanel (GuiService& gui, const Node& node, bool docked)
 {
     if (! node.isValid() || node.isIONode())
         return nullptr;
@@ -432,7 +469,7 @@ std::unique_ptr<Component> createPluginEditorPanel (GuiService& gui, const Node&
     if (ed == nullptr)
         return nullptr;
 
-    return std::make_unique<PluginWindowContent> (ed.release(), node);
+    return std::make_unique<PluginWindowContent> (ed.release(), node, docked);
 }
 
 } // namespace element

@@ -371,29 +371,33 @@ describe("useJuceBridge — gap coverage", () => {
   // The host pushes this once the embedded editor is mounted, replacing the
   // interim retry-poll backoff with an authoritative "it's open" signal.
 
-  it("onEmbeddedEditorReady sets embeddedEditorNodeId to the pushed node uuid", async () => {
+  it("onEmbeddedEditorReady sets embeddedEditorNodeId + real size to the pushed values", async () => {
     renderHook(() => useJuceBridge());
     await act(async () => { await flushAsync(); });
 
     expect(useAppStore.getState().embeddedEditorNodeId).toBeNull();
+    expect(useAppStore.getState().embeddedEditorSize).toBeNull();
 
     act(() => {
-      window.__elementNative?.onEmbeddedEditorReady?.("valhalla");
+      window.__elementNative?.onEmbeddedEditorReady?.("valhalla", 1140, 700);
     });
     expect(useAppStore.getState().embeddedEditorNodeId).toBe("valhalla");
+    // CONTRACT 1 — the REAL native editor size is stored for the canvas lane.
+    expect(useAppStore.getState().embeddedEditorSize).toEqual({ w: 1140, h: 700 });
   });
 
   it("onEmbeddedEditorReady ignores an empty/invalid node id (no mirror set)", async () => {
     // Establish a clean precondition (prior tests in this suite may have set it).
     act(() => {
       useAppStore.getState().setEmbeddedEditorNodeId(null);
+      useAppStore.getState().setEmbeddedEditorSize(null);
     });
 
     renderHook(() => useJuceBridge());
     await act(async () => { await flushAsync(); });
 
     act(() => {
-      window.__elementNative?.onEmbeddedEditorReady?.("");
+      window.__elementNative?.onEmbeddedEditorReady?.("", 800, 600);
     });
     expect(useAppStore.getState().embeddedEditorNodeId).toBeNull();
   });
@@ -406,9 +410,71 @@ describe("useJuceBridge — gap coverage", () => {
     await act(async () => { await flushAsync(); });
 
     act(() => {
-      window.__elementNative?.onEmbeddedEditorReady?.("node-x");
+      window.__elementNative?.onEmbeddedEditorReady?.("node-x", 640, 480);
     });
     expect(prev).toHaveBeenCalledTimes(1);
-    expect(prev).toHaveBeenCalledWith("node-x");
+    expect(prev).toHaveBeenCalledWith("node-x", 640, 480);
+  });
+
+  // ── onEmbeddedEditorResize → tracks the editor's live real size (CONTRACT 1) ─
+  it("onEmbeddedEditorResize updates embeddedEditorSize when the node matches the open editor", async () => {
+    act(() => {
+      useAppStore.getState().setEmbeddedEditorNodeId(null);
+      useAppStore.getState().setEmbeddedEditorSize(null);
+    });
+
+    renderHook(() => useJuceBridge());
+    await act(async () => { await flushAsync(); });
+
+    // Open editor "node-r" at an initial size, then have it resize itself.
+    act(() => {
+      window.__elementNative?.onEmbeddedEditorReady?.("node-r", 400, 300);
+    });
+    expect(useAppStore.getState().embeddedEditorSize).toEqual({ w: 400, h: 300 });
+
+    act(() => {
+      window.__elementNative?.onEmbeddedEditorResize?.("node-r", 900, 650);
+    });
+    expect(useAppStore.getState().embeddedEditorSize).toEqual({ w: 900, h: 650 });
+  });
+
+  it("onEmbeddedEditorResize ignores a stale push for a node that is no longer open", async () => {
+    act(() => {
+      useAppStore.getState().setEmbeddedEditorNodeId(null);
+      useAppStore.getState().setEmbeddedEditorSize(null);
+    });
+
+    renderHook(() => useJuceBridge());
+    await act(async () => { await flushAsync(); });
+
+    act(() => {
+      window.__elementNative?.onEmbeddedEditorReady?.("node-open", 500, 400);
+    });
+    // A resize for a DIFFERENT node must not clobber the open editor's size.
+    act(() => {
+      window.__elementNative?.onEmbeddedEditorResize?.("node-other", 1000, 800);
+    });
+    expect(useAppStore.getState().embeddedEditorSize).toEqual({ w: 500, h: 400 });
+  });
+
+  it("onEmbeddedEditorClosed clears both the node mirror and the cached size", async () => {
+    act(() => {
+      useAppStore.getState().setEmbeddedEditorNodeId(null);
+      useAppStore.getState().setEmbeddedEditorSize(null);
+    });
+
+    renderHook(() => useJuceBridge());
+    await act(async () => { await flushAsync(); });
+
+    act(() => {
+      window.__elementNative?.onEmbeddedEditorReady?.("node-c", 700, 500);
+    });
+    expect(useAppStore.getState().embeddedEditorSize).toEqual({ w: 700, h: 500 });
+
+    act(() => {
+      window.__elementNative?.onEmbeddedEditorClosed?.();
+    });
+    expect(useAppStore.getState().embeddedEditorNodeId).toBeNull();
+    expect(useAppStore.getState().embeddedEditorSize).toBeNull();
   });
 });

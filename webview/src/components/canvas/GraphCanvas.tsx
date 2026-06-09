@@ -49,11 +49,13 @@ import {
 import {
   nativePluginEditorClose,
   nativePluginEditorOpen,
+  nativePluginEditorSetBounds,
 } from "../../bridge/nativePluginEditor";
 import { Block } from "./Block";
 import { Cable } from "./Cable";
 import {
   EditorDragHandle,
+  EDITOR_HANDLE_HEIGHT,
   type EditorBounds,
 } from "./EditorDragHandle";
 import { GhostEdge, type GhostEdgeData } from "./GhostEdge";
@@ -125,6 +127,15 @@ const AUTO_TIDY_DEBOUNCE_MS = 450;
 const TIDY_GLIDE_MS = 320;
 // How long the .snippet-dropin spring class stays on freshly-inserted nodes.
 const SNIPPET_DROPIN_MS = 220;
+
+// ── Docked plugin-editor open default (CONTRACT 1) ──
+// Used ONLY as the initial open hint before the host reports the editor's REAL
+// native size (onEmbeddedEditorReady / onEmbeddedEditorResize → useAppStore
+// `embeddedEditorSize`). Kept small + sane so a partially-laid-out editor never
+// flashes a giant box; the overlay snaps to the real size the instant it
+// arrives. (Replaces the old hardcoded 720×480 that never adapted.)
+const EDITOR_OPEN_DEFAULT_W = 480;
+const EDITOR_OPEN_DEFAULT_H = 320;
 
 // ── Category → minimap colour ──
 
@@ -258,6 +269,14 @@ interface ContextMenuPos {
 
 interface NodeContextMenuState extends ContextMenuPos {
   nodeId: string;
+  /**
+   * #3a — block ids that were multi-selected (React Flow marquee) at the moment
+   * the menu opened. Snapshotted in `onNodeContextMenu` BEFORE any `selectNode`
+   * call so the store→RF node rebuild can't collapse the marquee out from under
+   * the menu (which previously hid the "Group N into Container" item). Passed to
+   * NodeContextMenu so it sees the real selection. ≥2 ⇒ multi-select actions.
+   */
+  selectedBlockIds: string[];
 }
 
 interface EdgeContextMenuState extends ContextMenuPos {
@@ -330,6 +349,12 @@ export function GraphCanvas() {
   const mode = useAppStore((s) => s.mode);
   const openBlockTab = useAppStore((s) => s.openBlockTab);
   const embeddedEditorNodeId = useAppStore((s) => s.embeddedEditorNodeId);
+  // CONTRACT 1 — the REAL native plugin-editor size, pushed by the host via
+  // onEmbeddedEditorReady / onEmbeddedEditorResize (populated by EXEC-WEB-SHELL
+  // into useAppStore). `null` until the first size arrives; the overlay then
+  // snaps from its open-time default to this real size. Not keyed by node id —
+  // only one editor is embedded at a time (paired with embeddedEditorNodeId).
+  const embeddedEditorSize = useAppStore((s) => s.embeddedEditorSize);
   const setCanvasHint = useAppStore((s) => s.setCanvasHint);
   const autoTidyOnAdd = useAppStore((s) => s.autoTidyOnAdd);
   const sessionSnap = useAppStore((s) => s.snapToGrid);
@@ -487,6 +512,27 @@ export function GraphCanvas() {
     }
   }, [embeddedEditorNodeId, editorDrag]);
 
+  // CONTRACT 1 — snap the docked-editor overlay to the plugin's REAL native size.
+  // The host reports the true laid-out size via onEmbeddedEditorReady /
+  // onEmbeddedEditorResize → useAppStore `embeddedEditorSize`. When it arrives
+  // (or the plugin resizes itself) we resize `editorDrag.bounds` to the real
+  // w/h (keeping the current x/y from the open anchor / any drag) and re-issue
+  // `nativePluginEditorSetBounds` so the native rect tracks the overlay box.
+  // The handle width (EditorDragHandle uses `bounds.w`) then matches the editor
+  // exactly, and it stays flush on top (handle `top = bounds.y - HANDLE_H`).
+  // Guard: only act when the size actually differs, so a drag (x/y only) or a
+  // repeated identical push doesn't trigger a redundant setBounds loop.
+  useEffect(() => {
+    if (!embeddedEditorSize) return;
+    const { w, h } = embeddedEditorSize;
+    setEditorDrag((prev) => {
+      if (!prev || prev.nodeId !== embeddedEditorNodeId) return prev;
+      if (prev.bounds.w === w && prev.bounds.h === h) return prev;
+      void nativePluginEditorSetBounds(prev.bounds.x, prev.bounds.y, w, h);
+      return { ...prev, bounds: { ...prev.bounds, w, h } };
+    });
+  }, [embeddedEditorSize, embeddedEditorNodeId]);
+
   useEffect(() => {
     setNodes([
       ...toFlowNodes(blocks, selectedNodeId),
@@ -534,23 +580,30 @@ export function GraphCanvas() {
         void nativePluginEditorClose();
         return;
       }
-      // Otherwise anchor a fresh editor near the click with a sensible default
-      // size; the host clamps to screen bounds.
+      // Otherwise anchor a fresh editor near the click. We open at a small sane
+      // DEFAULT (CONTRACT 1) and snap to the plugin's REAL native size the
+      // instant the host reports it (the embeddedEditorSize effect below). The
+      // click point is the TOP of the overlay (where the drag handle sits); the
+      // native editor sits FLUSH below the handle at `y + EDITOR_HANDLE_HEIGHT`,
+      // so there is no gap between the header and the plugin content.
+      // `editorDrag.bounds` is the NATIVE EDITOR rect (EditorDragHandle draws its
+      // header in the strip directly ABOVE `bounds.y`).
       const anchorX = (event as MouseEvent).clientX ?? 80;
       const anchorY = (event as MouseEvent).clientY ?? 80;
-      const w = 720;
-      const h = 480;
-      // Only surface the drag handle once the open actually succeeds (the open
-      // path retry-polls and can fail), so the handle never appears for a
-      // missing editor. Bounds match exactly what the host received.
+      const w = EDITOR_OPEN_DEFAULT_W;
+      const h = EDITOR_OPEN_DEFAULT_H;
+      const editorY = anchorY + EDITOR_HANDLE_HEIGHT;
+      // Only surface the drag handle once the open actually succeeds, so the
+      // handle never appears for a missing editor. The native rect we hand the
+      // host matches `editorDrag.bounds` exactly.
       // `Promise.resolve` guards a non-thenable bridge return (e.g. in tests).
       void Promise.resolve(
-        nativePluginEditorOpen(node.id, anchorX, anchorY, w, h),
+        nativePluginEditorOpen(node.id, anchorX, editorY, w, h),
       ).then((ok) => {
         if (ok) {
           setEditorDrag({
             nodeId: node.id,
-            bounds: { x: anchorX, y: anchorY, w, h },
+            bounds: { x: anchorX, y: editorY, w, h },
           });
         }
       });
@@ -688,7 +741,26 @@ export function GraphCanvas() {
       event.preventDefault();
       event.stopPropagation();
       if (!isEdit || node.type === "comment") return;
-      selectNode(node.id);
+      // #3a — snapshot React Flow's CURRENT marquee selection BEFORE touching
+      // the store. `selectNode` sets a single `selectedNodeId`, and the
+      // store→RF rebuild (`toFlowNodes`) then marks ONLY that one node
+      // `selected`, collapsing a multi-selection to one — which hid the
+      // "Group N into Container" item. So: capture the selected block ids now,
+      // and only collapse to the right-clicked node when it is NOT already part
+      // of a ≥2 selection (right-clicking inside a marquee preserves it).
+      const selectedBlockIds = reactFlow
+        .getNodes()
+        .filter((n) => n.selected && n.type === "block")
+        .map((n) => n.id);
+      const isInMultiSelection =
+        selectedBlockIds.length >= 2 && selectedBlockIds.includes(node.id);
+      if (!isInMultiSelection) {
+        selectNode(node.id);
+      }
+      // The menu reads this snapshot (not live RF, which the rebuild may have
+      // collapsed). Ensure the right-clicked node is represented even on a
+      // single-node right-click so per-node actions still target it.
+      const menuSelection = isInMultiSelection ? selectedBlockIds : [node.id];
       setContextMenu(null);
       setCanvasMenu(null);
       setEdgeContextMenu(null);
@@ -696,9 +768,10 @@ export function GraphCanvas() {
         nodeId: node.id,
         x: event.clientX,
         y: event.clientY,
+        selectedBlockIds: menuSelection,
       });
     },
-    [isEdit, selectNode],
+    [isEdit, selectNode, reactFlow],
   );
 
   // ── Auto-route suggestion lifecycle ──
@@ -951,7 +1024,7 @@ export function GraphCanvas() {
       // footer while ghosts are live; clear when they vanish mid-drag.
       const app = useAppStore.getState();
       if (next.length > 0) {
-        app.setCanvasHint("⌘-drop to auto-connect · Tab/Enter accept · Esc dismiss");
+        app.setCanvasHint("⌘-drop to auto-connect · ↵ to connect · Esc dismiss");
       } else if (
         suggestionsRef.current.length > 0 &&
         app.canvasHint?.startsWith("⌘-drop")
@@ -1157,12 +1230,17 @@ export function GraphCanvas() {
 
   // Keyboard accept/dismiss for ghost suggestions — only bound while at least
   // one suggestion is live (so it never shadows global shortcuts at rest).
-  // Tab / Enter accept the TOP (closest) suggestion; Escape dismisses them all.
+  // ENTER accepts the TOP (closest) suggestion; Escape dismisses them all.
+  // Tab is intentionally NOT bound here (#3b): Tab must always fall through to
+  // the global block-cycle in useKeyboard.ts — this capture-phase listener used
+  // to swallow Tab and auto-connect instead, which clobbered Tab-cycle whenever
+  // ghosts were live. Auto-connect is now Enter-only (still advertised in the
+  // ghost hint + status footer).
   const hasSuggestions = suggestions.length > 0;
   useEffect(() => {
     if (!hasSuggestions) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Tab" || e.key === "Enter") {
+      if (e.key === "Enter") {
         const top = suggestionsRef.current[0];
         if (!top) return;
         e.preventDefault();
@@ -1457,23 +1535,23 @@ export function GraphCanvas() {
     }, AUTO_TIDY_DEBOUNCE_MS);
   }, [blocks.length, autoTidyOnAdd, runTidy]);
 
-  // ── No-overlap on new-Block spawn (Task 2.3, part b) ──
+  // ── No-overlap on new-Block spawn (Task 2.3, part b; #2a fix) ──
   // A freshly-added Block must never spawn overlapping an existing one (owner
-  // feedback #1 + the spawn-position defect). When ELK "Tidy"-on-add is ON it
-  // already relayouts the whole Board (and guarantees no overlap), so we ONLY
-  // run the spawn nudge when Tidy is OFF — otherwise the two would fight (the
-  // resolve is the per-add layer UNDER ELK, never a competing relayout). On a
-  // genuine ADD (count increased) we resolve the NEW Block(s) against the
-  // existing ones (existing pinned) and persist only the new Block(s) that
-  // actually had to move. Deferred a frame so React Flow has measured the new
-  // node's real size before we compute its AABB.
+  // feedback #1 + the spawn-position defect). This nudge ALWAYS runs on a
+  // genuine ADD, regardless of the Tidy toggle: ELK "Tidy"-on-add lays the board
+  // out by SIGNAL LAYER but never AABB-de-overlaps a brand-new DISCONNECTED
+  // block (it has no edges → layer 0, bucketed with everything else → stacks),
+  // so Tidy alone left fresh blocks overlapping (the #2a bug). We resolve ONLY
+  // the NEW Block(s) against the existing ones (existing PINNED) — a per-add
+  // layer that does not fight a subsequent full Tidy (resolve of new-only ids is
+  // idempotent on an already-resolved board). Deferred a frame so React Flow has
+  // measured the new node's real size before we compute its AABB.
   const spawnResolveTimerRef = useRef<
     ReturnType<typeof setTimeout> | undefined
   >(undefined);
   useEffect(() => {
     const prev = lastSpawnResolveCountRef.current;
     lastSpawnResolveCountRef.current = blocks.length;
-    if (autoTidyOnAdd) return; // ELK Tidy owns de-overlap when it's ON.
     if (blocks.length <= prev) return; // not an add (delete/move/no-op).
     if (draggingRef.current) return; // never nudge under a live drag.
     if (spawnResolveTimerRef.current !== undefined) {
@@ -1516,7 +1594,7 @@ export function GraphCanvas() {
         void nativeGraphMoveNodes(moves);
       }
     }, 120);
-  }, [blocks.length, autoTidyOnAdd, reactFlow, updateNodePositions]);
+  }, [blocks.length, reactFlow, updateNodePositions]);
 
   // Clear the auto-tidy/glide timers on unmount.
   useEffect(
@@ -1825,6 +1903,7 @@ export function GraphCanvas() {
         <NodeContextMenu
           nodeId={nodeContextMenu.nodeId}
           position={{ x: nodeContextMenu.x, y: nodeContextMenu.y }}
+          selectedBlockIds={nodeContextMenu.selectedBlockIds}
           onClose={() => setNodeContextMenu(null)}
         />
       )}

@@ -527,13 +527,23 @@ export type ElementNativeHooks = {
   onEmbeddedEditorClosed?: () => void;
   /**
    * Host pushes this once the embedded plugin editor is actually MOUNTED and
-   * ready (Wave-3 Phase 4 Task 4.2). It carries the node UUID that now owns the
-   * embed. The webview uses it to finalise its mirror
+   * ready (Wave-3 Phase 4 Task 4.2; size extended in CONTRACT 1). It carries the
+   * node UUID that now owns the embed PLUS the editor's REAL native pixel size
+   * (`w`,`h`) read off the created panel after `createPluginEditorPanel` (e.g.
+   * Kontakt ~1140×700). The webview uses the UUID to finalise its mirror
    * (`useAppStore.embeddedEditorNodeId`) without the interim retry-poll backoff
-   * that the synchronous-add era needed (the plugin's AudioProcessor used to be
-   * absent for a few frames after the node appeared). Fired exactly once per
-   * successful open, AFTER the editor exists. */
-  onEmbeddedEditorReady?: (nodeId: string) => void;
+   * that the synchronous-add era needed, and the size to drive the docked
+   * overlay/drag-handle at the editor's true size (`useAppStore.embeddedEditorSize`).
+   * Fired exactly once per successful open, AFTER the editor exists. */
+  onEmbeddedEditorReady?: (nodeId: string, w: number, h: number) => void;
+  /**
+   * Host pushes this whenever the embedded editor RESIZES ITSELF after the
+   * initial ready (e.g. a plugin that grows/shrinks its window), carrying the
+   * same node UUID and the new REAL native size (CONTRACT 1). The webview
+   * updates `useAppStore.embeddedEditorSize` so the docked overlay + drag-handle
+   * track the plugin's live size. Distinct from a drag-reposition (which the
+   * webview drives via nativePluginEditorSetBounds and does NOT echo back). */
+  onEmbeddedEditorResize?: (nodeId: string, w: number, h: number) => void;
 };
 
 declare global {
@@ -719,12 +729,14 @@ export function useJuceBridge() {
         prev.onEmbeddedEditorClosed?.();
         // Host tore the embed down (any path) — clear the webview mirror so the
         // canvas double-click toggle + ✕ pill + Esc rung all agree "nothing is
-        // embedded". Idempotent with the optimistic clear in
-        // nativePluginEditorClose(). (P1-A reopen fix)
+        // embedded". Also clear the cached real editor size so the next open
+        // starts from the host's fresh report (CONTRACT 1). Idempotent with the
+        // optimistic clear in nativePluginEditorClose(). (P1-A reopen fix)
         useAppStore.getState().setEmbeddedEditorNodeId(null);
+        useAppStore.getState().setEmbeddedEditorSize(null);
       },
-      onEmbeddedEditorReady: (nodeId: string) => {
-        prev.onEmbeddedEditorReady?.(nodeId);
+      onEmbeddedEditorReady: (nodeId: string, w?: number, h?: number) => {
+        prev.onEmbeddedEditorReady?.(nodeId, w as number, h as number);
         // Host confirmed the embedded editor is mounted (Phase 4 Task 4.2). Set
         // the mirror to this node so the double-click toggle + ✕ pill + Esc agree
         // an editor is open. Replaces the interim retry-poll backoff: the open
@@ -732,6 +744,33 @@ export function useJuceBridge() {
         // signal. Idempotent with the optimistic set in nativePluginEditorOpen().
         if (typeof nodeId === "string" && nodeId.length > 0)
           useAppStore.getState().setEmbeddedEditorNodeId(nodeId);
+        // CONTRACT 1 — store the REAL native editor size the host read off the
+        // created panel, so the CANVAS lane sizes the docked overlay/drag-handle
+        // at the plugin editor's true size (no hardcoded 720×480). Only accept a
+        // positive size (a 0/absent value means the host couldn't measure yet —
+        // keep the prior/fallback size rather than collapse the overlay).
+        if (
+          typeof w === "number" &&
+          typeof h === "number" &&
+          w > 0 &&
+          h > 0
+        )
+          useAppStore.getState().setEmbeddedEditorSize({ w, h });
+      },
+      onEmbeddedEditorResize: (nodeId: string, w: number, h: number) => {
+        prev.onEmbeddedEditorResize?.(nodeId, w, h);
+        // CONTRACT 1 — the embedded editor resized itself after ready. Track the
+        // new real size so the docked overlay + drag-handle follow it. Guard the
+        // node id against a stale push for an editor that has since closed, and
+        // ignore a non-positive size.
+        if (
+          typeof w === "number" &&
+          typeof h === "number" &&
+          w > 0 &&
+          h > 0 &&
+          useAppStore.getState().embeddedEditorNodeId === nodeId
+        )
+          useAppStore.getState().setEmbeddedEditorSize({ w, h });
       },
     };
 

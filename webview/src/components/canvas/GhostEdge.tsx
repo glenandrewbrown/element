@@ -17,7 +17,7 @@ const signalColor: Record<string, string> = {
 
 /**
  * Data carried by a ghost edge. `top` marks the closest / primary suggestion
- * (the one Tab/Enter accepts), which is drawn slightly brighter and labelled.
+ * (the one Enter accepts), which is drawn slightly brighter and labelled.
  */
 export interface GhostEdgeData {
   [key: string]: unknown;
@@ -96,7 +96,7 @@ function GhostEdgeComponent({
         <button
           type="button"
           onClick={accept}
-          title="Accept suggested cable — click, press Tab/Enter, or drop while holding ⌘/Ctrl"
+          title="Accept suggested cable — click, press Enter, or drop while holding ⌘/Ctrl"
           aria-label="Accept suggested cable"
           className="nodrag nopan"
           style={{
@@ -116,7 +116,7 @@ function GhostEdgeComponent({
             whiteSpace: "nowrap",
           }}
         >
-          {isTop ? "Tab ↵" : "+"}
+          {isTop ? "↵ to connect" : "+"}
         </button>
       </EdgeLabelRenderer>
     </>

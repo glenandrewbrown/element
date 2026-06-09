@@ -966,7 +966,11 @@ static var buildGraphOutlineRecursive (const Node& n)
 {
     DynamicObject::Ptr o (new DynamicObject());
     o->setProperty ("id", n.getUuidString());
-    o->setProperty ("name", n.getName());
+    // CONTRACT 2 — getDisplayName() falls back to the live plugin name when
+    // tags::name is empty, so an unnamed / "Node"-stamped block self-heals to its
+    // real name (e.g. "Kontakt") in the session tree instead of showing blank /
+    // "(unnamed)". This is the same field the tree/tabs/Block-title/drag-handle read.
+    o->setProperty ("name", n.getDisplayName());
     const bool container = n.isGraph();
     o->setProperty ("isContainer", container);
     if (container)
@@ -2911,8 +2915,18 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                         Node n = findNodeByUuidInGraph (G, args[0].toString());
                         if (n.isValid())
                         {
-                            n.setProperty (tags::name, args[1].toString().trim());
-                            ok = true;
+                            // CONTRACT 2 — reject an empty / whitespace-only rename:
+                            // keep the existing name rather than blanking the node
+                            // (an empty tags::name never self-heals via
+                            // stabilizePropertyString, so it would persist as
+                            // "(unnamed)"). ok stays false on empty → no snapshot
+                            // push, no name change.
+                            const String nm = args[1].toString().trim();
+                            if (nm.isNotEmpty())
+                            {
+                                n.setProperty (tags::name, nm);
+                                ok = true;
+                            }
                         }
                     }
                 }
@@ -3858,7 +3872,13 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                 if (auto sess = context.session())
                 {
                     const String molName = args[0].toString().trim();
-                    const Graph G (sess->getCurrentGraph());
+                    // #4c — resolve the selection against the DIVED board, not the
+                    // top-level graph, so "Save as Snippet" works when the user has
+                    // double-clicked into a Container (mirrors elementMoleculeInsert
+                    // and ~40 sibling handlers). sess->getCurrentGraph() is always
+                    // the top-level board, so selected node UUIDs would not be found
+                    // when dived → nodeIds empty → silent no-op.
+                    const Graph G (currentBoard());
                     Array<uint32> nodeIds;
                     if (molName.isNotEmpty() && G.isGraph())
                         if (const Array<var>* arr = args[1].getArray())
@@ -5776,7 +5796,13 @@ void ElementWebViewHost::detachSessionListener()
 void ElementWebViewHost::rebuildPluginEmbedLayout()
 {
     if (pluginEmbedEditor != nullptr && ! pluginEmbedBounds.isEmpty())
+    {
+        // CONTRACT 1 — this is a WEBVIEW-driven bounds apply (open / setBounds /
+        // resized). Flag it so the editor's componentMovedOrResized listener does
+        // NOT re-report this size back to the webview as a plugin self-resize.
+        const juce::ScopedValueSetter<bool> guard (applyingWebviewEmbedBounds, true);
         pluginEmbedEditor->setBounds (pluginEmbedBounds);
+    }
 }
 
 void ElementWebViewHost::resized()
@@ -5794,9 +5820,15 @@ void ElementWebViewHost::pluginEditorClose()
     // down, so a no-op close (idempotent guard paths) stays silent.
     const bool hadEmbed = (pluginEmbedEditor != nullptr);
 
+    // CONTRACT 1 — detach the size-feedback listener BEFORE destroying the editor
+    // so componentMovedOrResized cannot fire on a half-torn-down embed, and clear
+    // the reported-size tracker.
+    detachEmbedSizeListener();
     pluginEmbedEditor.reset();
     pluginEmbedBounds = {};
     pluginEmbedNodeUuid = {};
+    pluginEmbedReportedW = 0;
+    pluginEmbedReportedH = 0;
 
     // P1-A reopen fix: tell the webview the embed is gone so its mirror
     // (useAppStore.embeddedEditorNodeId) clears in lock-step with the host's
@@ -5819,9 +5851,14 @@ void ElementWebViewHost::pluginEditorOpen (const String& nodeUuid, int x, int y,
     // so notifying "closed" here would race the open's mirror-set on the webview
     // and could clear it. Terminal closes go through pluginEditorClose() (which
     // does notify). Mirror its reset exactly. (P1-A reopen fix)
+    // CONTRACT 1 — detach the size-feedback listener BEFORE destroying the editor
+    // so it never dangles, and clear the reported-size tracker for the new embed.
+    detachEmbedSizeListener();
     pluginEmbedEditor.reset();
     pluginEmbedBounds = {};
     pluginEmbedNodeUuid = {};
+    pluginEmbedReportedW = 0;
+    pluginEmbedReportedH = 0;
 
     auto sess = context.session();
     if (sess == nullptr || nodeUuid.isEmpty())
@@ -5837,6 +5874,9 @@ void ElementWebViewHost::pluginEditorOpen (const String& nodeUuid, int x, int y,
         return;
 
     pluginEmbedNodeUuid = nodeUuid;
+    // Hold the webview GUESS only as a fallback; the REAL size is read off the
+    // created panel below (CONTRACT 1) so the docked editor is never squished
+    // into the canvas-open default (e.g. 720×480) when its true size differs.
     pluginEmbedBounds = Rectangle<int> (x, y, jmax (120, w), jmax (80, h));
     pluginEmbedEditor = createPluginEditorPanel (*gui, n);
     if (pluginEmbedEditor == nullptr)
@@ -5847,22 +5887,107 @@ void ElementWebViewHost::pluginEditorOpen (const String& nodeUuid, int x, int y,
     }
 
     addAndMakeVisible (*pluginEmbedEditor);
+
+    // CONTRACT 1 — the editor's REAL native size is the single source of truth.
+    // createPluginEditorPanel() returns a PluginWindowContent that has already
+    // sized itself to the real editor (its ctor calls updateSize()), so read the
+    // panel's getWidth()/getHeight() NOW — BEFORE the first rebuildPluginEmbedLayout()
+    // would resize it to the webview's guess. Keep the webview x,y for POSITION,
+    // use the panel's nw/nh for SIZE. The native rect then matches what the
+    // webview overlay/drag-handle will be told.
+    const int nw = jmax (1, pluginEmbedEditor->getWidth());
+    const int nh = jmax (1, pluginEmbedEditor->getHeight());
+    pluginEmbedBounds = Rectangle<int> (x, y, nw, nh);
+
     rebuildPluginEmbedLayout();
     pluginEmbedEditor->toFront (false);
+
+    // CONTRACT 1 — start tracking the editor's self-resize (e.g. Kontakt expand)
+    // and record the size we are about to report so duplicate pushes are skipped.
+    pluginEmbedReportedW = nw;
+    pluginEmbedReportedH = nh;
+    attachEmbedSizeListener();
 
     // Wave-3 Phase 4 (Task 4.2) — tell the webview the embedded editor is mounted
     // and ready, so it can finalise its mirror + drag affordance WITHOUT the
     // interim retry-poll backoff (nativePluginEditor.ts PLUGIN_EDITOR_OPEN_DELAYS_MS).
     // Fired exactly once per successful open, AFTER the editor exists. Mirrors
-    // onEmbeddedEditorClosed (the single teardown push). Always message-thread.
+    // onEmbeddedEditorClosed (the single teardown push). CONTRACT 1 extends the
+    // signature with the editor's REAL (nw,nh) so the webview sizes the overlay +
+    // flush drag-handle to the true editor size. Always message-thread.
     evalInBrowser ("window.__elementNative && window.__elementNative.onEmbeddedEditorReady && window.__elementNative.onEmbeddedEditorReady("
-                   + nodeUuid.quoted() + ");");
+                   + nodeUuid.quoted() + ", " + String (nw) + ", " + String (nh) + ");");
 }
 
 void ElementWebViewHost::pluginEditorSetBounds (int x, int y, int w, int h)
 {
     pluginEmbedBounds = Rectangle<int> (x, y, jmax (60, w), jmax (60, h));
+    // CONTRACT 1 — this is a webview-AUTHORED size; keep the reported-size tracker
+    // in lock-step so a subsequent (non-webview) self-resize is measured against
+    // the size the webview already knows, and the guarded setBounds below does not
+    // round-trip. rebuildPluginEmbedLayout() sets applyingWebviewEmbedBounds.
+    pluginEmbedReportedW = pluginEmbedBounds.getWidth();
+    pluginEmbedReportedH = pluginEmbedBounds.getHeight();
     rebuildPluginEmbedLayout();
+}
+
+// CONTRACT 1 — embedded-editor self-resize feedback ----------------------------
+// The docked overlay + drag-handle on the webview must track the embedded
+// editor's REAL size, including when the plugin resizes ITSELF after open (a
+// heavy instrument like Kontakt expanding/collapsing a browser pane). We attach
+// a ComponentListener to the live pluginEmbedEditor; on a genuine size delta that
+// did NOT originate from our own webview-driven setBounds, we push
+// onEmbeddedEditorResize(uuid,w,h). All message-thread (JUCE component callbacks).
+
+void ElementWebViewHost::attachEmbedSizeListener()
+{
+    if (pluginEmbedEditor != nullptr)
+        pluginEmbedEditor->addComponentListener (this);
+}
+
+void ElementWebViewHost::detachEmbedSizeListener()
+{
+    if (pluginEmbedEditor != nullptr)
+        pluginEmbedEditor->removeComponentListener (this);
+}
+
+void ElementWebViewHost::notifyEmbeddedEditorSizeChanged()
+{
+    if (pluginEmbedEditor == nullptr || pluginEmbedNodeUuid.isEmpty())
+        return;
+
+    const int w = jmax (1, pluginEmbedEditor->getWidth());
+    const int h = jmax (1, pluginEmbedEditor->getHeight());
+
+    // Only emit on a real size DELTA — avoids a push storm when JUCE fires
+    // componentMovedOrResized for a move/no-op, and prevents echoing a size the
+    // webview already knows.
+    if (w == pluginEmbedReportedW && h == pluginEmbedReportedH)
+        return;
+
+    pluginEmbedReportedW = w;
+    pluginEmbedReportedH = h;
+
+    // Keep the host's authoritative bounds in step (same position, new size) so a
+    // later resized()/rebuild re-applies the editor's true size rather than a
+    // stale one.
+    if (! pluginEmbedBounds.isEmpty())
+        pluginEmbedBounds = pluginEmbedBounds.withSize (w, h);
+
+    evalInBrowser ("window.__elementNative && window.__elementNative.onEmbeddedEditorResize && window.__elementNative.onEmbeddedEditorResize("
+                   + pluginEmbedNodeUuid.quoted() + ", " + String (w) + ", " + String (h) + ");");
+}
+
+void ElementWebViewHost::componentMovedOrResized (juce::Component& component, bool /*wasMoved*/, bool wasResized)
+{
+    // Only the live embed editor; ignore moves (the webview owns position) and any
+    // resize we are ourselves applying via rebuildPluginEmbedLayout().
+    if (! wasResized || applyingWebviewEmbedBounds)
+        return;
+    if (pluginEmbedEditor == nullptr || &component != pluginEmbedEditor.get())
+        return;
+
+    notifyEmbeddedEditorSizeChanged();
 }
 
 void ElementWebViewHost::pluginEditorFloat()
@@ -6613,7 +6738,12 @@ String ElementWebViewHost::buildActiveGraphJson() const
         const Node n (G.getNode (i));
         DynamicObject::Ptr b (new DynamicObject());
         b->setProperty ("id", n.getUuidString());
-        b->setProperty ("name", n.getName());
+        // CONTRACT 2 — getDisplayName() falls back to the live plugin name when
+        // tags::name is empty / never backfilled, so a freshly added plugin block
+        // shows its real name (e.g. "Kontakt") instead of the literal "Node"
+        // default or blank. This is the field the canvas Block title, the editor
+        // tab strip, and the docked-editor drag-handle all read.
+        b->setProperty ("name", n.getDisplayName());
 
         // Wave-3 Phase 4 — transient async-load lifecycle state. While an external
         // plugin's real processor is still being instantiated, GraphManager marks

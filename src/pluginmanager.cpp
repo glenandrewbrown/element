@@ -1150,6 +1150,24 @@ void PluginManager::createGraphNodeAsync (const PluginDescription& desc, GraphNo
     // thread"), so the GraphManager swap that consumes `callback` is safe to
     // touch the model/engine. enableAllBuses() mirrors the synchronous
     // createGraphNode path (and folds perf-diag #8 off the blocking add).
+    //
+    // ⚠️ Wave-3 UltraQA #1 perf (Kontakt ~20s message-thread freeze) is NOT fixed
+    // here. The blocking instantiation lives inside the FORMAT-PRIVATE
+    // createPluginInstance (VST3: juce_VST3PluginFormatHeadless.h:79-82 `private`;
+    // AU/LV2/VST analogous), which is `friend class AudioPluginFormatManager` only
+    // and which JUCE *guarantees* it calls on the message thread
+    // (juce_AudioPluginFormat.h:170 "guaranteed to be called on the message
+    // thread"). Both public entry points funnel there: createPluginInstanceAsync =
+    // postMessage → handleMessage → createPluginInstance (message thread), and
+    // createInstanceFromDescription off-thread *also* calls createPluginInstanceAsync
+    // (juce_AudioPluginFormat.cpp:71-72) → same message-thread postMessage. So there
+    // is NO public-API path to run a !requiresUnblockedMessageThreadDuringCreation
+    // format's heavy load off the message thread IN-PROCESS without editing the
+    // FetchContent JUCE source. The genuine off-thread mechanism in this repo is the
+    // out-of-process sandbox (SandboxWorker runs createInstanceFromDescription in a
+    // CHILD process, so the host message thread is free) — that is Route B / R6
+    // "sandbox default-ON for heavy instruments", a cross-lane decision tracked
+    // separately. See .omc/state/qa-wave-reports/ultraqa-FIX-engine.md.
     getAudioPluginFormats().createPluginInstanceAsync (
         desc, priv->sampleRate, priv->blockSize, [callback] (std::unique_ptr<AudioPluginInstance> instance, const String& error) {
             if (instance != nullptr)
