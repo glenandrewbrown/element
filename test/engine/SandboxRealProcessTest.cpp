@@ -147,4 +147,56 @@ BOOST_AUTO_TEST_CASE (RealProcessRoundTrip)
     BOOST_CHECK (host.getState() == SandboxHost::State::Idle);
 }
 
+// R2 AU-hang fix companion: the worker now instantiates on its MESSAGE THREAD via
+// createPluginInstanceAsync (off the IPC reader thread). This asserts the *failure*
+// arm of that callback still reports back over IPC and — critically — does NOT hang
+// the worker: a description whose format does not resolve in the worker's
+// formatManager makes JUCE post a DeliverError CallbackMessage to the worker MT,
+// whose callback emits PluginLoadFailed. A bounded pump catches a regression to a
+// blocking/hanging load (which would never settle). RUN_SERIAL + 30 s ctest timeout.
+BOOST_AUTO_TEST_CASE (RealProcessLoadFailureReports)
+{
+    auto* ctx = element::test::context();
+    BOOST_REQUIRE (ctx != nullptr);
+
+    SandboxHost host (ctx->plugins());
+    LoadCapture capture;
+    host.addListener (&capture);
+
+    BOOST_REQUIRE (host.launch());
+    BOOST_CHECK (host.getState() == SandboxHost::State::Ready);
+
+    pumpUntil ([] { return false; }, std::chrono::milliseconds (300));
+
+    // A description that cannot resolve to any format the worker has registered →
+    // the worker's MT createPluginInstanceAsync callback fires with instance==nullptr
+    // + "No compatible plug-in format…" and sends PluginLoadFailed.
+    juce::PluginDescription desc;
+    desc.name              = "NonexistentPlugin";
+    desc.descriptiveName   = "NonexistentPlugin";
+    desc.pluginFormatName  = "NoSuchFormat";
+    desc.fileOrIdentifier  = "this/does/not/resolve";
+    desc.uniqueId          = 0x4E4F4E45; // 'NONE'
+    desc.deprecatedUid     = 0x4E4F4E45;
+    desc.numInputChannels  = 0;
+    desc.numOutputChannels = 2;
+
+    host.loadPlugin (desc);
+
+    const bool settled = pumpUntil (
+        [&] { return capture.loaded.load() || capture.loadFailed.load(); },
+        std::chrono::seconds (5));
+
+    // The load MUST settle (proves the worker did not hang on the load path) and it
+    // must settle as a FAILURE (the MT callback's error arm reported back over IPC).
+    BOOST_REQUIRE_MESSAGE (settled, "Bogus-plugin load did not settle within 5 s "
+                                    "(worker load path may be hanging)");
+    BOOST_CHECK (capture.loadFailed.load());
+    BOOST_CHECK (! capture.loaded.load());
+
+    host.removeListener (&capture);
+    host.shutdown();
+    BOOST_CHECK (host.getState() == SandboxHost::State::Idle);
+}
+
 BOOST_AUTO_TEST_SUITE_END()

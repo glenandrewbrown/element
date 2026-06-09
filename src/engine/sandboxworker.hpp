@@ -100,6 +100,12 @@ private:
     void handleCloseEditorWindow();
     void closeEditorWindowIfOpen();
 
+    // Release + destroy the loaded plugin on the MESSAGE THREAD. AU teardown
+    // (~AudioUnitPluginInstance) posts an AUDeleter to the MT and blocks on a
+    // WaitableEvent when called off it — the same hang class as load. Route every
+    // releaseResources()/reset() through here so it never blocks the IPC thread.
+    void releasePluginOnMessageThread();
+
     // RT processing thread
     void processAudioBlock();
     void rtProcessingLoop();
@@ -194,13 +200,9 @@ inline SandboxWorker::~SandboxWorker()
     stopTimer();
     stopRTThread();
 
-    // Clean up plugin
-    if (plugin)
-    {
-        if (isPrepared)
-            plugin->releaseResources();
-        plugin.reset();
-    }
+    // Clean up plugin (on the message thread — AU teardown posts to the MT).
+    // The dtor runs from JUCEApplication::shutdown() on the MT, so this is inline.
+    releasePluginOnMessageThread();
 
     // Detach from shared memory (worker is not owner, so no unlink)
     sharedMemory.close();
@@ -351,13 +353,10 @@ inline void SandboxWorker::handleConnectionLost()
 {
     juce::Logger::writeToLog ("Lost connection to coordinator - shutting down");
 
-    // Clean shutdown
-    if (plugin)
-    {
-        if (isPrepared)
-            plugin->releaseResources();
-        plugin.reset();
-    }
+    // Clean shutdown. This runs on the IPC background thread, so release the plugin
+    // on the MESSAGE THREAD (AU teardown posts to the MT + waits — releasing here
+    // directly would deadlock the IPC thread). quit() is then dispatched to the MT.
+    releasePluginOnMessageThread();
 
     // Exit process
     juce::JUCEApplication::quit();
@@ -494,45 +493,65 @@ inline void SandboxWorker::handleLoadPlugin (const void* payload, uint32_t paylo
 
     juce::Logger::writeToLog ("Loading plugin: " + desc.name);
 
-    juce::String errorMessage;
-    plugin = formatManager.createPluginInstance (
-        desc, sampleRate > 0 ? sampleRate : 44100.0,
-        blockSize > 0 ? blockSize : 512,
-        errorMessage);
+    // CRITICAL (R2 AU load-hang fix): instantiate on the worker's MESSAGE THREAD,
+    // never on this IPC reader/background thread. ChildProcessWorker delivers
+    // handleMessageFromCoordinator INLINE on a background thread, but JUCE's
+    // createInstanceFromDescription posts the heavy create to the message thread and
+    // blocks on a WaitableEvent. On a background thread that wait stalls the IPC
+    // reader (no heartbeats → host 5s watchdog false-crash → restart loop for AUv2/
+    // Kontakt) and HARD-DEADLOCKS AUv3 (which requires an UNBLOCKED message thread +
+    // a spinning CFRunLoop to deliver AudioComponentInstantiate's completion block).
+    //
+    // createPluginInstanceAsync just posts an AsyncCreateMessage and returns
+    // immediately (juce_AudioPluginFormat.cpp: postMessage), so it is SAFE to call
+    // from this background thread: the IPC reader returns at once (heartbeats keep
+    // flowing) and the real instantiation runs on the worker MT, where the completion
+    // callback (also on the MT) emits the SAME PluginLoaded / PluginInfo /
+    // PluginLoadFailed IPC replies as before. The worker outlives every load (it only
+    // quit()s on Shutdown / connection-lost, both of which release the plugin on the
+    // MT too), so capturing `this` raw is safe — mirrors the editor handler.
+    const double initRate = sampleRate > 0 ? sampleRate : 44100.0;
+    const int initBlock = blockSize > 0 ? blockSize : 512;
 
-    if (plugin == nullptr)
+    formatManager.createPluginInstanceAsync (
+        desc, initRate, initBlock,
+        [this, desc] (std::unique_ptr<juce::AudioPluginInstance> instance,
+                      const juce::String& errorMessage)
     {
-        juce::StringArray fmtNames;
-        for (int fi = 0; fi < formatManager.getNumFormats(); ++fi)
-            fmtNames.add (formatManager.getFormat (fi)->getName());
-        juce::Logger::writeToLog ("Failed to load plugin: " + errorMessage
-            + " | desc.format='" + desc.pluginFormatName + "'"
-            + " name='" + desc.name + "'"
-            + " file='" + desc.fileOrIdentifier + "'"
-            + " registered=[" + fmtNames.joinIntoString (", ") + "]");
-        sendResponse (SandboxMessageType::PluginLoadFailed,
-                      errorMessage.toRawUTF8(),
-                      static_cast<uint32_t> (errorMessage.getNumBytesAsUTF8()));
-        return;
-    }
+        // Runs on the worker MESSAGE THREAD (JUCE contract).
+        if (instance == nullptr)
+        {
+            juce::StringArray fmtNames;
+            for (int fi = 0; fi < formatManager.getNumFormats(); ++fi)
+                fmtNames.add (formatManager.getFormat (fi)->getName());
+            juce::Logger::writeToLog ("Failed to load plugin: " + errorMessage
+                + " | desc.format='" + desc.pluginFormatName + "'"
+                + " name='" + desc.name + "'"
+                + " file='" + desc.fileOrIdentifier + "'"
+                + " registered=[" + fmtNames.joinIntoString (", ") + "]");
+            sendResponse (SandboxMessageType::PluginLoadFailed,
+                          errorMessage.toRawUTF8(),
+                          static_cast<uint32_t> (errorMessage.getNumBytesAsUTF8()));
+            return;
+        }
 
-    loadedDescription = desc;
-    lastReportedLatency = plugin->getLatencySamples();
+        plugin = std::move (instance);
+        loadedDescription = desc;
+        lastReportedLatency = plugin->getLatencySamples();
 
-    // Prepare if we have valid audio settings
-    if (sampleRate > 0 && blockSize > 0)
-    {
-        plugin->setRateAndBufferSizeDetails (sampleRate, blockSize);
-        plugin->prepareToPlay (sampleRate, blockSize);
-        isPrepared = true;
-    }
+        // Prepare if we have valid audio settings
+        if (sampleRate > 0 && blockSize > 0)
+        {
+            plugin->setRateAndBufferSizeDetails (sampleRate, blockSize);
+            plugin->prepareToPlay (sampleRate, blockSize);
+            isPrepared = true;
+        }
 
-    juce::Logger::writeToLog ("Plugin loaded successfully: " + desc.name);
-    sendResponse (SandboxMessageType::PluginLoaded);
+        juce::Logger::writeToLog ("Plugin loaded successfully: " + desc.name);
+        sendResponse (SandboxMessageType::PluginLoaded);
 
-    // Send PluginInfo so the host can build parameter proxies + correct ports.
-    // Truncate parameter list at the IPC cap to bound the host-side allocation.
-    {
+        // Send PluginInfo so the host can build parameter proxies + correct ports.
+        // Truncate parameter list at the IPC cap to bound the host-side allocation.
         const auto& jParams = plugin->getParameters();
         const int paramCount = juce::jmin (jParams.size(), (int) EL_SANDBOX_MAX_PARAMETERS);
         if (jParams.size() > paramCount)
@@ -585,7 +604,7 @@ inline void SandboxWorker::handleLoadPlugin (const void* payload, uint32_t paylo
         sendResponse (SandboxMessageType::PluginInfo,
                       block.getData(),
                       static_cast<uint32_t> (block.getSize()));
-    }
+    });
 }
 
 inline void SandboxWorker::handleUnloadPlugin()
@@ -600,13 +619,9 @@ inline void SandboxWorker::handleUnloadPlugin()
     {
         juce::Logger::writeToLog ("Unloading plugin: " + loadedDescription.name);
 
-        if (isPrepared)
-        {
-            plugin->releaseResources();
-            isPrepared = false;
-        }
-
-        plugin.reset();
+        // Release + reset on the MESSAGE THREAD (AU teardown posts to the MT). Order
+        // preserved: editor window already torn down above, processor released next.
+        releasePluginOnMessageThread();
         loadedDescription = {};
     }
 
@@ -912,12 +927,10 @@ inline void SandboxWorker::handleShutdown()
     // Editor owns NSViews tied to the processor — destroy it first.
     closeEditorWindowIfOpen();
 
-    if (plugin)
-    {
-        if (isPrepared)
-            plugin->releaseResources();
-        plugin.reset();
-    }
+    // Release + reset on the MESSAGE THREAD (AU teardown posts to the MT + waits).
+    // handleShutdown runs on the IPC background thread, so releasing here directly
+    // would deadlock; the editor window is already torn down above (order preserved).
+    releasePluginOnMessageThread();
 
     sharedMemory.close();
 
@@ -943,6 +956,33 @@ inline void SandboxWorker::closeEditorWindowIfOpen()
         sandbox_editor_window::closeEditorWindow();
     else
         mm->callSync ([] { sandbox_editor_window::closeEditorWindow(); });
+}
+
+inline void SandboxWorker::releasePluginOnMessageThread()
+{
+    if (! plugin)
+        return;
+
+    // Same MT-marshal idiom as closeEditorWindowIfOpen: if we're already on the
+    // message thread (e.g. the load callback unloading a prior instance) run inline;
+    // otherwise callSync so the AU AUDeleter posted to the MT is serviced (callSync
+    // pumps the wait correctly) rather than deadlocking the IPC thread. callSync is a
+    // direct inline call when already on the MT, so this is safe in either context.
+    auto release = [this]
+    {
+        if (isPrepared)
+        {
+            plugin->releaseResources();
+            isPrepared = false;
+        }
+        plugin.reset();
+    };
+
+    auto* mm = juce::MessageManager::getInstanceWithoutCreating();
+    if (mm != nullptr && ! mm->isThisTheMessageThread())
+        mm->callSync (release);
+    else
+        release();
 }
 
 inline void SandboxWorker::handleOpenEditorWindow (const void* payload, uint32_t payloadSize)
