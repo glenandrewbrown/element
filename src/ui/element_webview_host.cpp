@@ -6763,6 +6763,20 @@ String ElementWebViewHost::buildActiveGraphJson() const
         const String nodeIdentifier (n.getIdentifier().toString());
         b->setProperty ("identifier", nodeIdentifier);
 
+        // P3 (out-of-process hosting) — engine-truth flag: is this block's
+        // processor running in a separate crash-isolated worker process? Detected
+        // by the SAME cast the editor-bridge fns use (elementOpenSandboxedEditor,
+        // :1558), so the snapshot value can never disagree with what the bridge
+        // accepts. NOTHING-fake: emitted ONLY when the live processor really is a
+        // SandboxedProcessorNode (a loading placeholder or in-process node resolves
+        // to false). The webview routes the editor-open of a sandboxed Block to the
+        // floating worker window (elementOpenSandboxedEditor) instead of the docked
+        // in-process embed (elementPluginEditorOpen, which a sandboxed node has no
+        // editor for). Absent/false ⇒ docked path (back-compat: every in-process
+        // node decodes as not-sandboxed).
+        b->setProperty ("isSandboxed",
+                        dynamic_cast<SandboxedProcessorNode*> (n.getObject()) != nullptr);
+
         // P0 — for the built-in logic/comparator nodes, surface the engine-truth
         // integer mode so the React Block can render the active op without a fake
         // default. Read message-thread-side off the resolved Processor (relaxed

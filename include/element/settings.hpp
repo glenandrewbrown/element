@@ -165,10 +165,24 @@ public:
     void setTransportRespondToStartStopContinue (bool shouldRespond);
     bool transportRespondToStartStopContinue() const;
 
+    /** Default plugin sandbox mode when the user has set no explicit preference.
+     *  Glen's INTENT (2026-06-09): ALL third-party plugins out-of-process by
+     *  default (crash isolation + no message-thread freeze on heavy loads).
+     *  HELD AT 0 (off) for now — live verification regressed: (a) the helper does
+     *  not launch from the app bundle yet (re-sign via the updated sign-all-macos.sh
+     *  + debug discovery/entitlements), and (b) the SYNCHRONOUS session-load path
+     *  (createFilter) hangs when a sandboxed plugin's worker stalls — it lacks the
+     *  graceful in-process fallback that the live-add path (addExternalPluginAsync)
+     *  has. Flip to 1 only AFTER both are fixed + verified live (see
+     *  .omo/plans/out-of-process-plugin-hosting-2026-06-09.md "NEXT").
+     *  0 = disabled · 1 = all external plugins sandboxed · 2 = AU-only.
+     */
+    static constexpr int defaultPluginSandboxMode = 0;
+
     /** Get plugin sandbox mode.
-     *  0 = disabled (default)
-     *  1 = all external plugins sandboxed
-     *  2 = only problematic plugins sandboxed
+     *  0 = disabled
+     *  1 = all external plugins sandboxed (DEFAULT — defaultPluginSandboxMode)
+     *  2 = only problematic plugins sandboxed (AU-only)
      */
     int getPluginSandboxMode() const;
     void setPluginSandboxMode (int mode);

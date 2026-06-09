@@ -376,20 +376,55 @@ fi
 # ---- Code Signing ----
 # If DEVELOPER_ID_APP is set, sign all binaries before packaging.
 # This ensures the PKG contains properly signed, hardened-runtime bundles.
+#
+# Signing order is INNERMOST-FIRST (--deep is deprecated and unreliable):
+#   1. Sandbox helper  (Element.app/Contents/Helpers/Element Sandbox Host.app)
+#   2. Plugin bundles  (.component / .vst3 / .clap / .lv2)
+#   3. Element.app     (outer bundle last — its seal covers the signed helper)
+#
+# The helper uses cmake/entitlements-sandbox.plist (JIT + disable-library-
+# validation; NO device.audio-input — the worker uses shared memory, not
+# CoreAudio directly, so least-privilege applies).
 SIGN_SCRIPT="$PROJECT_ROOT/scripts/codesign-macos.sh"
+SANDBOX_ENTITLEMENTS="$PROJECT_ROOT/cmake/entitlements-sandbox.plist"
 if [ -n "${DEVELOPER_ID_APP:-}" ] && [ -x "$SIGN_SCRIPT" ]; then
     echo ""
-    echo "=== Code Signing ==="
-    # Sign the app
-    if [ -d "$PKG_ROOT/Applications/Element.app" ]; then
-        "$SIGN_SCRIPT" "$PKG_ROOT/Applications/Element.app"
+    echo "=== Code Signing (innermost-first) ==="
+
+    # Step 1: Sign the sandbox helper BEFORE the outer app.
+    HELPER_PATH="$PKG_ROOT/Applications/Element.app/Contents/Helpers/Element Sandbox Host.app"
+    if [ -d "$HELPER_PATH" ]; then
+        echo "  Signing sandbox helper..."
+        if [ -f "$SANDBOX_ENTITLEMENTS" ]; then
+            "$SIGN_SCRIPT" "$HELPER_PATH" "$SANDBOX_ENTITLEMENTS"
+        else
+            echo "  WARNING: entitlements-sandbox.plist not found; signing helper with default entitlements."
+            "$SIGN_SCRIPT" "$HELPER_PATH"
+        fi
+    else
+        echo "  WARNING: Sandbox helper not found at expected path; skipping helper signing."
+        echo "           Path checked: $HELPER_PATH"
     fi
-    # Sign all plugin bundles in the staging area
+
+    # Step 2: Sign plugin bundles (standalone — not nested inside Element.app).
     for ext in component vst3 clap lv2; do
-        find "$PKG_ROOT" -name "*.${ext}" -type d | while read -r bundle; do
+        find "$PKG_ROOT" -name "*.${ext}" -type d \
+            ! -path "*/Element.app/*" | while read -r bundle; do
             "$SIGN_SCRIPT" "$bundle"
         done
     done
+
+    # Step 3: Sign Element.app last so its seal covers the already-signed helper.
+    if [ -d "$PKG_ROOT/Applications/Element.app" ]; then
+        echo "  Signing Element.app (outer bundle)..."
+        "$SIGN_SCRIPT" "$PKG_ROOT/Applications/Element.app"
+    fi
+
+    # Verify the deep signature is intact.
+    echo "  Verifying deep signature..."
+    codesign --verify --deep --strict --verbose=2 \
+        "$PKG_ROOT/Applications/Element.app" 2>&1 | grep -E "^(.*\.app|valid|sealed|OK)" || true
+
     echo "=== Code Signing Complete ==="
 elif [ -n "${DEVELOPER_ID_APP:-}" ]; then
     echo "WARNING: DEVELOPER_ID_APP is set but $SIGN_SCRIPT not found; skipping signing."

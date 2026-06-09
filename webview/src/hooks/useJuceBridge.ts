@@ -74,6 +74,11 @@ type EngineBlock = {
   identifier?: string;
   /** Engine-truth integer mode for element.compare / element.logic only. */
   intMode?: number;
+  /** P3 — true when the block's processor runs out-of-process (a
+   *  SandboxedProcessorNode). Host emits it for every block (false for
+   *  in-process / loading). Routes the editor-open to the floating worker
+   *  window instead of the docked in-process embed. ABSENT ⇒ false. */
+  isSandboxed?: boolean;
   ports?: Array<{
     id: string;
     label?: string;
@@ -318,6 +323,11 @@ function mapBlock(b: EngineBlock): BlockData {
     // host actually emitted it (no fake value for non-logic blocks).
     identifier: typeof b.identifier === "string" ? b.identifier : undefined,
     intMode: typeof b.intMode === "number" ? b.intMode : undefined,
+    // P3 — engine-truth out-of-process flag (host emits a real bool from a
+    // dynamic_cast<SandboxedProcessorNode*>). Only the explicit `true` flips it;
+    // absent/false ⇒ in-process docked editor (back-compat). Drives the
+    // floating-vs-docked editor-open branch in GraphCanvas.
+    isSandboxed: b.isSandboxed === true,
   };
 }
 

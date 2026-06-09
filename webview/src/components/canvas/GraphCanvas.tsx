@@ -47,6 +47,7 @@ import {
   nativeMoleculeInsert,
 } from "../../bridge/nativeGraph";
 import {
+  nativeOpenSandboxedEditor,
   nativePluginEditorClose,
   nativePluginEditorOpen,
   nativePluginEditorSetBounds,
@@ -568,6 +569,24 @@ export function GraphCanvas() {
       // dive — it falls through to the honest "open to edit" affordance below.
       if (data.containerNodeCount != null && !data.isPortal) {
         void nativeEnterContainer(node.id);
+        return;
+      }
+      // P3 (out-of-process plugin hosting) — a SANDBOXED Block's processor lives
+      // in a separate worker process and has NO docked in-process editor; its real
+      // GUI shows in the worker's own crash-isolated FLOATING window (v1 accepted
+      // trade-off vs the docked draggable editor). Route the open there and return
+      // BEFORE the docked-embed path below, so the in-process editor flow (just
+      // fixed by the UltraQA sizing wave) is untouched for non-sandboxed nodes.
+      // No `editorDrag` (the webview does not own/drag a worker OS window) and no
+      // `embeddedEditorNodeId` mutation (that mirror is the docked embed only).
+      // The double-click is open-only for v1; the floating window is dismissed
+      // from its own OS chrome (a docked toggle/close affordance is follow-up).
+      if (data.isSandboxed) {
+        void nativeOpenSandboxedEditor(
+          node.id,
+          (event as MouseEvent).screenX ?? 0,
+          (event as MouseEvent).screenY ?? 0,
+        );
         return;
       }
       // Plugin Block: toggle the embedded plugin GUI window (Blueprint §10.1).

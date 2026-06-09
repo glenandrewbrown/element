@@ -68,3 +68,47 @@ export async function nativePluginEditorFloat(): Promise<void> {
   useAppStore.getState().setEmbeddedEditorNodeId(null);
   await invokeElementNative("elementPluginEditorFloat", []);
 }
+
+/**
+ * P3 (out-of-process plugin hosting) — open a SANDBOXED plugin's REAL GUI in the
+ * worker's own crash-isolated FLOATING OS window (REAPER model). Thin wrapper
+ * over the existing C++ bridge `elementOpenSandboxedEditor(uuid, screenX,
+ * screenY)` (element_webview_host.cpp:1544): the host forwards to
+ * `SandboxedProcessorNode::openEditor`, the worker promotes its macOS activation
+ * policy to Accessory and shows the plugin's actual `AudioProcessorEditor` in a
+ * `DocumentWindow` it owns. Returns the host's bool (true when the node is
+ * sandboxed and an open was issued; false for an in-process / loading node — the
+ * caller then has no sandboxed editor to surface).
+ *
+ * Deliberately does NOT touch `useAppStore.embeddedEditorNodeId`: that mirror
+ * tracks the DOCKED in-process embed (`elementPluginEditorOpen`). The sandboxed
+ * editor is a separate OS window living entirely in the worker process — the
+ * webview neither embeds nor drags it — so conflating the two mirrors would make
+ * the docked drag-handle / Esc-to-close machinery target a window it cannot move.
+ * The `(x, y)` are SCREEN coordinates (the worker positions its own window).
+ */
+export async function nativeOpenSandboxedEditor(
+  nodeId: string,
+  screenX = 0,
+  screenY = 0,
+): Promise<boolean> {
+  const r = await invokeElementNative("elementOpenSandboxedEditor", [
+    nodeId,
+    screenX,
+    screenY,
+  ]);
+  return r === true;
+}
+
+/**
+ * P3 — close a sandboxed plugin's floating worker-owned editor window. Wraps the
+ * existing C++ `elementCloseSandboxedEditor(uuid)` (element_webview_host.cpp:1571
+ * → `SandboxedProcessorNode::closeEditor`). Idempotent on both sides. Like the
+ * open wrapper, it does not touch the docked-embed mirror.
+ */
+export async function nativeCloseSandboxedEditor(
+  nodeId: string,
+): Promise<boolean> {
+  const r = await invokeElementNative("elementCloseSandboxedEditor", [nodeId]);
+  return r === true;
+}

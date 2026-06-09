@@ -34,15 +34,20 @@
 
 #include <boost/test/unit_test.hpp>
 
+#include <atomic>
+
 #include <element/context.hpp>
 #include <element/node.hpp>
 #include <element/plugins.hpp>
+#include <element/settings.hpp>
 #include <element/tags.hpp>
 
 #include "engine/graphmanager.hpp"
 #include "engine/graphnode.hpp"
+#include "engine/sandboxhost.hpp"
 #include "engine/test_echo_plugin.hpp"
 #include "nodes/placeholder.hpp"
+#include "nodes/sandboxedprocessor.hpp"
 #include "testutil.hpp"
 
 using namespace element;
@@ -413,6 +418,141 @@ BOOST_AUTO_TEST_CASE (empty_catalog_name_heals_to_real_plugin_name_on_swap)
     BOOST_CHECK (! after.getName().equalsIgnoreCase ("Node"));
     BOOST_CHECK (after.getName() != "Plugin");
     BOOST_CHECK_EQUAL (after.getName().toStdString(), String (kTestEchoIdentifier).toStdString());
+}
+
+// ── P1: live UI adds route through the SANDBOX ───────────────────────────────
+// These prove the collision fix: a live external add now consults the sandbox
+// policy (via the test seam, mirroring Settings::shouldSandboxPlugin) and, when
+// it says sandbox, takes the OUT-OF-PROCESS route — while reusing the IDENTICAL
+// instant placeholder + uuid-preserving swap. The seam lets the test drive the
+// route deterministically without mutating shared ApplicationProperties.
+
+// Is the model node's engine processor a SandboxedProcessorNode? (Unlike an
+// in-process plugin — wrapped in an AudioProcessorNode — a sandboxed node IS a
+// Processor directly, so the cast on the resolved processor succeeds.)
+namespace {
+bool isSandboxedNode (const ProcessorPtr& proc)
+{
+    return dynamic_cast<SandboxedProcessorNode*> (proc.get()) != nullptr;
+}
+} // namespace
+
+// (a) When the policy says SANDBOX, the live add still produces the SAME instant
+// loading placeholder: final uuid stamped, tags::loading set, ZERO audio ports.
+// The Block therefore mounts once on the honest loading face and never re-keys —
+// identical to the in-process route. (Synchronous; no worker needed.)
+BOOST_AUTO_TEST_CASE (sandbox_route_produces_loading_placeholder_with_final_uuid)
+{
+    ensureTestFormatRegistered();
+    ManagedGraph g;
+    g.mgr.setSandboxPolicyForTesting ([] (const PluginDescription&) { return true; });
+
+    const auto desc = testEchoDescription();
+    const uint32 nodeId = g.mgr.addNode (&desc, 0.5, 0.5, 0);
+    BOOST_REQUIRE (nodeId != EL_INVALID_NODE);
+
+    // BEFORE pumping: the placeholder is in the model exactly like the in-process
+    // route — proving the sandbox decision did NOT bypass the placeholder path.
+    const Node loading = g.mgr.getNodeModelForId (nodeId);
+    BOOST_REQUIRE (loading.isValid());
+    BOOST_CHECK (loading.getUuidString().isNotEmpty());          // final uuid stamped now
+    BOOST_CHECK ((bool) loading.getProperty (tags::loading, false)); // honest loading face
+    BOOST_CHECK_EQUAL (audioPortCount (loading), 0);             // no connectable ports while loading
+    BOOST_CHECK_EQUAL (g.model.getNumNodes(), g.baseNodeCount + 1);
+
+    // Engine-truth: the loading processor is the PlaceholderProcessor (the
+    // sandboxed node has not swapped in yet).
+    const ProcessorPtr phProc = g.mgr.getNodeForId (nodeId);
+    BOOST_REQUIRE (phProc != nullptr);
+    BOOST_CHECK (isPlaceholder (phProc));
+    BOOST_CHECK (! isSandboxedNode (phProc));
+}
+
+// (c) FALLBACK + uuid preserved: when the sandbox is requested but the worker
+// cannot launch (the headless CI case — the worker binary is absent, so
+// SandboxedProcessorNode reports Error/Idle), the add degrades to the in-process
+// path. The node still loads, the uuid is PRESERVED across the swap (no Block
+// detach), and SandboxEvent::FellBackInProcess is emitted exactly once so the
+// webview can show the "unprotected" badge. This deterministically exercises the
+// fallback branch (kickInProcessFallback) without a real worker.
+BOOST_AUTO_TEST_CASE (sandbox_unavailable_falls_back_in_process_preserving_uuid)
+{
+    ensureTestFormatRegistered();
+    ManagedGraph g;
+    g.mgr.setSandboxPolicyForTesting ([] (const PluginDescription&) { return true; });
+    // Force a deterministic worker LAUNCH failure: kickSandboxedInstantiation skips
+    // the SandboxedProcessorNode ctor and calls kickInProcessFallback directly.
+    // This exercises the fallback path without depending on worker binary presence
+    // (on CI the harness re-execs test_element as the worker, which launches fine
+    // but fails the plugin LOAD — a different code path that is NOT the fallback).
+    g.mgr.setForceWorkerLaunchFailureForTesting (true);
+
+    // Capture FellBackInProcess emissions for the under-test node's lifetime.
+    std::atomic<int> fellBack { 0 };
+    auto conn = test::context()->plugins().sigSandboxEvent.connect (
+        [&fellBack] (uint32, PluginManager::SandboxEvent ev, String) {
+            if (ev == PluginManager::SandboxEvent::FellBackInProcess)
+                ++fellBack;
+        });
+
+    const auto desc = testEchoDescription();
+    const uint32 nodeId = g.mgr.addNode (&desc, 0.5, 0.5, 0);
+    BOOST_REQUIRE (nodeId != EL_INVALID_NODE);
+
+    const Node before = g.mgr.getNodeModelForId (nodeId);
+    BOOST_REQUIRE (before.isValid());
+    const String uuidBefore = before.getUuidString();
+    const juce::ValueTree treeBefore = before.data();
+
+    // Pump the loop: the synchronous launch-failure (or the watcher) kicks the
+    // in-process fallback, whose async completion fires on the message thread and
+    // runs the uuid-preserving swap → loading clears.
+    const bool ready = pumpUntil ([&] {
+        const Node n (g.modelNodeByUuid (uuidBefore));
+        return n.isValid() && ! (bool) n.getProperty (tags::loading, false);
+    }, 5000);
+    BOOST_REQUIRE (ready);
+
+    const Node after (g.modelNodeByUuid (uuidBefore));
+    BOOST_REQUIRE (after.isValid());
+
+    // uuid preserved + SAME ValueTree object (the swap wrote in place, no re-key).
+    BOOST_CHECK_EQUAL (after.getUuidString().toStdString(), uuidBefore.toStdString());
+    BOOST_CHECK (after.data() == treeBefore);
+    BOOST_CHECK_EQUAL (g.model.getNumNodes(), g.baseNodeCount + 1);
+
+    // Plugin loaded in-process: real ports present, NOT a sandboxed node, NOT a
+    // placeholder. (TestEcho is 0-in/2-out → audio ports appear on ready.)
+    const ProcessorPtr proc = g.mgr.getNodeForId (after.getNodeId());
+    BOOST_REQUIRE (proc != nullptr);
+    BOOST_CHECK (! isSandboxedNode (proc));
+    BOOST_CHECK (! isPlaceholder (proc));
+    BOOST_CHECK_GT (audioPortCount (after), 0);
+
+    // The honesty badge fired exactly once — the user is told they are running
+    // unprotected because the sandbox was unavailable.
+    BOOST_CHECK_EQUAL (fellBack.load(), 1);
+
+    conn.disconnect();
+}
+
+// The DEFAULT route (no seam, policy = Settings::shouldSandboxPlugin) is
+// unaffected for INTERNAL/Element nodes: shouldSandboxPlugin returns false for
+// them regardless of mode, so they never take the sandbox branch. (Internal nodes
+// also bypass addExternalPluginAsync entirely — format == nullptr — but this
+// pins the contract that the policy itself excludes them.) No seam, no worker.
+BOOST_AUTO_TEST_CASE (policy_excludes_internal_nodes_from_sandbox)
+{
+    const Settings settings;
+    PluginDescription internalIO;
+    internalIO.pluginFormatName = "Internal";
+    internalIO.fileOrIdentifier = "audio.output";
+    BOOST_CHECK (! settings.shouldSandboxPlugin (internalIO));
+
+    PluginDescription elementNode;
+    elementNode.pluginFormatName = "Element";
+    elementNode.fileOrIdentifier = "el.Script";
+    BOOST_CHECK (! settings.shouldSandboxPlugin (elementNode));
 }
 
 BOOST_AUTO_TEST_SUITE_END()

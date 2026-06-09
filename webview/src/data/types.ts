@@ -100,6 +100,17 @@ export interface BlockData {
    * blocks (the host emits nothing when the processor cast misses — no fake value).
    */
   intMode?: number;
+  /**
+   * P3 (out-of-process plugin hosting) — true when this block's processor runs
+   * in a separate crash-isolated worker process (a SandboxedProcessorNode in the
+   * engine; detected host-side by the same cast the editor-open bridge uses).
+   * Engine-truth, never guessed. When set, double-clicking the Block opens the
+   * plugin's REAL GUI in the worker's own FLOATING window
+   * (`elementOpenSandboxedEditor`) rather than the docked in-process embed
+   * (`elementPluginEditorOpen`), which a sandboxed node has no editor for. ABSENT
+   * / false ⇒ docked path (back-compat: every in-process node is not sandboxed).
+   */
+  isSandboxed?: boolean;
 }
 
 export interface CableData {

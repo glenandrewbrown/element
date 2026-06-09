@@ -56,6 +56,8 @@ import { useHostExtrasStore } from "../../stores/useHostExtrasStore";
 import { useCableMeterStore } from "../../stores/useCableMeterStore";
 import { useNodeSpectrum } from "../../hooks/useNodeSpectrum";
 import {
+  nativeCloseSandboxedEditor,
+  nativeOpenSandboxedEditor,
   nativePluginEditorClose,
   nativePluginEditorFloat,
   nativePluginEditorOpen,
@@ -1857,6 +1859,37 @@ function PluginEditorControls({ block }: { block: BlockData }) {
   }, [embedded, isPlugin, readSlotBounds]);
 
   if (!isPlugin) return null;
+
+  // P3 (out-of-process plugin hosting) — a SANDBOXED plugin's editor lives in the
+  // worker process and shows in its OWN floating OS window; it CANNOT be docked
+  // into this panel slot (the docked embed feeds the host panel-relative bounds +
+  // a ResizeObserver, which the worker window does not consume). Surface honest
+  // open/close-window controls instead of the embed/float docked affordances, and
+  // return BEFORE the docked-embed effects/slot below — `embedded` stays false so
+  // those `useLayoutEffect`s remain inert (no `elementPluginEditorOpen` for a
+  // sandboxed node, which has no in-process editor). NOTHING-fake: these call the
+  // real `elementOpenSandboxedEditor`/`...Close` bridge.
+  if (block.isSandboxed) {
+    return (
+      <div className="space-y-2">
+        <div className="text-[10px] font-bold text-text-secondary uppercase tracking-widest">
+          Plugin window
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <NeuButton size="sm" onClick={() => void nativeOpenSandboxedEditor(block.id)}>
+            Open editor window
+          </NeuButton>
+          <NeuButton size="sm" onClick={() => void nativeCloseSandboxedEditor(block.id)}>
+            Close
+          </NeuButton>
+        </div>
+        <div className="text-[9px] text-text-dim leading-snug">
+          Runs out-of-process — its GUI opens in its own crash-isolated window
+          (not docked in the shell).
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-2">

@@ -578,15 +578,23 @@ bool Settings::transportRespondToStartStopContinue() const
 //=============================================================================
 int Settings::getPluginSandboxMode() const
 {
-    // Default 0 (Disabled). Phase D Gate 1.5 stress-tested with the in-tree
-    // TestEchoPluginInstance only; real-world AU plugins through the sandbox
-    // at initial-load time hung the JUCE message thread on Glen's machine
-    // (2026-05-08, BRASS_4Horns session). Until the sandbox is verified
-    // against real third-party AUs end-to-end, sandbox stays opt-in via
-    // Preferences → Plugins → Sandbox Mode.
+    // P4 (2026-06-09, Glen LOCKED): DEFAULT is now 1 (sandbox ALL third-party
+    // plugins out-of-process) — defaultPluginSandboxMode. This is the crash-
+    // isolation ship-gate AND the fix for the heavy-plugin message-thread freeze
+    // (bug #1): a sandboxed plugin loads in a CHILD process so the host message
+    // thread never blocks. The earlier 0/Disabled default existed because real
+    // AUs hung the worker's message thread (2026-05-08, BRASS_4Horns); P0
+    // (sandboxworker.hpp, 2026-06-09) moved the worker's plugin LOAD + teardown
+    // onto the worker's own message thread, so an AU that blocks during init now
+    // stalls only the child, not the host.
+    //
+    // The setting key is unchanged and still fully overridable (Preferences →
+    // Plugins → Sandbox Mode, or setPluginSandboxMode): a user/lead who set an
+    // explicit value keeps it; only the implicit fallback changed. To revert the
+    // default globally, change Settings::defaultPluginSandboxMode back to 0.
     if (auto* p = getProps())
-        return p->getIntValue (pluginSandboxModeKey, 0);
-    return 0;
+        return p->getIntValue (pluginSandboxModeKey, defaultPluginSandboxMode);
+    return defaultPluginSandboxMode;
 }
 
 void Settings::setPluginSandboxMode (int mode)

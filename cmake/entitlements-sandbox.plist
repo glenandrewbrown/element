@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- JIT required: the sandbox worker calls JUCE createPluginInstance which
+         may JIT-compile plugin code (AU/VST3 validators, scripting engines). -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <!-- Disable library validation so the worker can load arbitrary third-party
+         plugin dylibs (VST3/AU/CLAP bundles) that are not signed by Kushview. -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+    <!-- NOTE: device.audio-input is intentionally ABSENT here.
+         The sandbox worker exchanges audio via lock-free shared memory
+         (SharedAudioBuffer / shm_open) — it never touches CoreAudio directly.
+         Least-privilege: no microphone entitlement on the helper. -->
+</dict>
+</plist>

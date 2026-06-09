@@ -11,6 +11,7 @@
 #include "nodes/midichannelsplitter.hpp"
 #include "nodes/midiprogrammap.hpp"
 #include "nodes/placeholder.hpp"
+#include "nodes/sandboxedprocessor.hpp" // P1: live UI adds route through the sandbox
 #include "engine/rootgraph.hpp"
 
 #include "utils.hpp"
@@ -521,8 +522,21 @@ uint32 GraphManager::addNode (const PluginDescription* desc, double rx, double r
     // §setupFor derives 0 ports from the empty node), then kick the async
     // instantiation. The loading→ready swap (swapInLoadedProcessor) runs on the
     // JUCE message-thread callback and preserves the uuid (CRITICAL-1).
+    //
+    // P1 (2026-06-09): decide the sandbox route HERE, BEFORE the gate, so a live
+    // UI add can go out-of-process (the historical collision: the gate used to
+    // short-circuit to the in-process async path before shouldSandboxPlugin —
+    // which lived only in createFilter/session-load — was ever consulted, so a
+    // live-added plugin could NEVER be sandboxed). Both routes share the same
+    // instant placeholder + uuid-preserving swap; only the instantiation kick
+    // differs (in-process JUCE async vs out-of-process worker). Internal/IO nodes
+    // (format == nullptr) are never sandboxed and stay on the synchronous path.
     if (pluginManager.getAudioPluginFormat (desc->pluginFormatName) != nullptr)
-        return addExternalPluginAsync (*desc, rx, ry, nodeId);
+    {
+        const bool sandbox = sandboxPolicyOverride ? sandboxPolicyOverride (*desc)
+                                                   : Settings().shouldSandboxPlugin (*desc);
+        return addExternalPluginAsync (*desc, rx, ry, nodeId, sandbox);
+    }
 
     if (auto* object = createFilter (desc, rx, ry, nodeId))
     {
@@ -602,7 +616,237 @@ uint32 GraphManager::addNode (const PluginDescription* desc, double rx, double r
     return nodeId;
 }
 
-uint32 GraphManager::addExternalPluginAsync (const PluginDescription& desc, double rx, double ry, uint32 nodeId)
+//==============================================================================
+// P1 — message-thread poll-timer that watches ONE sandboxed node loading in its
+// worker. JUCE Timers fire on the MESSAGE THREAD, so calling swapInLoadedProcessor
+// from tick() is RT-correct by construction (no MessageManager::callAsync needed —
+// the timer IS already on the thread the engine op-republish must run on).
+//
+// Ownership: the watcher holds the in-flight node as a ProcessorPtr. If the swap
+// succeeds, swapInLoadedProcessor's engine addNode retains the node and the watcher
+// removes itself (dropping its extra ref). If the GraphManager dies first, the
+// OwnedArray<SandboxLoadWatcher> member destructs → the ProcessorPtr drops → the
+// SandboxedProcessorNode dtor shuts the worker down exactly once. If the user
+// deletes/undoes the loading node, swapInLoadedProcessor's resolve-by-uuid fails
+// and the node is simply dropped (no resurrection) — same WeakReference + uuid
+// guard the in-process path uses.
+class GraphManager::SandboxLoadWatcher : private juce::Timer
+{
+public:
+    SandboxLoadWatcher (GraphManager& owner,
+                        ProcessorPtr node,
+                        String finalUuid,
+                        uint32 placeholderId,
+                        PluginDescription desc)
+        : manager (&owner),
+          sandboxNode (std::move (node)),
+          uuid (std::move (finalUuid)),
+          phId (placeholderId),
+          description (std::move (desc)),
+          deadlineMs (juce::Time::getMillisecondCounter() + kLoadTimeoutMs)
+    {
+        // ~30Hz poll — well under the worker load time; cheap (3 atomic reads).
+        startTimer (33);
+    }
+
+    ~SandboxLoadWatcher() override { stopTimer(); }
+
+private:
+    // Bounded so a worker that never reports loaded (stuck child) degrades to the
+    // in-process fallback instead of leaving the Block "loading" forever. Generous
+    // — heavy instruments (Kontakt ~20s) load well inside this; the worker does the
+    // heavy work in its own process so the host is responsive throughout the wait.
+    static constexpr int kLoadTimeoutMs = 60000;
+
+    void finishAndRemove()
+    {
+        // Remove self from the owner's array → this object is deleted. Capture the
+        // owner first; `this` is dead after the erase. Stop the timer immediately
+        // so no re-entrant tick can fire during teardown.
+        stopTimer();
+        if (auto* m = manager.get())
+        {
+            for (int i = m->sandboxWatchers.size(); --i >= 0;)
+            {
+                if (m->sandboxWatchers.getUnchecked (i) == this)
+                {
+                    m->sandboxWatchers.remove (i); // deletes `this`
+                    return;
+                }
+            }
+        }
+    }
+
+    void fallbackInProcess()
+    {
+        // Worker route failed AFTER the placeholder was shown (launch ok but load
+        // crashed/failed, or the bounded deadline elapsed). Re-kick the SAME
+        // placeholder uuid through the in-process async path so the plugin still
+        // loads, and emit the honesty badge so the user knows they are unprotected.
+        auto* m = manager.get();
+        if (m == nullptr)
+        {
+            finishAndRemove();
+            return;
+        }
+
+        // Resolve the placeholder's CURRENT engine id by uuid (the user may not
+        // have touched it; phId is still valid unless the node was deleted).
+        const ValueTree nodeData (m->nodes.getChildWithProperty (tags::uuid, uuid));
+        if (! nodeData.isValid())
+        {
+            // Node was deleted/undone while loading — nothing to fall back to.
+            finishAndRemove();
+            return;
+        }
+
+        const uint32 currentId = (uint32) (int64) nodeData.getProperty (tags::id, (int64) phId);
+
+        // Drop our worker reference BEFORE kicking the in-process load so the dead
+        // worker tears down promptly (the node dtor shuts it down).
+        sandboxNode = nullptr;
+
+        m->kickInProcessFallback (uuid, currentId, description);
+        finishAndRemove();
+    }
+
+    void timerCallback() override
+    {
+        // GraphManager gone (session reload/shutdown) — drop everything. The
+        // ProcessorPtr release in our dtor shuts the worker down once.
+        if (manager == nullptr)
+        {
+            finishAndRemove();
+            return;
+        }
+
+        auto* node = dynamic_cast<SandboxedProcessorNode*> (sandboxNode.get());
+        if (node == nullptr)
+        {
+            finishAndRemove();
+            return;
+        }
+
+        const auto state = node->getSandboxState();
+
+        // Worker died, or a launch that briefly looked ok went Error → fall back.
+        if (state == SandboxHost::State::Crashed
+            || state == SandboxHost::State::Idle
+            || state == SandboxHost::State::Error)
+        {
+            fallbackInProcess();
+            return;
+        }
+
+        // READY: the worker reported PluginLoaded (state Active, isPluginLoaded
+        // true). PluginInfo (real ports) follows immediately on the wire; the
+        // NodeModelUpdater installed by the swap's setupNode re-syncs the model
+        // ports when it lands, so cables become attachable a tick later even if
+        // the swap runs before PluginInfo. Run the IDENTICAL uuid-preserving swap.
+        if (node->isPluginLoaded() && state == SandboxHost::State::Active)
+        {
+            if (auto* m = manager.get())
+            {
+                // Re-resolve the placeholder's CURRENT engine id by uuid (stable
+                // across the swap; the int id changes but the uuid does not).
+                const ValueTree nodeData (m->nodes.getChildWithProperty (tags::uuid, uuid));
+                const uint32 currentId = nodeData.isValid()
+                    ? (uint32) (int64) nodeData.getProperty (tags::id, (int64) phId)
+                    : phId;
+                ProcessorPtr toSwap (sandboxNode); // keep alive across the swap
+                m->swapInLoadedProcessor (uuid, currentId, toSwap, description);
+            }
+            finishAndRemove();
+            return;
+        }
+
+        // Still launching/loading. Bound the wait so a stuck worker can't pin the
+        // Block in "loading" forever — degrade to the in-process fallback.
+        if (juce::Time::getMillisecondCounter() > deadlineMs)
+            fallbackInProcess();
+    }
+
+    juce::WeakReference<GraphManager> manager;
+    ProcessorPtr sandboxNode;
+    String uuid;
+    uint32 phId;
+    PluginDescription description;
+    const juce::uint32 deadlineMs;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SandboxLoadWatcher)
+};
+
+void GraphManager::kickSandboxedInstantiation (const String& finalUuid, uint32 placeholderId, const PluginDescription& desc)
+{
+    // TEST SEAM: deterministically simulate a worker launch failure so tests can
+    // exercise kickInProcessFallback without depending on whether the helper binary
+    // is present. Production always has forceWorkerLaunchFailure == false.
+    if (forceWorkerLaunchFailure)
+    {
+        kickInProcessFallback (finalUuid, placeholderId, desc);
+        return;
+    }
+
+    // Construct the sandboxed node — NON-BLOCKING: this launches the worker and
+    // fires an async loadPlugin (the heavy load runs in the child process). No
+    // host-thread plugin instantiation happens here, so the message thread stays
+    // free regardless of how heavy the plugin is.
+    ProcessorPtr sandboxNode (new SandboxedProcessorNode (desc, pluginManager));
+
+    // Launch failure is observable synchronously (mirrors createSandboxedGraphNode):
+    // Idle/Error means the worker binary couldn't start (e.g. unsigned helper / P2
+    // not done). Fall back to the in-process async path immediately + emit the
+    // honesty badge so the user is told they are unprotected. `sandboxNode` drops
+    // here → its dtor shuts the (failed) worker down.
+    const auto state = sandboxNode != nullptr
+        ? dynamic_cast<SandboxedProcessorNode*> (sandboxNode.get())->getSandboxState()
+        : SandboxHost::State::Error;
+
+    if (state == SandboxHost::State::Idle || state == SandboxHost::State::Error)
+    {
+        sandboxNode = nullptr; // tear down the failed worker before re-kicking
+        kickInProcessFallback (finalUuid, placeholderId, desc);
+        return;
+    }
+
+    // Worker launched + plugin load is in flight in the child process. Arm a
+    // message-thread poll-timer that runs the uuid-preserving swap once the worker
+    // reports loaded (or falls back if it crashes / times out).
+    sandboxWatchers.add (new SandboxLoadWatcher (*this, sandboxNode, finalUuid, placeholderId, desc));
+}
+
+void GraphManager::kickInProcessFallback (const String& finalUuid, uint32 currentId, const PluginDescription& desc)
+{
+    // Sandbox was requested but unavailable (worker won't launch, crashed on load,
+    // or timed out). Re-kick the SAME placeholder uuid through the in-process async
+    // path so the plugin still loads, then emit SandboxEvent::FellBackInProcess so
+    // the webview shows the "in-process — unprotected" honesty badge. Mirrors the
+    // synchronous fallback already in createFilter (session-load path).
+    juce::WeakReference<GraphManager> weakThis (this);
+    const String uuidCopy (finalUuid);
+    const PluginDescription descCopy (desc);
+    pluginManager.createGraphNodeAsync (descCopy,
+        [weakThis, uuidCopy, currentId, descCopy] (Processor* realProcessor, const String& error) {
+            ProcessorPtr real (realProcessor);
+            juce::ignoreUnused (error);
+            if (weakThis == nullptr)
+                return; // GraphManager gone — instance released on scope exit.
+            weakThis->swapInLoadedProcessor (uuidCopy, currentId, real, descCopy);
+            if (real == nullptr)
+                return;
+            // Re-resolve the post-swap engine id by uuid (swapInLoadedProcessor
+            // reassigns the integer id) so the badge lands on the right Block.
+            const ValueTree nd (weakThis->nodes.getChildWithProperty (tags::uuid, uuidCopy));
+            const uint32 badgeId = nd.isValid()
+                ? (uint32) (int64) nd.getProperty (tags::id, (int64) currentId)
+                : currentId;
+            weakThis->pluginManager.emitSandboxEvent (
+                badgeId, PluginManager::SandboxEvent::FellBackInProcess,
+                descCopy.name + " running in-process — sandbox unavailable");
+        });
+}
+
+uint32 GraphManager::addExternalPluginAsync (const PluginDescription& desc, double rx, double ry, uint32 nodeId, bool sandbox)
 {
     // ── 1. Build + add the LOADING placeholder SYNCHRONOUSLY (instant, message
     //       thread). A fresh empty Node has no ports child, so
@@ -669,10 +913,27 @@ uint32 GraphManager::addExternalPluginAsync (const PluginDescription& desc, doub
     nodes.addChild (data, -1, nullptr);
     changed();
 
-    // ── 2. Kick the async instantiation. The callback runs on the MESSAGE
-    //       THREAD (JUCE contract) → the swap is RT-safe. Guard with a
-    //       WeakReference so a session reload that destroys this GraphManager
-    //       mid-load is a safe no-op (the real instance is just dropped). ──
+    // ── 2. Kick the instantiation. Two routes share this SAME placeholder + the
+    //       SAME uuid-preserving swapInLoadedProcessor; only the kick differs. ──
+    if (sandbox)
+    {
+        // OUT-OF-PROCESS. The SandboxedProcessorNode ctor is non-blocking — it
+        // launches the worker + fires an async loadPlugin that runs ENTIRELY in
+        // the child process (P0 moved the worker's load onto the worker's own
+        // message thread). The host message thread is therefore NEVER blocked by
+        // the plugin's load — the freeze (#1) cannot happen on this route. We
+        // keep the loading placeholder until the worker reports loaded, then run
+        // the identical swap (preserving the visual loading→ready transition).
+        kickSandboxedInstantiation (finalUuid, nodeId, desc);
+        return nodeId;
+    }
+
+    // IN-PROCESS (Phase-4). The callback runs on the MESSAGE THREAD (JUCE
+    // contract) → the swap is RT-safe. Guard with a WeakReference so a session
+    // reload that destroys this GraphManager mid-load is a safe no-op (the real
+    // instance is just dropped). NB: this path still funnels through JUCE's
+    // message-thread createPluginInstance, so a heavy plugin DOES freeze the UI
+    // here — that is why the P4 default routes all 3rd-party plugins to sandbox.
     juce::WeakReference<GraphManager> weakThis (this);
     const PluginDescription descCopy (desc);
     pluginManager.createGraphNodeAsync (descCopy, [weakThis, finalUuid, nodeId, descCopy] (Processor* realProcessor, const String& error) {

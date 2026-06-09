@@ -13,6 +13,8 @@ import {
   type JuceBridgeMock,
 } from "../../test/mockJuceBridge";
 import {
+  nativeCloseSandboxedEditor,
+  nativeOpenSandboxedEditor,
   nativePluginEditorClose,
   nativePluginEditorFloat,
   nativePluginEditorOpen,
@@ -283,5 +285,111 @@ describe("BUG 1: open → ✕-close → reopen toggle consistency", () => {
     expect(host.editor).not.toBeNull();
     // Each double-click issued exactly ONE open call.
     expect(bridge.callsOf("elementPluginEditorOpen").length).toBe(callsBefore + 1);
+  });
+});
+
+// ── P3: out-of-process (sandboxed) floating editor wrappers ──────────────────
+describe("nativeOpenSandboxedEditor / nativeCloseSandboxedEditor (P3)", () => {
+  let bridge: JuceBridgeMock;
+
+  beforeEach(() => {
+    bridge = installJuceBridgeMock();
+    useAppStore.getState().setEmbeddedEditorNodeId(null);
+  });
+
+  afterEach(() => {
+    bridge.uninstall();
+    useAppStore.getState().setEmbeddedEditorNodeId(null);
+  });
+
+  it("open: calls elementOpenSandboxedEditor with [uuid, screenX, screenY] and returns the host bool", async () => {
+    bridge.mock.mockResolvedValueOnce(true);
+    const ok = await nativeOpenSandboxedEditor("sbx-1", 120, 340);
+    expect(ok).toBe(true);
+    expect(bridge.mock).toHaveBeenCalledWith("elementOpenSandboxedEditor", [
+      "sbx-1",
+      120,
+      340,
+    ]);
+  });
+
+  it("open: defaults screen coords to 0,0 when omitted", async () => {
+    bridge.mock.mockResolvedValueOnce(true);
+    await nativeOpenSandboxedEditor("sbx-1");
+    expect(bridge.mock).toHaveBeenCalledWith("elementOpenSandboxedEditor", [
+      "sbx-1",
+      0,
+      0,
+    ]);
+  });
+
+  it("open: returns false for a non-sandboxed / in-process node (host returns false)", async () => {
+    bridge.mock.mockResolvedValueOnce(false);
+    const ok = await nativeOpenSandboxedEditor("in-process-node");
+    expect(ok).toBe(false);
+  });
+
+  it("open: does NOT touch the docked-embed mirror (floating window is worker-owned)", async () => {
+    bridge.mock.mockResolvedValueOnce(true);
+    await nativeOpenSandboxedEditor("sbx-1");
+    expect(useAppStore.getState().embeddedEditorNodeId).toBeNull();
+  });
+
+  it("close: calls elementCloseSandboxedEditor(uuid) and returns the host bool", async () => {
+    bridge.mock.mockResolvedValueOnce(true);
+    const ok = await nativeCloseSandboxedEditor("sbx-1");
+    expect(ok).toBe(true);
+    expect(bridge.mock).toHaveBeenCalledWith("elementCloseSandboxedEditor", [
+      "sbx-1",
+    ]);
+  });
+});
+
+// ── P3: the double-click editor-open BRANCH DECISION ─────────────────────────
+// Mirrors onNodeDoubleClick's sandboxed-vs-docked split (GraphCanvas.tsx): a
+// sandboxed block routes to the FLOATING worker window; a non-sandboxed block
+// keeps the DOCKED in-process embed path. This asserts the branch picks the
+// correct native fn (the production handler fires it with `void`).
+describe("editor-open branch: sandboxed → floating, else docked (P3)", () => {
+  let bridge: JuceBridgeMock;
+
+  function openEditorFor(block: {
+    id: string;
+    isSandboxed?: boolean;
+  }): Promise<unknown> {
+    if (block.isSandboxed) return nativeOpenSandboxedEditor(block.id, 0, 0);
+    return nativePluginEditorOpen(block.id, 80, 80, 720, 480);
+  }
+
+  beforeEach(() => {
+    bridge = installJuceBridgeMock();
+    useAppStore.getState().setEmbeddedEditorNodeId(null);
+    bridge.mock.mockResolvedValue(true);
+  });
+
+  afterEach(() => {
+    bridge.uninstall();
+    useAppStore.getState().setEmbeddedEditorNodeId(null);
+  });
+
+  it("sandboxed block → floating open, NOT the docked in-process open", async () => {
+    await openEditorFor({ id: "sbx-1", isSandboxed: true });
+    expect(bridge.callsOf("elementOpenSandboxedEditor").length).toBe(1);
+    expect(bridge.callsOf("elementPluginEditorOpen").length).toBe(0);
+    // The docked mirror stays clear — a sandboxed editor never owns the embed.
+    expect(useAppStore.getState().embeddedEditorNodeId).toBeNull();
+  });
+
+  it("non-sandboxed block → docked in-process open, NOT the floating open", async () => {
+    await openEditorFor({ id: "vst-1", isSandboxed: false });
+    expect(bridge.callsOf("elementPluginEditorOpen").length).toBe(1);
+    expect(bridge.callsOf("elementOpenSandboxedEditor").length).toBe(0);
+    expect(useAppStore.getState().embeddedEditorNodeId).toBe("vst-1");
+  });
+
+  it("missing isSandboxed (legacy/back-compat) → docked path", async () => {
+    await openEditorFor({ id: "legacy-1" });
+    expect(bridge.callsOf("elementPluginEditorOpen").length).toBe(1);
+    expect(bridge.callsOf("elementOpenSandboxedEditor").length).toBe(0);
   });
 });

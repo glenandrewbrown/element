@@ -51,6 +51,26 @@ public:
     /** Adss a node with a plugin description */
     uint32 addNode (const PluginDescription* desc, double x = 0.0f, double y = 0.0f, uint32 nodeId = 0);
 
+    /** TEST SEAM ONLY — override the sandbox routing decision for a live add.
+     *  Production leaves this empty and the decision comes from
+     *  Settings::shouldSandboxPlugin (global preference, P4 default = sandbox all
+     *  3rd-party). Tests inject a predicate so the out-of-process route is driven
+     *  deterministically without mutating shared ApplicationProperties. */
+    void setSandboxPolicyForTesting (std::function<bool (const PluginDescription&)> policy)
+    {
+        sandboxPolicyOverride = std::move (policy);
+    }
+
+    /** TEST SEAM ONLY — when true, kickSandboxedInstantiation skips constructing the
+     *  SandboxedProcessorNode and calls kickInProcessFallback directly, simulating a
+     *  deterministic worker LAUNCH failure. This exercises the fallback code path
+     *  (kickInProcessFallback → in-process async → FellBackInProcess badge) without
+     *  depending on whether the worker binary is present on the build machine. */
+    void setForceWorkerLaunchFailureForTesting (bool force)
+    {
+        forceWorkerLaunchFailure = force;
+    }
+
     /** Remove a node by ID */
     void removeNode (const uint32 nodeId);
 
@@ -118,10 +138,43 @@ private:
     // swapInLoadedProcessor to swap the real processor INTO the SAME model
     // ValueTree (uuid preserved) and republish via the engine API. The swap is
     // guarded by a WeakReference so a session reload mid-load is a safe no-op.
-    uint32 addExternalPluginAsync (const PluginDescription& desc, double rx, double ry, uint32 nodeId);
+    //
+    // P1 (2026-06-09): when `sandbox` is true the placeholder is identical, but
+    // the instantiation kick constructs a SandboxedProcessorNode (non-blocking —
+    // launches the worker + async-loads in a CHILD process, so the host message
+    // thread NEVER blocks) and a message-thread poll-timer (SandboxLoadWatcher)
+    // calls the SAME swapInLoadedProcessor once the worker reports loaded. If the
+    // worker won't launch, it falls back to the in-process createGraphNodeAsync
+    // path and emits SandboxEvent::FellBackInProcess.
+    uint32 addExternalPluginAsync (const PluginDescription& desc, double rx, double ry, uint32 nodeId, bool sandbox);
     void swapInLoadedProcessor (const String& nodeUuid, uint32 placeholderId, ProcessorPtr realProcessor, const PluginDescription& desc);
 
+    // P1 — kick the OUT-OF-PROCESS instantiation for a placeholder already in the
+    // model. Constructs the sandboxed node, falls back in-process on launch
+    // failure, and otherwise arms the readiness poll-timer that drives the swap.
+    void kickSandboxedInstantiation (const String& finalUuid, uint32 placeholderId, const PluginDescription& desc);
+
+    // P1 — re-kick a placeholder (resolved by uuid) through the in-process async
+    // path when the sandbox route is unavailable, emitting FellBackInProcess.
+    // Shared by the synchronous launch-failure case and the watcher's deadline/
+    // crash fallback. `currentId` is the placeholder's current engine id.
+    void kickInProcessFallback (const String& finalUuid, uint32 currentId, const PluginDescription& desc);
+
     void processorArcsChanged();
+
+    // P1 — TEST SEAMS (both empty/false in production).
+    std::function<bool (const PluginDescription&)> sandboxPolicyOverride;
+    bool forceWorkerLaunchFailure = false; // force kickInProcessFallback, no node ctor
+
+    // P1 — message-thread poll-timers watching sandboxed nodes that are still
+    // loading in their worker. Each owns the in-flight ProcessorPtr until the
+    // swap completes (or the GraphManager dies), so a node dropped mid-load tears
+    // its worker down exactly once. SandboxLoadWatcher is defined in the .cpp
+    // (where it is a complete type — ~GraphManager is also out-of-line there, so
+    // the OwnedArray deletion never sees an incomplete type).
+    class SandboxLoadWatcher;
+    friend class SandboxLoadWatcher;
+    OwnedArray<SandboxLoadWatcher> sandboxWatchers;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GraphManager)
     JUCE_DECLARE_WEAK_REFERENCEABLE (GraphManager)
