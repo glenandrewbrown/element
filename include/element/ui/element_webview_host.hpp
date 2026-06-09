@@ -229,6 +229,12 @@ private:
         Returns true when the node was found and the mode applied, false otherwise. */
     bool setNodeIntMode (const juce::String& nodeUuid, int mode);
 
+    /** Set a named inline parameter on a built-in node implementing InlineParamControl
+        (the MIDI-FX node family). Resolves uuid → Node → Processor, cross-casts to
+        InlineParamControl, calls setInlineParam(key, value) (thread-safe relaxed store).
+        Returns true when applied. */
+    bool setInlineNodeParam (const juce::String& nodeUuid, const juce::String& key, double value);
+
     /** Push 15Hz delta of changed AudioProcessorParameter values to the WebView.
         Walks the active graph, polls all node parameters, diffs against the cached
         last-pushed value (epsilon 1e-4f), and emits a compact JSON array via
