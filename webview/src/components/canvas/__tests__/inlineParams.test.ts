@@ -70,10 +70,16 @@ describe("inlineParams registry", () => {
     expect(getInlineFaceSpec(undefined)).toBeUndefined();
   });
 
-  it("only first-wave honest faces are registered (no fabricated param faces)", () => {
+  it("registers the honest first-wave + pizmidi-native MIDI-FX faces", () => {
+    // compare/logic = opChooser; the midi* nodes = atomicKnob faces bound to real
+    // engine InlineParamControl params (NOT fabricated — values come from the snapshot).
     expect(Object.keys(INLINE_FACE_REGISTRY).sort()).toEqual([
       "element.compare",
       "element.logic",
+      "element.midiTranspose",
+      "element.midiVelocityAmp",
+      "element.packMidi",
+      "element.unpackMidi",
     ]);
   });
 });
@@ -185,5 +191,40 @@ describe("InlineFaceSpec density schema (D2)", () => {
       densities: { medium: [-1] },
     };
     expect(validateInlineFace(spec, [])).toBe(false);
+  });
+});
+
+// ── Wave-3 P0 — pizmidi-native atomicKnob faces ─────────────────────────────
+describe("pizmidi atomicKnob faces", () => {
+  const MIDI_FX = [
+    "element.midiTranspose",
+    "element.midiVelocityAmp",
+    "element.packMidi",
+    "element.unpackMidi",
+  ];
+
+  it("registers the 4 P0 MIDI-FX nodes", () => {
+    for (const id of MIDI_FX) expect(getInlineFaceSpec(id)).toBeDefined();
+  });
+
+  it("are atomicKnob entries bound to a key (no AudioProcessor paramIndex)", () => {
+    for (const id of MIDI_FX) {
+      const spec = getInlineFaceSpec(id)!;
+      expect(spec.entries.length).toBeGreaterThan(0);
+      for (const e of spec.entries) {
+        expect(e.kind).toBe("atomicKnob");
+        if (e.kind === "atomicKnob") expect(typeof e.key).toBe("string");
+      }
+    }
+  });
+
+  it("validate WITHOUT AudioProcessor metadata and need no metadata round-trip", () => {
+    // atomicKnob reads the snapshot inlineParams, not the AudioProcessor param store,
+    // so an empty params array must NOT reject the face and no meta fetch is needed.
+    for (const id of MIDI_FX) {
+      const spec = getInlineFaceSpec(id)!;
+      expect(validateInlineFace(spec, [])).toBe(true);
+      expect(faceNeedsParamMeta(spec)).toBe(false);
+    }
   });
 });

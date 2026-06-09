@@ -70,6 +70,13 @@ export type InlineFaceEntry =
       kind: "midiActivity";
       /** Caption shown beside the activity indicator. */
       label: string;
+    }
+  | {
+      kind: "atomicKnob";
+      /** InlineParamControl key; matches a row in the node's snapshot inlineParams. */
+      key: string;
+      label?: string;
+      color?: "blue" | "orange" | "teal" | "purple";
     };
 
 /**
@@ -151,6 +158,32 @@ export const INLINE_FACE_REGISTRY: Record<string, InlineFaceSpec> = {
   },
   "element.logic": {
     entries: [{ kind: "opChooser", title: "Mode", options: LOGIC_MODES }],
+  },
+  // Wave-3 P0 — pizmidi-native MIDI-FX nodes. `atomicKnob` entries read the node's
+  // snapshot `inlineParams` (engine truth) and write via nativeNodeSetParam. These
+  // nodes expose NO AudioProcessor params, so the knob/toggle (AudioProcessor) path
+  // does not apply: atomicKnob is structurally valid (skipped by validateInlineFace's
+  // knob/toggle param check) and InlineFace honestly skips any key the engine omits.
+  "element.midiTranspose": {
+    entries: [{ kind: "atomicKnob", key: "semitones", color: "teal" }],
+  },
+  "element.midiVelocityAmp": {
+    entries: [
+      { kind: "atomicKnob", key: "scale", color: "teal" },
+      { kind: "atomicKnob", key: "power", color: "teal" },
+    ],
+  },
+  "element.packMidi": {
+    entries: [
+      { kind: "atomicKnob", key: "cc", color: "purple" },
+      { kind: "atomicKnob", key: "channel", color: "purple" },
+    ],
+  },
+  "element.unpackMidi": {
+    entries: [
+      { kind: "atomicKnob", key: "cc", color: "purple" },
+      { kind: "atomicKnob", key: "channel", color: "purple" },
+    ],
   },
 };
 

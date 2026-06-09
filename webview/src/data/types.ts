@@ -100,6 +100,26 @@ export interface BlockData {
    * blocks (the host emits nothing when the processor cast misses — no fake value).
    */
   intMode?: number;
+  /**
+   * Engine-described inline parameters for built-in MIDI-FX nodes that implement
+   * InlineParamControl (pizmidi-native family). Drives the on-block atomicKnob
+   * face. Absent for nodes that don't implement it (no fake controls).
+   */
+  inlineParams?: InlineParamRow[];
+}
+
+/**
+ * One engine-described inline parameter for a built-in MIDI-FX node implementing
+ * InlineParamControl (pizmidi-native family). Emitted in the 60Hz graph snapshot;
+ * the engine is the source of truth for value + range (nothing-fake).
+ */
+export interface InlineParamRow {
+  key: string;
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
 }
 
 export interface CableData {

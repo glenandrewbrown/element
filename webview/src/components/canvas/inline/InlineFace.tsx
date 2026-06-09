@@ -24,12 +24,14 @@ import type { NodeParameterRow } from "../../../bridge/nativeGraph";
 import {
   nativeSetNodeParameter,
   nativeNodeSetIntMode,
+  nativeNodeSetParam,
 } from "../../../bridge/nativeGraph";
 import { useParameterStore } from "../../../stores/useParameterStore";
 import type { InlineFaceSpec, InlineFaceEntry } from "../inlineParams";
 import { InlineChooserRow } from "./InlineChooserRow";
 import { InlineMicroKnob } from "./InlineMicroKnob";
 import { InlineToggle } from "./InlineToggle";
+import { InlineAtomicKnob } from "./InlineAtomicKnob";
 
 interface InlineFaceProps {
   d: BlockData;
@@ -129,6 +131,23 @@ export function InlineFace({ d, spec, meta }: InlineFaceProps) {
           // Honest skip: no real per-node MIDI activity feed exists. Render
           // nothing rather than a fake indicator.
           return null;
+        }
+
+        if (entry.kind === "atomicKnob") {
+          // pizmidi-native MIDI-FX param: read engine truth from the snapshot
+          // inlineParams row, write the raw value via nativeNodeSetParam.
+          const prow = d.inlineParams?.find((r) => r.key === entry.key);
+          if (!prow) return null; // honest skip: engine reports no such param
+          return (
+            <InlineAtomicKnob
+              key={i}
+              nodeId={d.id}
+              row={prow}
+              label={entry.label}
+              color={entry.color ?? "teal"}
+              onWrite={(k, v) => void nativeNodeSetParam(d.id, k, v)}
+            />
+          );
         }
 
         // knob / toggle — bound to a real validated param.
