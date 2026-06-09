@@ -72,6 +72,7 @@ vi.mock("@xyflow/react", () => ({
   MiniMap: () => <div data-testid="rf-minimap" />,
   useNodesState: vi.fn(() => [[], vi.fn(), vi.fn()]),
   useEdgesState: vi.fn(() => [[], vi.fn(), vi.fn()]),
+  useNodesInitialized: vi.fn(() => false),
   useReactFlow: vi.fn(() => mockReactFlow),
   useStoreApi: vi.fn(() => ({
     getState: () => ({ nodeLookup: new Map(), transform: [0, 0, 1] }),

@@ -119,4 +119,34 @@ BOOST_AUTO_TEST_CASE (placeholder_is_not_browsable)
                          "Placeholder is listed as an addable Block");
 }
 
+// Regression guard for INV-naming §(c): a PluginDescription whose name field
+// is empty (or already a path) must never surface a raw file path as the block
+// title. GraphManager stamps and Node::getDisplayName() both use the shared
+// cleanPluginDisplayName() helper from node.hpp.
+BOOST_AUTO_TEST_CASE (path_like_names_are_cleaned_to_basename)
+{
+    struct Case { juce::String raw; juce::String expected; };
+    const std::vector<Case> cases = {
+        // Scanner-produced paths with plugin extension → clean basename.
+        { "/Library/Audio/Plug-Ins/VST3/RX 10 De-reverb.vst3", "RX 10 De-reverb" },
+        { "C:\\Program Files\\VSTPlugins\\My Synth.dll",        "My Synth"         },
+        { "/usr/lib/lv2/myplugin.so",                           "myplugin"         },
+        { "RX 10 De-reverb.vst3",                               "RX 10 De-reverb" }, // no leading path
+        // Already-clean human names → UNCHANGED (including names with '/').
+        { "Drums/Bus",   "Drums/Bus"   }, // user rename — must NOT be truncated to "Bus"
+        { "Supercharger", "Supercharger" },
+        { "eVerb",        "eVerb"        },
+        // Edge cases.
+        { "",             ""             }, // empty stays empty
+    };
+
+    for (const auto& c : cases)
+    {
+        const juce::String got = element::cleanPluginDisplayName (c.raw);
+        BOOST_CHECK_MESSAGE (got == c.expected,
+                             "cleanPluginDisplayName(\"" << c.raw << "\") = \""
+                                 << got << "\", expected \"" << c.expected << "\"");
+    }
+}
+
 BOOST_AUTO_TEST_SUITE_END()

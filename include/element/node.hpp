@@ -18,6 +18,16 @@
 
 namespace element {
 
+/** Strip a plugin-extension suffix from a name string.
+    If @p raw ends with a known plugin extension (.vst3 .component .vst .clap
+    .dll .so .dylib, case-insensitive) it is treated as a file path: backslashes
+    are normalised to forward slashes, then juce::File::getFileNameWithoutExtension()
+    extracts the human basename.  Strings that do NOT end with a plugin extension
+    are returned verbatim — including user-renamed names like "Drums/Bus".
+    Empty input returns empty output.
+*/
+EL_API juce::String cleanPluginDisplayName (const juce::String& raw);
+
 class DataPath;
 class GraphManager;
 class NodeArray;

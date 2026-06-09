@@ -27,6 +27,7 @@ vi.mock("@xyflow/react", () => {
     MiniMap: () => <div data-testid="rf-minimap" />,
     useNodesState: vi.fn(() => [[], vi.fn(), vi.fn()]),
     useEdgesState: vi.fn(() => [[], vi.fn(), vi.fn()]),
+    useNodesInitialized: vi.fn(() => false),
     useReactFlow: vi.fn(() => ({
       fitView: vi.fn(),
       screenToFlowPosition: vi.fn((p: { x: number; y: number }) => ({
@@ -139,10 +140,18 @@ vi.mock("../NodeContextMenu", () => ({ NodeContextMenu: () => null }));
 vi.mock("../EdgeContextMenu", () => ({ EdgeContextMenu: () => null }));
 vi.mock("../GhostEdge", () => ({ GhostEdge: () => null }));
 vi.mock("../NestedChrome", () => ({ NestedChrome: () => null }));
-vi.mock("../autoRouteSuggestions", () => ({
-  computeRouteSuggestions: vi.fn(() => []),
-  buildRouteSuggestionCache: vi.fn(() => null),
-}));
+vi.mock("../autoRouteSuggestions", async () => {
+  // Keep the real pure helpers (estimateBlockHeight, BLOCK_REF_* — used by
+  // runTidy / collision rects) and stub only the drag-suggestion compute.
+  const actual = await vi.importActual<
+    typeof import("../autoRouteSuggestions")
+  >("../autoRouteSuggestions");
+  return {
+    ...actual,
+    computeRouteSuggestions: vi.fn(() => []),
+    buildRouteSuggestionCache: vi.fn(() => null),
+  };
+});
 
 import { GraphCanvas } from "../GraphCanvas";
 

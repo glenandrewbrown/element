@@ -18,7 +18,6 @@
 
 namespace element {
 
-//==============================================================================
 static void showFailedInstantiationAlert (const PluginDescription& desc, const bool async = false)
 {
     String header = "Plugin Instantiation Failed";
@@ -550,11 +549,14 @@ uint32 GraphManager::addNode (const PluginDescription* desc, double rx, double r
         // would NOT heal to "Node" since the prop is already present — INV-naming §(b)).
         // Fall back desc->name → object name → descriptiveName, leaving node.cpp:495's
         // "Node" as the genuine last resort (only when no name is present at all).
-        String syncName (desc->name.trim());
+        // cleanPluginName() strips path+extension from names like
+        // "/Library/.../RX 10 De-reverb.vst3" that some scanners emit when the
+        // PluginDescription.name field is empty (INV-naming §(c)).
+        String syncName (cleanPluginDisplayName (desc->name));
         if (syncName.isEmpty())
-            syncName = object->getName().trim();
+            syncName = cleanPluginDisplayName (object->getName());
         if (syncName.isEmpty())
-            syncName = desc->descriptiveName.trim();
+            syncName = cleanPluginDisplayName (desc->descriptiveName);
 
         data.setProperty (tags::id, static_cast<int64> (nodeId), nullptr)
             .setProperty (tags::format, desc->pluginFormatName, nullptr)
@@ -863,9 +865,10 @@ uint32 GraphManager::addExternalPluginAsync (const PluginDescription& desc, doub
     // "(unnamed)"/blank (INV-naming §(b)) and, pre-fix, the swap never corrected it.
     // Fall back desc.name → descriptiveName → "Plugin". swapInLoadedProcessor still
     // re-affirms from the real loaded name on ready.
-    String placeholderName (desc.name.trim());
+    // cleanPluginName() additionally handles the path-like fallback (INV-naming §(c)).
+    String placeholderName (cleanPluginDisplayName (desc.name));
     if (placeholderName.isEmpty())
-        placeholderName = desc.descriptiveName.trim();
+        placeholderName = cleanPluginDisplayName (desc.descriptiveName);
     if (placeholderName.isEmpty())
         placeholderName = "Plugin";
     data.setProperty (tags::uuid, finalUuid, nullptr)
@@ -1016,11 +1019,11 @@ void GraphManager::swapInLoadedProcessor (const String& nodeUuid, uint32 placeho
                           || current == "Plugin";
         if (weak)
         {
-            String resolved (added->getName().trim());
+            String resolved (cleanPluginDisplayName (added->getName()));
             if (resolved.isEmpty())
-                resolved = desc.name.trim();
+                resolved = cleanPluginDisplayName (desc.name);
             if (resolved.isEmpty())
-                resolved = desc.descriptiveName.trim();
+                resolved = cleanPluginDisplayName (desc.descriptiveName);
             if (resolved.isNotEmpty())
                 nodeData.setProperty (tags::name, resolved, nullptr);
         }

@@ -68,6 +68,7 @@ vi.mock("@xyflow/react", () => {
     MiniMap: () => <div data-testid="rf-minimap" />,
     useNodesState: vi.fn(() => [[], vi.fn(), vi.fn()]),
     useEdgesState: vi.fn(() => [[], vi.fn(), vi.fn()]),
+    useNodesInitialized: vi.fn(() => false),
     useReactFlow: vi.fn(() => ({
       fitView: vi.fn(),
       // Echo a deterministic flow transform of the screen point so add-and-

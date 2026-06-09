@@ -166,6 +166,30 @@ describe("resolveCollisions — pure rectangular separation (Task 2.3)", () => {
     const single = [rect("only", 5, 5)];
     expect(resolveCollisions(single)).toEqual([{ id: "only", x: 5, y: 5 }]);
   });
+
+  it("de-overlaps TALL multi-port IO blocks at the default-board spacing (overlap-fix)", () => {
+    // The live bug: four ~262px-tall IO blocks (16 audio lanes) stacked ~95px
+    // apart in one column — every adjacent pair overlaps by >100px. The resolver
+    // is height-aware, so it must separate ALL of them with no `fixed` set
+    // (every block free to move), exactly as the load-time pass calls it.
+    const TALL = 262; // 16*16 + 6 — matches Block.tsx render arithmetic.
+    const input: CollisionRect[] = [
+      rect("audioIn", 100, 0, 200, TALL),
+      rect("audioOut", 100, 95, 200, TALL),
+      rect("midiIn", 100, 190, 200, TALL),
+      rect("midiOut", 100, 285, 200, TALL),
+    ];
+    const out = withDims(
+      resolveCollisions(input, { margin: DEFAULT_COLLISION_MARGIN }),
+      input,
+    );
+    // No pair overlaps after resolution (the AABB gate the goal demands).
+    for (let i = 0; i < out.length; i++) {
+      for (let j = i + 1; j < out.length; j++) {
+        expect(rectsOverlap(out[i], out[j], 0)).toBe(false);
+      }
+    }
+  });
 });
 
 describe("rectsOverlap — AABB overlap predicate with margin", () => {

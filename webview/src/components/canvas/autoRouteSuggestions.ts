@@ -35,7 +35,7 @@
  * bridge) so the matching logic is unit-testable in isolation.
  */
 
-import type { BlockData, CableData, SignalType } from "../../data/types";
+import type { BlockData, CableData, Port, SignalType } from "../../data/types";
 
 /**
  * Proximity radius in flow-space px — the maximum EDGE-to-edge gap between
@@ -66,6 +66,68 @@ export const SUGGEST_MAX_BLOCKS = 60;
  */
 export const BLOCK_REF_WIDTH = 200;
 export const BLOCK_REF_HEIGHT = 100;
+
+// ── Block height estimator (port-count based) ────────────────────────────────
+// A Block's rendered height scales with its port count, so a fixed fallback
+// (BLOCK_REF_HEIGHT = 100) under-spaces a tall multi-port IO block by >150px —
+// the root cause of the overlapping-block layout (default-board IO blocks have
+// up to 16 audio lanes → ~300px tall). This estimator mirrors the EXACT render
+// arithmetic in Block.tsx so the layout/collision estimate and the real measured
+// height agree, letting de-overlap know the true height BEFORE React Flow
+// measures. Constants below are the literal values used by Block.tsx.
+
+/** One port row in the port lane (Block.tsx PORT_LANE_H). */
+const PORT_LANE_H = 16;
+/** Port-lane div padding added once below the rows (Block.tsx:1882 `+ 6`). */
+const PORT_LANE_PAD = 6;
+/** Block header band (title + chrome) — single title row ≈ 28px. */
+const HEADER_H = 28;
+/** Activity well (title/macro single bar) above the port lane ≈ 12px. */
+const ACTIVITY_H = 12;
+/** Load bar — thin status rail at the chassis foot (Block.tsx:1953 `height: 2`). */
+const LOADBAR_H = 2;
+
+/**
+ * Essential (audio/MIDI) port count on one side. Mirrors Block.tsx's
+ * `isParamPort = p.type === "value"` — essential ports are the non-`value`
+ * (audio + MIDI) I/O that always render at every tier; the orange `value`
+ * (param/CV) ports collapse behind the "▸ N params" toggle and only add height
+ * at the EXPANDED tier (the default fresh-load tier is `macro`, where they are
+ * hidden). Excludes hidden params, matching the render's `hiddenParams` filter.
+ */
+function essentialPortCount(ports: Port[], direction: "input" | "output"): number {
+  let n = 0;
+  for (const p of ports) {
+    if (p.direction !== direction) continue;
+    if (p.type === "value") continue; // param/CV port — hidden at macro tier
+    n++;
+  }
+  return n;
+}
+
+/**
+ * Estimate a Block's rendered height (flow-px) from its port counts, mirroring
+ * Block.tsx so an un-measured Block still gets a realistic AABB. Computed for
+ * the DEFAULT (`macro`) tier — header + activity + essential-port lane + load
+ * bar — which is the tier a freshly-loaded Block renders at (`collapseTier`
+ * absent ⇒ macro, where the param-port wall is collapsed). A loading node shows
+ * no port lane, so it falls back to the minimum 1-row height (honest: it has no
+ * connectable ports yet). NOTHING-fake: uses the real port array off the block.
+ */
+export function estimateBlockHeight(block: BlockData): number {
+  const ports = block.ports ?? [];
+  const essentialRows =
+    block.loadState === "loading"
+      ? 0
+      : Math.max(
+          essentialPortCount(ports, "input"),
+          essentialPortCount(ports, "output"),
+        );
+  // Block.tsx:1882 — lane height = max(shownRows, 1) * PORT_LANE_H + 6. At the
+  // macro tier shownRows === essentialRows (param lane + toggle hidden).
+  const laneH = Math.max(essentialRows, 1) * PORT_LANE_H + PORT_LANE_PAD;
+  return HEADER_H + ACTIVITY_H + laneH + LOADBAR_H;
+}
 
 /** A single suggested connection (one faded ghost cable). */
 export interface RouteSuggestion {

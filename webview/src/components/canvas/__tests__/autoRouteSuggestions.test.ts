@@ -28,6 +28,7 @@ import {
   SUGGEST_MAX_BLOCKS,
   BLOCK_REF_WIDTH,
   BLOCK_REF_HEIGHT,
+  estimateBlockHeight,
 } from "../autoRouteSuggestions";
 
 // ── Test factories ──
@@ -88,6 +89,56 @@ function nearbyPair() {
   const b = block("b", 80, 0, [port("b-in", "audio", "input")]);
   return { a, b };
 }
+
+// ── estimateBlockHeight (port-count based; mirrors Block.tsx) ──
+
+describe("estimateBlockHeight", () => {
+  // Constants baked from Block.tsx: HEADER 28 + ACTIVITY 12 + LOADBAR 2 = 42
+  // chrome, plus a port lane = max(rows,1)*16 + 6.
+  const CHROME = 28 + 12 + 2;
+  const lane = (rows: number) => Math.max(rows, 1) * 16 + 6;
+
+  it("a port-less block is the minimum (1-row) height", () => {
+    expect(estimateBlockHeight(block("x", 0, 0, []))).toBe(CHROME + lane(1));
+  });
+
+  it("scales with the MAX of input/output essential lanes", () => {
+    const ports: Port[] = [];
+    for (let i = 0; i < 16; i++) ports.push(port(`in${i}`, "audio", "input"));
+    for (let i = 0; i < 2; i++) ports.push(port(`out${i}`, "audio", "output"));
+    // 16 input lanes dominate → 16 rows. (16*16+6 = 262 lane → +42 chrome = 304.)
+    expect(estimateBlockHeight(block("io", 0, 0, ports))).toBe(CHROME + lane(16));
+    expect(estimateBlockHeight(block("io", 0, 0, ports))).toBe(304);
+  });
+
+  it("MIDI ports count as essential (non-value) lanes", () => {
+    const ports = [
+      port("mi", "midi", "input"),
+      port("mo", "midi", "output"),
+    ];
+    expect(estimateBlockHeight(block("midi", 0, 0, ports))).toBe(CHROME + lane(1));
+  });
+
+  it("VALUE (param/CV) ports do NOT add height at the default macro tier", () => {
+    // Param ports collapse behind the "▸ N params" toggle (hidden at macro), so
+    // a block with 2 audio + 8 value ports is still a 2-row block by height.
+    const ports: Port[] = [
+      port("ai", "audio", "input"),
+      port("ao", "audio", "output"),
+    ];
+    for (let i = 0; i < 8; i++) ports.push(port(`p${i}`, "value", "input"));
+    expect(estimateBlockHeight(block("synth", 0, 0, ports))).toBe(CHROME + lane(1));
+  });
+
+  it("a loading node shows no port lane (minimum height, nothing-fake)", () => {
+    const b = block("loading", 0, 0, [
+      port("ai", "audio", "input"),
+      port("ao", "audio", "output"),
+    ]);
+    b.loadState = "loading";
+    expect(estimateBlockHeight(b)).toBe(CHROME + lane(1));
+  });
+});
 
 // ── blockDistance / boundsOf ──
 

@@ -13,6 +13,7 @@ import {
   useNodesState,
   useEdgesState,
   useReactFlow,
+  useNodesInitialized,
   type Node,
   type Edge,
   type NodeTypes,
@@ -80,7 +81,7 @@ import {
 } from "../../lib/resolveCollisions";
 import {
   BLOCK_REF_WIDTH,
-  BLOCK_REF_HEIGHT,
+  estimateBlockHeight,
 } from "./autoRouteSuggestions";
 import {
   nextAutoFitExtent,
@@ -163,12 +164,17 @@ function collisionRectsFromNodes(rfNodes: Node[]): CollisionRect[] {
   const rects: CollisionRect[] = [];
   for (const n of rfNodes) {
     if (n.type === "comment") continue;
+    // Height fallback (before React Flow measures) is the port-count estimator,
+    // NOT a flat constant — a 16-port IO block is ~300px tall, so the old
+    // BLOCK_REF_HEIGHT=100 fallback under-spaced it by >150px (the overlap bug).
+    // estimateBlockHeight mirrors Block.tsx's render so the AABB is realistic
+    // even on the first frame; measured size wins once it settles.
     rects.push({
       id: n.id,
       x: n.position.x,
       y: n.position.y,
       width: n.measured?.width ?? BLOCK_REF_WIDTH,
-      height: n.measured?.height ?? BLOCK_REF_HEIGHT,
+      height: n.measured?.height ?? estimateBlockHeight(n.data as BlockData),
     });
   }
   return rects;
@@ -338,6 +344,14 @@ export function GraphCanvas() {
   const blocks = useGraphStore((s) => s.nodes);
   const cables = useGraphStore((s) => s.edges);
   const commentBoxes = useGraphStore((s) => s.commentBoxes);
+  // Board-identity key for the load-time de-overlap pass: changes on every
+  // dive/exit (the snapshot-driven breadcrumb path) + carries currentBoardId so
+  // each loaded Board de-overlaps exactly once. Stable string for a given board.
+  const currentBoardId = useGraphStore((s) => s.currentBoardId ?? null);
+  // `?? 0` guards a partial store shape (the real store always inits the stack
+  // to ["Main Project"]); keeps boardKey stable + never throws on first paint.
+  const breadcrumbDepth = useGraphStore((s) => s.breadcrumbStack?.length ?? 0);
+  const boardKey = `${currentBoardId ?? "root"}#${breadcrumbDepth}`;
   const selectedNodeId = useGraphStore((s) => s.selectedNodeId);
   const selectedEdgeId = useGraphStore((s) => s.selectedEdgeId);
   const selectNode = useGraphStore((s) => s.selectNode);
@@ -476,6 +490,10 @@ export function GraphCanvas() {
     undefined,
   );
   const lastBlockCountRef = useRef(blocks.length);
+  // The board-identity key the load-time de-overlap pass last ran for, so it
+  // fires ONCE per Board load (not on every measure/snapshot) and re-arms when
+  // the user dives/exits to a different Board.
+  const lastLoadOverlapBoardRef = useRef<string | null>(null);
   // .tidy-glide class strip timer (transient transform-transition).
   const glideTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined,
@@ -484,6 +502,11 @@ export function GraphCanvas() {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const reactFlow = useReactFlow();
+  // True once React Flow has measured every node (real heights available) — the
+  // gate for the load-time de-overlap pass so the resolver sees true heights,
+  // not the estimator fallback. Flips back to false while a freshly-loaded
+  // Board's nodes mount, then true again → re-arms the pass per Board load.
+  const nodesInitialized = useNodesInitialized();
 
   // ── Auto-route suggestions (ghost cables shown while dragging) ──
   // `suggestions` is the live list of valid (compatible/free/acyclic) ghost
@@ -854,7 +877,13 @@ export function GraphCanvas() {
   // glide to place. No-op on an empty Board (honest — nothing to tidy).
   const runTidy = useCallback(() => {
     const { nodes: storeNodes, edges: storeEdges } = useGraphStore.getState();
-    const positions = computeAutoLayout(storeNodes, storeEdges);
+    // Feed each node's port-count-estimated height so the layered pack spaces
+    // columns by ACTUAL height (tall IO blocks get more room), not a flat gap.
+    const layoutNodes = storeNodes.map((n) => ({
+      id: n.id,
+      height: estimateBlockHeight(n),
+    }));
+    const positions = computeAutoLayout(layoutNodes, storeEdges);
     if (positions.length === 0) return;
     applyTidyGlide();
     // Optimistically move locally so the glide animates immediately, then push
@@ -1530,6 +1559,50 @@ export function GraphCanvas() {
       window.removeEventListener(EV_TIDY, handleTidy);
     };
   }, [reactFlow, runTidy]);
+
+  // ── No-overlap on session / Board LOAD (THE primary overlap fix) ──
+  // The two add-gated passes below only fire when the block COUNT increases, so
+  // a fresh session/Board load (the host sends absolute positions verbatim, no
+  // layout) never de-overlapped — tall multi-port IO blocks rendered stacked.
+  // This pass runs the SAME height-aware AABB resolver over ALL blocks (no
+  // `fixed` set — every block free to move) ONCE per Board load, gated on
+  // `useNodesInitialized` so React Flow has measured real heights (otherwise the
+  // resolver would under-space the tall blocks via the estimator fallback). It
+  // re-arms when the user dives/exits to a different Board (boardKey changes).
+  // Persisted positions stick (nativeGraphMoveNodes); we do NOT re-run for the
+  // same board, so it never fights the user's subsequent manual drags.
+  useEffect(() => {
+    if (!nodesInitialized) return; // wait for real measured heights.
+    if (lastLoadOverlapBoardRef.current === boardKey) return; // once per board.
+    if (draggingRef.current) return; // never relayout under a live drag.
+    const getNodesFn = (
+      reactFlow as unknown as { getNodes?: () => Node[] }
+    ).getNodes;
+    if (typeof getNodesFn !== "function") return;
+    const rfNodes = getNodesFn.call(reactFlow);
+    const rects = collisionRectsFromNodes(rfNodes);
+    // Mark this board done up-front: even a ≤1-block or already-clean board has
+    // "been resolved" for this load, so we don't retry every snapshot.
+    lastLoadOverlapBoardRef.current = boardKey;
+    if (rects.length <= 1) return;
+    // Resolve EVERY block (no pinned set) so the whole loaded board de-overlaps.
+    const resolved = resolveCollisions(rects, { margin: COLLISION_MARGIN });
+    const origById = new Map(rects.map((r) => [r.id, r]));
+    const moves: Array<{ id: string; x: number; y: number }> = [];
+    for (const r of resolved) {
+      const o = origById.get(r.id);
+      const nx = Math.round(r.x);
+      const ny = Math.round(r.y);
+      if (!o || o.x !== nx || o.y !== ny) moves.push({ id: r.id, x: nx, y: ny });
+    }
+    if (moves.length === 0) return; // board already clean — nothing to persist.
+    // Keep the add-gated passes from re-firing on the snapshot echo of our move
+    // (a move doesn't change the count, but stay in sync defensively).
+    lastSpawnResolveCountRef.current = useGraphStore.getState().nodes.length;
+    lastBlockCountRef.current = useGraphStore.getState().nodes.length;
+    updateNodePositions(moves);
+    void nativeGraphMoveNodes(moves);
+  }, [nodesInitialized, boardKey, reactFlow, updateNodePositions]);
 
   // ── Auto-tidy on add (Item 3b, Glen Q3 — ON by default) ──
   // Fire a debounced animated relayout ONLY when the block COUNT increases (a

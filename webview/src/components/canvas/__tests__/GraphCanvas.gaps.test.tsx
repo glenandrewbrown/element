@@ -100,6 +100,7 @@ vi.mock("@xyflow/react", () => ({
   },
   useNodesState: vi.fn(() => [[], vi.fn(), vi.fn()]),
   useEdgesState: vi.fn(() => [[], vi.fn(), vi.fn()]),
+  useNodesInitialized: vi.fn(() => false),
   useReactFlow: vi.fn(() => mockReactFlow),
   // Minimal store-api stub: GraphCanvas calls useStoreApi() for imperative
   // RF state reads (cable-splice insert path). The tests here don't exercise

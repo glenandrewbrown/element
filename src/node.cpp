@@ -12,6 +12,31 @@
 namespace element {
 
 //==============================================================================
+juce::String cleanPluginDisplayName (const juce::String& raw)
+{
+    const juce::String trimmed = raw.trim();
+    if (trimmed.isEmpty())
+        return {};
+
+    // Gate on EXTENSION ONLY — not on path separators — so a user-renamed block
+    // like "Drums/Bus" is never truncated to "Bus". The distinguishing feature of
+    // a scanner-produced path-as-name is that it ends with a plugin extension.
+    const juce::StringArray pluginExts { ".vst3", ".component", ".vst", ".clap",
+                                         ".dll", ".so", ".dylib" };
+    bool hasPluginExt = false;
+    for (const auto& ext : pluginExts)
+        if (trimmed.endsWithIgnoreCase (ext)) { hasPluginExt = true; break; }
+
+    if (! hasPluginExt)
+        return trimmed; // clean human name or user rename — leave untouched
+
+    // Normalise backslashes → forward slashes so juce::File splits correctly on
+    // all platforms (Windows-origin paths survive cross-platform sessions).
+    const juce::File f (trimmed.replaceCharacter ('\\', '/'));
+    return f.getFileNameWithoutExtension();
+}
+
+//==============================================================================
 struct NameSorter
 {
     NameSorter() {}
@@ -166,7 +191,11 @@ const String Node::getDisplayName() const noexcept
     String name = getName();
     if (name.isEmpty())
         name = getPluginName();
-    return name;
+    // Defensive safety net for session-loaded nodes that already have a
+    // scanner-produced file path stored in tags::name: strip path+extension.
+    // cleanPluginDisplayName() only acts when the string ends with a known
+    // plugin extension, so user renames like "Drums/Bus" pass through unchanged.
+    return cleanPluginDisplayName (name);
 }
 
 bool Node::hasModifiedName() const noexcept

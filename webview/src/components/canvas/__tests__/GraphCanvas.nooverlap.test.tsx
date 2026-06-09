@@ -23,8 +23,8 @@ import React from "react";
 import { rectsOverlap } from "../../../lib/resolveCollisions";
 
 // ── Hoisted shared state ─────────────────────────────────────────────────────
-const { capturedProps, mockStore, mockAppStore, mockHostExtras, rf } = vi.hoisted(
-  () => {
+const { capturedProps, mockStore, mockAppStore, mockHostExtras, rf, nodesInit } =
+  vi.hoisted(() => {
     const store = {
       nodes: [] as Array<{ id: string; [k: string]: unknown }>,
       edges: [] as unknown[],
@@ -32,6 +32,9 @@ const { capturedProps, mockStore, mockAppStore, mockHostExtras, rf } = vi.hoiste
       selectedNodeId: null as string | null,
       selectedEdgeId: null as string | null,
       minimapVisible: false,
+      // Board-identity inputs the load-time de-overlap pass keys off.
+      currentBoardId: null as string | null,
+      breadcrumbStack: ["Main Project", "Graph 1"] as string[],
       selectNode: vi.fn(),
       selectEdge: vi.fn(),
       clearSelection: vi.fn(),
@@ -39,6 +42,8 @@ const { capturedProps, mockStore, mockAppStore, mockHostExtras, rf } = vi.hoiste
       updateCommentBoxLayout: vi.fn(),
       setZoomTier: vi.fn(),
     };
+    // Mutable flag the useNodesInitialized mock reads (the load pass gate).
+    const nodesInitialized = { value: false };
     const appStore = {
       mode: "edit" as "edit" | "perform",
       openBlockTab: vi.fn(),
@@ -85,9 +90,9 @@ const { capturedProps, mockStore, mockAppStore, mockHostExtras, rf } = vi.hoiste
       mockAppStore: appStore,
       mockHostExtras: hostExtras,
       rf: reactFlow,
+      nodesInit: nodesInitialized,
     };
-  },
-);
+  });
 
 vi.mock("@xyflow/react", () => ({
   ReactFlow: (props: Record<string, unknown>) => {
@@ -98,6 +103,10 @@ vi.mock("@xyflow/react", () => ({
   MiniMap: () => <div data-testid="rf-minimap" />,
   useNodesState: vi.fn(() => [[], vi.fn(), vi.fn()]),
   useEdgesState: vi.fn(() => [[], vi.fn(), vi.fn()]),
+  // Load-time de-overlap (the primary overlap fix) gates on this — default
+  // false so the existing drop/spawn tests are untouched; the LOAD test below
+  // flips `nodesInit.value` true to drive the once-per-board pass.
+  useNodesInitialized: vi.fn(() => nodesInit.value),
   useReactFlow: vi.fn(() => rf),
   useStoreApi: vi.fn(() => ({
     getState: () => ({ nodeLookup: new Map(), transform: [0, 0, 1] }),
@@ -209,6 +218,9 @@ describe("GraphCanvas — Task 2.3 no-overlap on drop", () => {
     vi.clearAllMocks();
     mockAppStore.mode = "edit";
     mockAppStore.autoTidyOnAdd = false;
+    nodesInit.value = false; // load pass inert for the drop/spawn tests.
+    mockStore.currentBoardId = null;
+    mockStore.breadcrumbStack = ["Main Project", "Graph 1"];
     Object.keys(capturedProps).forEach((k) => delete capturedProps[k]);
   });
 
@@ -349,5 +361,143 @@ describe("GraphCanvas — Task 2.3 no-overlap on drop", () => {
     // Same set on the next tick → must NOT write nodes again.
     act(() => handler("onNodeDrag")({}, dragging));
     expect(rf.setNodes).not.toHaveBeenCalled();
+  });
+});
+
+// ── Load-time de-overlap (THE primary overlap fix) ───────────────────────────
+// The default session renders 4 TALL multi-port IO blocks (Audio In/Out, MIDI
+// In/Out) at host-supplied absolute positions ~95-140px apart vertically. A
+// 16-port block is ~262px tall, so they overlap by >100px — and the only
+// de-overlap passes are ADD-gated, so a fresh LOAD never resolved them. This
+// suite proves the load-time pass (gated on useNodesInitialized) fires ONCE per
+// Board and persists non-overlapping positions for ALL blocks.
+describe("GraphCanvas — Task 2.3 no-overlap on session LOAD (tall IO blocks)", () => {
+  const TALL = 262; // 16 audio lanes: 16*16 + 6 (matches Block.tsx render).
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockAppStore.mode = "edit";
+    mockAppStore.autoTidyOnAdd = false;
+    nodesInit.value = false;
+    mockStore.currentBoardId = null;
+    mockStore.breadcrumbStack = ["Main Project", "Graph 1"];
+    Object.keys(capturedProps).forEach((k) => delete capturedProps[k]);
+  });
+
+  /** Seed RF + store with tall, measured blocks at the given positions. */
+  function seedTall(
+    nodes: Array<{ id: string; x: number; y: number }>,
+  ): void {
+    rf.nodes.length = 0;
+    for (const n of nodes) {
+      rf.nodes.push({
+        id: n.id,
+        type: "block",
+        position: { x: n.x, y: n.y },
+        measured: { width: W, height: TALL },
+      });
+    }
+    mockStore.nodes = nodes.map((n) => ({ id: n.id, position: { x: n.x, y: n.y } }));
+  }
+
+  it("de-overlaps ALL tall IO blocks on load → persisted AABBs do not overlap", () => {
+    // Four tall IO blocks stacked ~95px apart in one column (the default-board
+    // seed) → every adjacent pair overlaps (95 < 262).
+    seedTall([
+      { id: "audioIn", x: 100, y: 0 },
+      { id: "audioOut", x: 100, y: 95 },
+      { id: "midiIn", x: 100, y: 190 },
+      { id: "midiOut", x: 100, y: 285 },
+    ]);
+    // Confirm the seed really overlaps (guards the test against a no-op seed).
+    const seedRects = rf.nodes.map((n) => ({
+      id: n.id,
+      x: n.position.x,
+      y: n.position.y,
+      width: W,
+      height: TALL,
+    }));
+    let seedHadOverlap = false;
+    for (let i = 0; i < seedRects.length; i++)
+      for (let j = i + 1; j < seedRects.length; j++)
+        if (rectsOverlap(seedRects[i], seedRects[j], 0)) seedHadOverlap = true;
+    expect(seedHadOverlap).toBe(true);
+
+    // React Flow has measured the nodes → the load pass is armed.
+    nodesInit.value = true;
+    render(<GraphCanvas />);
+
+    // The pass persisted de-overlapped positions for the loaded board.
+    expect(mockStore.updateNodePositions).toHaveBeenCalledTimes(1);
+    const moves = mockStore.updateNodePositions.mock.calls[0][0] as Array<{
+      id: string;
+      x: number;
+      y: number;
+    }>;
+    // Build the final AABBs: moved blocks use their new pos, others their seed.
+    const finalById = new Map(
+      seedRects.map((r) => [r.id, { ...r }]),
+    );
+    for (const m of moves) {
+      const r = finalById.get(m.id);
+      if (r) {
+        r.x = m.x;
+        r.y = m.y;
+      }
+    }
+    const finals = [...finalById.values()];
+    for (let i = 0; i < finals.length; i++) {
+      for (let j = i + 1; j < finals.length; j++) {
+        expect(rectsOverlap(finals[i], finals[j], 0)).toBe(false);
+      }
+    }
+    // Same positions pushed to the engine so they persist with the project.
+    expect(mockNativeGraph.nativeGraphMoveNodes).toHaveBeenCalledWith(moves);
+  });
+
+  it("runs only ONCE per board (a second render with the same board does not re-resolve)", () => {
+    seedTall([
+      { id: "audioIn", x: 100, y: 0 },
+      { id: "audioOut", x: 100, y: 95 },
+    ]);
+    nodesInit.value = true;
+    const { rerender } = render(<GraphCanvas />);
+    expect(mockStore.updateNodePositions).toHaveBeenCalledTimes(1);
+
+    // A re-render for the SAME board (e.g. a later snapshot) must NOT re-run.
+    mockStore.updateNodePositions.mockClear();
+    rerender(<GraphCanvas />);
+    expect(mockStore.updateNodePositions).not.toHaveBeenCalled();
+  });
+
+  it("re-arms on Board change → de-overlaps the newly-dived Board too", () => {
+    seedTall([
+      { id: "a", x: 100, y: 0 },
+      { id: "b", x: 100, y: 95 },
+    ]);
+    nodesInit.value = true;
+    const { rerender } = render(<GraphCanvas />);
+    expect(mockStore.updateNodePositions).toHaveBeenCalledTimes(1);
+
+    // Dive into a nested Board: boardKey changes → the pass re-arms.
+    mockStore.updateNodePositions.mockClear();
+    seedTall([
+      { id: "x", x: 50, y: 0 },
+      { id: "y", x: 50, y: 95 },
+    ]);
+    mockStore.currentBoardId = "container-1";
+    mockStore.breadcrumbStack = ["Main Project", "Graph 1", "Container"];
+    rerender(<GraphCanvas />);
+    expect(mockStore.updateNodePositions).toHaveBeenCalledTimes(1);
+  });
+
+  it("does NOT run while nodes are unmeasured (useNodesInitialized false)", () => {
+    seedTall([
+      { id: "audioIn", x: 100, y: 0 },
+      { id: "audioOut", x: 100, y: 95 },
+    ]);
+    nodesInit.value = false; // not measured yet.
+    render(<GraphCanvas />);
+    expect(mockStore.updateNodePositions).not.toHaveBeenCalled();
   });
 });
