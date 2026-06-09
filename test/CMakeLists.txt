@@ -86,6 +86,9 @@ add_test(NAME "HostPushDedupeTests" COMMAND test_element --run_test=HostPushDedu
 # PURE static host helpers (validateCollapseTier / readCollapseTier) — no Context
 # or message thread, so it runs in the headless harness with no fixture.
 add_test(NAME "CollapseTierContractTests" COMMAND test_element --run_test=CollapseTierContractTests)
+# Wave-3 Task 2 — MidiTransposeNode implements InlineParamControl (atomic semitones).
+# Engine-backed (GraphNode::addNode); drives the inline-param surface + render.
+add_test(NAME "MidiTransposeInlineTests" COMMAND test_element --run_test=MidiTransposeInlineTests)
 # T10 — "Group selection into a Container" END-TO-END test. Engine-backed
 # (EngineService::groupNodes against the attached RootGraphManager). Serial: it
 # deactivates/reactivates the shared EngineService between cases.
