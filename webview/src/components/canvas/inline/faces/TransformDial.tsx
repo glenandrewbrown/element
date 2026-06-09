@@ -35,7 +35,6 @@ import {
   normOf,
   parseRaw,
   snapRaw,
-  unitSuffixFor,
 } from "./transformFormat";
 
 /** MIDI Effects signal accent (teal). The Transform nodes are MIDI effects. */
@@ -79,7 +78,10 @@ export function TransformDial({ nodeId, row, size = "md", onWrite }: TransformDi
   }, [row.value, row.step, optimistic]);
 
   const rawShown = optimistic ?? row.value;
-  const norm = normOf(row, rawShown);
+  // The canonical DISPLAYED value: snapped to the engine grid so the arc, readout,
+  // aria, and keyboard nudges all agree with what the engine will store.
+  const shown = snapRaw(row, rawShown);
+  const norm = normOf(row, shown);
   const angle = norm * 270 - 135; // -135°..+135° (270° sweep), matches NeuKnob
 
   const commit = (raw: number) => {
@@ -102,7 +104,7 @@ export function TransformDial({ nodeId, row, size = "md", onWrite }: TransformDi
       setFlash((f) => f + 1);
     },
     onTypeRequest: () => {
-      setDraft(formatRawBare(row, rawShown));
+      setDraft(formatRawBare(row, shown));
       setTyping(true);
     },
   });
@@ -155,8 +157,8 @@ export function TransformDial({ nodeId, row, size = "md", onWrite }: TransformDi
         aria-label={row.label}
         aria-valuemin={row.min}
         aria-valuemax={row.max}
-        aria-valuenow={Number(snapRaw(row, rawShown).toFixed(4))}
-        aria-valuetext={formatRaw(row, rawShown)}
+        aria-valuenow={Number(shown.toFixed(4))}
+        aria-valuetext={formatRaw(row, shown)}
         tabIndex={0}
         onPointerDown={
           typing
@@ -182,13 +184,13 @@ export function TransformDial({ nodeId, row, size = "md", onWrite }: TransformDi
           // Keyboard a11y: arrows nudge by one step (Shift = 10×), Enter = type-in.
           if (e.key === "ArrowUp" || e.key === "ArrowRight") {
             e.preventDefault();
-            commit(rawShown + row.step * (e.shiftKey ? 10 : 1));
+            commit(shown + row.step * (e.shiftKey ? 10 : 1));
           } else if (e.key === "ArrowDown" || e.key === "ArrowLeft") {
             e.preventDefault();
-            commit(rawShown - row.step * (e.shiftKey ? 10 : 1));
+            commit(shown - row.step * (e.shiftKey ? 10 : 1));
           } else if (e.key === "Enter") {
             e.preventDefault();
-            setDraft(formatRawBare(row, rawShown));
+            setDraft(formatRawBare(row, shown));
             setTyping(true);
           }
         }}
@@ -306,12 +308,7 @@ export function TransformDial({ nodeId, row, size = "md", onWrite }: TransformDi
             transition: "color 90ms ease, box-shadow 90ms ease",
           }}
         >
-          {formatRaw(row, rawShown)}
-          {/* unitSuffixFor kept available for split layouts; full string above
-              already includes the unit, so this is intentionally not appended. */}
-          <span aria-hidden style={{ display: "none" }}>
-            {unitSuffixFor(row)}
-          </span>
+          {formatRaw(row, shown)}
         </output>
       )}
     </div>

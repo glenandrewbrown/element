@@ -72,9 +72,11 @@ const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v
 /** RAW value snapped to the param step and clamped to [min,max] (engine-parity). */
 export function snapRaw(row: InlineParamRow, raw: number): number {
   let r = raw;
-  if (row.step > 0) r = Math.round(r / row.step) * row.step;
-  // Kill binary-float fuzz introduced by the divide/round so the readout is exact.
   if (row.step > 0) {
+    // Snap to the param's grid ANCHORED at row.min (not 0), so off-grid engine
+    // values and non-zero-anchored ranges (e.g. min 0.25, step 0.01) stay exact.
+    r = row.min + Math.round((r - row.min) / row.step) * row.step;
+    // Kill binary-float fuzz introduced by the divide/round so the readout is exact.
     const d = decimalsForStep(row.step);
     r = Number(r.toFixed(Math.max(d, 4)));
   }
