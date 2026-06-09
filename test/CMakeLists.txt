@@ -89,6 +89,11 @@ add_test(NAME "CollapseTierContractTests" COMMAND test_element --run_test=Collap
 # Wave-3 Task 2 — MidiTransposeNode implements InlineParamControl (atomic semitones).
 # Engine-backed (GraphNode::addNode); drives the inline-param surface + render.
 add_test(NAME "MidiTransposeInlineTests" COMMAND test_element --run_test=MidiTransposeInlineTests)
+# Wave-3 P0 Tasks 3-5 — VelocityAmp / Pack / Unpack implement InlineParamControl.
+# Engine-backed; drive the inline-param surface (set/get + range) per node.
+add_test(NAME "MidiVelocityAmpInlineTests" COMMAND test_element --run_test=MidiVelocityAmpInlineTests)
+add_test(NAME "PackMidiInlineTests" COMMAND test_element --run_test=PackMidiInlineTests)
+add_test(NAME "UnpackMidiInlineTests" COMMAND test_element --run_test=UnpackMidiInlineTests)
 # T10 — "Group selection into a Container" END-TO-END test. Engine-backed
 # (EngineService::groupNodes against the attached RootGraphManager). Serial: it
 # deactivates/reactivates the shared EngineService between cases.

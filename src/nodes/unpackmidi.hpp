@@ -3,8 +3,12 @@
 
 #pragma once
 
+#include <atomic>
+#include <cmath>
+
 #include <element/node.h>
 #include <element/processor.hpp>
+#include <element/inlineparamcontrol.hpp>
 
 namespace element {
 
@@ -16,7 +20,7 @@ namespace element {
       CV out 1   — pitch-bend; 0.0 = min, 0.5 = centre, 1.0 = max
       CV out 2   — channel pressure; 0..1
     The last seen value is held across blocks (sample-and-hold). */
-class UnpackMidiNode : public Processor
+class UnpackMidiNode : public Processor, public InlineParamControl
 {
 public:
     UnpackMidiNode() : Processor (0)
@@ -44,8 +48,8 @@ public:
         const auto* const inBuf = rc.midi.getReadBuffer (0);
         if (inBuf != nullptr && ! inBuf->isEmpty())
         {
-            const int cc = juce::jlimit (0, 127, ccNumber);
-            const int ch = juce::jlimit (1, 16,  midiChannel);
+            const int cc = juce::jlimit (0, 127, ccNumber.load (std::memory_order_relaxed));
+            const int ch = juce::jlimit (1, 16,  midiChannel.load (std::memory_order_relaxed));
 
             for (const auto meta : *inBuf)
             {
@@ -76,8 +80,10 @@ public:
 
     void getState (juce::MemoryBlock& block) override
     {
-        block.append (&ccNumber,   sizeof (ccNumber));
-        block.append (&midiChannel, sizeof (midiChannel));
+        const int cc = ccNumber.load    (std::memory_order_relaxed);
+        const int ch = midiChannel.load (std::memory_order_relaxed);
+        block.append (&cc, sizeof (cc));
+        block.append (&ch, sizeof (ch));
     }
 
     void setState (const void* data, int size) override
@@ -87,8 +93,8 @@ public:
             int cc = 0, ch = 1;
             std::memcpy (&cc, data, sizeof (cc));
             std::memcpy (&ch, static_cast<const char*> (data) + sizeof (cc), sizeof (ch));
-            ccNumber    = juce::jlimit (0, 127, cc);
-            midiChannel = juce::jlimit (1, 16, ch);
+            ccNumber.store    (juce::jlimit (0, 127, cc), std::memory_order_relaxed);
+            midiChannel.store (juce::jlimit (1, 16, ch),  std::memory_order_relaxed);
         }
     }
 
@@ -120,14 +126,27 @@ public:
         setPorts (newPorts);
     }
 
-    void setCcNumber (int cc) noexcept    { ccNumber    = juce::jlimit (0, 127, cc); }
-    int  getCcNumber() const noexcept     { return ccNumber; }
-    void setMidiChannel (int ch) noexcept { midiChannel = juce::jlimit (1, 16, ch); }
-    int  getMidiChannel() const noexcept  { return midiChannel; }
+    void setCcNumber (int cc) noexcept    { ccNumber.store    (juce::jlimit (0, 127, cc), std::memory_order_relaxed); }
+    int  getCcNumber() const noexcept     { return ccNumber.load (std::memory_order_relaxed); }
+    void setMidiChannel (int ch) noexcept { midiChannel.store (juce::jlimit (1, 16, ch), std::memory_order_relaxed); }
+    int  getMidiChannel() const noexcept  { return midiChannel.load (std::memory_order_relaxed); }
+
+    // InlineParamControl
+    bool setInlineParam (const juce::String& key, double value) override
+    {
+        if (key == "cc")      { setCcNumber ((int) std::lround (value)); return true; }
+        if (key == "channel") { setMidiChannel ((int) std::lround (value)); return true; }
+        return false;
+    }
+    void getInlineParams (juce::Array<InlineParamInfo>& out) const override
+    {
+        out.add ({ "cc",      "CC #",    (double) getCcNumber(),    0.0, 127.0, 1.0 });
+        out.add ({ "channel", "Channel", (double) getMidiChannel(), 1.0,  16.0, 1.0 });
+    }
 
 private:
-    int   ccNumber    { 0 };
-    int   midiChannel { 1 };
+    std::atomic<int> ccNumber    { 0 };
+    std::atomic<int> midiChannel { 1 };
 
     // Last-seen CV values — only accessed on the audio thread, no atomics needed.
     float lastCcNorm  { 0.0f };

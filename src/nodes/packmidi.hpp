@@ -4,10 +4,12 @@
 #pragma once
 
 #include <atomic>
+#include <cmath>
 #include <cstring>
 
 #include <element/node.h>
 #include <element/processor.hpp>
+#include <element/inlineparamcontrol.hpp>
 
 namespace element {
 
@@ -17,7 +19,7 @@ namespace element {
       CV in 1 — value: CC value, 0..1 mapped to 0..127
       CV in 2 — aux:   reserved / unused (present to match the 3-CV-in spec)
     Parameters: cc number (0–127), MIDI channel (1–16). */
-class PackMidiNode : public Processor
+class PackMidiNode : public Processor, public InlineParamControl
 {
 public:
     PackMidiNode() : Processor (0)
@@ -130,6 +132,19 @@ public:
     int  getMidiChannel() const noexcept
     {
         return midiChannel.load (std::memory_order_relaxed);
+    }
+
+    // InlineParamControl
+    bool setInlineParam (const juce::String& key, double value) override
+    {
+        if (key == "cc")      { setCcNumber ((int) std::lround (value)); return true; }
+        if (key == "channel") { setMidiChannel ((int) std::lround (value)); return true; }
+        return false;
+    }
+    void getInlineParams (juce::Array<InlineParamInfo>& out) const override
+    {
+        out.add ({ "cc",      "CC #",    (double) getCcNumber(),    0.0, 127.0, 1.0 });
+        out.add ({ "channel", "Channel", (double) getMidiChannel(), 1.0,  16.0, 1.0 });
     }
 
 private:
