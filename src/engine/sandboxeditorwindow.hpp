@@ -94,6 +94,9 @@ public:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SandboxEditorWindow)
 
 private:
+    int lastEditorW = -1, lastEditorH = -1;
+    bool resizingFromListener = false;
+
     // Detach the ComponentListener from the current content editor, if any.
     // Must be called before clearContentComponent() and in the destructor.
     void detachEditorListener()
@@ -109,16 +112,32 @@ private:
         if (! wasResized)
             return;
 
-        // Resize the DocumentWindow to wrap the editor's new size.
         const int w = component.getWidth();
         const int h = component.getHeight();
-        if (w > 0 && h > 0)
-        {
-            setSize (w + getContentComponentBorder().getLeftAndRight(),
-                     h + getContentComponentBorder().getTopAndBottom() + getTitleBarHeight());
-            juce::Logger::writeToLog ("[sandbox-editor-window] async resize -> "
-                                      + juce::String (w) + "x" + juce::String (h));
-        }
+        if (w <= 0 || h <= 0)
+            return;
+
+        // Coalesce: a heavy plugin (Kontakt) fires a burst of identical resizes
+        // during its async layout pass. Without this guard each one drives setSize()
+        // -> DocumentWindow relayout -> editor NSView relayout, which can re-fire
+        // this listener, thrashing the message thread and making open/close feel
+        // "unusably slow" (live bug, 2026-06-10). Skip no-op size changes.
+        if (w == lastEditorW && h == lastEditorH)
+            return;
+        lastEditorW = w;
+        lastEditorH = h;
+
+        // Re-entrancy guard: setSize() may synchronously bounce back through the
+        // editor's resized() -> this listener. Ignore the nested callback.
+        if (resizingFromListener)
+            return;
+        const juce::ScopedValueSetter<bool> guard (resizingFromListener, true);
+
+        // Resize the DocumentWindow to wrap the editor's new size.
+        setSize (w + getContentComponentBorder().getLeftAndRight(),
+                 h + getContentComponentBorder().getTopAndBottom() + getTitleBarHeight());
+        juce::Logger::writeToLog ("[sandbox-editor-window] async resize -> "
+                                  + juce::String (w) + "x" + juce::String (h));
     }
 
     // Called when the editor component itself is destroyed before the window

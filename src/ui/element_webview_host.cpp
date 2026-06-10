@@ -160,9 +160,21 @@ static int parsePortHandleIndex (const String& handle, const String& expectedPre
 
 static const PluginDescription* findKnownPluginByIdentifier (const KnownPluginList& list, const String& identifier)
 {
+    // Primary: exact createIdentifierString() match — the form the browser emits
+    // (buildPluginGroupRows → s.identifier = desc.createIdentifierString()).
     for (const auto& desc : list.getTypes())
         if (desc.createIdentifierString() == identifier)
             return &desc;
+
+    // Fallback: a legacy / partial identifier that is actually a plain
+    // fileOrIdentifier (e.g. a saved or scripted id that predates the catalog's
+    // current createIdentifierString form). Matching here returns the FULL catalog
+    // desc — name included — so the add path never proceeds with a name-less desc
+    // (the Kontakt "Node" naming bug).
+    for (const auto& desc : list.getTypes())
+        if (desc.fileOrIdentifier == identifier)
+            return &desc;
+
     return nullptr;
 }
 

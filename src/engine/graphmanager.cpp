@@ -567,11 +567,9 @@ uint32 GraphManager::addNode (const PluginDescription* desc, double rx, double r
         // cleanPluginName() strips path+extension from names like
         // "/Library/.../RX 10 De-reverb.vst3" that some scanners emit when the
         // PluginDescription.name field is empty (INV-naming §(c)).
-        String syncName (cleanPluginDisplayName (desc->name));
+        String syncName (resolvePluginDisplayName (*desc));
         if (syncName.isEmpty())
             syncName = cleanPluginDisplayName (object->getName());
-        if (syncName.isEmpty())
-            syncName = cleanPluginDisplayName (desc->descriptiveName);
 
         data.setProperty (tags::id, static_cast<int64> (nodeId), nullptr)
             .setProperty (tags::format, desc->pluginFormatName, nullptr)
@@ -958,6 +956,31 @@ void GraphManager::kickInProcessFallback (const String& finalUuid, uint32 curren
         });
 }
 
+juce::String GraphManager::resolvePluginDisplayName (const PluginDescription& desc) const
+{
+    // Fast path: the catalog desc usually carries the real name already.
+    String name (cleanPluginDisplayName (desc.name));
+    if (name.isNotEmpty())
+        return name;
+
+    // Name-less desc (identifier-only / programmatic / session-load placeholder):
+    // re-resolve the FULL catalog entry from the KnownPluginList. Try the precise
+    // createIdentifierString() key first, then the looser fileOrIdentifier file
+    // key (covers callers that only had the file path / a legacy identifier form).
+    const auto& known = pluginManager.getKnownPlugins();
+    if (desc.fileOrIdentifier.isNotEmpty())
+    {
+        if (const auto type = known.getTypeForIdentifierString (desc.createIdentifierString()))
+            name = cleanPluginDisplayName (type->name);
+        if (name.isEmpty())
+            if (const auto type = known.getTypeForFile (desc.fileOrIdentifier))
+                name = cleanPluginDisplayName (type->name);
+    }
+    if (name.isEmpty())
+        name = cleanPluginDisplayName (desc.descriptiveName);
+    return name;
+}
+
 uint32 GraphManager::addExternalPluginAsync (const PluginDescription& desc, double rx, double ry, uint32 nodeId, bool sandbox)
 {
     // ── 1. Build + add the LOADING placeholder SYNCHRONOUSLY (instant, message
@@ -976,9 +999,11 @@ uint32 GraphManager::addExternalPluginAsync (const PluginDescription& desc, doub
     // Fall back desc.name → descriptiveName → "Plugin". swapInLoadedProcessor still
     // re-affirms from the real loaded name on ready.
     // cleanPluginName() additionally handles the path-like fallback (INV-naming §(c)).
-    String placeholderName (cleanPluginDisplayName (desc.name));
-    if (placeholderName.isEmpty())
-        placeholderName = cleanPluginDisplayName (desc.descriptiveName);
+    // resolvePluginDisplayName re-resolves the real catalog name ("Kontakt 8")
+    // from the KnownPluginList when desc.name is empty (identifier-only adds), so
+    // the loading Block shows the real name immediately and the swap re-affirm
+    // below never has to fall back to the "Plugin"/"Node" sentinel.
+    String placeholderName (resolvePluginDisplayName (desc));
     if (placeholderName.isEmpty())
         placeholderName = "Plugin";
     data.setProperty (tags::uuid, finalUuid, nullptr)
@@ -1099,9 +1124,10 @@ void GraphManager::swapInLoadedProcessor (const String& nodeUuid, uint32 placeho
                               || current == "Plugin";
             if (weak)
             {
-                String resolved (cleanPluginDisplayName (desc.name));
-                if (resolved.isEmpty())
-                    resolved = cleanPluginDisplayName (desc.descriptiveName);
+                // resolvePluginDisplayName re-derives the catalog name from the
+                // KnownPluginList when desc.name is empty (keeps "Kontakt 8"
+                // readable under the crash banner instead of "Node").
+                const String resolved (resolvePluginDisplayName (desc));
                 if (resolved.isNotEmpty())
                     nodeData.setProperty (tags::name, resolved, nullptr);
             }
@@ -1144,9 +1170,10 @@ void GraphManager::swapInLoadedProcessor (const String& nodeUuid, uint32 placeho
                               || current == "Plugin";
             if (weak)
             {
-                String resolved (cleanPluginDisplayName (desc.name));
-                if (resolved.isEmpty())
-                    resolved = cleanPluginDisplayName (desc.descriptiveName);
+                // resolvePluginDisplayName re-derives the catalog name from the
+                // KnownPluginList when desc.name is empty (keeps "Kontakt 8"
+                // readable under the crash banner instead of "Node").
+                const String resolved (resolvePluginDisplayName (desc));
                 if (resolved.isNotEmpty())
                     nodeData.setProperty (tags::name, resolved, nullptr);
             }
@@ -1180,17 +1207,17 @@ void GraphManager::swapInLoadedProcessor (const String& nodeUuid, uint32 placeho
         {
             // BUG C (fallback/crash naming): for the OUT-OF-PROCESS route `added` is
             // the SandboxedProcessorNode, whose getName() is "<plugin> (Sandboxed)".
-            // Prefer the clean catalog desc.name first so the Block shows "Kontakt 8"
-            // rather than "Kontakt 8 (Sandboxed)"; strip the suffix as a safety net
-            // when only the processor name is available. desc.name is also the most
-            // authoritative source on the crash/fallback path, where `added` may be a
-            // bare in-process instance from kickInProcessFallback.
-            String resolved (cleanPluginDisplayName (desc.name));
+            // Prefer the clean catalog name first so the Block shows "Kontakt 8"
+            // rather than "Kontakt 8 (Sandboxed)". resolvePluginDisplayName re-derives
+            // the catalog name from the KnownPluginList when the passed desc.name is
+            // empty (the Kontakt "Node" bug: an identifier-only add carried no name,
+            // and the sandboxed wrapper's getName() is just " (Sandboxed)" → cleaned
+            // to empty → the Block stayed "Node"). The processor-name strip remains as
+            // the last in-process source (kickInProcessFallback) before descriptiveName.
+            String resolved (resolvePluginDisplayName (desc));
             if (resolved.isEmpty())
                 resolved = cleanPluginDisplayName (added->getName())
                                .upToLastOccurrenceOf (" (Sandboxed)", false, false).trim();
-            if (resolved.isEmpty())
-                resolved = cleanPluginDisplayName (desc.descriptiveName);
             if (resolved.isNotEmpty())
                 nodeData.setProperty (tags::name, resolved, nullptr);
         }

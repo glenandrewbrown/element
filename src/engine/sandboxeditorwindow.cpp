@@ -73,8 +73,21 @@ bool openEditorWindow (juce::AudioProcessor* proc, int x, int y, int& outW, int&
     auto window = std::make_unique<SandboxEditorWindow> (editor, proc->getName());
     window->onUserClose = []
     {
+        // User clicked the window's close button. Two things must happen, in this
+        // order, on the message thread:
+        //   1. Notify the host so it clears its "editor open" state (the close ->
+        //      EditorWindowClosed -> host contract).
+        //   2. Actually destroy the window. Previously the worker waited for the
+        //      host to echo a CloseEditorWindow back, but nothing on the host
+        //      reacts to sandboxEditorWindowClosed, so the window was never torn
+        //      down and the close button appeared dead (live bug, 2026-06-10).
+        // We must NOT reset g_window synchronously here: closeButtonPressed() is
+        // running inside the window's own callback, so deleting it now would free
+        // 'this' mid-call. Defer the destruction to the next message-loop turn.
         if (g_userCloseCallback)
             g_userCloseCallback();
+
+        juce::MessageManager::callAsync ([] { closeEditorWindow(); });
     };
 
     // Position near the originating Block (host passes global screen coords).

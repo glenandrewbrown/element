@@ -426,6 +426,49 @@ BOOST_AUTO_TEST_CASE (empty_catalog_name_heals_to_real_plugin_name_on_swap)
     BOOST_CHECK_EQUAL (after.getName().toStdString(), String (kTestEchoIdentifier).toStdString());
 }
 
+// Kontakt "Node" bug (2026-06-10): an identifier-only add carries a name-less
+// PluginDescription, AND (on the out-of-process route) the loaded instance's
+// getName() is just "<plugin> (Sandboxed)" → cleaned to empty → the Block stayed
+// "Node" forever. The fix re-resolves the real name from the KnownPluginList CATALOG
+// (keyed by createIdentifierString() then fileOrIdentifier). This proves that path:
+// the SYNCHRONOUS placeholder — built before any plugin instance exists — already
+// shows the CATALOG name, not "Plugin"/"Node", purely from the catalog lookup.
+BOOST_AUTO_TEST_CASE (name_less_add_resolves_catalog_name_for_placeholder)
+{
+    ensureTestFormatRegistered();
+
+    // Register a catalog entry carrying a DISTINCTIVE name under the test echo
+    // identifier. The name differs from the loaded instance's getName()
+    // (kTestEchoIdentifier) so a pass can ONLY come from the catalog lookup.
+    auto& known = test::context()->plugins().getKnownPlugins();
+    PluginDescription catalogDesc (testEchoDescription());
+    catalogDesc.name = "Kontakt 8 (catalog)";
+    known.addType (catalogDesc);
+
+    ManagedGraph g;
+
+    // The ADD desc is name-less but shares the catalog entry's FILE. NOTE:
+    // createIdentifierString() EMBEDS the plugin name, so a name-less desc can
+    // never identifier-match a named catalog entry — exactly why the resolver
+    // has the fileOrIdentifier fallback, which is the path this proves.
+    const auto desc = testEchoDescriptionNoName();
+    BOOST_REQUIRE (desc.name.isEmpty());
+    BOOST_REQUIRE_EQUAL (desc.fileOrIdentifier.toStdString(),
+                         catalogDesc.fileOrIdentifier.toStdString());
+
+    const uint32 nodeId = g.mgr.addNode (&desc, 0.5, 0.5, 0);
+    BOOST_REQUIRE (nodeId != EL_INVALID_NODE);
+
+    const Node loading = g.mgr.getNodeModelForId (nodeId);
+    BOOST_REQUIRE (loading.isValid());
+    // The placeholder name came from the catalog — never the "Plugin"/"Node" sentinel.
+    BOOST_CHECK_EQUAL (loading.getName().toStdString(), std::string ("Kontakt 8 (catalog)"));
+    BOOST_CHECK (! loading.getName().equalsIgnoreCase ("Node"));
+    BOOST_CHECK (loading.getName() != "Plugin");
+
+    known.removeType (catalogDesc); // keep the shared catalog clean for sibling tests
+}
+
 // ── P1: live UI adds route through the SANDBOX ───────────────────────────────
 // These prove the collision fix: a live external add now consults the sandbox
 // policy (via the test seam, mirroring Settings::shouldSandboxPlugin) and, when

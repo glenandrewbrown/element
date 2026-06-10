@@ -948,6 +948,20 @@ Node EngineService::addNode (const String& ID, const String& format)
     juce::PluginDescription desc;
     desc.fileOrIdentifier = ID;
     desc.pluginFormatName = format;
+
+    // Identifier-only callers (OSC / scripting / programmatic adds) hand us only
+    // a file/identifier + format with NO name. Resolve the FULL catalog entry from
+    // the KnownPluginList so desc.name is populated before the add — otherwise the
+    // Block (and, for the out-of-process route, the loaded "<plugin> (Sandboxed)"
+    // wrapper) has no authoritative name and the placeholder/swap fall through to
+    // the "Node" sentinel (the Kontakt naming bug). Prefer the precise identifier
+    // key, then the looser file key. Leave desc untouched if nothing matches.
+    auto& known = context().plugins().getKnownPlugins();
+    if (const auto type = known.getTypeForIdentifierString (ID))
+        desc = *type;
+    else if (const auto type = known.getTypeForFile (ID))
+        desc = *type;
+
     return addPlugin (desc, true, .5f, .5f, true);
 }
 

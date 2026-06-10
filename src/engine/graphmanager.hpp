@@ -159,6 +159,21 @@ private:
     uint32 addExternalPluginAsync (const PluginDescription& desc, double rx, double ry, uint32 nodeId, bool sandbox);
     void swapInLoadedProcessor (const String& nodeUuid, uint32 placeholderId, ProcessorPtr realProcessor, const PluginDescription& desc);
 
+    // Naming backstop (Kontakt "Node" bug, 2026-06-10): resolve a CLEAN display
+    // name for an add even when the supplied `desc.name` is empty. Some add
+    // entry points (EngineService::addNode(ID,format), legacy/identifier-only
+    // callers, session-load placeholders) hand GraphManager a PluginDescription
+    // carrying only fileOrIdentifier+format with an EMPTY name. The placeholder
+    // then stamps "Plugin"/"Node" and — for the OUT-OF-PROCESS route — the loaded
+    // SandboxedProcessorNode's getName() is just " (Sandboxed)", so the swap
+    // re-affirm has nothing authoritative to stamp and the Block stays "Node"
+    // forever. The KnownPluginList catalog still holds the real name ("Kontakt 8"),
+    // keyed by createIdentifierString() then fileOrIdentifier, so resolve from it.
+    // Returns cleanPluginDisplayName(desc.name) when non-empty (the fast path),
+    // else the catalog name, else cleanPluginDisplayName(desc.descriptiveName),
+    // else empty (callers keep their own last-resort sentinel).
+    juce::String resolvePluginDisplayName (const PluginDescription& desc) const;
+
     // P1 — kick the OUT-OF-PROCESS instantiation for a placeholder already in the
     // model. Constructs the sandboxed node, falls back in-process on launch
     // failure, and otherwise arms the readiness poll-timer that drives the swap.
