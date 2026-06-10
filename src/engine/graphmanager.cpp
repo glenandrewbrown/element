@@ -1081,6 +1081,32 @@ void GraphManager::swapInLoadedProcessor (const String& nodeUuid, uint32 placeho
         // clear the transient loading flag so it stops claiming to be loading
         // (it becomes an honest missing/placeholder block) and surface the error.
         nodeData.removeProperty (tags::loading, nullptr);
+
+        // BUG D (crash/fallback naming): re-affirm tags::name from the stored
+        // PluginDescription before the next snapshot push. This is the terminal
+        // crash/fallback-failure path (e.g. the worker died, the in-process fallback
+        // also failed). The live processor here is a bare PlaceholderProcessor whose
+        // getName() is generic, so getDisplayName() would fall through to it and the
+        // Block would show "Node"/"Placeholder" under the PLUGIN CRASHED banner — the
+        // exact "node"-titled crash card Glen saw with Kontakt 8. Stamping the clean
+        // catalog name keeps the Block identity ("Kontakt 8") readable while crashed.
+        // Only fill when the current name is weak so a user rename is preserved.
+        {
+            const String current (nodeData.getProperty (tags::name).toString().trim());
+            const bool weak = current.isEmpty()
+                              || current.equalsIgnoreCase ("Node")
+                              || current.equalsIgnoreCase ("Placeholder")
+                              || current == "Plugin";
+            if (weak)
+            {
+                String resolved (cleanPluginDisplayName (desc.name));
+                if (resolved.isEmpty())
+                    resolved = cleanPluginDisplayName (desc.descriptiveName);
+                if (resolved.isNotEmpty())
+                    nodeData.setProperty (tags::name, resolved, nullptr);
+            }
+        }
+
         changed();
         showFailedInstantiationAlert (desc, true);
         return;
@@ -1108,6 +1134,23 @@ void GraphManager::swapInLoadedProcessor (const String& nodeUuid, uint32 placeho
     {
         // Engine refused the add (should not happen) — treat as failure.
         nodeData.removeProperty (tags::loading, nullptr);
+        // BUG D (crash/fallback naming): same re-affirm as the realProcessor==nullptr
+        // branch so a terminal failure never strands a weak "Node" title.
+        {
+            const String current (nodeData.getProperty (tags::name).toString().trim());
+            const bool weak = current.isEmpty()
+                              || current.equalsIgnoreCase ("Node")
+                              || current.equalsIgnoreCase ("Placeholder")
+                              || current == "Plugin";
+            if (weak)
+            {
+                String resolved (cleanPluginDisplayName (desc.name));
+                if (resolved.isEmpty())
+                    resolved = cleanPluginDisplayName (desc.descriptiveName);
+                if (resolved.isNotEmpty())
+                    nodeData.setProperty (tags::name, resolved, nullptr);
+            }
+        }
         changed();
         showFailedInstantiationAlert (desc, true);
         return;

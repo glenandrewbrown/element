@@ -112,6 +112,23 @@ private:
     void rtProcessingLoop();
     void stopRTThread();
 
+    // BUG D (post-load message-thread starvation): emit the PROCESS heartbeat from a
+    // DEDICATED thread so it never depends on the worker MESSAGE THREAD being free.
+    // Kontakt (and other sample instruments) keep the message thread busy for seconds
+    // AFTER the plugin reports loaded — content-DB scan, registration/UI timers. The
+    // old heartbeat was a juce::Timer on that same message thread, so the moment the
+    // load-grace window cleared the host's 5 s watchdog starved again → false crash →
+    // restart loop. A tiny std::thread that only writes the heartbeat pipe (a
+    // sendMessage read-lock, proven safe off the message thread) decouples liveness
+    // from the plugin's main-thread work. Started in handleConnectionMade, joined in
+    // the dtor / on connection loss.
+    void startHeartbeatThread();
+    void stopHeartbeatThread();
+    void heartbeatLoop();
+    std::atomic<bool> heartbeatThreadRunning { false };
+    std::unique_ptr<std::thread> heartbeatThread;
+    std::mutex heartbeatMutex; // guards start/stop of heartbeatThread (IPC + MT callers)
+
     //==========================================================================
     // Plugin hosting
     juce::AudioPluginFormatManager formatManager;
@@ -264,6 +281,7 @@ inline void SandboxWorker::drainPendingLoad()
 inline SandboxWorker::~SandboxWorker()
 {
     stopTimer();
+    stopHeartbeatThread();
     stopRTThread();
 
     // Clean up plugin (on the message thread — AU teardown posts to the MT).
@@ -396,9 +414,16 @@ inline void SandboxWorker::handleConnectionMade()
 {
     juce::Logger::writeToLog ("Connected to sandbox coordinator");
 
+    // BUG D: the PROCESS heartbeat runs on a dedicated thread (decoupled from the
+    // message thread, which a busy plugin can block for seconds). The message-thread
+    // Timer now emits the ADVISORY MainThreadBeat instead — see timerCallback().
+    startHeartbeatThread();
     startTimer (EL_SANDBOX_HEARTBEAT_MS);
 
+    // Prime BOTH liveness channels immediately so the host's first watchdog tick sees
+    // a fresh process beat and a fresh main-thread beat.
     sendResponse (SandboxMessageType::Heartbeat);
+    sendResponse (SandboxMessageType::MainThreadBeat);
 }
 
 inline void SandboxWorker::handleMessageFromCoordinator (const juce::MemoryBlock& mb)
@@ -419,6 +444,12 @@ inline void SandboxWorker::handleConnectionLost()
 {
     juce::Logger::writeToLog ("Lost connection to coordinator - shutting down");
 
+    // BUG D: stop emitting the dedicated process heartbeat — the pipe is gone, and
+    // the thread must not outlive the connection. stopHeartbeatThread() joins it; we
+    // run on the IPC background thread (NOT the heartbeat thread), so the join cannot
+    // self-deadlock. The heartbeat loop's own send is a no-op once disconnected.
+    stopHeartbeatThread();
+
     // Clean shutdown. This runs on the IPC background thread, so release the plugin
     // on the MESSAGE THREAD (AU teardown posts to the MT + waits — releasing here
     // directly would deadlock the IPC thread). quit() is then dispatched to the MT.
@@ -428,9 +459,64 @@ inline void SandboxWorker::handleConnectionLost()
     juce::JUCEApplication::quit();
 }
 
+//==============================================================================
+// BUG D: dedicated PROCESS-heartbeat thread. Emits Heartbeat every
+// EL_SANDBOX_HEARTBEAT_MS regardless of what the message thread is doing, so a
+// busy-but-alive plugin (Kontakt scanning its content DB post-load) can never be
+// misread as a crashed worker. sendResponse → sendMessageToCoordinator →
+// InterprocessConnection::sendMessage takes only a READ lock (proven safe off the
+// message thread by the LoadInProgress send), so this is a legal cross-thread send.
+inline void SandboxWorker::startHeartbeatThread()
+{
+    std::lock_guard<std::mutex> lock (heartbeatMutex);
+    if (heartbeatThread != nullptr)
+        return; // already running
+    heartbeatThreadRunning.store (true, std::memory_order_release);
+    heartbeatThread = std::make_unique<std::thread> ([this] { heartbeatLoop(); });
+}
+
+inline void SandboxWorker::stopHeartbeatThread()
+{
+    // stopHeartbeatThread() can be called from handleConnectionLost (IPC thread) AND
+    // the dtor (message thread). Serialise so exactly ONE caller joins + resets the
+    // thread object; a second concurrent caller sees a null thread and no-ops (no
+    // double-join, no double-free of the unique_ptr). Never called from the heartbeat
+    // thread itself, so the join cannot self-deadlock.
+    std::unique_ptr<std::thread> toJoin;
+    {
+        std::lock_guard<std::mutex> lock (heartbeatMutex);
+        heartbeatThreadRunning.store (false, std::memory_order_release);
+        toJoin = std::move (heartbeatThread);
+    }
+    if (toJoin && toJoin->joinable())
+        toJoin->join();
+}
+
+inline void SandboxWorker::heartbeatLoop()
+{
+    // Cadence in small slices so stop is responsive (join returns within ~50 ms).
+    constexpr int sliceMs = 50;
+    int accum = 0;
+    while (heartbeatThreadRunning.load (std::memory_order_acquire))
+    {
+        juce::Thread::sleep (sliceMs);
+        accum += sliceMs;
+        if (accum >= EL_SANDBOX_HEARTBEAT_MS)
+        {
+            accum = 0;
+            if (heartbeatThreadRunning.load (std::memory_order_acquire))
+                sendResponse (SandboxMessageType::Heartbeat);
+        }
+    }
+}
+
 inline void SandboxWorker::timerCallback()
 {
-    sendResponse (SandboxMessageType::Heartbeat);
+    // BUG D: this Timer runs on the MESSAGE THREAD, which a busy plugin can block.
+    // It now emits the ADVISORY MainThreadBeat (main-thread responsiveness), NOT the
+    // PROCESS Heartbeat (which the dedicated heartbeatLoop owns). The host treats a
+    // stalled MainThreadBeat as advisory until the main-thread ceiling.
+    sendResponse (SandboxMessageType::MainThreadBeat);
 
     // Check for latency changes
     if (plugin)
@@ -722,6 +808,25 @@ inline void SandboxWorker::handleLoadPlugin (const void* payload, uint32_t paylo
         sendResponse (SandboxMessageType::PluginInfo,
                       block.getData(),
                       static_cast<uint32_t> (block.getSize()));
+
+       #if EL_SANDBOX_INCLUDE_TEST_FORMATS
+        // TEST SEAM (BUG D): EL_SANDBOX_POST_LOAD_BUSY_MS blocks the worker MESSAGE
+        // THREAD for N ms AFTER PluginLoaded/PluginInfo are sent — reproducing
+        // Kontakt's post-load content-DB scan / registration timers that keep the
+        // main thread busy once the plugin reports loaded. The dedicated heartbeat
+        // thread must keep the PROCESS Heartbeat flowing through this window, so the
+        // host must NOT tear the worker down (only MainThreadBeat stalls, which is
+        // advisory below the main-thread ceiling). Compiled out of element_app.
+        {
+            const int busyMs = juce::SystemStats::getEnvironmentVariable ("EL_SANDBOX_POST_LOAD_BUSY_MS", {}).getIntValue();
+            if (busyMs > 0)
+            {
+                juce::Logger::writeToLog ("[Sandbox] TEST post-load busy seam: blocking MT for "
+                                           + juce::String (busyMs) + " ms");
+                juce::Thread::sleep (busyMs);
+            }
+        }
+       #endif
     });
 }
 

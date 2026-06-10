@@ -219,6 +219,65 @@ BOOST_AUTO_TEST_CASE (SlowLoadDoesNotTripHeartbeatWatchdog)
     host.shutdown();
 }
 
+// BUG D: POST-LOAD message-thread starvation. Kontakt keeps the worker MESSAGE
+// THREAD busy for seconds AFTER PluginLoaded (content-DB scan, registration
+// timers). Pre-fix the heartbeat rode the message thread, so the moment the
+// load-grace window cleared at PluginLoaded the host's 5 s watchdog starved again
+// and tore the (healthy) worker down — the live "loaded then crashed → restart
+// loop" with Kontakt 8. The fix decouples the PROCESS heartbeat onto a dedicated
+// worker thread, so a busy-but-alive main thread is never misread as a crash.
+//
+// EL_SANDBOX_POST_LOAD_BUSY_MS blocks the worker MT for 7 s AFTER PluginLoaded —
+// past the 5 s heartbeat watchdog — with NO load in flight. The worker must NOT be
+// torn down: no crash, no restart, the plugin stays loaded and Active.
+BOOST_AUTO_TEST_CASE (PostLoadMainThreadBusyDoesNotTearDownWorker)
+{
+    auto* ctx = element::test::context();
+    BOOST_REQUIRE (ctx != nullptr);
+
+    static_assert (7000 > EL_SANDBOX_TIMEOUT_MS,
+                   "post-load busy window must exceed the heartbeat watchdog to be a real test");
+    static_assert (7000 < EL_SANDBOX_MAINTHREAD_CEILING_MS,
+                   "post-load busy window must stay under the main-thread ceiling so the worker survives");
+
+    ScopedEnv postLoadBusy ("EL_SANDBOX_POST_LOAD_BUSY_MS", "7000");
+
+    SandboxHost host (ctx->plugins());
+    SlowLoadCapture capture;
+    host.addListener (&capture);
+
+    BOOST_REQUIRE (host.launch());
+    BOOST_CHECK (host.getState() == SandboxHost::State::Ready);
+
+    host.loadPlugin (echoDescription());
+
+    // The PluginLoaded reply is sent BEFORE the worker MT blocks (the busy seam runs
+    // at the tail of the load callback, after PluginLoaded/PluginInfo were sent), so
+    // `loaded` flips quickly. Then the MT is blocked for 7 s while the DEDICATED
+    // heartbeat thread keeps the process heartbeat flowing.
+    const bool loaded = pumpUntil (
+        [&] { return capture.loaded.load() || capture.loadFailed.load(); },
+        std::chrono::seconds (8));
+    BOOST_REQUIRE_MESSAGE (loaded, "Plugin never reported loaded");
+    BOOST_CHECK_MESSAGE (! capture.loadFailed.load(),
+                         "Load reported failure: " + capture.failureReason.toStdString());
+
+    // Pump WELL PAST the 7 s busy window. If the dedicated heartbeat regressed (or the
+    // host watchdog still keyed off the message-thread beat), handleConnectionLost
+    // would fire here → crashed/restart. The crux: it must NOT.
+    pumpUntil ([] { return false; }, std::chrono::seconds (10));
+
+    BOOST_CHECK_MESSAGE (! capture.crashed.load(),
+                         "Healthy worker torn down during post-load main-thread busy window (BUG D)");
+    BOOST_CHECK_MESSAGE (! capture.restarted.load(),
+                         "Worker needlessly restarted during post-load main-thread busy window (BUG D)");
+    BOOST_CHECK (host.isPluginLoaded());
+    BOOST_CHECK (host.getState() == SandboxHost::State::Active);
+
+    host.removeListener (&capture);
+    host.shutdown();
+}
+
 BOOST_AUTO_TEST_SUITE_END()
 
 //==============================================================================
@@ -270,6 +329,70 @@ BOOST_AUTO_TEST_CASE (UserRenameWithSlashPreserved)
     // it intact (it only acts on known plugin extensions). No sandbox suffix here.
     BOOST_CHECK_EQUAL (reaffirmDisplayName ("Drums/Bus").toStdString(),
                        std::string ("Drums/Bus"));
+}
+
+//==============================================================================
+// BUG D — crash/fallback-failure naming. When a sandboxed load CRASHES and the
+// in-process fallback ALSO fails, swapInLoadedProcessor(realProcessor==nullptr)
+// leaves a terminal placeholder. Pre-fix that branch never re-affirmed tags::name,
+// so getDisplayName() fell through to the bare PlaceholderProcessor and the Block
+// showed "Node"/"Placeholder" under the PLUGIN CRASHED banner — the exact "node"-
+// titled crash card Glen saw with Kontakt 8. The hardened branch re-affirms the
+// clean catalog name from the stored PluginDescription when the current name is weak
+// (empty / "Node" / "Placeholder" / "Plugin"), preserving any user rename.
+//
+// This mirrors the EXACT weak-name + resolve transform in graphmanager.cpp's
+// realProcessor==nullptr branch so a future change to one without the other is caught.
+namespace {
+juce::String crashPathReaffirm (const juce::String& currentName,
+                                const juce::String& descName,
+                                const juce::String& descriptiveName)
+{
+    const juce::String current (currentName.trim());
+    const bool weak = current.isEmpty()
+                      || current.equalsIgnoreCase ("Node")
+                      || current.equalsIgnoreCase ("Placeholder")
+                      || current == "Plugin";
+    if (! weak)
+        return current; // user rename / real catalog name preserved untouched
+
+    juce::String resolved (cleanPluginDisplayName (descName));
+    if (resolved.isEmpty())
+        resolved = cleanPluginDisplayName (descriptiveName);
+    return resolved.isNotEmpty() ? resolved : current;
+}
+} // namespace
+
+BOOST_AUTO_TEST_CASE (CrashWeakNameReaffirmedFromDescription)
+{
+    // The crashed placeholder reports a weak "Node" name → re-affirm "Kontakt 8".
+    BOOST_CHECK_EQUAL (
+        crashPathReaffirm ("Node", "Kontakt 8", "Native Instruments Kontakt").toStdString(),
+        std::string ("Kontakt 8"));
+}
+
+BOOST_AUTO_TEST_CASE (CrashPlaceholderNameReaffirmedFromDescription)
+{
+    // A bare PlaceholderProcessor surfaces "Placeholder" — also weak, also healed.
+    BOOST_CHECK_EQUAL (
+        crashPathReaffirm ("Placeholder", "Serum", "Xfer Serum").toStdString(),
+        std::string ("Serum"));
+}
+
+BOOST_AUTO_TEST_CASE (CrashUserRenamePreserved)
+{
+    // A meaningful user rename must survive the crash transition untouched.
+    BOOST_CHECK_EQUAL (
+        crashPathReaffirm ("My Lead", "Kontakt 8", "Kontakt").toStdString(),
+        std::string ("My Lead"));
+}
+
+BOOST_AUTO_TEST_CASE (CrashWeakNameFallsBackToDescriptiveName)
+{
+    // Empty desc.name → fall back to descriptiveName, still never a bare "Node".
+    BOOST_CHECK_EQUAL (
+        crashPathReaffirm ("", "", "Element Test Echo").toStdString(),
+        std::string ("Element Test Echo"));
 }
 
 BOOST_AUTO_TEST_SUITE_END()

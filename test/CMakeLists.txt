@@ -114,9 +114,12 @@ set_tests_properties(SandboxSemaphoreCrossProcessTests PROPERTIES RUN_SERIAL TRU
 add_test(NAME "SandboxRealProcessTests" COMMAND test_element --run_test=SandboxRealProcessTests)
 set_tests_properties(SandboxRealProcessTests PROPERTIES RUN_SERIAL TRUE TIMEOUT 30)
 # Kontakt-8 async-launch regressions (2026-06-10): BUG A load-queued-before-init +
-# BUG B heartbeat-suspend during a slow load. Re-execs a real worker; the slow-load
-# case deliberately blocks the worker MT for 7 s (past the 5 s watchdog), so allow a
-# generous serial timeout. BUG C (naming re-affirm) is a pure check in the same file.
+# BUG B heartbeat-suspend during a slow load + BUG D POST-load main-thread starvation
+# (a dedicated process-heartbeat thread keeps the worker alive while Kontakt's
+# post-load content-DB scan blocks the message thread). Re-execs a real worker; the
+# slow-load and post-load-busy cases deliberately block the worker MT for 7 s (past
+# the 5 s watchdog), so allow a generous serial timeout. BUG C/D (naming re-affirm)
+# are pure checks in the same file.
 add_test(NAME "SandboxSlowLoadHeartbeatTests" COMMAND test_element --run_test=SandboxSlowLoadHeartbeatTests)
 set_tests_properties(SandboxSlowLoadHeartbeatTests PROPERTIES RUN_SERIAL TRUE TIMEOUT 90)
 add_test(NAME "SandboxNodeNameReaffirm" COMMAND test_element --run_test=SandboxNodeNameReaffirm)

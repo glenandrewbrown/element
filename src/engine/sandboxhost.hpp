@@ -357,7 +357,29 @@ private:
     juce::MemoryBlock lastResponsePayload;
     bool responseReceived { false };
 
+    // PROCESS liveness — beaten by the worker's DEDICATED heartbeat thread (BUG D),
+    // independent of the worker message thread. This is the SOLE input to the
+    // crash/teardown watchdog: a busy-but-alive plugin keeps this flowing even while
+    // its message thread is blocked, so a healthy worker is never torn down.
     SandboxHeartbeat heartbeat;
+
+    // BUG D — ADVISORY message-thread liveness. Beaten by the worker's juce::Timer
+    // (MainThreadBeat), which only fires when the worker MESSAGE THREAD is free. A
+    // stalled main thread (Kontakt content-DB scan post-load) is EXPECTED and must
+    // NOT tear the worker down while the process heartbeat is alive — it is logged
+    // (advisory / could badge) and only forces teardown once it exceeds
+    // EL_SANDBOX_MAINTHREAD_CEILING_MS (a genuine main-thread deadlock). 0 = no stall
+    // window open. Touched on the IPC thread (handleWorkerMessage) and the message
+    // thread (timerCallback); plain atomics suffice.
+    SandboxHeartbeat mainThreadBeat;
+    std::atomic<bool> mainThreadStallLogged { false };
+
+    // BUG D — post-load audio settling window. Set to the load-complete time on
+    // PluginLoaded; the xrun diagnostic is suppressed for EL_SANDBOX_POSTLOAD_SETTLE_MS
+    // afterwards because a streaming instrument (Kontakt) legitimately produces slow
+    // first blocks while its sample engine warms up. 0 = no settle window active.
+    std::atomic<uint32_t> postLoadSettleSinceMs { 0 };
+
     int restartAttempts { 0 };
     static constexpr int maxRestartAttempts { 3 };
 
@@ -452,6 +474,9 @@ inline bool SandboxHost::launch()
     connectionAlive.store (true);
 
     heartbeat.reset();
+    mainThreadBeat.reset();                 // BUG D: fresh advisory MT-liveness
+    mainThreadStallLogged.store (false);
+    postLoadSettleSinceMs.store (0);
     startTimer (EL_SANDBOX_HEARTBEAT_MS);
 
     state.store (State::Ready);
@@ -491,6 +516,9 @@ inline void SandboxHost::finishDeferredLaunch (bool handshakeOk)
 
     connectionAlive.store (true);
     heartbeat.reset();
+    mainThreadBeat.reset();                 // BUG D: fresh advisory MT-liveness
+    mainThreadStallLogged.store (false);
+    postLoadSettleSinceMs.store (0);
     startTimer (EL_SANDBOX_HEARTBEAT_MS);
     state.store (State::Ready);
 }
@@ -732,10 +760,25 @@ inline void SandboxHost::processBlock (juce::AudioSampleBuffer& buffer,
         // Log ONLY on the threshold CROSSING (==), never per-block (>=) — the
         // old >= fired Logger::writeToLog (file I/O!) on the AUDIO THREAD for
         // every block of a stalled worker (~94 lines/s observed live).
+        //
+        // BUG D — SETTLE-AWARE. Audio xruns during (a) a load in flight and (b) the
+        // post-load settling window are EXPECTED (Kontakt streams its samples on the
+        // first blocks while its message thread is still warming up) and the
+        // self-healing seq counter already absorbs them — so suppress the diagnostic
+        // there. This monitor is a SIGNAL only (it never tears the worker down on its
+        // own); a genuinely hung worker stops the PROCESS heartbeat and the watchdog /
+        // main-thread ceiling above own the teardown. The checks are atomic loads,
+        // RT-safe on the audio thread (no lock, no alloc).
         if (audioBuffer.getConsecutiveXruns() == maxConsecutiveXruns)
         {
-            juce::Logger::writeToLog ("[sandbox] " + juce::String (maxConsecutiveXruns)
-                                      + " consecutive xruns - worker may be hung");
+            const uint32_t now = juce::Time::getMillisecondCounter();
+            const bool loadActive = loadInProgressSinceMs.load() != 0;
+            const uint32_t settleStart = postLoadSettleSinceMs.load();
+            const bool settling = settleStart != 0
+                                  && (now - settleStart) < EL_SANDBOX_POSTLOAD_SETTLE_MS;
+            if (! loadActive && ! settling)
+                juce::Logger::writeToLog ("[sandbox] " + juce::String (maxConsecutiveXruns)
+                                          + " consecutive xruns - worker may be hung");
         }
     }
 }
@@ -913,6 +956,39 @@ inline void SandboxHost::timerCallback()
 
         juce::Logger::writeToLog ("Sandbox worker heartbeat timeout");
         handleConnectionLost();
+        return;
+    }
+
+    // BUG D — ADVISORY main-thread liveness. The PROCESS heartbeat above is alive
+    // (we got here), so the worker is NOT crashed: it is busy. A stalled MainThreadBeat
+    // means the worker message thread is blocked (Kontakt's post-load content-DB scan,
+    // a modal plugin dialog, etc.). This is EXPECTED and must NOT tear a healthy worker
+    // down — that was the dbe317a9 regression's remaining edge: the heartbeat used to
+    // ride the message thread, so the instant the load-grace cleared at PluginLoaded
+    // the watchdog starved again. We now only act at a hard ceiling, where an
+    // unresponsive main thread is a genuine deadlock (no UI/automation will ever
+    // respond again) and recovery is the right call.
+    if (liveState && loadInProgressSinceMs.load() == 0 && ! mainThreadBeat.isAlive())
+    {
+        const uint32_t stalledMs = mainThreadBeat.getTimeSinceLastBeat();
+
+        if (stalledMs >= EL_SANDBOX_MAINTHREAD_CEILING_MS)
+        {
+            juce::Logger::writeToLog ("Sandbox worker main thread unresponsive > "
+                                      + juce::String (EL_SANDBOX_MAINTHREAD_CEILING_MS)
+                                      + " ms (process alive) — treating as deadlock");
+            handleConnectionLost();
+            return;
+        }
+
+        // Below the ceiling: log ONCE per stall episode (advisory; the UI badge could
+        // hook this), then keep serving audio. clearConsecutiveXruns / the self-healing
+        // seq counter already absorb the audio side. The one-shot flag is cleared when
+        // a fresh MainThreadBeat lands (handleWorkerMessage).
+        if (! mainThreadStallLogged.exchange (true))
+            juce::Logger::writeToLog ("[sandbox] worker main thread busy/unresponsive ("
+                                      + juce::String (stalledMs)
+                                      + " ms) — process alive, deferring (advisory)");
     }
 }
 
@@ -1154,7 +1230,19 @@ inline void SandboxHost::handleWorkerMessage (const SandboxMessageHeader& header
     switch (header.type)
     {
         case SandboxMessageType::Heartbeat:
+            // PROCESS liveness (BUG D): from the worker's dedicated heartbeat thread.
+            // This is the ONLY signal that governs the crash/teardown watchdog.
             heartbeat.beat();
+            break;
+
+        case SandboxMessageType::MainThreadBeat:
+            // ADVISORY message-thread liveness (BUG D): from the worker's juce::Timer,
+            // which only fires when the worker MESSAGE THREAD is free. Used purely to
+            // detect a genuine main-thread DEADLOCK (ceiling in timerCallback). A
+            // fresh beat clears the one-shot stall log so a recovered main thread
+            // re-arms the advisory.
+            mainThreadBeat.beat();
+            mainThreadStallLogged.store (false);
             break;
 
         case SandboxMessageType::LoadInProgress:
@@ -1191,6 +1279,19 @@ inline void SandboxHost::handleWorkerMessage (const SandboxMessageHeader& header
                 // its last real Heartbeat may be stale by up to the load duration).
                 loadInProgressSinceMs.store (0);
                 heartbeat.beat();
+
+                // BUG D: open the post-load SETTLING window. Two effects:
+                //  (a) the xrun diagnostic is suppressed for EL_SANDBOX_POSTLOAD_SETTLE_MS
+                //      (Kontakt streaming warm-up legitimately drops the first blocks);
+                //  (b) prime the advisory MT beat so the post-load content-DB scan
+                //      that blocks the worker message thread does not immediately read
+                //      as a stalled main thread before the first MainThreadBeat lands.
+                {
+                    const uint32_t now = juce::Time::getMillisecondCounter();
+                    postLoadSettleSinceMs.store (now == 0 ? 1u : now);
+                }
+                mainThreadBeat.beat();
+                mainThreadStallLogged.store (false);
 
                 const bool isRecovery = awaitingRestartLoad.exchange (false);
 
@@ -1439,11 +1540,14 @@ inline void SandboxHost::attemptRestart()
     // 5s-per-attempt stall and the IPC thread is never blocked.
     preparedSinceLaunch.store (false); // replacement worker has no shm attachment yet
     loadInProgressSinceMs.store (0);   // BUG B: fresh worker — clear stale load grace
+    postLoadSettleSinceMs.store (0);   // BUG D: clear stale settle window
+    mainThreadStallLogged.store (false);
     if (launchWorkerProcess())
     {
         connectionAlive.store (true);
         state.store (State::Ready);
         heartbeat.reset();
+        mainThreadBeat.reset();        // BUG D: fresh advisory MT-liveness
 
         if (loadedPlugin.name.isNotEmpty())
         {

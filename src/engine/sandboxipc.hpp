@@ -31,6 +31,27 @@ namespace element {
     during the load, so the host suspends the 5 s watchdog for up to this long. */
 #define EL_SANDBOX_LOAD_CEILING_MS 120000
 
+/** BUG D (post-load message-thread starvation). After instantiation completes,
+    some instruments keep doing heavy MESSAGE-THREAD work for many seconds — Kontakt
+    8 scans its content database and runs registration/UI timers AFTER the plugin is
+    "loaded". With the heartbeat now emitted from a dedicated thread (process/IPC
+    liveness, independent of the message thread), a busy-but-alive main thread is no
+    longer misread as dead. The MAIN-THREAD beat (MainThreadBeat, sent from the
+    worker's juce::Timer) is therefore ADVISORY: a stalled main thread is logged but
+    only forces teardown once it exceeds this ceiling, at which point it is a genuine
+    deadlock (no UI/automation will ever respond again) and the worker must die +
+    recover. 120 s mirrors the load ceiling and comfortably exceeds any legitimate
+    post-load warm-up (Kontakt's content-DB scan is tens of seconds at worst). */
+#define EL_SANDBOX_MAINTHREAD_CEILING_MS 120000
+
+/** Settling window after PluginLoaded during which audio xruns are EXPECTED and the
+    "consecutive xruns" diagnostic is suppressed. A sample-streaming instrument
+    (Kontakt) does slow first blocks while its streaming engine warms up; the host's
+    self-healing sequence counter (processBlock, expectedSeq = workerSeq + 1) already
+    tolerates these transient misses within a single block. Bounded so a genuinely
+    hung worker still surfaces the diagnostic once the warm-up window has elapsed. */
+#define EL_SANDBOX_POSTLOAD_SETTLE_MS 30000
+
 /** Maximum audio channels supported in sandbox IPC. */
 #define EL_SANDBOX_MAX_CHANNELS 64
 
@@ -74,13 +95,24 @@ enum class SandboxMessageType : uint32_t
     ParameterChanged,   // Parameter value changed (automation)
     StateData,          // Plugin state response
     LatencyChanged,     // Plugin latency changed
-    Heartbeat,          // Worker is alive
+    Heartbeat,          // Worker PROCESS is alive — emitted from a DEDICATED worker
+                        // thread (NOT the message thread), so it keeps flowing even
+                        // while a busy-but-alive plugin (Kontakt post-load DB scan)
+                        // blocks the worker message thread (BUG D). Governs the
+                        // host's crash/teardown watchdog.
     Error,              // Error message
     PluginInfo,         // Plugin metadata (param count + names + I/O config) sent after PluginLoaded
     ShutdownAck,        // Worker has finished cleanup and is about to exit (D-4 ordered shutdown)
     EditorWindowOpened, // Worker created + showed its editor window (EditorWindowPayload, size only)
     EditorWindowFailed, // Worker could not create an editor (no UI / null view)
     EditorWindowClosed, // Worker's editor window was closed
+    MainThreadBeat,     // Worker MESSAGE THREAD is responsive — emitted from the
+                        // worker's juce::Timer (the message thread). ADVISORY only
+                        // (BUG D): a stalled main thread is logged but does not force
+                        // teardown until EL_SANDBOX_MAINTHREAD_CEILING_MS, since a
+                        // busy-but-alive plugin still keeps the PROCESS Heartbeat
+                        // flowing. Appended at the END of the enum so existing
+                        // ordinals (and the wire format) are unchanged.
 };
 
 //==============================================================================
