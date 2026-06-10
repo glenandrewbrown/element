@@ -192,6 +192,10 @@ export function Toolbar() {
   const toggleAutoTidyOnAdd = useAppStore((s) => s.toggleAutoTidyOnAdd);
   const snapToGrid = useAppStore((s) => s.snapToGrid);
   const toggleSnapToGrid = useAppStore((s) => s.toggleSnapToGrid);
+  // T12 — auto-layout flow direction (horizontal ↔ vertical). Drives Tidy +
+  // Auto-Layout; the choice persists as a workflow preference.
+  const layoutDirection = useAppStore((s) => s.layoutDirection);
+  const toggleLayoutDirection = useAppStore((s) => s.toggleLayoutDirection);
 
   // F-04: format Hz → compact "44.1k" / "48k" / "96k" label for the SAMPLE
   // field. Falls back to an em-dash when the device hasn't reported a rate.
@@ -535,6 +539,32 @@ export function Toolbar() {
               onClick={toggleSnapToGrid}
             >
               SNAP
+            </button>
+            <div className="w-px h-3 bg-white/10" />
+            {/* T12 — auto-layout flow direction toggle. Horizontal (←→) is the
+                classic left-to-right signal flow; Vertical (↑↓) lays the Board
+                top-to-bottom. Drives Tidy + Auto-Layout; persists. */}
+            <button
+              type="button"
+              className="flex items-center gap-1 px-2 h-7 text-[9px] font-black tracking-widest uppercase text-text-secondary hover:text-text-primary hover:bg-elevated transition-colors t-precision"
+              title={
+                layoutDirection === "vertical"
+                  ? "Layout direction: VERTICAL (top-to-bottom) — click for horizontal"
+                  : "Layout direction: HORIZONTAL (left-to-right) — click for vertical"
+              }
+              aria-label="Toggle auto-layout flow direction"
+              onClick={toggleLayoutDirection}
+            >
+              <Icon
+                name={
+                  layoutDirection === "vertical"
+                    ? "MoveVertical"
+                    : "MoveHorizontal"
+                }
+                size={12}
+                aria-hidden
+              />
+              {layoutDirection === "vertical" ? "VERT" : "HORZ"}
             </button>
           </div>
 

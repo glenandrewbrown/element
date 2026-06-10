@@ -2,26 +2,46 @@
   {
     "file": "components/layout/InspectorHub.tsx",
     "contains": "Save preset",
-    "reason": "Live plugin-preset feature (PresetStrip → nativePresetSave/Load). Glen 2026-06-06: single-plugin saved settings stay 'Preset'; 'Snippet' is reserved for saved block groups."
+    "reason": "Live plugin-preset feature (PresetStrip \u2192 nativePresetSave/Load). Glen 2026-06-06: single-plugin saved settings stay 'Preset'; 'Snippet' is reserved for saved block groups."
   },
   {
     "file": "components/layout/InspectorHub.tsx",
     "contains": "Load preset",
-    "reason": "Live plugin-preset feature — see above."
+    "reason": "Live plugin-preset feature \u2014 see above."
   },
   {
     "file": "components/layout/InspectorHub.tsx",
     "contains": "Preset name",
-    "reason": "Plugin-preset save/rename modal placeholder — legitimate 'Preset' per Glen 2026-06-06."
+    "reason": "Plugin-preset save/rename modal placeholder \u2014 legitimate 'Preset' per Glen 2026-06-06."
   },
   {
     "file": "components/canvas/NodeContextMenu.tsx",
-    "contains": "Presets…",
-    "reason": "Block right-click → plugin-preset submenu — legitimate 'Preset' per Glen 2026-06-06."
+    "contains": "Presets\u2026",
+    "reason": "Block right-click \u2192 plugin-preset submenu \u2014 legitimate 'Preset' per Glen 2026-06-06."
   },
   {
     "file": "components/layout/QuickAccess.tsx",
     "contains": "User Presets (File menu)",
-    "reason": "Points at the plugin-preset File-menu entry — legitimate 'Preset' per Glen 2026-06-06."
+    "reason": "Points at the plugin-preset File-menu entry \u2014 legitimate 'Preset' per Glen 2026-06-06."
+  },
+  {
+    "file": "components/canvas/NodeContextMenu.tsx",
+    "contains": "No saved presets",
+    "reason": "Block-preset popover empty state (T21) \u2014 legitimate 'Preset' per Glen 2026-06-06 (single-plugin saved settings stay 'Preset'; 'Snippet' reserved for block groups)."
+  },
+  {
+    "file": "components/canvas/NodeContextMenu.tsx",
+    "contains": "Filter presets\u2026",
+    "reason": "Block-preset popover filter placeholder (T21) \u2014 see above."
+  },
+  {
+    "file": "components/canvas/NodeContextMenu.tsx",
+    "contains": "Save preset",
+    "reason": "Block-preset popover save action (T21) \u2014 see above."
+  },
+  {
+    "file": "components/canvas/NodeContextMenu.tsx",
+    "contains": "Preset name",
+    "reason": "Block-preset naming modal placeholder (T21) \u2014 see above."
   }
 ]

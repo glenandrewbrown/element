@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import type { AppMode } from "../data/types";
+import type { LayoutDirection } from "../lib/autoLayout";
 import { usePerformStore } from "./usePerformStore";
 
 type PanelId = "left" | "right" | "bottom";
@@ -161,6 +162,13 @@ interface AppState {
    * snapping from the toolbar without a host round-trip. Session-only.
    */
   snapToGrid: boolean;
+  /**
+   * T12 — auto-layout flow direction. "horizontal" = left-to-right signal-flow
+   * columns (the default, classic Element). "vertical" = top-to-bottom rows.
+   * Drives `computeAutoLayout` (Tidy + the Auto-Layout menu). Persisted as a
+   * workflow preference (like cableRouting / snapToGrid), not project state.
+   */
+  layoutDirection: LayoutDirection;
 }
 
 interface AppActions {
@@ -220,6 +228,10 @@ interface AppActions {
   setAutoTidyOnAdd: (on: boolean) => void;
   toggleSnapToGrid: () => void;
   setSnapToGrid: (on: boolean) => void;
+  /** T12 — flip the auto-layout flow direction (horizontal ↔ vertical). */
+  toggleLayoutDirection: () => void;
+  /** T12 — set the auto-layout flow direction explicitly. */
+  setLayoutDirection: (dir: LayoutDirection) => void;
 }
 
 type AppStore = AppState & AppActions;
@@ -251,6 +263,8 @@ export const useAppStore = create<AppStore>()(
   // instinctively"). The user can disable it via the toggle next to Tidy.
   autoTidyOnAdd: true,
   snapToGrid: false,
+  // T12 — classic left-to-right signal flow is the default direction.
+  layoutDirection: "horizontal",
 
   markHostReady: () => set({ hostReady: true }),
 
@@ -259,6 +273,14 @@ export const useAppStore = create<AppStore>()(
   toggleAutoTidyOnAdd: () => set((s) => ({ autoTidyOnAdd: !s.autoTidyOnAdd })),
 
   setAutoTidyOnAdd: (on) => set({ autoTidyOnAdd: on }),
+
+  toggleLayoutDirection: () =>
+    set((s) => ({
+      layoutDirection:
+        s.layoutDirection === "horizontal" ? "vertical" : "horizontal",
+    })),
+
+  setLayoutDirection: (dir) => set({ layoutDirection: dir }),
 
   toggleSnapToGrid: () => set((s) => ({ snapToGrid: !s.snapToGrid })),
 
@@ -435,6 +457,7 @@ export const useAppStore = create<AppStore>()(
         leftWidth: s.leftWidth,
         rightWidth: s.rightWidth,
         inspectorUserCollapsed: s.inspectorUserCollapsed,
+        layoutDirection: s.layoutDirection,
       }),
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<AppStore>;

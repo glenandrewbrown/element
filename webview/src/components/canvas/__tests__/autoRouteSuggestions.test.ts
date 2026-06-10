@@ -29,7 +29,12 @@ import {
   BLOCK_REF_WIDTH,
   BLOCK_REF_HEIGHT,
   estimateBlockHeight,
+  resolveGhostNeighbours,
 } from "../autoRouteSuggestions";
+import {
+  rectsOverlap,
+  type CollisionRect,
+} from "../../../lib/resolveCollisions";
 
 // ── Test factories ──
 
@@ -609,5 +614,94 @@ describe("buildRouteSuggestionCache — reuse across drag ticks (§2.1b)", () =>
     const cache = buildRouteSuggestionCache(edges, null);
     const cached = computeRouteSuggestions("c", [a, b, c], edges, undefined, cache);
     expect(cached).toEqual(inline);
+  });
+});
+
+// ── T10: resolveGhostNeighbours (push-on-hover preview) ──────────────────────
+
+describe("resolveGhostNeighbours — responsive push-on-hover preview", () => {
+  const rect = (
+    id: string,
+    x: number,
+    y: number,
+    width = 200,
+    height = 100,
+  ): CollisionRect => ({ id, x, y, width, height });
+
+  it("returns no moves + overlapped=false when the ghost clears all neighbours", () => {
+    const ghost = rect("__ghost__", 1000, 1000);
+    const neighbours = [rect("a", 0, 0), rect("b", 0, 200)];
+    const res = resolveGhostNeighbours(ghost, neighbours, 15);
+    expect(res.overlapped).toBe(false);
+    expect(res.moves).toEqual([]);
+  });
+
+  it("parts a neighbour the ghost overlaps so the resulting AABBs no longer collide", () => {
+    // Ghost dropped right on top of neighbour 'a'.
+    const ghost = rect("__ghost__", 0, 0);
+    const neighbours = [rect("a", 10, 10)];
+    const res = resolveGhostNeighbours(ghost, neighbours, 15);
+    expect(res.overlapped).toBe(true);
+    expect(res.moves).toHaveLength(1);
+    expect(res.moves[0].id).toBe("a");
+    // Build the final AABB for 'a' and assert it clears the (pinned) ghost.
+    const moved = res.moves[0];
+    const aFinal = rect("a", moved.x, moved.y);
+    expect(rectsOverlap(ghost, aFinal, 0)).toBe(false);
+  });
+
+  it("NEVER moves the ghost itself (it is pinned at the hover position)", () => {
+    const ghost = rect("__ghost__", 0, 0);
+    const neighbours = [rect("a", 5, 5), rect("b", 20, 20)];
+    const res = resolveGhostNeighbours(ghost, neighbours, 15);
+    expect(res.moves.some((m) => m.id === "__ghost__")).toBe(false);
+  });
+
+  it("ignores a neighbour that shares the ghost id (defensive)", () => {
+    const ghost = rect("__ghost__", 0, 0);
+    // A stray rect carrying the ghost id must not be treated as a neighbour.
+    const neighbours = [rect("__ghost__", 0, 0), rect("a", 1000, 1000)];
+    const res = resolveGhostNeighbours(ghost, neighbours, 15);
+    expect(res.overlapped).toBe(false);
+    expect(res.moves).toEqual([]);
+  });
+
+  it("returns integer (rounded) preview positions", () => {
+    const ghost = rect("__ghost__", 0, 0);
+    const neighbours = [rect("a", 7, 3)];
+    const res = resolveGhostNeighbours(ghost, neighbours, 15);
+    for (const m of res.moves) {
+      expect(Number.isInteger(m.x)).toBe(true);
+      expect(Number.isInteger(m.y)).toBe(true);
+    }
+  });
+
+  it("is a no-op (no moves) with no neighbours", () => {
+    const ghost = rect("__ghost__", 0, 0);
+    const res = resolveGhostNeighbours(ghost, [], 15);
+    expect(res).toEqual({ moves: [], overlapped: false });
+  });
+
+  it("cascades: a pushed neighbour that then collides with a further one also parts", () => {
+    // Three stacked neighbours; the ghost lands on the first → the resolver must
+    // separate the whole chain so nothing in the final layout overlaps.
+    const ghost = rect("__ghost__", 0, 0);
+    const neighbours = [rect("a", 0, 10), rect("b", 0, 30), rect("c", 0, 50)];
+    const res = resolveGhostNeighbours(ghost, neighbours, 15);
+    expect(res.overlapped).toBe(true);
+    const finalById = new Map<string, CollisionRect>(
+      neighbours.map((n) => [n.id, { ...n }]),
+    );
+    for (const m of res.moves) {
+      const r = finalById.get(m.id)!;
+      r.x = m.x;
+      r.y = m.y;
+    }
+    const all = [ghost, ...finalById.values()];
+    for (let i = 0; i < all.length; i++) {
+      for (let j = i + 1; j < all.length; j++) {
+        expect(rectsOverlap(all[i], all[j], 0)).toBe(false);
+      }
+    }
   });
 });

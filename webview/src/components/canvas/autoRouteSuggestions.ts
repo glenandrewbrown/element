@@ -36,6 +36,12 @@
  */
 
 import type { BlockData, CableData, Port, SignalType } from "../../data/types";
+import {
+  resolveCollisions,
+  rectsOverlap,
+  DEFAULT_COLLISION_MARGIN,
+  type CollisionRect,
+} from "../../lib/resolveCollisions";
 
 /**
  * Proximity radius in flow-space px — the maximum EDGE-to-edge gap between
@@ -437,4 +443,77 @@ export function computeRouteSuggestions(
   // Closest pair first so Tab/Enter accepts the most-likely-intended cable.
   out.sort((a, b) => a.distance - b.distance);
   return out;
+}
+
+// ── T10: responsive push-on-hover (preview a placement before the add) ──────
+
+/** A neighbour's transient preview move while a ghost placement is hovering. */
+export interface GhostNeighbourMove {
+  id: string;
+  x: number;
+  y: number;
+}
+
+/**
+ * Result of a ghost-placement resolve: the neighbour moves to PREVIEW (not yet
+ * persisted) plus whether the ghost rect overlapped anything at all. The ghost
+ * itself never moves — it is pinned at the hover position; only neighbours part.
+ */
+export interface GhostResolveResult {
+  /** Neighbour ids + their previewed positions (only ids that actually moved). */
+  moves: GhostNeighbourMove[];
+  /** True when the ghost overlapped ≥1 neighbour (so a preview was produced). */
+  overlapped: boolean;
+}
+
+/**
+ * Compute the transient neighbour moves to PREVIEW when a new Block is about to
+ * be placed at `ghost`. Pure + framework-free: pins the ghost rect, runs the
+ * shared AABB resolver, and returns only the neighbours whose position changed.
+ *
+ * The caller (GraphCanvas) applies these to React Flow transiently (NOT through
+ * `nativeGraphMoveNodes`) while the QuickAdd / drag-preview hovers, restores the
+ * originals on cancel, and commits them via `nativeGraphMoveNodes` ONLY when the
+ * add actually happens. The ghost id is excluded from the returned moves so the
+ * caller never tries to move a node that does not exist yet.
+ *
+ * @param ghost  The about-to-be-placed Block's AABB at the hover position.
+ * @param neighbours  The current Block AABBs (the ghost id, if present, is
+ *   ignored — neighbours only).
+ * @param margin  Gutter to keep between the ghost and its neighbours.
+ */
+export function resolveGhostNeighbours(
+  ghost: CollisionRect,
+  neighbours: readonly CollisionRect[],
+  margin: number = DEFAULT_COLLISION_MARGIN,
+): GhostResolveResult {
+  // Exclude any rect sharing the ghost's id (defensive — the ghost is not a
+  // real neighbour) and keep a stable, id-keyed map of the originals.
+  const others = neighbours.filter((n) => n.id !== ghost.id);
+  if (others.length === 0) return { moves: [], overlapped: false };
+
+  // Cheap early-out: if the ghost clears every neighbour by the margin already,
+  // there is nothing to preview (no churn while the cursor is in open space).
+  const overlapped = others.some((n) => rectsOverlap(ghost, n, margin));
+  if (!overlapped) return { moves: [], overlapped: false };
+
+  // Pin the ghost so ONLY neighbours move; resolve the whole set together so a
+  // pushed neighbour that now collides with a further one cascades correctly.
+  const rects: CollisionRect[] = [ghost, ...others];
+  const resolved = resolveCollisions(rects, {
+    margin,
+    fixed: new Set([ghost.id]),
+  });
+
+  const origById = new Map(others.map((n) => [n.id, n]));
+  const moves: GhostNeighbourMove[] = [];
+  for (const r of resolved) {
+    if (r.id === ghost.id) continue; // never move the ghost.
+    const o = origById.get(r.id);
+    if (!o) continue;
+    const nx = Math.round(r.x);
+    const ny = Math.round(r.y);
+    if (o.x !== nx || o.y !== ny) moves.push({ id: r.id, x: nx, y: ny });
+  }
+  return { moves, overlapped: true };
 }

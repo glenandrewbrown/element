@@ -101,17 +101,22 @@ function GhostEdgeComponent({
           className="nodrag nopan"
           style={{
             position: "absolute",
-            transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
+            // T11(b): offset 18px above the cable midpoint so chip never
+            // overlaps the stroke. Neumorphic pressed-surface backing chip.
+            transform: `translate(-50%, calc(-50% - 18px)) translate(${labelX}px, ${labelY}px)`,
             pointerEvents: "all",
-            background: isTop ? `${color}26` : "transparent",
-            border: isTop ? `1px solid ${color}` : "1px solid transparent",
+            background: isTop ? "#1A1A1E" : "transparent",
+            border: isTop ? `1px solid ${color}66` : "1px solid transparent",
+            boxShadow: isTop
+              ? "inset 1px 1px 3px rgba(0,0,0,0.5), inset -1px -1px 2px rgba(255,255,255,0.04)"
+              : "none",
             color,
-            borderRadius: 9999,
+            borderRadius: 4,
             fontSize: 9,
-            lineHeight: 1,
-            padding: isTop ? "2px 6px" : "6px",
+            lineHeight: "14px",
+            padding: isTop ? "1px 6px" : "6px",
             cursor: "pointer",
-            opacity: isTop ? 0.95 : 0.0001, // invisible-but-clickable for non-top
+            opacity: isTop ? 0.95 : 0.0001,
             fontFamily: "ui-monospace, monospace",
             whiteSpace: "nowrap",
           }}

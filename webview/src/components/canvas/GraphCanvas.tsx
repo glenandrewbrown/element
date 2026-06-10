@@ -82,6 +82,7 @@ import {
 import {
   BLOCK_REF_WIDTH,
   estimateBlockHeight,
+  resolveGhostNeighbours,
 } from "./autoRouteSuggestions";
 import {
   nextAutoFitExtent,
@@ -129,6 +130,10 @@ const AUTO_TIDY_DEBOUNCE_MS = 450;
 const TIDY_GLIDE_MS = 320;
 // How long the .snippet-dropin spring class stays on freshly-inserted nodes.
 const SNIPPET_DROPIN_MS = 220;
+// T12 — column/row gap used by Tidy + auto-arrange. Wider than computeAutoLayout's
+// 280px default so IO + flow columns sit far enough apart that a newly-added
+// Block (≈BLOCK_REF_WIDTH 200px) visibly fits BETWEEN them with margin to spare.
+const TIDY_COLUMN_GAP = 420;
 
 // ── Docked plugin-editor open default (CONTRACT 1) ──
 // Used ONLY as the initial open hint before the host reports the editor's REAL
@@ -484,6 +489,25 @@ export function GraphCanvas() {
   // de-overlap when the toggle is ON). Compared against the live block count.
   const lastSpawnResolveCountRef = useRef(blocks.length);
 
+  // ── Swap-aware re-arm: track ids currently in loadState==="loading" ──
+  // When the async sandbox flow adds a placeholder (0 ports, minimum height
+  // ~84px) and then the real plugin swaps IN-PLACE (loadState: loading→ready),
+  // the node count is UNCHANGED so neither the spawn-resolve nor the load pass
+  // re-fires.  We track which ids were loading; when one transitions to ready
+  // we schedule a deferred resolve (mirrors the 120ms spawn-nudge pattern) for
+  // that node against pinned neighbours.
+  const loadingIdsRef = useRef<Set<string>>(
+    new Set(
+      blocks
+        .filter((b) => (b as { loadState?: string }).loadState === "loading")
+        .map((b) => b.id),
+    ),
+  );
+  // Timer for the swap-resolve pass (same lifetime as spawnResolveTimerRef).
+  const swapResolveTimerRef = useRef<
+    ReturnType<typeof setTimeout> | undefined
+  >(undefined);
+
   // Auto-tidy-on-add debounce timer + the block count at the last settle, so we
   // relayout only on a genuine ADD (count increased), not a delete/move.
   const autoTidyTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(
@@ -494,6 +518,30 @@ export function GraphCanvas() {
   // fires ONCE per Board load (not on every measure/snapshot) and re-arms when
   // the user dives/exits to a different Board.
   const lastLoadOverlapBoardRef = useRef<string | null>(null);
+  // Deferred timer for the load-time de-overlap pass. The resolve is delayed one
+  // tick so React Flow has reconciled AND measured the freshly-loaded Board's
+  // nodes (a container dive swaps the entire node set; `useNodesInitialized`
+  // does not reliably flip false→true across that swap, so we defer + verify the
+  // RF node set matches the current store nodes before resolving).
+  const loadOverlapTimerRef = useRef<
+    ReturnType<typeof setTimeout> | undefined
+  >(undefined);
+  // Latest boardKey, readable from deferred callbacks without re-subscribing.
+  const boardKeyRef = useRef(boardKey);
+  boardKeyRef.current = boardKey;
+  // T10 — responsive push-on-hover preview state. While the QuickAdd popup is
+  // open over a placement position we transiently part neighbours around a GHOST
+  // rect (never persisted). `previewMovesRef` holds the previewed positions (so
+  // a real add can COMMIT them via nativeGraphMoveNodes); `previewOrigRef` holds
+  // the originals (so a cancel RESTORES them). Both empty when no preview active.
+  const previewMovesRef = useRef<
+    Array<{ id: string; x: number; y: number }>
+  >([]);
+  const previewOrigRef = useRef<Array<{ id: string; x: number; y: number }>>(
+    [],
+  );
+  // Throttle for the hover recompute (the popup anchor can jitter on reopen).
+  const lastGhostKeyRef = useRef<string | null>(null);
   // .tidy-glide class strip timer (transient transform-transition).
   const glideTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined,
@@ -744,8 +792,18 @@ export function GraphCanvas() {
   // background / the viewport transform layer), never inside a node/edge/control.
   const onPaneDoubleClick = useCallback((event: MouseEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement | null;
-    if (target?.closest(".react-flow__node") || target?.closest(".react-flow__edge"))
-      return; // node/edge dbl-click — its own handler owns this gesture.
+    // Only EMPTY-canvas double-clicks navigate up. Ignore double-clicks that
+    // land on a node/edge (their own handlers own the gesture) or on an in-flow
+    // overlay panel/minimap/controls (which sit inside the ReactFlow root and
+    // would otherwise bubble here and pop the user out of the container).
+    if (
+      target?.closest(".react-flow__node") ||
+      target?.closest(".react-flow__edge") ||
+      target?.closest(".react-flow__panel") ||
+      target?.closest(".react-flow__minimap") ||
+      target?.closest(".react-flow__controls")
+    )
+      return;
     void nativeExitContainer();
   }, []);
 
@@ -883,7 +941,13 @@ export function GraphCanvas() {
       id: n.id,
       height: estimateBlockHeight(n),
     }));
-    const positions = computeAutoLayout(layoutNodes, storeEdges);
+    // T12 — honour the user's chosen flow direction; space the IO/flow columns
+    // generously (TIDY_COLUMN_GAP) so a new Block visibly fits BETWEEN existing
+    // ones (the "leave room to insert" default), not crammed edge-to-edge.
+    const positions = computeAutoLayout(layoutNodes, storeEdges, {
+      direction: useAppStore.getState().layoutDirection,
+      columnGap: TIDY_COLUMN_GAP,
+    });
     if (positions.length === 0) return;
     applyTidyGlide();
     // Optimistically move locally so the glide animates immediately, then push
@@ -1575,33 +1639,67 @@ export function GraphCanvas() {
     if (!nodesInitialized) return; // wait for real measured heights.
     if (lastLoadOverlapBoardRef.current === boardKey) return; // once per board.
     if (draggingRef.current) return; // never relayout under a live drag.
-    const getNodesFn = (
-      reactFlow as unknown as { getNodes?: () => Node[] }
-    ).getNodes;
-    if (typeof getNodesFn !== "function") return;
-    const rfNodes = getNodesFn.call(reactFlow);
-    const rects = collisionRectsFromNodes(rfNodes);
-    // Mark this board done up-front: even a ≤1-block or already-clean board has
-    // "been resolved" for this load, so we don't retry every snapshot.
-    lastLoadOverlapBoardRef.current = boardKey;
-    if (rects.length <= 1) return;
-    // Resolve EVERY block (no pinned set) so the whole loaded board de-overlaps.
-    const resolved = resolveCollisions(rects, { margin: COLLISION_MARGIN });
-    const origById = new Map(rects.map((r) => [r.id, r]));
-    const moves: Array<{ id: string; x: number; y: number }> = [];
-    for (const r of resolved) {
-      const o = origById.get(r.id);
-      const nx = Math.round(r.x);
-      const ny = Math.round(r.y);
-      if (!o || o.x !== nx || o.y !== ny) moves.push({ id: r.id, x: nx, y: ny });
+    // Defer the resolve one tick. On a container dive the entire node set is
+    // swapped (store `blocks` → `setNodes`), and React Flow reconciles + measures
+    // the new nodes asynchronously. Resolving synchronously here can read the
+    // OUTGOING board's nodes (or unmeasured incoming ones) and burn the per-board
+    // ref against the wrong data, leaving the new Board stacked. The defer lets RF
+    // settle; inside it we verify the RF node id set matches the current store
+    // nodes before we mark the board done.
+    if (loadOverlapTimerRef.current !== undefined) {
+      clearTimeout(loadOverlapTimerRef.current);
     }
-    if (moves.length === 0) return; // board already clean — nothing to persist.
-    // Keep the add-gated passes from re-firing on the snapshot echo of our move
-    // (a move doesn't change the count, but stay in sync defensively).
-    lastSpawnResolveCountRef.current = useGraphStore.getState().nodes.length;
-    lastBlockCountRef.current = useGraphStore.getState().nodes.length;
-    updateNodePositions(moves);
-    void nativeGraphMoveNodes(moves);
+    const armedBoardKey = boardKey;
+    loadOverlapTimerRef.current = setTimeout(() => {
+      loadOverlapTimerRef.current = undefined;
+      // Board changed again before we fired — let the next arm handle it.
+      if (boardKeyRef.current !== armedBoardKey) return;
+      if (lastLoadOverlapBoardRef.current === armedBoardKey) return;
+      if (draggingRef.current) return; // never relayout under a live drag.
+      const getNodesFn = (
+        reactFlow as unknown as { getNodes?: () => Node[] }
+      ).getNodes;
+      if (typeof getNodesFn !== "function") return;
+      const rfNodes = getNodesFn.call(reactFlow);
+      // Verify RF has reconciled the new Board: the RF block ids must match the
+      // current store nodes. If not (mid-swap), bail WITHOUT burning the ref so
+      // this effect re-arms on the next measure/snapshot for the real new board.
+      const storeIds = new Set(
+        useGraphStore.getState().nodes.map((n) => n.id),
+      );
+      const rfBlockIds = rfNodes
+        .filter((n) => n.type !== "comment")
+        .map((n) => n.id);
+      if (
+        rfBlockIds.length !== storeIds.size ||
+        !rfBlockIds.every((id) => storeIds.has(id))
+      ) {
+        return; // RF not yet in sync with the new Board — do not mark done.
+      }
+      const rects = collisionRectsFromNodes(rfNodes);
+      // Mark this board done: even a ≤1-block or already-clean board has been
+      // resolved for this load, so we don't retry every snapshot.
+      lastLoadOverlapBoardRef.current = armedBoardKey;
+      if (rects.length <= 1) return;
+      // Resolve EVERY block (no pinned set) so the whole loaded board de-overlaps.
+      const resolved = resolveCollisions(rects, { margin: COLLISION_MARGIN });
+      const origById = new Map(rects.map((r) => [r.id, r]));
+      const moves: Array<{ id: string; x: number; y: number }> = [];
+      for (const r of resolved) {
+        const o = origById.get(r.id);
+        const nx = Math.round(r.x);
+        const ny = Math.round(r.y);
+        if (!o || o.x !== nx || o.y !== ny)
+          moves.push({ id: r.id, x: nx, y: ny });
+      }
+      if (moves.length === 0) return; // board already clean — nothing to persist.
+      // Keep the add-gated passes from re-firing on the snapshot echo of our move
+      // (a move doesn't change the count, but stay in sync defensively).
+      lastSpawnResolveCountRef.current = useGraphStore.getState().nodes.length;
+      lastBlockCountRef.current = useGraphStore.getState().nodes.length;
+      updateNodePositions(moves);
+      void nativeGraphMoveNodes(moves);
+    }, 120);
   }, [nodesInitialized, boardKey, reactFlow, updateNodePositions]);
 
   // ── Auto-tidy on add (Item 3b, Glen Q3 — ON by default) ──
@@ -1688,6 +1786,189 @@ export function GraphCanvas() {
     }, 120);
   }, [blocks.length, reactFlow, updateNodePositions]);
 
+  // ── Swap-aware resolve: re-arm when a placeholder transitions loading→ready ──
+  // Runs on every `blocks` change (same dep as the spawn pass). Diffs the live
+  // block list against `loadingIdsRef` to detect loading→ready transitions. For
+  // each transitioned id schedules a 120ms deferred AABB resolve of ONLY that
+  // block against pinned neighbours (identical pattern to the spawn-nudge pass).
+  // Constraints preserved:
+  //   • count-gated passes untouched (existing spawn/load passes run as before).
+  //   • never fires during a live drag (draggingRef guard on schedule + deferred).
+  //   • idempotent: if already non-overlapping, resolveCollisions produces no moves.
+  //   • updates loadingIdsRef incrementally so it stays current for future ticks.
+  useEffect(() => {
+    const nowLoading = new Set<string>();
+    const transitioned: string[] = [];
+
+    for (const b of blocks) {
+      const state = (b as { loadState?: string }).loadState;
+      if (state === "loading") {
+        nowLoading.add(b.id);
+      } else if (loadingIdsRef.current.has(b.id)) {
+        // Was loading, now ready (loadState absent or "ready") — record it.
+        transitioned.push(b.id);
+      }
+    }
+
+    // Rebuild the loading set from the current snapshot.
+    loadingIdsRef.current = nowLoading;
+
+    if (transitioned.length === 0) return; // nothing transitioned → no-op.
+    if (draggingRef.current) return; // never relayout under a live drag.
+
+    // Cancel any in-flight swap-resolve for a previous transition.
+    if (swapResolveTimerRef.current !== undefined) {
+      clearTimeout(swapResolveTimerRef.current);
+    }
+
+    const transitionedIds = new Set(transitioned);
+
+    swapResolveTimerRef.current = setTimeout(() => {
+      swapResolveTimerRef.current = undefined;
+      if (draggingRef.current) return; // drag began during the defer.
+
+      const getNodesFn = (
+        reactFlow as unknown as { getNodes?: () => Node[] }
+      ).getNodes;
+      if (typeof getNodesFn !== "function") return;
+
+      const rfNodes = getNodesFn.call(reactFlow);
+      const rects = collisionRectsFromNodes(rfNodes);
+      if (rects.length <= 1) return;
+
+      // Pin everything except the just-swapped node(s).
+      const fixed = new Set(
+        rects.map((r) => r.id).filter((id) => !transitionedIds.has(id)),
+      );
+      const resolved = resolveCollisions(rects, {
+        margin: COLLISION_MARGIN,
+        fixed,
+      });
+
+      // Persist only the swapped nodes whose position actually changed.
+      const origById = new Map(rects.map((r) => [r.id, r]));
+      const moves: Array<{ id: string; x: number; y: number }> = [];
+      for (const r of resolved) {
+        if (!transitionedIds.has(r.id)) continue;
+        const o = origById.get(r.id);
+        const nx = Math.round(r.x);
+        const ny = Math.round(r.y);
+        if (!o || o.x !== nx || o.y !== ny) moves.push({ id: r.id, x: nx, y: ny });
+      }
+
+      if (moves.length > 0) {
+        updateNodePositions(moves);
+        void nativeGraphMoveNodes(moves);
+      }
+    }, 120);
+  }, [blocks, reactFlow, updateNodePositions]);
+
+  // ── T10: responsive push-on-hover preview ─────────────────────────────────
+  // Apply a set of transient neighbour positions to React Flow WITHOUT touching
+  // the store or the engine (preview only). Pure RF position mutation.
+  const applyTransientPositions = useCallback(
+    (moves: ReadonlyArray<{ id: string; x: number; y: number }>) => {
+      if (moves.length === 0) return;
+      const byId = new Map(moves.map((m) => [m.id, m]));
+      reactFlow.setNodes((nds) =>
+        nds.map((n) => {
+          const m = byId.get(n.id);
+          return m ? { ...n, position: { x: m.x, y: m.y } } : n;
+        }),
+      );
+    },
+    [reactFlow],
+  );
+
+  // Restore any previewed neighbours to their pre-preview positions and clear
+  // the preview state. Safe to call when no preview is active (no-op).
+  const clearGhostPreview = useCallback(() => {
+    if (previewOrigRef.current.length > 0) {
+      applyTransientPositions(previewOrigRef.current);
+    }
+    previewMovesRef.current = [];
+    previewOrigRef.current = [];
+    lastGhostKeyRef.current = null;
+  }, [applyTransientPositions]);
+
+  // Persist the currently-previewed neighbour moves to the engine (called when
+  // an add actually happens at the hovered position). After committing, the
+  // preview state is cleared WITHOUT restoring (the moves are now real).
+  const commitGhostPreview = useCallback(() => {
+    const moves = previewMovesRef.current;
+    if (moves.length > 0) {
+      updateNodePositions(moves);
+      void nativeGraphMoveNodes(moves);
+    }
+    previewMovesRef.current = [];
+    previewOrigRef.current = [];
+    lastGhostKeyRef.current = null;
+  }, [updateNodePositions]);
+
+  // While the QuickAdd popup is OPEN over a placement position, part neighbours
+  // around a GHOST rect at that position so the new Block visibly has room. The
+  // moves are transient (RF-only); they commit on a real add (commitGhostPreview)
+  // and revert on cancel (clearGhostPreview, via the popup's onClose). Never runs
+  // during a live drag (the spawn/load passes own that).
+  useEffect(() => {
+    if (!isEdit || draggingRef.current) {
+      clearGhostPreview();
+      return;
+    }
+    if (!contextMenu) {
+      clearGhostPreview();
+      return;
+    }
+    // Flow position of the placement anchor (screen → flow space).
+    const flow = reactFlow.screenToFlowPosition({
+      x: contextMenu.x,
+      y: contextMenu.y,
+    });
+    // Cheap throttle: skip recompute if the anchor hasn't moved meaningfully.
+    const ghostKey = `${Math.round(flow.x)}:${Math.round(flow.y)}`;
+    if (lastGhostKeyRef.current === ghostKey) return;
+    // Anchor moved → restore the previous preview before computing the new one.
+    if (previewOrigRef.current.length > 0) {
+      applyTransientPositions(previewOrigRef.current);
+    }
+    lastGhostKeyRef.current = ghostKey;
+
+    const getNodesFn = (
+      reactFlow as unknown as { getNodes?: () => Node[] }
+    ).getNodes;
+    if (typeof getNodesFn !== "function") {
+      previewMovesRef.current = [];
+      previewOrigRef.current = [];
+      return;
+    }
+    const rfNodes = getNodesFn.call(reactFlow);
+    const neighbours = collisionRectsFromNodes(rfNodes);
+    // Ghost rect: a reference-sized new Block centred-ish at the anchor (the
+    // host places the real Block near here; exact size resolves on its add).
+    const ghost: CollisionRect = {
+      id: "__ghost__",
+      x: flow.x,
+      y: flow.y,
+      width: BLOCK_REF_WIDTH,
+      height: estimateBlockHeight({ ports: [] } as unknown as BlockData),
+    };
+    const { moves } = resolveGhostNeighbours(ghost, neighbours, COLLISION_MARGIN);
+    // Snapshot the originals (for restore) BEFORE applying the preview.
+    const origById = new Map(neighbours.map((n) => [n.id, n]));
+    previewOrigRef.current = moves.map((m) => {
+      const o = origById.get(m.id);
+      return { id: m.id, x: o ? o.x : m.x, y: o ? o.y : m.y };
+    });
+    previewMovesRef.current = moves;
+    applyTransientPositions(moves);
+  }, [
+    contextMenu,
+    isEdit,
+    reactFlow,
+    applyTransientPositions,
+    clearGhostPreview,
+  ]);
+
   // Clear the auto-tidy/glide timers on unmount.
   useEffect(
     () => () => {
@@ -1699,6 +1980,12 @@ export function GraphCanvas() {
       }
       if (spawnResolveTimerRef.current !== undefined) {
         clearTimeout(spawnResolveTimerRef.current);
+      }
+      if (swapResolveTimerRef.current !== undefined) {
+        clearTimeout(swapResolveTimerRef.current);
+      }
+      if (loadOverlapTimerRef.current !== undefined) {
+        clearTimeout(loadOverlapTimerRef.current);
       }
     },
     [],
@@ -1956,6 +2243,7 @@ export function GraphCanvas() {
                     pendingConnect.originPortId,
                     pendingConnect.originIsSource,
                   );
+                  commitGhostPreview(); // T10: keep the hover-parted neighbours.
                   setPendingConnect(null);
                   setContextMenu(null);
                 }
@@ -1979,12 +2267,15 @@ export function GraphCanvas() {
                     pendingConnect.originPortId,
                     pendingConnect.originIsSource,
                   );
+                  commitGhostPreview(); // T10: keep the hover-parted neighbours.
                   setPendingConnect(null);
                   setContextMenu(null);
                 }
               : undefined
           }
+          onAdded={commitGhostPreview}
           onClose={() => {
+            clearGhostPreview(); // T10: revert the hover preview on cancel.
             setContextMenu(null);
             setPendingConnect(null);
           }}

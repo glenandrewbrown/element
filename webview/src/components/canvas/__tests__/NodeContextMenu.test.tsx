@@ -117,6 +117,11 @@ vi.mock("../../neu/iconForCategory", () => ({
   iconForCategory: () => "Box",
 }));
 
+const mockGroupSelection = vi.fn();
+vi.mock("../groupSelection", () => ({
+  groupSelectionWithFeedback: (...a: unknown[]) => mockGroupSelection(...a),
+}));
+
 import { NodeContextMenu } from "../NodeContextMenu";
 
 const defaultProps = {
@@ -299,6 +304,33 @@ describe("NodeContextMenu — multi-select align/distribute", () => {
     render(<NodeContextMenu {...defaultProps} />);
     const hBtn = screen.getByText("Distribute Horizontally").closest("button");
     expect(hBtn).toBeDisabled();
+  });
+
+  // T15 — right-clicking a ≥2 selection offers grouping into a Container.
+  it("shows 'Group N into Container' when 2+ blocks selected", () => {
+    render(<NodeContextMenu {...defaultProps} />);
+    expect(screen.getByText("Group 2 into Container")).toBeInTheDocument();
+  });
+
+  it("clicking 'Group into Container' calls groupSelectionWithFeedback with the selection and closes", () => {
+    const onClose = vi.fn();
+    render(<NodeContextMenu {...defaultProps} onClose={onClose} />);
+    fireEvent.click(screen.getByText("Group 2 into Container"));
+    expect(mockGroupSelection).toHaveBeenCalledWith(["node-1", "node-2"]);
+    expect(onClose).toHaveBeenCalled();
+  });
+});
+
+describe("NodeContextMenu — single select hides the Container item (T15)", () => {
+  beforeEach(() => {
+    storeNodes = [baseNode];
+    mockGetNodes = () => [{ id: "node-1", selected: true, type: "block" }];
+    vi.clearAllMocks();
+  });
+
+  it("does NOT show 'into Container' for a single selected block", () => {
+    render(<NodeContextMenu {...defaultProps} />);
+    expect(screen.queryByText(/into Container/)).not.toBeInTheDocument();
   });
 });
 

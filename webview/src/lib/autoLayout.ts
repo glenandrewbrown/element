@@ -39,6 +39,14 @@ export interface LayoutEdge {
   target: string;
 }
 
+/**
+ * T12 — auto-layout flow direction. "horizontal" lays out signal flow into
+ * left-to-right columns (the classic Element default); "vertical" lays it out
+ * top-to-bottom. Vertical is computed by running the horizontal layout and then
+ * transposing the coordinates, so the layering/ordering logic is shared 1:1.
+ */
+export type LayoutDirection = "horizontal" | "vertical";
+
 export interface AutoLayoutOptions {
   /** Horizontal gap between layer columns (px). */
   columnGap?: number;
@@ -47,6 +55,11 @@ export interface AutoLayoutOptions {
   /** Top-left origin the layout is offset to. */
   originX?: number;
   originY?: number;
+  /**
+   * T12 — flow direction. "horizontal" (default) = left-to-right columns;
+   * "vertical" = top-to-bottom. Vertical transposes the horizontal result.
+   */
+  direction?: LayoutDirection;
 }
 
 export interface LayoutPosition {
@@ -286,10 +299,23 @@ export function computeAutoLayout(
   for (const p of posById.values()) minY = Math.min(minY, p.y);
   const yShift = Number.isFinite(minY) ? originY - minY : 0;
 
+  // ── 4. Direction transpose (T12) ──────────────────────────────────────────
+  // The packing above lays signal flow into left-to-right COLUMNS (x = layer
+  // axis, y = order axis). For a vertical (top-to-bottom) flow we transpose the
+  // coordinates about the origin: the layer axis becomes Y (flow runs down) and
+  // the within-layer order becomes X. The layering/ordering work is unchanged —
+  // only the final coordinate mapping differs — so both directions share one
+  // deterministic core.
+  const vertical = opts.direction === "vertical";
+
   // Return in input order for stable, predictable output.
   return ids.map((id) => {
     const p = posById.get(id)!;
-    return { id, x: p.x, y: p.y + yShift };
+    const x = p.x;
+    const y = p.y + yShift;
+    if (!vertical) return { id, x, y };
+    // Transpose about the origin so the result still starts at (originX, originY).
+    return { id, x: originX + (y - originY), y: originY + (x - originX) };
   });
 }
 

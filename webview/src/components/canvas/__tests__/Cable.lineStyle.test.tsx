@@ -1,15 +1,13 @@
 /**
- * Cable.lineStyle — Task 5.4 (research §H/§B).
+ * Cable.lineStyle — connected-cable solidity (T11, 2026-06-10 feedback).
  *
- * Locks the per-signal-type LINE-STYLE axis layered on top of the signal
- * colour for colour-blind + low-zoom legibility:
- *   audio  → solid  (no stroke-dasharray)
- *   midi   → dashed
- *   value  → dotted
- * The dash is a STATIC attribute per type (NOT animated, NOT per-tick) — the
- * painter guardrail (Cable.painter.test.tsx) proves no banned painter prop is
- * introduced; here we prove the dash actually DIFFERS per signal type and that
- * the sidechain dash still wins.
+ * Glen: "The Midi cable when connected should be a solid line, as per the
+ * audio cable." ALL connected cables are now SOLID regardless of signal type
+ * — the signal colour identifies the type; a dash on a real wire reads as
+ * "broken". The per-type dash axis (midi dashed, value dotted) lives ONLY on
+ * GhostEdge (pending/suggested cables). The sidechain "6 4" dash is a separate
+ * semantic marker and still wins (covered below). Supersedes the Task 5.4
+ * line-style axis for CONNECTED cables.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -109,19 +107,18 @@ describe("lineStyleForSignal (Task 5.4 pure mapping)", () => {
     expect(lineStyleForSignal("audio")).toBeUndefined();
   });
 
-  it("midi → a dashed pattern", () => {
-    expect(lineStyleForSignal("midi")).toBe("8 5");
+  it("midi → solid when connected (T11)", () => {
+    expect(lineStyleForSignal("midi")).toBeUndefined();
   });
 
-  it("value/CV → a dotted pattern", () => {
-    expect(lineStyleForSignal("value")).toBe("2 4");
+  it("value/CV → solid when connected (T11)", () => {
+    expect(lineStyleForSignal("value")).toBeUndefined();
   });
 
-  it("the three styles are all DISTINCT", () => {
-    const a = lineStyleForSignal("audio");
-    const m = lineStyleForSignal("midi");
-    const v = lineStyleForSignal("value");
-    expect(new Set([String(a), String(m), String(v)]).size).toBe(3);
+  it("all three connected styles are solid (no dash axis on real wires)", () => {
+    expect(lineStyleForSignal("audio")).toBeUndefined();
+    expect(lineStyleForSignal("midi")).toBeUndefined();
+    expect(lineStyleForSignal("value")).toBeUndefined();
   });
 
   it("unknown/missing type falls back to solid (audio)", () => {
@@ -139,21 +136,21 @@ describe("Cable line-style axis on the rendered main stroke", () => {
     expect(mainPathDash(container, "#4A90D9")).toBeNull();
   });
 
-  it("midi cable's main stroke is dashed", () => {
+  it("midi cable's main stroke is solid (T11)", () => {
     const { container } = render(
       <Cable {...base} data={{ ...base.data, signalType: "midi" }} />,
     );
-    expect(mainPathDash(container, "#2BC4C4")).toBe("8 5");
+    expect(mainPathDash(container, "#2BC4C4")).toBeNull();
   });
 
-  it("value/CV cable's main stroke is dotted", () => {
+  it("value/CV cable's main stroke is solid (T11)", () => {
     const { container } = render(
       <Cable {...base} data={{ ...base.data, signalType: "value" }} />,
     );
-    expect(mainPathDash(container, "#E8A838")).toBe("2 4");
+    expect(mainPathDash(container, "#E8A838")).toBeNull();
   });
 
-  it("the dasharray DIFFERS across audio / midi / value", () => {
+  it("all connected signal types render solid main strokes", () => {
     const audio = render(
       <Cable {...base} data={{ ...base.data, signalType: "audio" }} />,
     );
@@ -163,10 +160,9 @@ describe("Cable line-style axis on the rendered main stroke", () => {
     const value = render(
       <Cable {...base} data={{ ...base.data, signalType: "value" }} />,
     );
-    const da = String(mainPathDash(audio.container, "#4A90D9")); // "null"
-    const dm = String(mainPathDash(midi.container, "#2BC4C4"));
-    const dv = String(mainPathDash(value.container, "#E8A838"));
-    expect(new Set([da, dm, dv]).size).toBe(3);
+    expect(mainPathDash(audio.container, "#4A90D9")).toBeNull();
+    expect(mainPathDash(midi.container, "#2BC4C4")).toBeNull();
+    expect(mainPathDash(value.container, "#E8A838")).toBeNull();
   });
 
   it("sidechain dash ('6 4') OVERRIDES the signal-type line-style", () => {

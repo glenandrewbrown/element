@@ -501,4 +501,26 @@ describe("GraphCanvas", () => {
     expect(nativeEnterContainer).toHaveBeenCalledWith("container-1");
     expect(nativeExitContainer).not.toHaveBeenCalled(); // would cancel the dive
   });
+
+  // T14: double-clicking an in-flow overlay (minimap / panel / controls) must
+  // NOT navigate up — those sit inside the ReactFlow root and bubble to the raw
+  // onDoubleClick, so the pane handler has to ignore them too.
+  it.each([
+    "react-flow__minimap",
+    "react-flow__panel",
+    "react-flow__controls",
+  ])(
+    "double-clicking the %s overlay does NOT call nativeExitContainer",
+    (cls) => {
+      render(<GraphCanvas />);
+      const overlay = document.createElement("div");
+      overlay.className = cls;
+      const child = document.createElement("button");
+      overlay.appendChild(child);
+      rfHandlers.onDoubleClick?.({
+        target: child,
+      } as unknown as React.MouseEvent);
+      expect(nativeExitContainer).not.toHaveBeenCalled();
+    },
+  );
 });

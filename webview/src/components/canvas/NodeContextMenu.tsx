@@ -7,6 +7,10 @@ import {
   nativeGraphDuplicateNodes,
   nativeGraphRemoveNode,
   nativeGraphRenameNode,
+  nativeBlockPresetSave,
+  nativeBlockPresetList,
+  nativeBlockPresetLoad,
+  nativeBlockPresetSetDefault,
 } from "../../bridge/nativeGraph";
 import {
   usePluginBrowserStore,
@@ -16,6 +20,7 @@ import { Icon, NeuInput } from "../neu";
 import { iconForCategory } from "../neu/iconForCategory";
 import { ParamConfigPopover } from "./ParamConfigPopover";
 import { groupSelectionWithFeedback } from "./groupSelection";
+import { NeuPromptModal } from "../layout/NeuPromptModal";
 
 interface NodeContextMenuProps {
   /** Id of the right-clicked Block. Looked up in `useGraphStore.nodes`; the menu renders nothing if the id is absent. */
@@ -131,6 +136,8 @@ export function NodeContextMenu({
   const [replacing, setReplacing] = useState(false);
   // Configure Parameters… : inline per-block param-presence editor.
   const [configuring, setConfiguring] = useState(false);
+  // T21W: Block preset popover (save / load / set-default).
+  const [presetOpen, setPresetOpen] = useState(false);
 
   const reactFlow = useReactFlow();
   // #3a — prefer the open-time snapshot from GraphCanvas (the marquee selection
@@ -172,7 +179,7 @@ export function NodeContextMenu({
   // ~176px scroll well) when open; budget for it so the menu isn't clamped
   // above the viewport top with the list cut off.
   const estimatedHeight =
-    (multiSelect ? 730 : 530) + (configuring ? 260 : 0);
+    (multiSelect ? 730 : 530) + (configuring ? 260 : 0) + (presetOpen ? 200 : 0);
   const menuStyle: React.CSSProperties = {
     position: "fixed",
     left: Math.min(position.x, window.innerWidth - 240),
@@ -430,14 +437,25 @@ export function NodeContextMenu({
             <ParamConfigPopover nodeId={nodeId} accent={accent} />
           )}
 
+          {/* T21W: Block preset save/load/set-default.
+              Uses the T21W bridge contract (elementBlockPreset*).
+              Gracefully no-ops when the native fn is absent — invokeElementNative
+              resolves undefined and nativeBlockPreset* returns { ok: false }. */}
           <MenuItem
             iconName="Layers"
             label="Presets…"
             accent={accent}
-            disabled
-            disabledReason="Preset picker UI not yet wired (Pillar-2: nativePresetList + modal)"
-            onClick={() => {}}
+            active={presetOpen}
+            onClick={() => setPresetOpen((v) => !v)}
           />
+          {presetOpen && (
+            <BlockPresetPopover
+              nodeId={nodeId}
+              pluginId={(node.data as { identifier?: string } | undefined)?.identifier ?? ""}
+              accent={accent}
+              onClose={() => { setPresetOpen(false); onClose(); }}
+            />
+          )}
 
           <MenuDivider />
 
@@ -753,6 +771,134 @@ function MenuItem({
         <span className="text-[10px] text-text-dim shrink-0">{shortcut}</span>
       )}
     </button>
+  );
+}
+
+// ── T21W: Block-level preset save / load / set-default popover ───────────────
+// Bridge contract (parallel C++ agent):
+//   elementBlockPresetSave(uuid, name)   → JSON { ok, error? }
+//   elementBlockPresetList(pluginId)     → JSON { ok, presets: string[], error? }
+//   elementBlockPresetLoad(uuid, name)   → JSON { ok, error? }
+//   elementBlockPresetSetDefault(uuid)   → JSON { ok, error? }
+// Graceful no-op when the native fn is absent: invokeElementNative resolves
+// undefined → nativeBlockPreset* returns { ok: false } → UI shows nothing.
+// Uses window.__elementNative guard pattern via invokeElementNative in juceBackend.
+
+function BlockPresetPopover({
+  nodeId,
+  pluginId,
+  accent,
+  onClose,
+}: {
+  nodeId: string;
+  pluginId: string;
+  accent: string;
+  onClose: () => void;
+}) {
+  const [presets, setPresets] = useState<string[]>([]);
+  const [saveOpen, setSaveOpen] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [query, setQuery] = useState("");
+
+  useEffect(() => {
+    void nativeBlockPresetList(pluginId).then((r) => {
+      if (r.ok) setPresets(r.presets);
+    });
+    setTimeout(() => inputRef.current?.focus(), 0);
+  }, [pluginId]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return q ? presets.filter((p) => p.toLowerCase().includes(q)) : presets;
+  }, [presets, query]);
+
+  const handleSaveConfirm = useCallback(
+    (name: string) => {
+      setSaveOpen(false);
+      void nativeBlockPresetSave(nodeId, name).then((r) => {
+        if (r.ok) {
+          // Refresh list after save.
+          void nativeBlockPresetList(pluginId).then((lr) => {
+            if (lr.ok) setPresets(lr.presets);
+          });
+        }
+      });
+    },
+    [nodeId, pluginId],
+  );
+
+  const handleLoad = useCallback(
+    (name: string) => {
+      void nativeBlockPresetLoad(nodeId, name);
+      onClose();
+    },
+    [nodeId, onClose],
+  );
+
+  const handleSetDefault = useCallback(() => {
+    void nativeBlockPresetSetDefault(nodeId);
+    onClose();
+  }, [nodeId, onClose]);
+
+  const textBtn =
+    "text-[10px] text-text-secondary hover:text-text-primary transition-colors underline underline-offset-2 px-1";
+
+  return (
+    <div className="px-2 pb-2 pt-1 space-y-1.5">
+      {/* Action row: Save / Set as default */}
+      <div className="flex items-center gap-2 px-1">
+        <button type="button" className={textBtn} onClick={() => setSaveOpen(true)}>
+          Save preset…
+        </button>
+        <button type="button" className={textBtn} onClick={handleSetDefault}>
+          Set as default
+        </button>
+      </div>
+
+      {/* Search / list */}
+      {presets.length > 0 && (
+        <>
+          <NeuInput
+            ref={inputRef}
+            placeholder="Filter presets…"
+            value={query}
+            onChange={setQuery}
+          />
+          <div className="max-h-32 overflow-y-auto space-y-0.5">
+            {filtered.length === 0 ? (
+              <div className="px-2 py-1 text-[10px] text-text-dim">No matches</div>
+            ) : (
+              filtered.map((name) => (
+                <button
+                  key={name}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => handleLoad(name)}
+                  className="w-full flex items-center gap-2 px-2 py-1 rounded text-[11px] text-text-primary hover:bg-elevated transition-colors duration-100 text-left"
+                >
+                  <Icon name="Layers" size={11} color={accent} aria-hidden />
+                  <span className="flex-1 truncate">{name}</span>
+                </button>
+              ))
+            )}
+          </div>
+        </>
+      )}
+      {presets.length === 0 && (
+        <div className="px-2 py-1 text-[10px] text-text-dim">No saved presets</div>
+      )}
+
+      {/* Save-preset name modal */}
+      <NeuPromptModal
+        open={saveOpen}
+        title="Save preset"
+        description="Saves the current parameter values under this name."
+        placeholder="Preset name"
+        confirmLabel="Save"
+        onConfirm={handleSaveConfirm}
+        onCancel={() => setSaveOpen(false)}
+      />
+    </div>
   );
 }
 

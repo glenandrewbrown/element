@@ -5,15 +5,21 @@
  */
 
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, act, waitFor } from "@testing-library/react";
 
 // ── Mock bridge ──────────────────────────────────────────────────────────────
 
-const mockMoleculeInsert = vi.fn().mockResolvedValue(undefined);
+const mockMoleculeInsert = vi.fn().mockResolvedValue(1);
+const mockMoleculeSave = vi.fn().mockResolvedValue(true);
 const mockTransportPanic = vi.fn().mockResolvedValue(undefined);
 
+// T20 regression: the bridge mock MUST include nativeMoleculeSave.
+// Before this fix the mock omitted it — calling it threw "not a function"
+// and the entire save flow silently crashed (the shelf showed "Failed…"
+// hint or nothing at all, and the NeuPromptModal confirm path was broken).
 vi.mock("../../../bridge/nativeGraph", () => ({
   nativeMoleculeInsert: (...args: unknown[]) => mockMoleculeInsert(...args),
+  nativeMoleculeSave: (...args: unknown[]) => mockMoleculeSave(...args),
   nativeTransportPanic: () => mockTransportPanic(),
 }));
 
@@ -33,6 +39,7 @@ import { SnippetShelf } from "../SnippetShelf";
 beforeEach(() => {
   mockMolecules = [];
   mockMoleculeInsert.mockClear();
+  mockMoleculeSave.mockClear();
   mockTransportPanic.mockClear();
 });
 
@@ -138,5 +145,84 @@ describe("<SnippetShelf />", () => {
     mockMolecules = [{ name: longName }];
     render(<SnippetShelf />);
     expect(screen.getByTitle(longName)).toBeInTheDocument();
+  });
+
+  // ── T20 regression: nativeMoleculeSave must be wired + callable ──────────────
+  // Root cause: the bridge mock previously omitted nativeMoleculeSave, so
+  // clicking "Save as Snippet" → opening the NeuPromptModal → confirming
+  // threw "nativeMoleculeSave is not a function" and the whole save path
+  // crashed silently. This test exercises the full save flow end-to-end.
+
+  it("T20: Save-as-Snippet button opens NeuPromptModal (modal title present)", async () => {
+    // Provide selected nodes via the real useGraphStore — we set state directly.
+    const { useGraphStore } = await import("../../../stores/useGraphStore");
+    // Add a fake selected node so the button is enabled and ids.length > 0.
+    act(() => {
+      useGraphStore.setState((s) => ({
+        ...s,
+        nodes: [
+          {
+            id: "node-a",
+            selected: true,
+            name: "Test Block",
+            category: "instrument",
+            format: "AU",
+            bypassed: false,
+            muted: false,
+            muteInput: false,
+            ports: [],
+            position: { x: 0, y: 0 },
+            type: "block",
+            data: {},
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          } as any,
+        ],
+      }));
+    });
+    render(<SnippetShelf />);
+    const saveBtn = screen.getByRole("button", { name: /save as snippet/i });
+    fireEvent.click(saveBtn);
+    // NeuPromptModal should now be visible (title in heading).
+    await waitFor(() =>
+      expect(screen.getByRole("dialog")).toBeInTheDocument(),
+    );
+  });
+
+  it("T20: confirming NeuPromptModal calls nativeMoleculeSave with name + ids", async () => {
+    const { useGraphStore } = await import("../../../stores/useGraphStore");
+    act(() => {
+      useGraphStore.setState((s) => ({
+        ...s,
+        nodes: [
+          {
+            id: "node-b",
+            selected: true,
+            name: "My Block",
+            category: "audiofx",
+            format: "VST3",
+            bypassed: false,
+            muted: false,
+            muteInput: false,
+            ports: [],
+            position: { x: 10, y: 10 },
+            type: "block",
+            data: {},
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          } as any,
+        ],
+      }));
+    });
+    render(<SnippetShelf />);
+    fireEvent.click(screen.getByRole("button", { name: /save as snippet/i }));
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
+
+    // Type a name and confirm.
+    const input = screen.getByRole("textbox");
+    fireEvent.change(input, { target: { value: "My Snippet" } });
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() =>
+      expect(mockMoleculeSave).toHaveBeenCalledWith("My Snippet", ["node-b"]),
+    );
   });
 });

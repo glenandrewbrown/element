@@ -889,3 +889,74 @@ export async function nativePresetList(
   return { ok: false, presets: [], error: "no response" };
 }
 
+// ── T21W: Block-level preset save / load / list / set-default ─────────────────
+// Contract (parallel C++ agent): all four functions take uuid as first arg,
+// return a JSON string. The window.__elementNative guard is handled inside
+// invokeElementNative (resolves undefined when JUCE backend absent) so callers
+// treat { ok: false } as the no-op graceful-degraded state.
+
+/** Save current block state as a named preset on disk. */
+export async function nativeBlockPresetSave(
+  uuid: string,
+  name: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const raw = await invokeElementNative("elementBlockPresetSave", [uuid, name]);
+  if (typeof raw === "string") {
+    try {
+      return JSON.parse(raw) as { ok: boolean; error?: string };
+    } catch (err) {
+      logBridgeError("nativeBlockPresetSave.parse", err);
+      return { ok: false, error: "parse error" };
+    }
+  }
+  return { ok: false, error: "no response" };
+}
+
+/** List preset names for a plugin identified by pluginId. */
+export async function nativeBlockPresetList(
+  pluginId: string,
+): Promise<{ ok: boolean; presets: string[]; error?: string }> {
+  const raw = await invokeElementNative("elementBlockPresetList", [pluginId]);
+  if (typeof raw === "string") {
+    try {
+      return JSON.parse(raw) as { ok: boolean; presets: string[]; error?: string };
+    } catch (err) {
+      logBridgeError("nativeBlockPresetList.parse", err);
+      return { ok: false, presets: [], error: "parse error" };
+    }
+  }
+  return { ok: false, presets: [], error: "no response" };
+}
+
+/** Load a named preset from disk and apply it to the block. */
+export async function nativeBlockPresetLoad(
+  uuid: string,
+  name: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const raw = await invokeElementNative("elementBlockPresetLoad", [uuid, name]);
+  if (typeof raw === "string") {
+    try {
+      return JSON.parse(raw) as { ok: boolean; error?: string };
+    } catch (err) {
+      logBridgeError("nativeBlockPresetLoad.parse", err);
+      return { ok: false, error: "parse error" };
+    }
+  }
+  return { ok: false, error: "no response" };
+}
+
+/** Mark a named preset as the default for this block's plugin. */
+export async function nativeBlockPresetSetDefault(
+  uuid: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const raw = await invokeElementNative("elementBlockPresetSetDefault", [uuid]);
+  if (typeof raw === "string") {
+    try {
+      return JSON.parse(raw) as { ok: boolean; error?: string };
+    } catch (err) {
+      logBridgeError("nativeBlockPresetSetDefault.parse", err);
+      return { ok: false, error: "parse error" };
+    }
+  }
+  return { ok: false, error: "no response" };
+}

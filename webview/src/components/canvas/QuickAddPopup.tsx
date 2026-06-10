@@ -75,6 +75,13 @@ export interface QuickAddPopupProps {
    * in one keystroke/click WITHOUT searching for it. Owns its own dismissal.
    */
   onAddReroute?: () => void;
+  /**
+   * T10 — fired the instant an add actually happens (any insert path), BEFORE
+   * `onClose`. Lets the canvas COMMIT a hover-preview (push-on-hover) layout when
+   * the placement is confirmed, versus reverting it on a plain dismiss. Not fired
+   * on backdrop/Escape cancels.
+   */
+  onAdded?: () => void;
   /** Dismiss the popup (backdrop click, Escape, or after a Block is inserted). */
   onClose: () => void;
 }
@@ -107,6 +114,7 @@ export function QuickAddPopup({
   portType: portTypeProp,
   onPick,
   onAddReroute,
+  onAdded,
   onClose,
 }: QuickAddPopupProps) {
   const [search, setSearch] = useState("");
@@ -225,9 +233,10 @@ export function QuickAddPopup({
         return;
       }
       void nativeGraphAddPlugin(id);
+      onAdded?.(); // commit any hover-preview layout before dismissing.
       onClose();
     },
-    [onPick, onClose],
+    [onPick, onAdded, onClose],
   );
 
   /** Clear the active rail filter and/or the port-context filter (widen). */

@@ -35,13 +35,16 @@ const signalColor: Record<string, string> = {
 // signal type, folded into the bucket-memoised stroke style with no extra
 // per-tick dependency. Dash lengths are tuned in raw px (cables draw in screen
 // space) to stay distinguishable down to ~0.5× zoom without reading as noise.
+// T11(a): ALL connected cables are solid. The dash axis (midi dashed, value
+// dotted) only applies to GhostEdge (pending/suggested cables). Connected
+// cables must be solid regardless of signal type — the colour already
+// identifies MIDI teal vs audio blue; adding a dash on a real wire reads
+// as "broken" to users. Sidechain cables keep their own "6 4" dash (that
+// is a semantic marker wired below in mainStyle, not a type indicator).
 const SIGNAL_DASH = {
-  // `undefined` ⇒ React Flow draws a continuous (solid) line.
   audio: undefined,
-  // Dashed: long mark + clear gap — reads unmistakably as a broken line.
-  midi: "8 5",
-  // Dotted: short mark ≈ stroke width + larger gap — reads as a dot train.
-  value: "2 4",
+  midi: undefined,
+  value: undefined,
 } as const satisfies Record<SignalType, string | undefined>;
 
 /**

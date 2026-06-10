@@ -12,6 +12,7 @@ import {
   nativeMoleculeSave,
 } from "../../bridge/nativeGraph";
 import { computeAutoLayout } from "../../lib/autoLayout";
+import { estimateBlockHeight } from "./autoRouteSuggestions";
 import { Icon } from "../neu";
 import { NeuPromptModal } from "../layout/NeuPromptModal";
 
@@ -39,6 +40,10 @@ export interface CanvasContextMenuProps {
 const CANVAS_ACCENT = "#4A90D9";
 
 const SAVE_SNIPPET_HINT_MS = 3000;
+// T12 — generous column gap for the Auto-Layout menu action so IO + flow
+// columns sit far enough apart that a new Block fits between them (matches
+// GraphCanvas's TIDY_COLUMN_GAP).
+const AUTO_LAYOUT_COLUMN_GAP = 420;
 
 /**
  * CanvasContextMenu — the right-click action menu for the empty Board surface.
@@ -246,7 +251,16 @@ export function CanvasContextMenu({
     // layered positions from the REAL graph; nativeGraphAutoLayout applies
     // them via the host setPosition path (persists with the project).
     const { nodes, edges } = useGraphStore.getState();
-    const positions = computeAutoLayout(nodes, edges);
+    // T12 — height-aware, direction-aware, IO-spaced (mirrors GraphCanvas Tidy):
+    // honour the user's flow direction and leave generous room between columns.
+    const layoutNodes = nodes.map((n) => ({
+      id: n.id,
+      height: estimateBlockHeight(n),
+    }));
+    const positions = computeAutoLayout(layoutNodes, edges, {
+      direction: useAppStore.getState().layoutDirection,
+      columnGap: AUTO_LAYOUT_COLUMN_GAP,
+    });
     if (positions.length > 0) void nativeGraphAutoLayout(positions);
     onClose();
   }, [onClose]);

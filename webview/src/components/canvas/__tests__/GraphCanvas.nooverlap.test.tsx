@@ -17,7 +17,7 @@
  * collision + glow paths actually run.
  */
 
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { render, act } from "@testing-library/react";
 import React from "react";
 import { rectsOverlap } from "../../../lib/resolveCollisions";
@@ -375,6 +375,7 @@ describe("GraphCanvas — Task 2.3 no-overlap on session LOAD (tall IO blocks)",
   const TALL = 262; // 16 audio lanes: 16*16 + 6 (matches Block.tsx render).
 
   beforeEach(() => {
+    vi.useFakeTimers();
     vi.clearAllMocks();
     mockAppStore.mode = "edit";
     mockAppStore.autoTidyOnAdd = false;
@@ -382,6 +383,10 @@ describe("GraphCanvas — Task 2.3 no-overlap on session LOAD (tall IO blocks)",
     mockStore.currentBoardId = null;
     mockStore.breadcrumbStack = ["Main Project", "Graph 1"];
     Object.keys(capturedProps).forEach((k) => delete capturedProps[k]);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   /** Seed RF + store with tall, measured blocks at the given positions. */
@@ -425,7 +430,13 @@ describe("GraphCanvas — Task 2.3 no-overlap on session LOAD (tall IO blocks)",
 
     // React Flow has measured the nodes → the load pass is armed.
     nodesInit.value = true;
-    render(<GraphCanvas />);
+    act(() => {
+      render(<GraphCanvas />);
+    });
+    // The load pass defers ~120ms so RF can reconcile the Board's nodes.
+    act(() => {
+      vi.advanceTimersByTime(150);
+    });
 
     // The pass persisted de-overlapped positions for the loaded board.
     expect(mockStore.updateNodePositions).toHaveBeenCalledTimes(1);
@@ -461,12 +472,23 @@ describe("GraphCanvas — Task 2.3 no-overlap on session LOAD (tall IO blocks)",
       { id: "audioOut", x: 100, y: 95 },
     ]);
     nodesInit.value = true;
-    const { rerender } = render(<GraphCanvas />);
+    let rerender!: (ui: React.ReactElement) => void;
+    act(() => {
+      ({ rerender } = render(<GraphCanvas />));
+    });
+    act(() => {
+      vi.advanceTimersByTime(150);
+    });
     expect(mockStore.updateNodePositions).toHaveBeenCalledTimes(1);
 
     // A re-render for the SAME board (e.g. a later snapshot) must NOT re-run.
     mockStore.updateNodePositions.mockClear();
-    rerender(<GraphCanvas />);
+    act(() => {
+      rerender(<GraphCanvas />);
+    });
+    act(() => {
+      vi.advanceTimersByTime(150);
+    });
     expect(mockStore.updateNodePositions).not.toHaveBeenCalled();
   });
 
@@ -476,7 +498,13 @@ describe("GraphCanvas — Task 2.3 no-overlap on session LOAD (tall IO blocks)",
       { id: "b", x: 100, y: 95 },
     ]);
     nodesInit.value = true;
-    const { rerender } = render(<GraphCanvas />);
+    let rerender!: (ui: React.ReactElement) => void;
+    act(() => {
+      ({ rerender } = render(<GraphCanvas />));
+    });
+    act(() => {
+      vi.advanceTimersByTime(150);
+    });
     expect(mockStore.updateNodePositions).toHaveBeenCalledTimes(1);
 
     // Dive into a nested Board: boardKey changes → the pass re-arms.
@@ -487,7 +515,105 @@ describe("GraphCanvas — Task 2.3 no-overlap on session LOAD (tall IO blocks)",
     ]);
     mockStore.currentBoardId = "container-1";
     mockStore.breadcrumbStack = ["Main Project", "Graph 1", "Container"];
-    rerender(<GraphCanvas />);
+    act(() => {
+      rerender(<GraphCanvas />);
+    });
+    act(() => {
+      vi.advanceTimersByTime(150);
+    });
+    expect(mockStore.updateNodePositions).toHaveBeenCalledTimes(1);
+  });
+
+  it("T13: re-arms on container dive even when useNodesInitialized stays true across the swap", () => {
+    // Reproduces the container-dive stacking bug: React Flow keeps measured
+    // dimensions across a board swap, so `useNodesInitialized` never flips
+    // false→true to re-trigger the pass. The pass must still re-run because the
+    // boardKey (currentBoardId + breadcrumb depth) changed.
+    seedTall([
+      { id: "a", x: 100, y: 0 },
+      { id: "b", x: 100, y: 95 },
+    ]);
+    nodesInit.value = true; // stays true the whole time (the bug condition).
+    let rerender!: (ui: React.ReactElement) => void;
+    act(() => {
+      ({ rerender } = render(<GraphCanvas />));
+    });
+    act(() => {
+      vi.advanceTimersByTime(150);
+    });
+    expect(mockStore.updateNodePositions).toHaveBeenCalledTimes(1);
+
+    // Dive: new container nodes, new boardKey — nodesInit NEVER toggled.
+    // Keep the SAME block count (2) so only the board-keyed LOAD pass can fire
+    // (the count-gated spawn pass stays inert), isolating the dive re-arm.
+    mockStore.updateNodePositions.mockClear();
+    seedTall([
+      { id: "c1", x: 50, y: 0 },
+      { id: "c2", x: 50, y: 95 },
+    ]);
+    mockStore.currentBoardId = "container-7";
+    mockStore.breadcrumbStack = ["Main Project", "Graph 1", "Container"];
+    act(() => {
+      rerender(<GraphCanvas />);
+    });
+    act(() => {
+      vi.advanceTimersByTime(150);
+    });
+    // The dived container's stacked blocks were de-overlapped.
+    expect(mockStore.updateNodePositions).toHaveBeenCalledTimes(1);
+  });
+
+  it("T13: does NOT burn the per-board ref while RF is mid-swap (ids mismatch store)", () => {
+    seedTall([
+      { id: "a", x: 100, y: 0 },
+      { id: "b", x: 100, y: 95 },
+    ]);
+    nodesInit.value = true;
+    let rerender!: (ui: React.ReactElement) => void;
+    act(() => {
+      ({ rerender } = render(<GraphCanvas />));
+    });
+    act(() => {
+      vi.advanceTimersByTime(150);
+    });
+    expect(mockStore.updateNodePositions).toHaveBeenCalledTimes(1);
+    mockStore.updateNodePositions.mockClear();
+
+    // Dive: store advertises the NEW container nodes, but RF still holds the OLD
+    // board's nodes (mid-reconciliation: new ids not yet measured →
+    // useNodesInitialized false). boardKey changes → pass arms then bails on the
+    // unmeasured guard, so the per-board ref is NOT burned against stale data.
+    mockStore.currentBoardId = "container-9";
+    mockStore.breadcrumbStack = ["Main Project", "Graph 1", "Container"];
+    mockStore.nodes = [
+      { id: "new1", position: { x: 50, y: 0 } },
+      { id: "new2", position: { x: 50, y: 95 } },
+    ];
+    nodesInit.value = false; // new nodes unmeasured during reconcile.
+    // rf.nodes still = [a, b] (stale) → id set mismatch even if it ran.
+    act(() => {
+      rerender(<GraphCanvas />);
+    });
+    act(() => {
+      vi.advanceTimersByTime(150);
+    });
+    // Mid-swap: must NOT resolve against the stale board (ref not burned).
+    expect(mockStore.updateNodePositions).not.toHaveBeenCalled();
+
+    // RF finishes reconciling + measuring the new container nodes (stacked) →
+    // useNodesInitialized flips true → the pass re-arms for the real new board.
+    seedTall([
+      { id: "new1", x: 50, y: 0 },
+      { id: "new2", x: 50, y: 95 },
+    ]);
+    nodesInit.value = true;
+    act(() => {
+      rerender(<GraphCanvas />);
+    });
+    act(() => {
+      vi.advanceTimersByTime(150);
+    });
+    // The pass re-armed and resolved the real new board.
     expect(mockStore.updateNodePositions).toHaveBeenCalledTimes(1);
   });
 
@@ -497,7 +623,12 @@ describe("GraphCanvas — Task 2.3 no-overlap on session LOAD (tall IO blocks)",
       { id: "audioOut", x: 100, y: 95 },
     ]);
     nodesInit.value = false; // not measured yet.
-    render(<GraphCanvas />);
+    act(() => {
+      render(<GraphCanvas />);
+    });
+    act(() => {
+      vi.advanceTimersByTime(150);
+    });
     expect(mockStore.updateNodePositions).not.toHaveBeenCalled();
   });
 });

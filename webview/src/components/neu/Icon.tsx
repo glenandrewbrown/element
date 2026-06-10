@@ -55,6 +55,7 @@ import {
   Maximize2,
   MoreVertical,
   MoveHorizontal,
+  MoveVertical,
   Music,
   Network,
   Palette,
@@ -135,6 +136,7 @@ const ICON_MAP: Record<string, ComponentType<LucideProps>> = {
   Maximize2,     // zoom-to-fit (canvas context menu)
   MoreVertical,
   MoveHorizontal, // auto-layout direction (canvas context menu — honest-disabled)
+  MoveVertical,   // auto-layout vertical (top-to-bottom) flow direction (T12)
   Music,
   Network,       // bus / OSC / network routing
   Palette,       // colour picker (context menus — honest-disabled)
