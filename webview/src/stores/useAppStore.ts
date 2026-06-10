@@ -43,6 +43,113 @@ export const PANEL_SNAP_W = 120;
 export const clampPanelWidth = (w: number): number =>
   Math.max(PANEL_MIN_W, Math.min(PANEL_MAX_W, w));
 
+// ── Responsive panel layout (BUG-2, Glen 2026-06-10) ────────────────────────
+//
+// Persisted px widths alone don't scale: at a ~1070px window the left
+// (rail+list) + right Inspector ate nearly the whole row and the canvas was
+// crushed to a sliver. These constants + `resolveResponsivePanelLayout` make the
+// EFFECTIVE rendered widths a function of the window so the canvas always keeps a
+// guaranteed share, panels shrink smoothly on resize, and a too-narrow window
+// auto-collapses the right Inspector (re-openable).
+
+/** The canvas must always keep at least this fraction of the window width. */
+export const CANVAS_MIN_FRACTION = 0.45;
+/** A single OPEN panel may never exceed this fraction of the window width. */
+export const PANEL_MAX_FRACTION = 0.32;
+/** Below this window width the right Inspector auto-collapses to its rail. */
+export const INSPECTOR_AUTOCOLLAPSE_W = 900;
+/** Collapsed-rail reservation (mirrors AppShell's COLLAPSED_W / PANEL_RAIL_W). */
+export const PANEL_RAIL_RESERVED_W = 40;
+
+export interface ResponsivePanelInput {
+  windowWidth: number;
+  leftOpen: boolean;
+  rightOpen: boolean;
+  leftWidth: number;
+  rightWidth: number;
+}
+
+export interface ResponsivePanelLayout {
+  /** Effective rendered left width (open) — already responsively clamped. */
+  leftWidth: number;
+  /** Effective rendered right width (open) — already responsively clamped. */
+  rightWidth: number;
+  /** True when the window is narrow enough that the right Inspector should
+   *  auto-collapse to its rail (AppShell re-opens it on user action). */
+  shouldCollapseRight: boolean;
+}
+
+/**
+ * Resolve the EFFECTIVE panel widths for the current window, guaranteeing the
+ * canvas keeps at least `CANVAS_MIN_FRACTION` of the window. Pure (no DOM, no
+ * store) so it is unit-testable and AppShell's resize effect + any test share
+ * ONE source of truth.
+ *
+ * Algorithm:
+ *  1. Below `INSPECTOR_AUTOCOLLAPSE_W` the right panel is flagged for collapse;
+ *     it then reserves only the rail width, freeing the row for the canvas.
+ *  2. Each OPEN panel is capped at `min(persistedWidth, PANEL_MAX_FRACTION·W)`
+ *     and floored at `PANEL_MIN_W` (but never above the per-panel fraction cap
+ *     when that cap is itself below MIN — a pathologically tiny window).
+ *  3. If the two open panels still leave the canvas below its guaranteed share,
+ *     shrink them proportionally until the canvas budget is met (never below
+ *     each panel's effective minimum).
+ */
+export const resolveResponsivePanelLayout = (
+  input: ResponsivePanelInput,
+): ResponsivePanelLayout => {
+  const { windowWidth, leftOpen } = input;
+  const W = Math.max(1, windowWidth);
+
+  const shouldCollapseRight =
+    input.rightOpen && W < INSPECTOR_AUTOCOLLAPSE_W;
+  const rightOpen = input.rightOpen && !shouldCollapseRight;
+
+  // Per-panel hard cap: never wider than a fraction of the window, and never
+  // wider than the sane absolute MAX. Floor is MIN unless the fraction cap is
+  // even smaller (tiny window) — then the cap wins so we don't overflow.
+  const fractionCap = Math.floor(W * PANEL_MAX_FRACTION);
+  const capWidth = (w: number): number => {
+    const hardMax = Math.min(PANEL_MAX_W, fractionCap);
+    const floor = Math.min(PANEL_MIN_W, hardMax);
+    return Math.max(floor, Math.min(hardMax, w));
+  };
+
+  let effLeft = leftOpen ? capWidth(input.leftWidth) : 0;
+  let effRight = rightOpen ? capWidth(input.rightWidth) : 0;
+
+  // Reserve the rail for any collapsed panel so the canvas budget is honest.
+  const leftReserved = leftOpen ? effLeft : PANEL_RAIL_RESERVED_W;
+  const rightReserved = rightOpen
+    ? effRight
+    : PANEL_RAIL_RESERVED_W;
+
+  const canvasBudget = Math.floor(W * CANVAS_MIN_FRACTION);
+  const available = W - leftReserved - rightReserved;
+
+  if (available < canvasBudget) {
+    // Need to claw back (canvasBudget - available) px from the OPEN panels,
+    // proportionally, never below each panel's effective minimum.
+    const deficit = canvasBudget - available;
+    const minLeft = leftOpen ? Math.min(PANEL_MIN_W, effLeft) : 0;
+    const minRight = rightOpen ? Math.min(PANEL_MIN_W, effRight) : 0;
+    const shrinkableLeft = effLeft - minLeft;
+    const shrinkableRight = effRight - minRight;
+    const totalShrinkable = shrinkableLeft + shrinkableRight;
+    if (totalShrinkable > 0) {
+      const take = Math.min(deficit, totalShrinkable);
+      effLeft -= Math.round((take * shrinkableLeft) / totalShrinkable);
+      effRight -= Math.round((take * shrinkableRight) / totalShrinkable);
+    }
+  }
+
+  return {
+    leftWidth: Math.round(effLeft),
+    rightWidth: Math.round(effRight),
+    shouldCollapseRight,
+  };
+};
+
 interface AppState {
   mode: AppMode;
   leftPanelOpen: boolean;

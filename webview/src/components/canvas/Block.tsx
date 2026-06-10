@@ -14,6 +14,11 @@ import {
   selectSandboxInProcess,
 } from "../../stores/useSandboxCrashStore";
 import { useParameterStore } from "../../stores/useParameterStore";
+import {
+  useFacePinStore,
+  selectFacePins,
+  FACE_PIN_CAP,
+} from "../../stores/useFacePinStore";
 import { nativeSetNodeParameter } from "../../bridge/nativeGraph";
 import { NeuKnob } from "../neu/NeuKnob";
 import { BlockEmbed } from "./BlockEmbed";
@@ -1085,6 +1090,11 @@ function ParamLaneToggle({
 // params this Block has promoted to its face. Renders nothing when none are
 // pinned, so an unpinned Block keeps its minimal macro height.
 //
+// BUG-1 cap (Glen 2026-06-10): a Block face renders AT MOST FACE_PIN_CAP chips;
+// any overflow collapses into a single "+N more" pill. This is a hard safety net
+// so a pathological pinned set can never again blow out the block's proportions
+// (the default is already zero pinned via useFacePinStore).
+//
 // PAINTER LAW: the chip background/border are STATIC inline styles derived from
 // the (identity-stable) Value/CV accent — they do NOT change per 60Hz tick (no
 // `level`/meter input here), so this is not a per-tick repaint. The strip is a
@@ -1092,12 +1102,14 @@ function ParamLaneToggle({
 function PinnedParamFace({ ports }: { ports: Port[] }) {
   if (ports.length === 0) return null;
   const accent = portColor.value; // Value/CV signal colour (#E8A838)
+  const shown = ports.slice(0, FACE_PIN_CAP);
+  const overflow = ports.length - shown.length;
   return (
     <div
       data-testid="block-pinned-params"
       className="block-body flex flex-wrap items-center gap-1 px-2 pb-1 relative z-[5]"
     >
-      {ports.map((p) => (
+      {shown.map((p) => (
         <span
           key={p.id}
           className="font-mono leading-none whitespace-nowrap overflow-hidden text-ellipsis px-1.5 py-0.5 rounded-[3px]"
@@ -1116,6 +1128,23 @@ function PinnedParamFace({ ports }: { ports: Port[] }) {
           {p.label}
         </span>
       ))}
+      {overflow > 0 ? (
+        <span
+          key="__overflow"
+          data-testid="block-pinned-params-overflow"
+          className="font-mono leading-none whitespace-nowrap px-1.5 py-0.5 rounded-[3px]"
+          style={{
+            fontSize: "8.5px",
+            color: accent,
+            background: `${accent}0A`,
+            border: `1px solid ${accent}26`,
+            letterSpacing: "0.02em",
+          }}
+          title={`${overflow} more pinned param${overflow === 1 ? "" : "s"} — open the Inspector to manage`}
+        >
+          +{overflow} more
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -1295,6 +1324,18 @@ function BlockComponent({ data, selected }: NodeProps) {
   // Count = VISIBLE (non-hidden) param ports — what the expander actually shows.
   const paramPortCount = paramInputs.length + paramOutputs.length;
   const hasParamPorts = paramPortCount > 0;
+
+  // BUG-1 (Glen 2026-06-10): the Macro FACE surfaces ONLY the params the user
+  // explicitly PINNED (positive opt-in, default empty), NOT every non-hidden
+  // param. Decoupled from `hiddenParams` (which governs the expanded lane). The
+  // pinned ids are resolved against the REAL Value/CV param ports so a stale id
+  // (removed port) is silently ignored. Order follows the param-port order.
+  const facePinIds = useFacePinStore(selectFacePins(d.id));
+  const pinnedFaceParams = useMemo(() => {
+    if (facePinIds.length === 0) return [] as Port[];
+    const pinned = new Set(facePinIds);
+    return [...paramInputs, ...paramOutputs].filter((p) => pinned.has(p.id));
+  }, [facePinIds, paramInputs, paramOutputs]);
 
   // Per-block local UI state — collapsed by default (lean). Does NOT persist;
   // a fresh mount (reload / re-add) starts collapsed again, which is the lean
@@ -1721,7 +1762,7 @@ function BlockComponent({ data, selected }: NodeProps) {
               stale={meterState === "stale"}
             />
           </div>
-          <PinnedParamFace ports={[...paramInputs, ...paramOutputs]} />
+          <PinnedParamFace ports={pinnedFaceParams} />
         </>
       ) : null}
 

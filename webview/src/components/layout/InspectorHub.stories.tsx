@@ -8,6 +8,7 @@ import { useEngineSnapshotStore } from "../../stores/useEngineSnapshotStore";
 import { useHostExtrasStore } from "../../stores/useHostExtrasStore";
 import { useBusStore } from "../../stores/useBusStore";
 import { useCableMeterStore } from "../../stores/useCableMeterStore";
+import { useFacePinStore } from "../../stores/useFacePinStore";
 import type { BlockData } from "../../data/types";
 
 // ── Store seeding ──
@@ -859,15 +860,14 @@ export const BlockTab_BigPluginParams: Story = {
   },
 };
 
-// ── BLOCK — 📌 pin-to-face (Task 3.E) ─────────────────────────────────────────
+// ── BLOCK — 📌 pin-to-face (Task 3.E; BUG-1 default-zero, 2026-06-10) ─────────
 //
-// A plugin that exposes Value/CV param PORTS (the params-as-ports model, e.g. a
-// reverb's Mix/Decay/Width as CV inputs). The Block view's Params sub-view shows
-// the "Block face" section with a 📌 pin-to-face toggle per REAL param port. The
-// pinned set is the inverse of the Block's `hiddenParams` substrate — toggling a
-// pin writes through `setHiddenParams` (optimistic) and surfaces the param on the
-// Block Macro tier. NOTHING-fake: only real param ports appear; no fabricated
-// values.
+// A plugin that exposes Value/CV param PORTS (the params-as-ports model). The
+// Block view's Params sub-view shows the "Block face" section with a 📌 pin-to-face
+// toggle per REAL param port. BUG-1: pins now live in useFacePinStore (positive
+// opt-in, default EMPTY — zero params on face). The decorator seeds Mix as pinned
+// (1 of 3) so the story shows a realistic "one param on the face" state.
+// NOTHING-fake: only real param ports appear; no fabricated values.
 const paramReverb: BlockData = {
   id: "rev-1",
   name: "Cloud Reverb",
@@ -891,8 +891,6 @@ const paramReverb: BlockData = {
   muteInput: false,
   error: false,
   isMacroTagged: false,
-  // Start with Decay + Width hidden so only Mix is pinned on the face initially.
-  hiddenParams: ["p-decay", "p-width"],
   collapseTier: "macro",
 };
 
@@ -900,6 +898,12 @@ export const BlockTab_FaceParamsPin: Story = {
   decorators: [
     (Story) => {
       seedNodeSelected(paramReverb);
+      // Seed Mix as the one pinned param (1 of 3). Cleaned up on unmount so
+      // other stories start from the default-zero state.
+      useEffect(() => {
+        useFacePinStore.getState().setPinnedSet("rev-1", ["p-mix"]);
+        return () => useFacePinStore.getState().setPinnedSet("rev-1", []);
+      }, []);
       return (
         <div style={PANEL} className="bg-panel">
           <Story />
@@ -913,15 +917,14 @@ export const BlockTab_FaceParamsPin: Story = {
         story:
           "BLOCK view, Params sub-view, for a plugin exposing Value/CV param PORTS (Mix/Decay/Width). The " +
           "'Block face' section lists each REAL param with a 📌 pin-to-face toggle (a thin NeuToggle " +
-          "wrapper). Pinned = surfaced on the Block Macro tier (the inverse of the Block's hiddenParams " +
-          "substrate). Toggling a pin writes through setHiddenParams (optimistic) — NOTHING fabricated: " +
+          "wrapper). BUG-1 fix: pins live in useFacePinStore (positive opt-in, default empty). The " +
+          "decorator seeds Mix as pinned (1 of 3). Toggling a pin updates the store — NOTHING fabricated: " +
           "only real param ports appear, never a fake knob/value.",
       },
     },
   },
   play: async ({ canvas }) => {
-    // The Block face section + its pin count (1 of 3 pinned: Mix shown; Decay +
-    // Width hidden via the seeded hiddenParams).
+    // The Block face section + its pin count (1 of 3 pinned: Mix seeded via store).
     await expect(canvas.getByText(/Block face/i)).toBeInTheDocument();
     await expect(
       canvas.getByLabelText(/1 of 3 parameters pinned/i),
@@ -942,11 +945,8 @@ export const BlockTab_FaceParamsPin: Story = {
         canvas.getByRole("group", { name: /pin width to block face/i }),
       ).getByRole("switch"),
     ).toHaveAttribute("aria-checked", "false");
-    // The pin toggle is interactive — clicking writes through setHiddenParams.
-    // (Storybook has no JUCE bridge, so the optimistic store update is rolled
-    // back when the bridgeless call resolves falsy; the persistence + the flip
-    // are covered by the InspectorHub.v2 unit test against the real store. Here
-    // we only assert the control is wired + clickable without throwing.)
+    // The pin toggle is interactive — clicking updates useFacePinStore directly
+    // (no JUCE bridge needed; the persistence is covered by the unit tests).
     await userEvent.click(decaySwitch);
   },
 };

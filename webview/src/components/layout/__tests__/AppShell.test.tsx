@@ -17,9 +17,17 @@ let appStoreState = {
 };
 let mapMode = false;
 
-vi.mock("../../../stores/useAppStore", () => ({
-  useAppStore: vi.fn((sel: (s: unknown) => unknown) => sel(appStoreState)),
-}));
+vi.mock("../../../stores/useAppStore", async (importOriginal) => {
+  // Keep the REAL pure helpers/constants AppShell imports
+  // (resolveResponsivePanelLayout, PANEL_SNAP_W, clampPanelWidth, …); only the
+  // hook is mocked to a controllable in-test snapshot.
+  const actual =
+    await importOriginal<typeof import("../../../stores/useAppStore")>();
+  return {
+    ...actual,
+    useAppStore: vi.fn((sel: (s: unknown) => unknown) => sel(appStoreState)),
+  };
+});
 
 vi.mock("../../../stores/usePerformStore", () => ({
   usePerformStore: vi.fn((sel: (s: unknown) => unknown) => sel({ mapMode })),

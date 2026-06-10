@@ -10,6 +10,7 @@ import {
   useSandboxCrashStore,
   type SandboxEventKind,
 } from "../../stores/useSandboxCrashStore";
+import { useFacePinStore } from "../../stores/useFacePinStore";
 import type { BlockData } from "../../data/types";
 
 // ── Helpers ──
@@ -196,11 +197,13 @@ export const TierExpanded: Story = story(
 //
 // A params-as-ports reverb whose Value/CV param ports are PINNED in the Inspector
 // (📌 pin-to-face) surface on the Macro tier as compact, signal-coloured chips.
-// "Pinned" = NOT in `hiddenParams`. Here Mix + Decay are pinned (shown) and Width
-// is hidden, so the macro face shows two chips. NOTHING-fake: the chips are real
-// param-port labels — never a fabricated value/knob.
+// BUG-1 fix: pins now live in useFacePinStore (positive opt-in, default empty).
+// Mix + Decay are pinned via the decorator; Width is not. NOTHING-fake: the chips
+// are real param-port labels — never a fabricated value/knob.
+const PINNED_REVERB_NODE_ID = "pinned-reverb-demo";
 const pinnedReverb = (over: Partial<BlockData> = {}): BlockData =>
   makeBlock({
+    id: PINNED_REVERB_NODE_ID,
     name: "ValhallaRoom",
     category: "audiofx",
     format: "VST3",
@@ -211,8 +214,6 @@ const pinnedReverb = (over: Partial<BlockData> = {}): BlockData =>
       { id: "p-decay", type: "value", direction: "input", label: "Decay", connected: false },
       { id: "p-width", type: "value", direction: "input", label: "Width", connected: false },
     ],
-    // Width hidden → Mix + Decay are the pinned (face-surfaced) params.
-    hiddenParams: ["p-width"],
     collapseTier: "macro",
     ...over,
   });
@@ -224,11 +225,24 @@ export const TierMacroPinnedParams: Story = {
         story:
           "MACRO tier with PINNED params (Task 3.E). The params the user pinned in the Inspector (📌 " +
           "pin-to-face) surface on the lean Macro face as compact Value/CV-tinted chips — here Mix + Decay " +
-          "(Width is unpinned/hidden). NOTHING-fake: each chip is a REAL param-port label; the macro face " +
+          "(Width is unpinned). NOTHING-fake: each chip is a REAL param-port label; the macro face " +
           "never fabricates a knob or value. This is the Block-face half of the Inspector's pin control.",
       },
     },
   },
+  decorators: [
+    (Story) => {
+      // Seed the face-pin store so Mix + Decay appear on the macro face.
+      // Width is intentionally absent to demonstrate selective pinning.
+      useEffect(() => {
+        useFacePinStore
+          .getState()
+          .setPinnedSet(PINNED_REVERB_NODE_ID, ["p-mix", "p-decay"]);
+        return () => useFacePinStore.getState().setPinnedSet(PINNED_REVERB_NODE_ID, []);
+      }, []);
+      return <Story />;
+    },
+  ],
   render: () => (
     <MiniFlow nodes={[flowNode(pinnedReverb())]} nodeTypes={nodeTypes} height={320} />
   ),

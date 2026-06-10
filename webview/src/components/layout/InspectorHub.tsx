@@ -54,6 +54,7 @@ import {
 } from "../../bridge/nativeGraph";
 import { useHostExtrasStore } from "../../stores/useHostExtrasStore";
 import { useCableMeterStore } from "../../stores/useCableMeterStore";
+import { useFacePinStore, selectFacePins } from "../../stores/useFacePinStore";
 import { useNodeSpectrum } from "../../hooks/useNodeSpectrum";
 import {
   nativeCloseSandboxedEditor,
@@ -2004,41 +2005,44 @@ function HealthSection(props: {
 
 // ── Face-params (📌 pin-to-face) — Task 3.E ──────────────────────────────────
 //
-// Surfaces the node's REAL Value/CV param ports (the SAME `type === "value"` set
-// `Block.tsx` filters via `hiddenParams`, and the SAME substrate
-// `ParamConfigPopover` toggles) with a per-param `📌` pin-to-face control.
+// Surfaces the node's REAL Value/CV param ports (the same `type === "value"` set)
+// with a per-param `📌` pin-to-face control.
 //
-//   pinned (toggle ON)  = NOT in `hiddenParams` ⇒ surfaced on the Block Macro tier
-//   unpinned (toggle OFF) = present in `hiddenParams` ⇒ hidden from the face
+//   pinned (toggle ON)  = in the node's face-pin set ⇒ surfaced on the Macro tier
+//   unpinned (toggle OFF) = NOT in the set ⇒ absent from the face
 //
-// The inversion + the FULL-set write live here (mirrors ParamConfigPopover):
-// `setHiddenParams(nodeId, fullHiddenArray)` is optimistic-with-rollback +
-// host-persisted, reconciled on the next snapshot — NOTHING fabricated. The pin
-// affordance is only ever rendered for a param that REALLY exists; a node with no
-// Value/CV param ports renders no pin section at all (no fake knobs/values). This
-// is a separate axis from the plugin `NodeParameterRow` sliders below (which have
-// no face-surfacing substrate yet — Phase 4), so those are not pinnable here.
+// BUG-1 fix (Glen 2026-06-10): the face is now a POSITIVE opt-in persisted in
+// `useFacePinStore` (default EMPTY ⇒ zero params on the face), DECOUPLED from the
+// `hiddenParams` hide-list (which still governs the expanded `▸ N params` lane via
+// the Configure Parameters… popover). Previously this derived `pinned = !hidden`,
+// so an empty hide-list meant EVERY param surfaced — a 4096-param Kontakt rendered
+// a giant column. NOTHING fabricated: the pin affordance is only ever rendered for
+// a param that REALLY exists; a node with no Value/CV param ports renders no pin
+// section at all. This is a separate axis from the plugin `NodeParameterRow`
+// sliders below (no face-surfacing substrate yet — Phase 4), so those aren't
+// pinnable here.
 function FaceParamsList({ block }: { block: BlockData }) {
-  const setHiddenParams = useGraphStore((s) => s.setHiddenParams);
+  const pinnedIds = useFacePinStore(selectFacePins(block.id));
+  const setPinnedStore = useFacePinStore((s) => s.setPinned);
 
   const paramPorts = useMemo<Port[]>(
     () => block.ports.filter((p) => p.type === "value"),
     [block.ports],
   );
-  const hiddenSet = useMemo(
-    () => new Set(block.hiddenParams ?? []),
-    [block.hiddenParams],
+  const validIds = useMemo(
+    () => new Set(paramPorts.map((p) => p.id)),
+    [paramPorts],
   );
-  const pinnedCount = paramPorts.length - hiddenSet.size;
+  // Only count pins that still reference a real param port (a removed port's
+  // stale pin id matches nothing and is ignored).
+  const pinnedSet = useMemo(
+    () => new Set(pinnedIds.filter((id) => validIds.has(id))),
+    [pinnedIds, validIds],
+  );
+  const pinnedCount = pinnedSet.size;
 
-  // setHiddenParams takes the COMPLETE desired hidden set (not a delta), so we
-  // rebuild it from the current set on every toggle — optimistic + host stay in
-  // lock-step (identical contract to ParamConfigPopover.setShown).
   const setPinned = (portId: string, pinned: boolean) => {
-    const nextHidden = new Set(hiddenSet);
-    if (pinned) nextHidden.delete(portId);
-    else nextHidden.add(portId);
-    void setHiddenParams(block.id, Array.from(nextHidden));
+    setPinnedStore(block.id, portId, pinned);
   };
 
   return (
@@ -2057,7 +2061,7 @@ function FaceParamsList({ block }: { block: BlockData }) {
       </div>
       <div className="space-y-1">
         {paramPorts.map((port) => {
-          const pinned = !hiddenSet.has(port.id);
+          const pinned = pinnedSet.has(port.id);
           return (
             <div
               key={port.id}

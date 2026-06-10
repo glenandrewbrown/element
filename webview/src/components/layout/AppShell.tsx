@@ -1,9 +1,16 @@
-import { type ReactNode, useCallback, useRef } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useRef,
+  useState,
+  useEffect,
+} from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   useAppStore,
   PANEL_SNAP_W,
   clampPanelWidth,
+  resolveResponsivePanelLayout,
 } from "../../stores/useAppStore";
 import { usePerformStore, selectMapMode } from "../../stores/usePerformStore";
 import { Breadcrumb } from "./Breadcrumb";
@@ -313,10 +320,10 @@ export function AppShell({
 }: AppShellProps) {
   const mode = useAppStore((s) => s.mode);
   const leftOpen = useAppStore((s) => s.leftPanelOpen);
-  const rightOpen = useAppStore((s) => s.rightPanelOpen);
+  const rightOpenPersisted = useAppStore((s) => s.rightPanelOpen);
   const bottomOpen = useAppStore((s) => s.bottomPanelOpen);
-  const leftWidth = useAppStore((s) => s.leftWidth);
-  const rightWidth = useAppStore((s) => s.rightWidth);
+  const leftWidthPersisted = useAppStore((s) => s.leftWidth);
+  const rightWidthPersisted = useAppStore((s) => s.rightWidth);
   const togglePanel = useAppStore((s) => s.togglePanel);
   const requestFocusBrowserSearch = useAppStore(
     (s) => s.requestFocusBrowserSearch,
@@ -334,8 +341,40 @@ export function AppShell({
   const isEdit = mode === "edit";
   const bottomH = isEdit ? BOTTOM_EDIT_H : BOTTOM_PERFORM_H;
 
-  // Compute canvas insets — open panels use the persisted width, collapsed
-  // panels reserve the shared rail width so the canvas never overlaps the rail.
+  // ── Responsive panel layout (BUG-2) ──
+  // Track the live window width and derive EFFECTIVE rendered panel widths from
+  // it (clamp-on-render — the persisted `leftWidth`/`rightWidth` are NEVER
+  // overwritten, so a window-widen restores the user's chosen size). The right
+  // Inspector auto-collapses below the threshold and re-opens automatically when
+  // the window widens again — without touching the persisted open flag.
+  const [windowWidth, setWindowWidth] = useState(() =>
+    typeof window !== "undefined" ? window.innerWidth : 1280,
+  );
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onResize = () => setWindowWidth(window.innerWidth);
+    window.addEventListener("resize", onResize);
+    onResize();
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  const responsive = resolveResponsivePanelLayout({
+    windowWidth,
+    leftOpen,
+    rightOpen: rightOpenPersisted,
+    leftWidth: leftWidthPersisted,
+    rightWidth: rightWidthPersisted,
+  });
+  // Effective open state: the right panel renders as its rail when the window is
+  // too narrow, regardless of the persisted flag (re-openable — the persisted
+  // flag is untouched, so widening restores it).
+  const rightOpen = rightOpenPersisted && !responsive.shouldCollapseRight;
+  const leftWidth = responsive.leftWidth;
+  const rightWidth = responsive.rightWidth;
+
+  // Compute canvas insets — open panels use the effective (responsive) width,
+  // collapsed panels reserve the shared rail width so the canvas never overlaps
+  // the rail.
   const leftInset = leftOpen ? leftWidth : COLLAPSED_W;
   const rightInset = rightOpen ? rightWidth : COLLAPSED_W;
   const bottomInset = (bottomOpen ? bottomH : 0) + STATUS_H;
@@ -346,7 +385,17 @@ export function AppShell({
     togglePanel("left");
     requestFocusBrowserSearch();
   };
-  const expandRight = () => togglePanel("right");
+  // When the right panel is auto-collapsed (window too narrow) its persisted
+  // open flag is still TRUE, so a plain `togglePanel` would flip it CLOSED. In
+  // that state the rail's expand action instead forces a one-shot un-collapse
+  // for THIS width by ignoring the responsive collapse until the user resizes:
+  // we simply open the bottom-panel-free canvas by toggling only when the panel
+  // is genuinely persisted-closed; if it's auto-collapsed we no-op (the user
+  // must widen the window — the tooltip explains the threshold).
+  const expandRight = () => {
+    if (responsive.shouldCollapseRight && rightOpenPersisted) return;
+    togglePanel("right");
+  };
 
   // Resolve panel content by mode
   const leftContent = isEdit

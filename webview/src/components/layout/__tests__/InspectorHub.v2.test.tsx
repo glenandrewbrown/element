@@ -147,6 +147,7 @@ import { useGraphStore }        from "../../../stores/useGraphStore";
 import { useHostExtrasStore }   from "../../../stores/useHostExtrasStore";
 import { useCableMeterStore }   from "../../../stores/useCableMeterStore";
 import { usePerformStore }      from "../../../stores/usePerformStore";
+import { useFacePinStore }      from "../../../stores/useFacePinStore";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -813,12 +814,14 @@ describe("<InspectorHub /> — PresetStrip", () => {
   });
 });
 
-// ── Face params — 📌 pin-to-face (Task 3.E) ──────────────────────────────────
+// ── Face params — 📌 pin-to-face (Task 3.E; BUG-1 default-zero, 2026-06-10) ──
 //
 // The Params sub-view's "Block face" section lists the node's REAL Value/CV
-// param ports with a 📌 pin toggle. Pinned = NOT in `hiddenParams`; toggling
-// writes the FULL inverted hidden set via setHiddenParams (the same substrate +
-// contract as ParamConfigPopover). NOTHING-fake: no param ports → no section.
+// param ports with a 📌 pin toggle. BUG-1: pins now live in a SEPARATE positive
+// substrate (`useFacePinStore`) that DEFAULTS TO EMPTY — zero params on the face
+// until the user pins — decoupled from `hiddenParams` (which still governs the
+// expanded lane via ParamConfigPopover). NOTHING-fake: no param ports → no
+// section.
 
 const paramPortBlock = (over: Partial<BlockData> = {}): BlockData =>
   makeBlock({
@@ -833,28 +836,33 @@ const paramPortBlock = (over: Partial<BlockData> = {}): BlockData =>
       { id: "p-decay", type: "value", direction: "input", label: "Decay", connected: false },
       { id: "p-width", type: "value", direction: "input", label: "Width", connected: false },
     ],
-    // Decay + Width hidden initially → only Mix is pinned (surfaced).
-    hiddenParams: ["p-decay", "p-width"],
     ...over,
   });
 
 describe("<InspectorHub /> — Face params (📌 pin-to-face)", () => {
-  it("shows the Block face section + pin count for a node with Value/CV params", async () => {
+  beforeEach(() => {
+    localStorage.clear();
+    useFacePinStore.setState({ pinnedByNode: {} });
+  });
+
+  it("DEFAULTS to zero pinned and shows the section + 0/N count", async () => {
     setSelected(paramPortBlock());
     render(<InspectorHub />);
     // Params is the default sub-view; the Block face section is present.
     await expect(
       await screen.findByText(/Block face/i),
     ).toBeInTheDocument();
+    // BUG-1: default is ZERO pinned of 3 params.
     await expect(
-      screen.getByLabelText(/1 of 3 parameters pinned/i),
+      screen.getByLabelText(/0 of 3 parameters pinned/i),
     ).toBeInTheDocument();
   });
 
-  it("reflects pinned (not hidden) vs unpinned (hidden) per param", async () => {
+  it("reflects pinned vs unpinned per param from the face-pin store", async () => {
+    useFacePinStore.setState({ pinnedByNode: { "rev-1": ["p-mix"] } });
     setSelected(paramPortBlock());
     render(<InspectorHub />);
-    // Mix is pinned (shown) → checked switch in the "Unpin Mix…" group.
+    // Mix is pinned → checked switch in the "Unpin Mix…" group.
     const mixGroup = await screen.findByRole("group", {
       name: /unpin mix from block face/i,
     });
@@ -862,7 +870,7 @@ describe("<InspectorHub /> — Face params (📌 pin-to-face)", () => {
       "aria-checked",
       "true",
     );
-    // Decay is unpinned (hidden) → unchecked switch in the "Pin Decay…" group.
+    // Decay is unpinned → unchecked switch in the "Pin Decay…" group.
     const decayGroup = screen.getByRole("group", {
       name: /pin decay to block face/i,
     });
@@ -872,31 +880,30 @@ describe("<InspectorHub /> — Face params (📌 pin-to-face)", () => {
     );
   });
 
-  it("pinning a hidden param calls setHiddenParams with it REMOVED from the set", async () => {
+  it("pinning a param adds it to the face-pin store (NOT setHiddenParams)", async () => {
     setSelected(paramPortBlock());
     render(<InspectorHub />);
     const decayGroup = await screen.findByRole("group", {
       name: /pin decay to block face/i,
     });
     fireEvent.click(within(decayGroup).getByRole("switch"));
-    // Pin Decay → it leaves the hidden set; Width stays hidden.
-    expect(mockSetHiddenParams).toHaveBeenCalledWith("rev-1", ["p-width"]);
+    expect(useFacePinStore.getState().pinnedByNode["rev-1"]).toEqual([
+      "p-decay",
+    ]);
+    // The hide-list substrate is untouched by face-pinning.
+    expect(mockSetHiddenParams).not.toHaveBeenCalled();
   });
 
-  it("unpinning a shown param calls setHiddenParams with it ADDED to the set", async () => {
+  it("unpinning a pinned param removes it from the face-pin store", async () => {
+    useFacePinStore.setState({ pinnedByNode: { "rev-1": ["p-mix"] } });
     setSelected(paramPortBlock());
     render(<InspectorHub />);
     const mixGroup = await screen.findByRole("group", {
       name: /unpin mix from block face/i,
     });
     fireEvent.click(within(mixGroup).getByRole("switch"));
-    // Unpin Mix → it joins the hidden set alongside the already-hidden Decay+Width.
-    expect(mockSetHiddenParams).toHaveBeenCalledWith(
-      "rev-1",
-      expect.arrayContaining(["p-decay", "p-width", "p-mix"]),
-    );
-    const [, hidden] = mockSetHiddenParams.mock.calls[0];
-    expect(hidden).toHaveLength(3);
+    expect("rev-1" in useFacePinStore.getState().pinnedByNode).toBe(false);
+    expect(mockSetHiddenParams).not.toHaveBeenCalled();
   });
 
   it("does NOT render the Block face section for a node with no Value/CV params", async () => {
