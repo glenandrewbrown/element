@@ -31,3 +31,11 @@
 # sessiontreepanel.cpp:877 — Component debug name passed to Component("...") ctor.
 # JUCE Component names are used for AX/automation identity, not displayed to end users.
 # Note: also contains a pre-existing typo ("Pannel") — not fixing to avoid AX regressions.
+
+# ---------- Node (weak-name sentinel DETECTION, never displayed) ----------
+
+src/ui/element_webview_host.cpp|"Node"
+# element_webview_host.cpp:~6774 — loading-name emission compares against the legacy
+# "Node" default to DETECT a weak placeholder name and replace it with "Plugin".
+# The string is matched, never shown in the UI (same pattern as graphmanager.cpp's
+# weak-name re-affirm).

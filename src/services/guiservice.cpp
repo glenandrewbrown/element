@@ -26,6 +26,7 @@
 #include "appinfo.hpp"
 #include "engine/midipanic.hpp"
 #include "messages.hpp"
+#include "nodes/sandboxedprocessor.hpp"
 #include "services/sessionservice.hpp"
 #include "ui/aboutscreen.hpp"
 #include "ui/capslock.hpp"
@@ -575,6 +576,23 @@ void GuiService::presentPluginWindow (const Node& node, const bool focus)
     if (node.isIONode())
     {
         DBG ("[element] not showing pugin window for: " << node.getName());
+        return;
+    }
+
+    // An async-loading placeholder has no real editor yet — auto-opening here
+    // produces an EMPTY window titled with the plugin name (observed live with
+    // MAutoVolume). Skip; once the real processor swaps in, opening happens via
+    // double-click / Inspector (and sandboxed nodes route to the worker below).
+    if (node.data().hasProperty (tags::loading))
+        return;
+
+    // A sandboxed block has no in-process editor — its real GUI lives in the
+    // crash-isolated worker process. Route the open there (same path as
+    // elementOpenSandboxedEditor / the Inspector "Open editor window" button)
+    // and bail out so we never create an empty host-side PluginWindow frame.
+    if (auto* sbn = dynamic_cast<SandboxedProcessorNode*> (node.getObject()))
+    {
+        sbn->openEditor();
         return;
     }
 

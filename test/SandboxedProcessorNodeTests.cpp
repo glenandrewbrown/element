@@ -87,11 +87,15 @@ BOOST_FIXTURE_TEST_CASE (GetSandboxStateNoCrash, SandboxNodeFixture)
     BOOST_CHECK (true);
 }
 
-BOOST_FIXTURE_TEST_CASE (WantsContextReturnsFalse, SandboxNodeFixture)
+BOOST_FIXTURE_TEST_CASE (WantsContextReturnsTrue, SandboxNodeFixture)
 {
+    // wantsContext() MUST return true: GraphNode caches the context pointer at
+    // construction and derefs it on the audio thread for wantsContext()==false
+    // nodes — false here caused a SIGSEGV on first render (fixed 2026-06-10,
+    // commit 36e87345; see also AsyncPluginLoadTest's regression coverage).
     auto desc = makeDesc();
     SandboxedProcessorNode node (desc, manager);
-    BOOST_CHECK (! node.wantsContext());
+    BOOST_CHECK (node.wantsContext());
 }
 
 // ── Render with no plugin loaded outputs silence ──────────────────────────────

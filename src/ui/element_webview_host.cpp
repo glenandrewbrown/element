@@ -29,6 +29,7 @@
 #include "../services/deviceservice.hpp"
 #include "../services/mappingservice.hpp"
 #include "../services/oscservice.hpp"
+#include "../services/presetservice.hpp"
 #include "../services/sessionservice.hpp"
 #include <element/ui/web_content.hpp>
 #include "ui/graphmixerview.hpp"
@@ -3116,18 +3117,22 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
         });
 
     // T10 — Group selection into a Container. Resolves the selected uuids on the
-    // CURRENT board and calls EngineService::groupNodes, which runs fully
-    // synchronously on this (message) thread: the coalesced graph push is a
-    // scheduled message-thread timer and cannot fire mid-operation, so no extra
-    // snapshot-suppression is needed — the FIRST push the webview sees is the
-    // post-group one scheduled below.
+    // CURRENT board and dispatches a GroupNodesMessage through
+    // GuiService::handleMessage (P2-T16) — which performs the group inside ONE
+    // UndoManager transaction (wrapping EngineService::groupNodes) so a single
+    // Cmd-Z removes the Container and restores the previous state. handleMessage
+    // runs fully synchronously on this (message) thread: the coalesced graph push
+    // is a scheduled message-thread timer and cannot fire mid-operation, so no
+    // extra snapshot-suppression is needed — the FIRST push the webview sees is
+    // the post-group one scheduled below.
     //   args[0] = nodeUuids : String[]
     //   → { ok:true, containerId:String } | { ok:false, reason:String }
     //     reason ∈ { "no-session","no-board","cv-boundary","ineligible" }.
-    //     groupNodes returns an invalid Node for BOTH the CV-boundary refusal
-    //     and the ineligible/<2 refusals; we cannot distinguish them post-hoc,
-    //     so the generic refusal reports "ineligible". (The webview gates CV
-    //     boundaries up front; this is the honest C++ backstop.)
+    //     groupNodes returns an invalid Node (→ null result uuid) for BOTH the
+    //     CV-boundary refusal and the ineligible/<2 refusals; we cannot
+    //     distinguish them post-hoc, so the generic refusal reports "ineligible".
+    //     (The webview gates CV boundaries up front; this is the honest C++
+    //     backstop.)
     registerFn (
         Identifier ("elementGroupNodes"),
         [this, postCompletion] (const Array<var>& args, auto completion) {
@@ -3159,8 +3164,8 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                 return;
             }
 
-            auto* es = context.services().find<EngineService>();
-            if (es == nullptr)
+            auto* gui = context.services().find<GuiService>();
+            if (gui == nullptr)
             {
                 fail ("ineligible");
                 return;
@@ -3174,15 +3179,26 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                     uuids.add (Uuid (s));
             }
 
-            const Node container (es->groupNodes (board, uuids));
-            if (! container.isValid())
+            // P2-T16 — route the group through the SAME undoable pipeline every
+            // graph edit uses: GuiService::handleMessage performs the action
+            // inside one UndoManager::beginNewTransaction(), so a single Cmd-Z
+            // removes the Container and restores the previous state (and redo
+            // re-applies it). handleMessage runs synchronously on this (message)
+            // thread; the action writes the created Container's uuid into
+            // msg.result, which we read back here to answer the webview.
+            GroupNodesMessage msg (board, uuids);
+            gui->handleMessage (msg);
+
+            if (msg.result == nullptr || msg.result->isNull())
             {
                 fail ("ineligible");
                 return;
             }
 
             res->setProperty ("ok", true);
-            res->setProperty ("containerId", container.getUuidString());
+            // Match Node::getUuidString() exactly (dashless 32-char hex, the form
+            // the webview keys nodes by) — NOT toDashedString().
+            res->setProperty ("containerId", msg.result->toString());
             scheduleGraphPush (40);
             postCompletion (completion, var (res.get()));
         });
@@ -5666,6 +5682,137 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             postCompletion (completion, ok);
         });
 
+    // -----------------------------------------------------------------------
+    // Block preset bridge (P3-T21)
+    // All four functions go through PresetService which owns the DataPath and
+    // the format/identifier compatibility guard.  They are synchronous on the
+    // message thread — preset files are small (<20 KB) so disk I/O is fine.
+
+    // elementBlockPresetSave(uuid, name) → bool
+    //   Flush node state to disk as a named preset.
+    //   args[0] = nodeUuid : String
+    //   args[1] = name     : String (non-empty)
+    //   Returns true when the preset file was written.
+    registerFn (
+        Identifier ("elementBlockPresetSave"),
+        [this, postCompletion] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 2)
+            {
+                const String uuid (args[0].toString());
+                const String name (args[1].toString().trim());
+                if (name.isNotEmpty())
+                    if (auto sess = context.session())
+                    {
+                        const Graph G (currentBoard());
+                        const Node node = findNodeByUuidInGraph (G, uuid);
+                        if (node.isValid())
+                            if (auto* svc = context.services().find<PresetService>())
+                                ok = svc->saveBlockPreset (node, name);
+                    }
+            }
+            postCompletion (completion, ok);
+        });
+
+    // elementBlockPresetList(pluginId) → JSON array of preset name strings
+    //   args[0] = pluginId : String  (the identifier stored on the block,
+    //                                  e.g. "AudioUnit:Kontakt:...")
+    //   The caller should resolve the format from the block's data before
+    //   calling; alternatively pass args[1] = format : String.  When args[1]
+    //   is absent the format is resolved from the first matching live node
+    //   on the current board, or falls back to "VST3".
+    //   Returns JSON array, e.g. ["Clean", "Warm Bass"], or "[]" on error.
+    registerFn (
+        Identifier ("elementBlockPresetList"),
+        [this, postCompletion] (const Array<var>& args, auto completion) {
+            StringArray names;
+            if (args.size() >= 1)
+            {
+                const String identifier (args[0].toString());
+                String format = args.size() >= 2 ? args[1].toString() : String();
+                // Resolve format from a live node if the caller did not supply it.
+                if (format.isEmpty())
+                    if (auto sess = context.session())
+                    {
+                        const Graph G (currentBoard());
+                        for (int i = 0; i < G.getNumNodes(); ++i)
+                        {
+                            const Node n = G.getNode (i);
+                            if (n.getIdentifier().toString() == identifier)
+                            {
+                                format = n.getFormat().toString();
+                                break;
+                            }
+                        }
+                    }
+                if (format.isEmpty())
+                    format = "VST3";
+                if (auto* svc = context.services().find<PresetService>())
+                    names = svc->listBlockPresets (format, identifier);
+            }
+            Array<var> arr;
+            for (const auto& n : names)
+                arr.add (var (n));
+            postCompletion (completion, JSON::toString (var (arr)));
+        });
+
+    // elementBlockPresetLoad(uuid, name) → bool
+    //   Apply a saved preset to a live block.  Compatibility is enforced:
+    //   the preset's format+identifier must match the block's.
+    //   args[0] = nodeUuid     : String
+    //   args[1] = presetName   : String
+    //   Returns true when the state was applied.
+    registerFn (
+        Identifier ("elementBlockPresetLoad"),
+        [this, postCompletion] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 2)
+            {
+                const String uuid (args[0].toString());
+                const String name (args[1].toString().trim());
+                if (name.isNotEmpty())
+                    if (auto sess = context.session())
+                    {
+                        const Graph G (currentBoard());
+                        Node node = findNodeByUuidInGraph (G, uuid);
+                        if (node.isValid())
+                            if (auto* svc = context.services().find<PresetService>())
+                                ok = svc->loadBlockPreset (node, name);
+                    }
+            }
+            if (ok)
+                scheduleGraphPush (40);
+            postCompletion (completion, ok);
+        });
+
+    // elementBlockPresetSetDefault(uuid) → string | false
+    //   Save the block's current state as the default preset for its plugin.
+    //   The next time the same plugin is added, the controller may call
+    //   elementBlockPresetLoad(newUuid, returnedName) to auto-apply.
+    //   args[0] = nodeUuid : String
+    //   Returns the preset name string on success, false on failure.
+    registerFn (
+        Identifier ("elementBlockPresetSetDefault"),
+        [this, postCompletion] (const Array<var>& args, auto completion) {
+            String presetName;
+            if (args.size() >= 1)
+            {
+                const String uuid (args[0].toString());
+                if (auto sess = context.session())
+                {
+                    const Graph G (currentBoard());
+                    const Node node = findNodeByUuidInGraph (G, uuid);
+                    if (node.isValid())
+                        if (auto* svc = context.services().find<PresetService>())
+                            presetName = svc->setDefaultForPlugin (node);
+                }
+            }
+            if (presetName.isNotEmpty())
+                postCompletion (completion, var (presetName));
+            else
+                postCompletion (completion, var (false));
+        });
+
     if (! skipBrowser)
     {
         browser = std::make_unique<WebBrowserComponent> (opts);
@@ -6738,12 +6885,6 @@ String ElementWebViewHost::buildActiveGraphJson() const
         const Node n (G.getNode (i));
         DynamicObject::Ptr b (new DynamicObject());
         b->setProperty ("id", n.getUuidString());
-        // CONTRACT 2 — getDisplayName() falls back to the live plugin name when
-        // tags::name is empty / never backfilled, so a freshly added plugin block
-        // shows its real name (e.g. "Kontakt") instead of the literal "Node"
-        // default or blank. This is the field the canvas Block title, the editor
-        // tab strip, and the docked-editor drag-handle all read.
-        b->setProperty ("name", n.getDisplayName());
 
         // Wave-3 Phase 4 — transient async-load lifecycle state. While an external
         // plugin's real processor is still being instantiated, GraphManager marks
@@ -6756,6 +6897,39 @@ String ElementWebViewHost::buildActiveGraphJson() const
         const bool nodeIsLoading = (bool) n.getProperty (tags::loading, false);
         if (nodeIsLoading)
             b->setProperty ("loadState", "loading");
+
+        // CONTRACT 2 — name emission. For a READY node, getDisplayName() is the
+        // right accessor: it reads tags::name first (user rename / catalog name),
+        // then falls back to the live processor's getName() for built-ins, and
+        // finally runs cleanPluginDisplayName() to strip path-like suffixes.
+        //
+        // During LOADING the live processor is still the PlaceholderProcessor whose
+        // getName() can return a generic string ("Placeholder", etc.). We must NOT
+        // let that fall-through pollute the displayed name. GraphManager stamps
+        // tags::name with the real plugin name (e.g. "Kontakt") at placeholder
+        // creation time, so during loading we read tags::name directly via getName()
+        // and clean it ourselves — bypassing the live-processor fallback entirely.
+        // Weak sentinels (empty, "Node", "Plugin") are replaced with "Plugin" so the
+        // block always shows something meaningful. For a READY node the normal
+        // getDisplayName() path is unchanged.
+        {
+            String blockName;
+            if (nodeIsLoading)
+            {
+                blockName = cleanPluginDisplayName (n.getName());
+                const bool weak = blockName.isEmpty()
+                                  || blockName.equalsIgnoreCase ("Node")
+                                  || blockName == "Plugin"
+                                  || blockName.equalsIgnoreCase ("Placeholder");
+                if (weak)
+                    blockName = "Plugin";
+            }
+            else
+            {
+                blockName = n.getDisplayName();
+            }
+            b->setProperty ("name", blockName);
+        }
 
         // P0 — internal node identifier (e.g. "element.compare"). Emitted for ALL
         // blocks (harmless for third-party — just the file/identifier string). Lets

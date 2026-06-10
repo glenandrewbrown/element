@@ -60,6 +60,12 @@ class SandboxedProcessorNode : public Processor,
                                 public SandboxHost::Listener
 {
 public:
+    /** Tag for the deferred-launch constructor (T1/T2 message-thread-freeze fix):
+        build the node + SandboxHost WITHOUT launching the worker. The owner then
+        drives beginLaunch()/runLaunchHandshake()/finishLaunch() across the message
+        + pool threads so the blocking handshake never freezes the message thread. */
+    struct DeferLaunch {};
+
     //==========================================================================
     /** Create a sandboxed processor for the given plugin. */
     SandboxedProcessorNode (uint32 nodeId,
@@ -70,7 +76,38 @@ public:
     SandboxedProcessorNode (const juce::PluginDescription& pluginDesc,
                              PluginManager& plugins);
 
+    /** DEFERRED-LAUNCH ctor: constructs the node + SandboxHost but does NOT launch
+        the worker (no blocking handshake in the ctor). Launch is driven later via
+        beginLaunch() / runLaunchHandshake() / finishLaunch(). */
+    SandboxedProcessorNode (const juce::PluginDescription& pluginDesc,
+                             PluginManager& plugins,
+                             DeferLaunch);
+
     ~SandboxedProcessorNode() override;
+
+    //==========================================================================
+    // Deferred launch (only valid on a node built with the DeferLaunch ctor).
+    /** MESSAGE THREAD: arm the deferred launch. Returns false if the host could not
+        transition to Starting (already launching/launched). */
+    bool beginLaunch();
+
+    /** POOL THREAD: run the BLOCKING worker spawn + connect handshake. Returns the
+        handshake result. Pair with finishLaunch() on the message thread. */
+    bool runLaunchHandshake();
+
+    /** MESSAGE THREAD: finish the launch. On success this also issues the (non-
+        blocking) loadPlugin so the worker begins loading the plugin in its own
+        process. After this returns, getSandboxState() reflects Ready/Loading on
+        success or Idle on handshake failure. */
+    void finishLaunch (bool handshakeOk);
+
+    /** Deferred-launch progress (lets the message-thread watcher distinguish "still
+        launching" from "launch failed"). */
+    enum class LaunchPhase { NotStarted, InFlight, Succeeded, Failed };
+    LaunchPhase getLaunchPhase() const noexcept
+    {
+        return static_cast<LaunchPhase> (launchPhase.load());
+    }
 
     //==========================================================================
     /** Returns the plugin description. */
@@ -158,6 +195,10 @@ private:
     std::atomic<bool> hasError { false };
     juce::String lastError;
 
+    // Deferred-launch progress (atomic int mirroring LaunchPhase). Set on the
+    // message thread by begin/finishLaunch; read by the watcher (message thread).
+    std::atomic<int> launchPhase { static_cast<int> (LaunchPhase::NotStarted) };
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SandboxedProcessorNode)
 };
 
@@ -181,6 +222,65 @@ inline SandboxedProcessorNode::SandboxedProcessorNode (
     PluginManager& plugins)
     : SandboxedProcessorNode (0, pluginDesc, plugins)
 {
+}
+
+inline SandboxedProcessorNode::SandboxedProcessorNode (
+    const juce::PluginDescription& pluginDesc,
+    PluginManager& plugins,
+    DeferLaunch)
+    : Processor (0),
+      pluginManager (plugins),
+      description (pluginDesc)
+{
+    setName (description.name + " (Sandboxed)");
+
+    // Build the host + register as listener, but DO NOT launch (no blocking
+    // handshake in the ctor). The owner drives launch across threads.
+    sandbox = std::make_unique<SandboxHost> (pluginManager);
+    sandbox->addListener (this);
+}
+
+inline bool SandboxedProcessorNode::beginLaunch()
+{
+    if (! sandbox)
+        return false;
+    const bool armed = sandbox->beginDeferredLaunch();
+    if (armed)
+        launchPhase.store (static_cast<int> (LaunchPhase::InFlight));
+    return armed;
+}
+
+inline bool SandboxedProcessorNode::runLaunchHandshake()
+{
+    // POOL THREAD: the single blocking primitive.
+    if (! sandbox)
+        return false;
+    return sandbox->runWorkerHandshake();
+}
+
+inline void SandboxedProcessorNode::finishLaunch (bool handshakeOk)
+{
+    // MESSAGE THREAD.
+    if (! sandbox)
+        return;
+
+    sandbox->finishDeferredLaunch (handshakeOk);
+
+    if (! handshakeOk)
+    {
+        hasError.store (true);
+        lastError = "Failed to launch sandbox worker process";
+        juce::Logger::writeToLog ("[SandboxedProcessor] " + lastError);
+        launchPhase.store (static_cast<int> (LaunchPhase::Failed));
+        return;
+    }
+
+    launchPhase.store (static_cast<int> (LaunchPhase::Succeeded));
+
+    // Worker is connected (Ready) — issue the non-blocking plugin load. loadPlugin
+    // is a pipe sendMessage + a `loadedPlugin = desc` write; running it here keeps
+    // that non-atomic write on the message thread (never the pool thread).
+    sandbox->loadPlugin (description);
 }
 
 inline SandboxedProcessorNode::~SandboxedProcessorNode()

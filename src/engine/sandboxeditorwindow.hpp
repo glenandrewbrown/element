@@ -48,7 +48,8 @@ void sandboxWorkerActivateForEditor();
 /** Owns the worker-side plugin editor window. One instance per worker (the
     sandbox hosts a single plugin). Message-thread only — AudioProcessorEditor +
     DocumentWindow are not thread-safe. */
-class SandboxEditorWindow final : public juce::DocumentWindow
+class SandboxEditorWindow final : public juce::DocumentWindow,
+                                  private juce::ComponentListener
 {
 public:
     /** Called when the user closes the window (close button). */
@@ -65,14 +66,22 @@ public:
         setUsingNativeTitleBar (true);
 
         const bool resizable = editor->isResizable();
-        // setContentOwned takes ownership of the editor and sizes the window to it.
+        // setContentOwned takes ownership of the editor and sizes the window to
+        // the editor's current bounds (synchronous case). For AU/VST editors
+        // that resize asynchronously after the view attaches, we also install a
+        // ComponentListener and track further size changes in
+        // componentMovedOrResized below.
         setContentOwned (editor, true);
         setResizable (resizable, false);
         setAlwaysOnTop (false);
+
+        // Attach AFTER setContentOwned so we don't fire for the initial layout.
+        editor->addComponentListener (this);
     }
 
     ~SandboxEditorWindow() override
     {
+        detachEditorListener();
         clearContentComponent();
     }
 
@@ -83,6 +92,41 @@ public:
     }
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SandboxEditorWindow)
+
+private:
+    // Detach the ComponentListener from the current content editor, if any.
+    // Must be called before clearContentComponent() and in the destructor.
+    void detachEditorListener()
+    {
+        if (auto* editor = dynamic_cast<juce::AudioProcessorEditor*> (getContentComponent()))
+            editor->removeComponentListener (this);
+    }
+
+    // juce::ComponentListener — called on the message thread whenever the
+    // editor moves or resizes (e.g. AU async layout after NSView attachment).
+    void componentMovedOrResized (juce::Component& component, bool /*wasMoved*/, bool wasResized) override
+    {
+        if (! wasResized)
+            return;
+
+        // Resize the DocumentWindow to wrap the editor's new size.
+        const int w = component.getWidth();
+        const int h = component.getHeight();
+        if (w > 0 && h > 0)
+        {
+            setSize (w + getContentComponentBorder().getLeftAndRight(),
+                     h + getContentComponentBorder().getTopAndBottom() + getTitleBarHeight());
+            juce::Logger::writeToLog ("[sandbox-editor-window] async resize -> "
+                                      + juce::String (w) + "x" + juce::String (h));
+        }
+    }
+
+    // Called when the editor component itself is destroyed before the window
+    // (should not happen in normal flow, but guard defensively).
+    void componentBeingDeleted (juce::Component& component) override
+    {
+        component.removeComponentListener (this);
+    }
 };
 
 //==============================================================================

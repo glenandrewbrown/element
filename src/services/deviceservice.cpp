@@ -127,7 +127,14 @@ void DeviceService::add (const File& file)
     }
     else
     {
-        AlertWindow::showMessageBoxAsync (AlertWindow::WarningIcon, "Open Controller Device", "Could not open the controller device file.");
+        // Only raise the modal alert inside the running app. Under the unit-test
+        // runner there is no JUCEApplication and no human to dismiss it — the
+        // (a)sync message box degrades to a modal loop and hangs the suite
+        // (DeviceServiceControllerTests/add_invalid_file_is_safe).
+        if (juce::JUCEApplicationBase::getInstance() != nullptr)
+            AlertWindow::showMessageBoxAsync (AlertWindow::WarningIcon, "Open Controller Device", "Could not open the controller device file.");
+        else
+            Logger::writeToLog ("[devices] could not open controller device file: " + file.getFullPathName());
     }
 }
 

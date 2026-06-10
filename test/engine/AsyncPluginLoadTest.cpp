@@ -475,22 +475,27 @@ BOOST_AUTO_TEST_CASE (sandbox_route_produces_loading_placeholder_with_final_uuid
 }
 
 // (c) FALLBACK + uuid preserved: when the sandbox is requested but the worker
-// cannot launch (the headless CI case — the worker binary is absent, so
-// SandboxedProcessorNode reports Error/Idle), the add degrades to the in-process
-// path. The node still loads, the uuid is PRESERVED across the swap (no Block
-// detach), and SandboxEvent::FellBackInProcess is emitted exactly once so the
-// webview can show the "unprotected" badge. This deterministically exercises the
-// fallback branch (kickInProcessFallback) without a real worker.
+// cannot launch, the add degrades to the in-process path. The node still loads,
+// the uuid is PRESERVED across the swap (no Block detach), and
+// SandboxEvent::FellBackInProcess is emitted exactly once so the webview can show
+// the "unprotected" badge.
+//
+// T1/T2 MIGRATION (2026-06-10): the launch handshake is now DEFERRED to a pool
+// thread (it no longer blocks the message thread), and the fallback is driven
+// ASYNCHRONOUSLY — the FellBackInProcess badge and the uuid-preserving swap arrive
+// only after the JUCE message loop is pumped (the in-process createGraphNodeAsync
+// completion + the watcher Timer both post to the message thread). The seam
+// forceWorkerLaunchFailure makes kickSandboxedInstantiation refuse the worker
+// route, so the fallback is exercised deterministically without a real worker; the
+// assertions below now require the loop to be pumped before the fallback completes
+// (it is NOT synchronous with addNode anymore).
 BOOST_AUTO_TEST_CASE (sandbox_unavailable_falls_back_in_process_preserving_uuid)
 {
     ensureTestFormatRegistered();
     ManagedGraph g;
     g.mgr.setSandboxPolicyForTesting ([] (const PluginDescription&) { return true; });
-    // Force a deterministic worker LAUNCH failure: kickSandboxedInstantiation skips
-    // the SandboxedProcessorNode ctor and calls kickInProcessFallback directly.
-    // This exercises the fallback path without depending on worker binary presence
-    // (on CI the harness re-execs test_element as the worker, which launches fine
-    // but fails the plugin LOAD — a different code path that is NOT the fallback).
+    // Force a deterministic worker LAUNCH refusal so kickSandboxedInstantiation
+    // takes the fallback without depending on worker binary presence.
     g.mgr.setForceWorkerLaunchFailureForTesting (true);
 
     // Capture FellBackInProcess emissions for the under-test node's lifetime.
@@ -510,9 +515,14 @@ BOOST_AUTO_TEST_CASE (sandbox_unavailable_falls_back_in_process_preserving_uuid)
     const String uuidBefore = before.getUuidString();
     const juce::ValueTree treeBefore = before.data();
 
-    // Pump the loop: the synchronous launch-failure (or the watcher) kicks the
-    // in-process fallback, whose async completion fires on the message thread and
-    // runs the uuid-preserving swap → loading clears.
+    // The fallback has NOT completed synchronously with addNode: the node is still
+    // a loading placeholder and the badge has not yet fired (both are posted to the
+    // message thread by createGraphNodeAsync's completion).
+    BOOST_CHECK ((bool) before.getProperty (tags::loading, false));
+    BOOST_CHECK_EQUAL (fellBack.load(), 0);
+
+    // Pump the loop: the fallback's async completion fires on the message thread and
+    // runs the uuid-preserving swap → loading clears, badge fires.
     const bool ready = pumpUntil ([&] {
         const Node n (g.modelNodeByUuid (uuidBefore));
         return n.isValid() && ! (bool) n.getProperty (tags::loading, false);

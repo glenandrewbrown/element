@@ -291,6 +291,13 @@ GraphManager::GraphManager (GraphNode& pg, PluginManager& pm)
 
 GraphManager::~GraphManager()
 {
+    // Drain the deferred-launch pool FIRST: interrupt + join any in-flight worker
+    // handshake job so it cannot run against torn-down members. The job captures a
+    // WeakReference<GraphManager> + a node ProcessorPtr, so a job that already
+    // posted its finishLaunch callAsync is still safe (the WeakReference nulls),
+    // but joining here keeps the running handshake from racing teardown.
+    sandboxLaunchPool.removeAllJobs (true, 5000);
+
     // Make sure to dereference Processor's so we don't leak memory
     // If you get warnings by juce's leak detector about graph related
     // objects, then there's probably "object" properties lingering that
@@ -729,6 +736,30 @@ private:
             return;
         }
 
+        // DEFERRED LAUNCH (T1/T2): the blocking worker handshake runs on a pool
+        // thread; until it completes the node sits in NotStarted/InFlight. The host
+        // State is Idle/Starting during that window — which must NOT be read as a
+        // crash. Gate the fallback on the launch PHASE: only a definitively Failed
+        // launch (handshake returned false) falls back; while it is still in flight
+        // we keep waiting (bounded by the deadline below).
+        const auto phase = node->getLaunchPhase();
+        if (phase == SandboxedProcessorNode::LaunchPhase::Failed)
+        {
+            fallbackInProcess();
+            return;
+        }
+        if (phase == SandboxedProcessorNode::LaunchPhase::NotStarted
+            || phase == SandboxedProcessorNode::LaunchPhase::InFlight)
+        {
+            // Worker not yet connected. Do not interpret Idle/Starting as a crash.
+            // Bound the wait so a wedged handshake still degrades to in-process.
+            if (juce::Time::getMillisecondCounter() > deadlineMs)
+                fallbackInProcess();
+            return;
+        }
+
+        // Launch SUCCEEDED — the worker is connected and loading the plugin. From
+        // here the host State transitions drive the outcome as before.
         const auto state = node->getSandboxState();
 
         // Worker died, or a launch that briefly looked ok went Error → fall back.
@@ -745,8 +776,17 @@ private:
         // NodeModelUpdater installed by the swap's setupNode re-syncs the model
         // ports when it lands, so cables become attachable a tick later even if
         // the swap runs before PluginInfo. Run the IDENTICAL uuid-preserving swap.
+        //
+        // Belt-and-suspenders (T1 item 5): require the Loaded/Active observation to
+        // be STABLE across >=2 consecutive polls before swapping. State::Active
+        // already implies the host's single post-launch prepare ran (handleWorker
+        // Message::PluginLoaded gates pluginLoaded/Active on preparedSinceLaunch),
+        // so this only guards against a transient first-observation glitch.
         if (node->isPluginLoaded() && state == SandboxHost::State::Active)
         {
+            if (++stableLoadedPolls < 2)
+                return; // wait one more poll to confirm a stable Loaded state
+
             if (auto* m = manager.get())
             {
                 // Re-resolve the placeholder's CURRENT engine id by uuid (stable
@@ -774,9 +814,37 @@ private:
     uint32 phId;
     PluginDescription description;
     const juce::uint32 deadlineMs;
+    int stableLoadedPolls = 0; // T1 item 5: require >=2 consecutive Loaded polls
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SandboxLoadWatcher)
 };
+
+bool GraphManager::installSessionLoadingPlaceholder (Node& node, const PluginDescription& desc)
+{
+    juce::ignoreUnused (desc);
+
+    // Build a PlaceholderProcessor from the node's SAVED port topology so the saved
+    // cables connect to it immediately during setNodeModel's arc loop (they then
+    // survive the swap, which preserves the engine id + re-resolves arcs). Add it
+    // under the node's existing (saved) engine id so arcs resolve to the right node.
+    auto* ph = new PlaceholderProcessor();
+    ph->setupFor (node, processor.getSampleRate(), processor.getBlockSize());
+    auto* added = processor.addNode (new AudioProcessorNode (node.getNodeId(), ph), node.getNodeId());
+    if (added == nullptr)
+        return false; // caller falls through to the synchronous createFilter path
+
+    // Stamp the engine object + a fresh updater for the placeholder, keep the saved
+    // id, and mark the node transiently LOADING (stripped on save by
+    // sanitizeProperties). uuid / position / persisted state are left untouched.
+    ValueTree data (node.data());
+    data.setProperty (tags::id, static_cast<int64> (added->nodeId), nullptr)
+        .setProperty (tags::type, added->getTypeString(), nullptr)
+        .setProperty (tags::object, added, nullptr)
+        .setProperty (tags::updater, new NodeModelUpdater (*this, data, added), nullptr)
+        .setProperty (tags::loading, true, nullptr);
+
+    return true;
+}
 
 void GraphManager::kickSandboxedInstantiation (const String& finalUuid, uint32 placeholderId, const PluginDescription& desc)
 {
@@ -789,32 +857,59 @@ void GraphManager::kickSandboxedInstantiation (const String& finalUuid, uint32 p
         return;
     }
 
-    // Construct the sandboxed node — NON-BLOCKING: this launches the worker and
-    // fires an async loadPlugin (the heavy load runs in the child process). No
-    // host-thread plugin instantiation happens here, so the message thread stays
-    // free regardless of how heavy the plugin is.
-    ProcessorPtr sandboxNode (new SandboxedProcessorNode (desc, pluginManager));
+    // Construct the sandboxed node WITHOUT launching (DeferLaunch) — the ctor is now
+    // free of the blocking connectToPipe handshake. THE FREEZE FIX (T1): the
+    // handshake (SandboxedProcessorNode::runLaunchHandshake →
+    // ChildProcessCoordinator::launchWorkerProcess, bounded by EL_SANDBOX_TIMEOUT_MS)
+    // is dispatched to sandboxLaunchPool (a background thread). The message thread
+    // therefore returns to its loop immediately, no matter how slow the handshake is.
+    auto* rawNode = new SandboxedProcessorNode (desc, pluginManager,
+                                                SandboxedProcessorNode::DeferLaunch {});
+    ProcessorPtr sandboxNode (rawNode);
 
-    // Launch failure is observable synchronously (mirrors createSandboxedGraphNode):
-    // Idle/Error means the worker binary couldn't start (e.g. unsigned helper / P2
-    // not done). Fall back to the in-process async path immediately + emit the
-    // honesty badge so the user is told they are unprotected. `sandboxNode` drops
-    // here → its dtor shuts the (failed) worker down.
-    const auto state = sandboxNode != nullptr
-        ? dynamic_cast<SandboxedProcessorNode*> (sandboxNode.get())->getSandboxState()
-        : SandboxHost::State::Error;
-
-    if (state == SandboxHost::State::Idle || state == SandboxHost::State::Error)
+    // Arm the launch on the MESSAGE THREAD (atomic state → Starting + LaunchPhase
+    // InFlight). This is a non-blocking atomic arm, NOT the handshake. If the host
+    // refuses (already launching — should not happen for a fresh node), fall back
+    // immediately (no watcher armed yet → no double fallback).
+    if (! rawNode->beginLaunch())
     {
-        sandboxNode = nullptr; // tear down the failed worker before re-kicking
         kickInProcessFallback (finalUuid, placeholderId, desc);
         return;
     }
 
-    // Worker launched + plugin load is in flight in the child process. Arm a
-    // message-thread poll-timer that runs the uuid-preserving swap once the worker
-    // reports loaded (or falls back if it crashes / times out).
+    // Arm the watcher BEFORE dispatching the handshake job, so the readiness/
+    // fallback poll is already running when the handshake completes. The watcher
+    // gates on the node's LaunchPhase (InFlight → keep waiting; Failed → fall back),
+    // so observing it during the launch window is safe.
     sandboxWatchers.add (new SandboxLoadWatcher (*this, sandboxNode, finalUuid, placeholderId, desc));
+
+    // Dispatch the BLOCKING handshake to the pool. The job keeps the node alive via
+    // a captured ProcessorPtr and NEVER touches the graph/nodes/ValueTrees — the
+    // RT-threading contract (the message-thread watcher is the sole graph mutator).
+    // The optional test stall proves the message thread did not block. On
+    // completion it posts finishLaunch() back to the MESSAGE THREAD (loadPlugin's
+    // non-atomic write must run there). A WeakReference makes a teardown-mid-launch
+    // post a safe no-op; the captured node ProcessorPtr keeps the node alive for the
+    // callAsync regardless.
+    const int stallMs = forceSlowWorkerLaunchMs;
+    juce::WeakReference<GraphManager> weakThis (this);
+    ProcessorPtr nodeRef (sandboxNode);
+    sandboxLaunchPool.addJob ([weakThis, nodeRef, stallMs]
+    {
+        if (stallMs > 0)
+            juce::Thread::sleep (stallMs);
+
+        auto* node = dynamic_cast<SandboxedProcessorNode*> (nodeRef.get());
+        const bool ok = node != nullptr && node->runLaunchHandshake();
+
+        juce::MessageManager::callAsync ([weakThis, nodeRef, ok]
+        {
+            if (weakThis == nullptr)
+                return; // GraphManager gone — node released with nodeRef on scope exit.
+            if (auto* n = dynamic_cast<SandboxedProcessorNode*> (nodeRef.get()))
+                n->finishLaunch (ok);
+        });
+    });
 }
 
 void GraphManager::kickInProcessFallback (const String& finalUuid, uint32 currentId, const PluginDescription& desc)
@@ -987,7 +1082,13 @@ void GraphManager::swapInLoadedProcessor (const String& nodeUuid, uint32 placeho
     //    addNode adopts the processor into the GraphNode's ReferenceCountedArray;
     //    the local ProcessorPtr then just holds an extra reference. ──
     processor.removeNode (placeholderId);
-    auto* added = processor.addNode (realProcessor.get(), 0);
+    // Reuse the SAME engine id the placeholder held (it is now free). This keeps
+    // tags::id stable across the swap so SESSION-LOAD cables — which were wired to
+    // the placeholder under this id during setNodeModel — stay valid (T2). For the
+    // live-add path the loading node has zero cables, so reusing vs. minting a new
+    // id is behaviourally identical there; the uuid (not the int id) is what the
+    // React Block keys on, and it is preserved either way.
+    auto* added = processor.addNode (realProcessor.get(), placeholderId);
     if (added == nullptr)
     {
         // Engine refused the add (should not happen) — treat as failure.
@@ -1036,6 +1137,13 @@ void GraphManager::swapInLoadedProcessor (const String& nodeUuid, uint32 placeho
 
     if (added->isSubGraph())
         bindings.add (new Binding (*this, added, node));
+
+    // Re-resolve any cables that were parked as "missing" while this node loaded
+    // (T2 session-load: a saved arc to/from a port topology that only fully matched
+    // once the real plugin's ports replaced the placeholder's). processorArcsChanged
+    // retries every tags::missing arc against the now-real ports. Harmless on the
+    // live-add path (a loading node has zero cables → the missing loop is a no-op).
+    processorArcsChanged();
 
     // Clear the transient loading flag LAST → the next buildActiveGraphJson push
     // emits real ports + loadState:"ready" and the Block re-renders to its normal
@@ -1177,6 +1285,31 @@ void GraphManager::setNodeModel (const Node& node)
     {
         Node node (nodes.getChild (i), false);
         const PluginDescription desc (pluginManager.findDescriptionFor (node));
+
+        // T2 — SESSION-LOAD async + crash-tolerant sandbox route. A heavy AU in a
+        // saved session must NOT freeze boot: route external sandboxed nodes through
+        // the SAME deferred-launch + watcher machinery as a live add (T1), so the
+        // message thread never blocks on createSandboxedGraphNode's handshake. The
+        // node keeps a LOADING placeholder (zero connectable ports) until the worker
+        // reports loaded; the uuid-preserving swap then restores its real ports and
+        // re-resolves any cables that were parked as "missing" during load. If the
+        // worker won't load, it degrades to the in-process path + FellBackInProcess
+        // badge — exactly the live-add behaviour. Internal/IO nodes (format ==
+        // nullptr) and non-sandboxed plugins stay on the unchanged synchronous path.
+        const bool externalFormat =
+            pluginManager.getAudioPluginFormat (desc.pluginFormatName) != nullptr;
+        const bool sandboxThisNode = externalFormat
+            && (sandboxPolicyOverride ? sandboxPolicyOverride (desc)
+                                      : Settings().shouldSandboxPlugin (desc));
+
+        if (sandboxThisNode && installSessionLoadingPlaceholder (node, desc))
+        {
+            // Placeholder installed in-place (uuid preserved). Kick the deferred
+            // out-of-process load; the watcher drives the swap on the message thread.
+            kickSandboxedInstantiation (node.getUuidString(), node.getNodeId(), desc);
+            continue;
+        }
+
         if (ProcessorPtr obj = createFilter (&desc, 0, 0, node.getNodeId()))
         {
             setupNode (node.data(), obj);

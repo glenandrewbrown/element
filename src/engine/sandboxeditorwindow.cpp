@@ -66,10 +66,10 @@ bool openEditorWindow (juce::AudioProcessor* proc, int x, int y, int& outW, int&
         return false;
     }
 
-    const auto bounds = editor->getLocalBounds();
-    outW = bounds.getWidth()  > 0 ? bounds.getWidth()  : 400;
-    outH = bounds.getHeight() > 0 ? bounds.getHeight() : 300;
-
+    // Build the window first — the SandboxEditorWindow constructor calls
+    // setContentOwned(editor, true) which sizes the window to the editor's
+    // current bounds (synchronous case) AND attaches a ComponentListener that
+    // tracks future async resizes (e.g. AU NSView layout after attachment).
     auto window = std::make_unique<SandboxEditorWindow> (editor, proc->getName());
     window->onUserClose = []
     {
@@ -93,7 +93,15 @@ bool openEditorWindow (juce::AudioProcessor* proc, int x, int y, int& outW, int&
     // can take key focus (no-op off macOS).
     sandboxWorkerActivateForEditor();
 
-    juce::Logger::writeToLog ("[sandbox-editor-window] editor window open, size "
+    // Report the window's current size (which equals the editor's synchronous
+    // size after setContentOwned).  If the editor reports real bounds only after
+    // an async layout pass, the ComponentListener in SandboxEditorWindow will
+    // resize the window then; outW/outH here are the best-available initial
+    // values, not a hardcoded fallback.
+    outW = g_window->getWidth();
+    outH = g_window->getHeight();
+
+    juce::Logger::writeToLog ("[sandbox-editor-window] editor window open, initial size "
                               + juce::String (outW) + "x" + juce::String (outH));
     return true;
 }

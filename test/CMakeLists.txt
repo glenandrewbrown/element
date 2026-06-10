@@ -146,6 +146,7 @@ add_test(NAME "OSCServiceSenderLifecycleTests" COMMAND test_element --run_test=O
 add_test(NAME "OSCServiceInputValidationTests" COMMAND test_element --run_test=OSCServiceInputValidationTests)
 add_test(NAME "PresetServiceRefreshTests" COMMAND test_element --run_test=PresetServiceRefreshTests)
 add_test(NAME "PresetServiceAddTests" COMMAND test_element --run_test=PresetServiceAddTests)
+add_test(NAME "BlockPresetRoundTripTests" COMMAND test_element --run_test=BlockPresetRoundTripTests)
 add_test(NAME "SessionServiceObserverTests" COMMAND test_element --run_test=SessionServiceObserverTests)
 # QUARANTINE: corrupted 204f5545, unverified — segfault (null-deref 0x10) in sig_session_loaded_fires_on_default_reload.
 set_tests_properties(SessionServiceObserverTests PROPERTIES DISABLED TRUE)
@@ -333,6 +334,12 @@ set_tests_properties(GraphNodeRenderSafetyTests PROPERTIES RUN_SERIAL TRUE TIMEO
 add_test(NAME "AsyncPluginLoadTests"       COMMAND test_element --run_test=AsyncPluginLoadTests)
 set_tests_properties(AsyncPluginLoadTests PROPERTIES RUN_SERIAL TRUE TIMEOUT 120)
 
+# T1/T2 message-thread-freeze fix: the deferred-launch handshake runs on a pool
+# thread so kickSandboxedInstantiation returns to the message loop immediately.
+# Drives the JUCE message loop (callAsync + watcher Timer), so RUN_SERIAL.
+add_test(NAME "SandboxAsyncInstantiationTests" COMMAND test_element --run_test=SandboxAsyncInstantiationTests)
+set_tests_properties(SandboxAsyncInstantiationTests PROPERTIES RUN_SERIAL TRUE TIMEOUT 120)
+
 # P4 sandbox default-on chain (ccg-fix-team-brief-2026-06-06, Worker 5).
 # Helper-binary resolution order: env override -> bundle Contents/Helpers ->
 # executable-adjacent -> honest failure (never re-exec the host in production).
@@ -356,6 +363,10 @@ if (ELEMENT_RT_STRESS_TEST)
     # cycles (SandboxStressTest.cpp:152, SandboxOrderedShutdownTest.cpp). The default TIMEOUTs
     # above (180s / 60s) are sized for the 5-cycle build and GUARANTEE a timeout at 1000 cycles
     # (~3-15 min). Override them here so the full D-9 soak can actually complete in this config.
-    set_tests_properties(SandboxStressTests PROPERTIES TIMEOUT 1800)
+    # 2026-06-10: SandboxStressTests measured ~10.3s/cycle on a loaded machine
+    # (SIGKILL-loss detection + re-exec'ing the full test binary as the worker per
+    # recovery) → 1000 cycles cannot fit 1800s (176 cycles completed at timeout,
+    # twice, including an isolated rerun). OrderedShutdown fits (727-842s observed).
+    set_tests_properties(SandboxStressTests PROPERTIES TIMEOUT 10800)
     set_tests_properties(SandboxOrderedShutdownTests PROPERTIES TIMEOUT 1800)
 endif()

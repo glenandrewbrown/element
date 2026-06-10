@@ -121,6 +121,42 @@ public:
     /** Launch the worker process. Returns true if successful. */
     bool launch();
 
+    //==========================================================================
+    // DEFERRED LAUNCH (T1/T2 message-thread-freeze fix, 2026-06-10)
+    //
+    // launch() does the BLOCKING connectToPipe handshake (launchWorkerProcess →
+    // ChildProcessCoordinator::launchWorkerProcess, bounded by EL_SANDBOX_TIMEOUT_MS)
+    // inline. Called synchronously on the message thread it freezes the UI for the
+    // whole handshake (and, for a heavy session-load AU, the launch itself can stall).
+    //
+    // The deferred path splits launch() across threads so the message thread never
+    // blocks on the handshake:
+    //   1. beginDeferredLaunch()  — MESSAGE THREAD. Arms state (Starting), clears
+    //      preparedSinceLaunch. No blocking, no worker spawn yet.
+    //   2. runWorkerHandshake()   — POOL THREAD. The ONE blocking call
+    //      (launchWorkerProcess). Touches ONLY atomic/JUCE-coordinator-internal state
+    //      — never startTimer/heartbeat (Timer requires the message thread). Returns
+    //      the handshake result.
+    //   3. finishDeferredLaunch() — MESSAGE THREAD. Completes arming (connectionAlive,
+    //      heartbeat.reset, startTimer, state=Ready) on success, or rolls back to Idle.
+    //      The CALLER then issues loadPlugin() from the message thread — keeping
+    //      loadPlugin's non-atomic `loadedPlugin = desc` write off the pool thread.
+
+    /** MESSAGE THREAD: arm a deferred launch. Returns false if not Idle (already
+        launching/launched). On success state becomes Starting. */
+    bool beginDeferredLaunch();
+
+    /** POOL THREAD: run the BLOCKING worker spawn + connect handshake. Touches only
+        atomic state + the JUCE coordinator internals (thread-safe). Returns true if
+        the worker process spawned and connected. MUST be paired with a
+        finishDeferredLaunch() on the message thread. */
+    bool runWorkerHandshake();
+
+    /** MESSAGE THREAD: complete the launch after runWorkerHandshake() returned.
+        On success: connectionAlive=true, heartbeat reset, timer started, state=Ready
+        (the caller may now loadPlugin from the message thread). On failure: state=Idle. */
+    void finishDeferredLaunch (bool handshakeOk);
+
     /** Shutdown the worker process gracefully. */
     void shutdown();
 
@@ -396,6 +432,42 @@ inline bool SandboxHost::launch()
 
     state.store (State::Ready);
     return true;
+}
+
+inline bool SandboxHost::beginDeferredLaunch()
+{
+    if (state.load() != State::Idle)
+        return false;
+
+    state.store (State::Starting);
+    preparedSinceLaunch.store (false); // fresh worker needs a prepare (no shm yet)
+    return true;
+}
+
+inline bool SandboxHost::runWorkerHandshake()
+{
+    // POOL THREAD. launchWorkerProcess() is the single blocking primitive (the
+    // connectToPipe handshake). It only spawns the child + sets up the JUCE
+    // ChildProcessCoordinator connection — no Timer, no heartbeat, no graph/node
+    // state. Safe off the message thread.
+    return launchWorkerProcess();
+}
+
+inline void SandboxHost::finishDeferredLaunch (bool handshakeOk)
+{
+    // MESSAGE THREAD. Mirror the tail of launch(); startTimer + heartbeat.reset
+    // MUST run here (Timer requires the message thread). If the handshake failed,
+    // roll the state machine back to Idle so a fallback can be kicked.
+    if (! handshakeOk)
+    {
+        state.store (State::Idle);
+        return;
+    }
+
+    connectionAlive.store (true);
+    heartbeat.reset();
+    startTimer (EL_SANDBOX_HEARTBEAT_MS);
+    state.store (State::Ready);
 }
 
 inline void SandboxHost::shutdown()

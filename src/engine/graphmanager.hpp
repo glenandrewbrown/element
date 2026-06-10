@@ -71,6 +71,16 @@ public:
         forceWorkerLaunchFailure = force;
     }
 
+    /** TEST SEAM ONLY — inject an N-millisecond stall into the deferred-launch
+     *  handshake JOB (runs on the pool thread) so a test can prove the message
+     *  thread does NOT block: kickSandboxedInstantiation must return to the message
+     *  loop immediately and the placeholder must exist in the ValueTree while the
+     *  stall is still elapsing. Production leaves this at 0 (no stall). */
+    void setForceSlowWorkerLaunchForTesting (int stallMs)
+    {
+        forceSlowWorkerLaunchMs = stallMs;
+    }
+
     /** Remove a node by ID */
     void removeNode (const uint32 nodeId);
 
@@ -160,11 +170,37 @@ private:
     // crash fallback. `currentId` is the placeholder's current engine id.
     void kickInProcessFallback (const String& finalUuid, uint32 currentId, const PluginDescription& desc);
 
+    // T2 — install a LOADING PlaceholderProcessor on an EXISTING session node tree
+    // (used by setNodeModel for the async session-load sandbox route). Adds the
+    // engine placeholder node (keeping nodes.getNumChildren() == numNodes),
+    // re-stamps the engine object/updater/id and the transient tags::loading flag,
+    // and drops the node's real ports so it is not cable-targetable while loading.
+    // The node's uuid/position/state are PRESERVED. Returns false (so the caller
+    // falls through to the synchronous createFilter path) if the placeholder add
+    // failed for any reason.
+    bool installSessionLoadingPlaceholder (Node& node, const PluginDescription& desc);
+
     void processorArcsChanged();
 
-    // P1 — TEST SEAMS (both empty/false in production).
+    // P1 — TEST SEAMS (all empty/false/0 in production).
     std::function<bool (const PluginDescription&)> sandboxPolicyOverride;
     bool forceWorkerLaunchFailure = false; // force kickInProcessFallback, no node ctor
+    int forceSlowWorkerLaunchMs = 0;       // inject a stall into the pool launch job
+
+    // T1/T2 — single-thread pool that runs the BLOCKING SandboxedProcessorNode
+    // launch handshake OFF the message thread, so kickSandboxedInstantiation /
+    // session-load never freezes the UI on the connectToPipe handshake. Scoped to
+    // this GraphManager: its destructor (jobs deleted with shouldStopFirst=true)
+    // waits for / interrupts a running handshake before the manager dies, so a
+    // job never calls into a torn-down manager. The job itself touches ONLY the
+    // SandboxedProcessorNode (kept alive via a captured ProcessorPtr) — never the
+    // graph/nodes/ValueTrees (the message-thread watcher is the sole graph
+    // mutator). Lifetime safety comes from ~GraphManager explicitly draining the
+    // pool (removeAllJobs (true, 5000)) as its FIRST statement — jobs are joined
+    // before any member (sandboxWatchers / nodes) tears down.
+    juce::ThreadPool sandboxLaunchPool { juce::ThreadPoolOptions {}
+                                             .withThreadName ("el-sandbox-launch")
+                                             .withNumberOfThreads (1) };
 
     // P1 — message-thread poll-timers watching sandboxed nodes that are still
     // loading in their worker. Each owns the in-flight ProcessorPtr until the
