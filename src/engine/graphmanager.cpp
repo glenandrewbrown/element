@@ -270,7 +270,15 @@ public:
         // an existing catalog/user name with the Processor's reported name — that
         // would be a SECOND emit source and could diverge the two surfaces.
         if (! data.hasProperty (tags::name) || data.getProperty (tags::name).toString().isEmpty())
-            data.setProperty (tags::name, object->getName(), nullptr);
+        {
+            // BUG C: a SandboxedProcessorNode reports "<plugin> (Sandboxed)" — strip
+            // that internal suffix and path/extension noise so the seeded display
+            // name is the clean catalog name ("Kontakt 8"), never the wrapper label.
+            const String seeded (cleanPluginDisplayName (
+                object->getName().upToLastOccurrenceOf (" (Sandboxed)", false, false).trim()));
+            if (seeded.isNotEmpty())
+                data.setProperty (tags::name, seeded, nullptr);
+        }
     }
 
 private:
@@ -803,8 +811,15 @@ private:
         }
 
         // Still launching/loading. Bound the wait so a stuck worker can't pin the
-        // Block in "loading" forever — degrade to the in-process fallback.
-        if (juce::Time::getMillisecondCounter() > deadlineMs)
+        // Block in "loading" forever — degrade to the in-process fallback. EXCEPT
+        // while the worker REPORTS a load demonstrably in flight (LoadInProgress,
+        // bounded host-side by EL_SANDBOX_LOAD_CEILING_MS): a heavy library
+        // (Kontakt, cold cache) can legitimately take 60-120s, and killing it here
+        // would degrade to an in-process load of the same heavy plugin = the
+        // message-thread freeze again (RT-verifier finding 9, 2026-06-10). A worker
+        // that stops reporting (hung) loses the grace at the ceiling and falls back.
+        if (juce::Time::getMillisecondCounter() > deadlineMs
+            && ! node->isWorkerLoadInProgress())
             fallbackInProcess();
     }
 
@@ -1120,9 +1135,17 @@ void GraphManager::swapInLoadedProcessor (const String& nodeUuid, uint32 placeho
                           || current == "Plugin";
         if (weak)
         {
-            String resolved (cleanPluginDisplayName (added->getName()));
+            // BUG C (fallback/crash naming): for the OUT-OF-PROCESS route `added` is
+            // the SandboxedProcessorNode, whose getName() is "<plugin> (Sandboxed)".
+            // Prefer the clean catalog desc.name first so the Block shows "Kontakt 8"
+            // rather than "Kontakt 8 (Sandboxed)"; strip the suffix as a safety net
+            // when only the processor name is available. desc.name is also the most
+            // authoritative source on the crash/fallback path, where `added` may be a
+            // bare in-process instance from kickInProcessFallback.
+            String resolved (cleanPluginDisplayName (desc.name));
             if (resolved.isEmpty())
-                resolved = cleanPluginDisplayName (desc.name);
+                resolved = cleanPluginDisplayName (added->getName())
+                               .upToLastOccurrenceOf (" (Sandboxed)", false, false).trim();
             if (resolved.isEmpty())
                 resolved = cleanPluginDisplayName (desc.descriptiveName);
             if (resolved.isNotEmpty())

@@ -19,6 +19,7 @@
 #include <atomic>
 #include <cerrno>
 #include <memory>
+#include <mutex>
 #include <thread>
 
 #if JUCE_MAC
@@ -117,6 +118,31 @@ private:
     std::unique_ptr<juce::AudioPluginInstance> plugin;
     juce::PluginDescription loadedDescription;
 
+    // BUG A (load-before-init race): the IPC reader thread can deliver a LoadPlugin
+    // before initializeWorker() (which populates formatManager on the main thread)
+    // has finished. Gate LoadPlugin on this flag; queue the payload until init
+    // completes, then replay it. Set true at the END of initializeWorker(); read +
+    // the pending-payload handoff are guarded by initMutex (the two run on different
+    // threads — IPC reader vs. main/message thread).
+    std::atomic<bool> workerInitialized { false };
+    std::mutex initMutex;
+    bool havePendingLoad { false };          // guarded by initMutex
+    juce::MemoryBlock pendingLoadPayload;    // guarded by initMutex
+
+    // Drain any LoadPlugin that arrived before init completed. Called once at the
+    // tail of initializeWorker(). Runs on the main/message thread.
+    void drainPendingLoad();
+
+    // BUG B (heartbeat starvation during slow loads): a multi-second plugin load
+    // runs on the worker MESSAGE THREAD (createPluginInstanceAsync's completion +
+    // prepareToPlay), which is also where the heartbeat Timer fires. While the load
+    // is in flight the worker cannot answer pings and the host's 5 s watchdog
+    // false-positives a crash. The worker sends an explicit LoadInProgress to the
+    // host the instant it begins instantiation (off the message thread, from the IPC
+    // reader) so the host suspends its heartbeat deadline, bounded by a generous load
+    // ceiling so a TRUE hang still dies. pluginLoadInFlight is informational/diagnostic.
+    std::atomic<bool> pluginLoadInFlight { false };
+
     // Audio processing state
     double sampleRate { 0.0 };
     int blockSize { 0 };
@@ -167,6 +193,20 @@ inline void SandboxWorker::initializeWorker()
     const int pid = static_cast<int> (::getpid());
 
    #if EL_SANDBOX_INCLUDE_TEST_FORMATS
+    // TEST SEAM (BUG A): EL_SANDBOX_DELAY_INIT_MS holds off format registration so a
+    // LoadPlugin sent immediately after the pipe connects lands DURING the init gap
+    // and exercises the queue-before-init path (drainPendingLoad replays it). The
+    // pipe is already connected at this point (initialise() called us right after
+    // initialiseFromCommandLine), so the IPC reader can deliver the queued LoadPlugin
+    // while we sleep here. Compiled out of element_app.
+    {
+        const int delayMs = juce::SystemStats::getEnvironmentVariable ("EL_SANDBOX_DELAY_INIT_MS", {}).getIntValue();
+        if (delayMs > 0)
+            juce::Thread::sleep (delayMs);
+    }
+   #endif
+
+   #if EL_SANDBOX_INCLUDE_TEST_FORMATS
     auto logFile = juce::File ("/tmp/element-sandbox-worker-" + juce::String (pid) + ".log");
    #else
     auto logFile = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
@@ -193,6 +233,32 @@ inline void SandboxWorker::initializeWorker()
                                    + juce::String (formatManager.getNumFormats())
                                    + " names=[" + fmtNames.joinIntoString (", ") + "]");
     }
+
+    // BUG A: formatManager is now populated. Publish the init-complete flag, then
+    // replay any LoadPlugin that the IPC reader stashed while we were initialising.
+    workerInitialized.store (true, std::memory_order_release);
+    drainPendingLoad();
+}
+
+inline void SandboxWorker::drainPendingLoad()
+{
+    // Runs on the main/message thread (tail of initializeWorker). Take the queued
+    // payload under the lock, release the lock, then process it — handleLoadPlugin
+    // can itself be lengthy (createPluginInstanceAsync posts to the message thread),
+    // so never hold initMutex across it.
+    juce::MemoryBlock payload;
+    {
+        std::lock_guard<std::mutex> lock (initMutex);
+        if (! havePendingLoad)
+            return;
+        payload = std::move (pendingLoadPayload);
+        pendingLoadPayload = {};
+        havePendingLoad = false;
+    }
+
+    juce::Logger::writeToLog ("[Sandbox] Replaying LoadPlugin queued before init completed ("
+                               + juce::String (payload.getSize()) + " bytes)");
+    handleLoadPlugin (payload.getData(), static_cast<uint32_t> (payload.getSize()));
 }
 
 inline SandboxWorker::~SandboxWorker()
@@ -462,6 +528,29 @@ inline void SandboxWorker::handleLoadPlugin (const void* payload, uint32_t paylo
         return;
     }
 
+    // BUG A (load-before-init race): if the IPC reader delivered this LoadPlugin
+    // before initializeWorker() finished populating formatManager, stash the
+    // payload and bail. drainPendingLoad() (tail of initializeWorker) replays it on
+    // the main thread once the formats are registered — closing the window where
+    // createPluginInstance ran against an empty formatManager and returned
+    // "No compatible plug-in format exists for this plug-in". Without the gate the
+    // async-launch split made the host send LoadPlugin faster than init could keep
+    // up, intermittently failing loads for plugins that otherwise load fine.
+    if (! workerInitialized.load (std::memory_order_acquire))
+    {
+        std::lock_guard<std::mutex> lock (initMutex);
+        // Re-check under the lock: initializeWorker() sets the flag (release) BEFORE
+        // taking initMutex in drainPendingLoad, so if it flipped between our atomic
+        // load and acquiring the lock, fall through and load now (no lost wakeup).
+        if (! workerInitialized.load (std::memory_order_acquire))
+        {
+            pendingLoadPayload = juce::MemoryBlock (payload, payloadSize);
+            havePendingLoad = true;
+            juce::Logger::writeToLog ("[Sandbox] LoadPlugin arrived before init complete — queued");
+            return;
+        }
+    }
+
     // Unload existing plugin first
     if (plugin)
     {
@@ -513,12 +602,41 @@ inline void SandboxWorker::handleLoadPlugin (const void* payload, uint32_t paylo
     const double initRate = sampleRate > 0 ? sampleRate : 44100.0;
     const int initBlock = blockSize > 0 ? blockSize : 512;
 
+    // BUG B (heartbeat starvation): tell the host a load has STARTED before we kick
+    // the (potentially multi-second) instantiation. createPluginInstanceAsync posts
+    // the heavy create to THIS worker's message thread, which is also where the
+    // heartbeat Timer fires — so heartbeats stall for the whole load and the host's
+    // 5 s watchdog would otherwise false-positive a crash and tear the worker down
+    // (the Kontakt "loaded then crashed twice" restart loop). LoadInProgress makes
+    // the host suspend its heartbeat deadline until PluginLoaded/PluginLoadFailed or
+    // the load ceiling. Sent from this IPC-reader thread (sendResponse just writes
+    // the pipe), so it is delivered even though the message thread is about to block.
+    pluginLoadInFlight.store (true, std::memory_order_release);
+    sendResponse (SandboxMessageType::LoadInProgress);
+
     formatManager.createPluginInstanceAsync (
         desc, initRate, initBlock,
         [this, desc] (std::unique_ptr<juce::AudioPluginInstance> instance,
                       const juce::String& errorMessage)
     {
         // Runs on the worker MESSAGE THREAD (JUCE contract).
+       #if EL_SANDBOX_INCLUDE_TEST_FORMATS
+        // TEST SEAM (BUG B): EL_SANDBOX_SLOW_LOAD_MS makes the load callback block the
+        // worker MESSAGE THREAD for N ms — reproducing a heavy instrument (Kontakt)
+        // whose own sample load stalls heartbeats. The host must NOT tear the worker
+        // down during this window (LoadInProgress suspends the watchdog). Inherited
+        // from the host process env by the re-exec'd worker. Compiled out of element_app.
+        {
+            const int slowMs = juce::SystemStats::getEnvironmentVariable ("EL_SANDBOX_SLOW_LOAD_MS", {}).getIntValue();
+            if (slowMs > 0)
+            {
+                juce::Logger::writeToLog ("[Sandbox] TEST slow-load seam: blocking MT for "
+                                           + juce::String (slowMs) + " ms");
+                juce::Thread::sleep (slowMs);
+            }
+        }
+       #endif
+        pluginLoadInFlight.store (false, std::memory_order_release);
         if (instance == nullptr)
         {
             juce::StringArray fmtNames;

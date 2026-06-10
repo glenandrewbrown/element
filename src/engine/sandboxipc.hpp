@@ -23,6 +23,14 @@ namespace element {
 /** Maximum time to wait for worker response before assuming crash. */
 #define EL_SANDBOX_TIMEOUT_MS 5000
 
+/** Maximum time a single plugin LOAD may run before the host stops extending the
+    heartbeat grace and treats the worker as hung (BUG B). Generous enough for the
+    heaviest sample-based instruments (Kontakt cold-loading a large library) so a
+    slow-but-alive load is never misread as a crash, but bounded so a TRUE deadlock
+    still dies and recovers. The worker's message thread is blocked answering pings
+    during the load, so the host suspends the 5 s watchdog for up to this long. */
+#define EL_SANDBOX_LOAD_CEILING_MS 120000
+
 /** Maximum audio channels supported in sandbox IPC. */
 #define EL_SANDBOX_MAX_CHANNELS 64
 
@@ -55,6 +63,9 @@ enum class SandboxMessageType : uint32_t
     CloseEditorWindow,  // Ask worker to close the plugin editor window
 
     // Worker -> Coordinator
+    LoadInProgress,     // Worker has begun a (potentially slow) plugin instantiation;
+                        // host suspends its heartbeat deadline until PluginLoaded /
+                        // PluginLoadFailed or a generous load-ceiling elapses (BUG B).
     PluginLoaded,       // Plugin loaded successfully
     PluginLoadFailed,   // Plugin load failed (error message)
     PluginUnloaded,     // Plugin unloaded

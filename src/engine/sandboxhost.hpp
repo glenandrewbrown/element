@@ -176,6 +176,17 @@ public:
     /** Check if a plugin is currently loaded. */
     bool isPluginLoaded() const { return pluginLoaded.load(); }
 
+    /** True while the worker has reported a plugin load in flight (LoadInProgress)
+        and it is still within EL_SANDBOX_LOAD_CEILING_MS. Lets outer arbiters (the
+        GraphManager load watcher) extend their fallback deadline for heavy-library
+        loads instead of killing a slow-but-alive worker (RT finding 9, 2026-06-10). */
+    bool isLoadInProgress() const noexcept
+    {
+        const uint32_t start = loadInProgressSinceMs.load();
+        return start != 0
+               && (juce::Time::getMillisecondCounter() - start) < EL_SANDBOX_LOAD_CEILING_MS;
+    }
+
     /** Get the loaded plugin description. */
     const juce::PluginDescription& getPluginDescription() const { return loadedPlugin; }
 
@@ -350,6 +361,18 @@ private:
     int restartAttempts { 0 };
     static constexpr int maxRestartAttempts { 3 };
 
+    // BUG B (heartbeat starvation during slow loads): while the worker is loading a
+    // plugin its message thread is blocked and cannot answer heartbeat pings. The
+    // worker sends LoadInProgress when a load starts; the host records the start
+    // time here and SUSPENDS the heartbeat-timeout check in timerCallback() until
+    // the load completes (PluginLoaded/PluginLoadFailed clear it) or
+    // EL_SANDBOX_LOAD_CEILING_MS elapses — so a genuinely hung load still dies and
+    // recovers, but a slow-but-alive Kontakt load is never misread as a crash.
+    // 0 = no load in flight. juce::Time::getMillisecondCounter() based (matches
+    // SandboxHeartbeat). Touched only on the message thread (timerCallback) and the
+    // IPC thread (handleWorkerMessage); a plain atomic is sufficient.
+    std::atomic<uint32_t> loadInProgressSinceMs { 0 };
+
     juce::WaitableEvent shutdownAcked;
     static constexpr int shutdownAckTimeoutMs { 2000 };
 
@@ -418,6 +441,7 @@ inline bool SandboxHost::launch()
 
     state.store (State::Starting);
     preparedSinceLaunch.store (false); // fresh worker needs a prepare (no shm yet)
+    loadInProgressSinceMs.store (0);   // BUG B: clear any stale load-grace window
 
     if (! launchWorkerProcess())
     {
@@ -441,6 +465,7 @@ inline bool SandboxHost::beginDeferredLaunch()
 
     state.store (State::Starting);
     preparedSinceLaunch.store (false); // fresh worker needs a prepare (no shm yet)
+    loadInProgressSinceMs.store (0);   // BUG B: clear any stale load-grace window
     return true;
 }
 
@@ -813,6 +838,7 @@ inline void SandboxHost::handleConnectionLost()
     // The actual relaunch is driven from timerCallback() on the message thread.
 
     connectionAlive.store (false);
+    loadInProgressSinceMs.store (0); // BUG B: dead worker's load grace must not carry over
     {
         std::lock_guard<std::mutex> lock (responseMutex);
         responseReceived = true;
@@ -866,6 +892,25 @@ inline void SandboxHost::timerCallback()
     const bool liveState = (s == State::Ready || s == State::Loading || s == State::Active);
     if (liveState && ! heartbeat.isAlive())
     {
+        // BUG B: a plugin load in flight blocks the worker's message thread (and so
+        // its heartbeat Timer) for the whole load. Suspend the timeout while a load
+        // is active — UNLESS it has exceeded the generous load ceiling, in which
+        // case the worker is genuinely hung and must die + recover. Without this a
+        // slow-but-alive Kontakt load tripped the 5 s watchdog → teardown → restart
+        // loop ("loaded then crashed twice", workers ending by proc_exit).
+        const uint32_t loadStart = loadInProgressSinceMs.load();
+        if (loadStart != 0)
+        {
+            const uint32_t elapsed = juce::Time::getMillisecondCounter() - loadStart;
+            if (elapsed < EL_SANDBOX_LOAD_CEILING_MS)
+                return; // load still within ceiling — alive, just busy loading
+
+            juce::Logger::writeToLog ("Sandbox worker load exceeded ceiling ("
+                                      + juce::String (EL_SANDBOX_LOAD_CEILING_MS)
+                                      + " ms) — treating as hung");
+            loadInProgressSinceMs.store (0);
+        }
+
         juce::Logger::writeToLog ("Sandbox worker heartbeat timeout");
         handleConnectionLost();
     }
@@ -1112,6 +1157,22 @@ inline void SandboxHost::handleWorkerMessage (const SandboxMessageHeader& header
             heartbeat.beat();
             break;
 
+        case SandboxMessageType::LoadInProgress:
+            // BUG B: the worker is about to block its message thread on a (possibly
+            // multi-second) plugin instantiation and will miss heartbeats. Record
+            // the start so timerCallback() suspends the heartbeat-timeout check
+            // until PluginLoaded/PluginLoadFailed clears this or the load ceiling
+            // elapses. A value of 0 from getMillisecondCounter() is astronomically
+            // unlikely, but bias to 1 so "in flight" is never mistaken for "idle".
+            {
+                const uint32_t now = juce::Time::getMillisecondCounter();
+                loadInProgressSinceMs.store (now == 0 ? 1u : now);
+                // Treat the LoadInProgress itself as a liveness signal so the very
+                // first post-launch load can't trip the watchdog on its own latency.
+                heartbeat.beat();
+            }
+            break;
+
         case SandboxMessageType::PluginLoaded:
             // Restore state (recovery only) and ensure the ONE post-launch
             // prepare has run BEFORE publishing pluginLoaded/Active. The audio
@@ -1125,6 +1186,12 @@ inline void SandboxHost::handleWorkerMessage (const SandboxMessageHeader& header
             // RT verifier rejected). setPluginState/prepareToPlay are pipe
             // sends + shm setup on this IPC thread — safe off the audio thread.
             {
+                // BUG B: load finished — clear the heartbeat-suspend window and
+                // record a fresh beat (the worker's message thread was blocked, so
+                // its last real Heartbeat may be stale by up to the load duration).
+                loadInProgressSinceMs.store (0);
+                heartbeat.beat();
+
                 const bool isRecovery = awaitingRestartLoad.exchange (false);
 
                 if (isRecovery && lastKnownState.getSize() > 0)
@@ -1159,6 +1226,9 @@ inline void SandboxHost::handleWorkerMessage (const SandboxMessageHeader& header
             // Clear any pending crash-recovery flag and let the failed listener
             // surface it. (This is distinct from a load CRASH, where the worker
             // dies before PluginLoaded and the connection-lost path retries.)
+            // BUG B: clear the heartbeat-suspend window — the load is over (failed).
+            loadInProgressSinceMs.store (0);
+            heartbeat.beat();
             awaitingRestartLoad.store (false);
             state.store (State::Ready);
             pluginReadyFailed.store (true);
@@ -1368,6 +1438,7 @@ inline void SandboxHost::attemptRestart()
     // state transition — exactly like the initial load — so there is no
     // 5s-per-attempt stall and the IPC thread is never blocked.
     preparedSinceLaunch.store (false); // replacement worker has no shm attachment yet
+    loadInProgressSinceMs.store (0);   // BUG B: fresh worker — clear stale load grace
     if (launchWorkerProcess())
     {
         connectionAlive.store (true);

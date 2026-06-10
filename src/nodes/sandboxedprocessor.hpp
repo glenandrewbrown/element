@@ -125,6 +125,10 @@ public:
     /** Check if the plugin was loaded successfully. */
     bool isPluginLoaded() const;
 
+    /** True while the worker reports a plugin load in flight (within the load
+        ceiling) — lets the GraphManager watcher extend its fallback deadline. */
+    bool isWorkerLoadInProgress() const noexcept;
+
     //==========================================================================
     /** Ask the worker to open the plugin editor in its own OS window (REAPER
         model — crash-isolated, the editor lives in the worker process). The
@@ -318,6 +322,11 @@ inline bool SandboxedProcessorNode::isSandboxHealthy() const
 inline SandboxHost::State SandboxedProcessorNode::getSandboxState() const
 {
     return sandbox ? sandbox->getState() : SandboxHost::State::Idle;
+}
+
+inline bool SandboxedProcessorNode::isWorkerLoadInProgress() const noexcept
+{
+    return sandbox != nullptr && sandbox->isLoadInProgress();
 }
 
 inline void SandboxedProcessorNode::restartSandbox()
