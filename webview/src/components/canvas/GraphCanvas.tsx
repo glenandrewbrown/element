@@ -74,7 +74,7 @@ import {
   type RouteSuggestion,
   type RouteSuggestionCache,
 } from "./autoRouteSuggestions";
-import { computeAutoLayout } from "../../lib/autoLayout";
+import { computeAutoLayout, ioRoleFromIdentifier } from "../../lib/autoLayout";
 import {
   resolveCollisions,
   DEFAULT_COLLISION_MARGIN,
@@ -942,6 +942,9 @@ export function GraphCanvas() {
     const layoutNodes = storeNodes.map((n) => ({
       id: n.id,
       height: estimateBlockHeight(n),
+      // IO role (audio/midi in→input, out→output) anchors disconnected IO
+      // blocks to the board edges instead of stacking them in parallel columns.
+      io: ioRoleFromIdentifier(n.identifier),
     }));
     // T12 — honour the user's chosen flow direction; space the IO/flow columns
     // generously (TIDY_COLUMN_GAP) so a new Block visibly fits BETWEEN existing

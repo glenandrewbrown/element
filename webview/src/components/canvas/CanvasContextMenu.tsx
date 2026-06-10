@@ -11,7 +11,7 @@ import {
   nativeGraphSetCanvasOptions,
   nativeMoleculeSave,
 } from "../../bridge/nativeGraph";
-import { computeAutoLayout } from "../../lib/autoLayout";
+import { computeAutoLayout, ioRoleFromIdentifier } from "../../lib/autoLayout";
 import { estimateBlockHeight } from "./autoRouteSuggestions";
 import { Icon } from "../neu";
 import { NeuPromptModal } from "../layout/NeuPromptModal";
@@ -256,6 +256,9 @@ export function CanvasContextMenu({
     const layoutNodes = nodes.map((n) => ({
       id: n.id,
       height: estimateBlockHeight(n),
+      // IO role anchors disconnected IO blocks to the board edges (left=inputs,
+      // right=outputs) instead of stacking them in parallel columns.
+      io: ioRoleFromIdentifier(n.identifier),
     }));
     const positions = computeAutoLayout(layoutNodes, edges, {
       direction: useAppStore.getState().layoutDirection,

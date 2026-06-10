@@ -1,0 +1,1522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Container Block — Option 1 Iteration 2: Full Variant Coverage</title>
+<style>
+  :root {
+    --canvas:   #1E1E22;
+    --panel:    #222226;
+    --surface:  #252529;
+    --elevated: #2A2A2E;
+    --pressed:  #1A1A1E;
+    --text-primary:   #E5E5EA;
+    --text-secondary: #8E8E93;
+    --text-dim:       #55555A;
+    --cat-instrument: #4A90D9;
+    --cat-midifx:     #2BC4C4;
+    --cat-audiofx:    #E8A838;
+    --cat-modulator:  #A87FE0;
+    --neu-raised: -2px -2px 6px rgba(255,255,255,0.05), 4px 4px 10px rgba(0,0,0,0.5);
+    --neu-inset:  inset 2px 2px 5px rgba(0,0,0,0.5), inset -1px -1px 3px rgba(255,255,255,0.04);
+    --neu-button: -1px -1px 3px rgba(255,255,255,0.05), 2px 2px 5px rgba(0,0,0,0.4);
+    --font:    'SF Mono', 'JetBrains Mono', ui-monospace, monospace;
+    --font-ui: system-ui, -apple-system, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--canvas);
+    font-family: var(--font-ui);
+    color: var(--text-primary);
+    padding: 32px 32px 56px;
+    min-height: 100vh;
+  }
+
+  /* ── Page chrome ─────────────────────────────────────────────── */
+  .page-label {
+    font-size: 10px; color: var(--text-dim);
+    letter-spacing: 0.07em; text-transform: uppercase; font-weight: 600;
+    margin-bottom: 8px;
+  }
+  .page-subtitle {
+    font-size: 11px; color: var(--text-secondary);
+    margin-bottom: 36px; line-height: 1.6;
+  }
+
+  /* ── Canvas bg ───────────────────────────────────────────────── */
+  .canvas-bg {
+    scroll-margin-top: 16px;
+    background: var(--canvas);
+    border-radius: 12px;
+    padding: 40px 48px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 36px 40px;
+    align-items: flex-start;
+    background-image: radial-gradient(circle, rgba(255,255,255,0.04) 1px, transparent 1px);
+    background-size: 20px 20px;
+    margin-bottom: 28px;
+  }
+
+  /* ── Block shell ─────────────────────────────────────────────── */
+  .block {
+    background: var(--surface);
+    border-radius: 10px;
+    box-shadow: var(--neu-raised);
+    overflow: visible;
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  /* clip the visual content but not the port handles */
+  .block-inner { border-radius: 10px; overflow: hidden; }
+
+  .block-header {
+    height: 30px;
+    display: flex; align-items: center;
+    padding: 0 10px; gap: 7px;
+    position: relative;
+  }
+  .block-header::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 8%; right: 8%; height: 1px;
+    background: var(--cat-color, rgba(255,255,255,0.06));
+    opacity: 0.4;
+  }
+
+  .block-cat-glyph {
+    flex-shrink: 0; width: 14px; height: 14px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .block-name {
+    flex: 1; font-size: 11px; font-weight: 600;
+    letter-spacing: 0.02em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .block-status { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+  .led {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--cat-color, var(--text-dim));
+    box-shadow: 0 0 4px var(--cat-color, transparent);
+  }
+  .block-badge {
+    font-size: 7.5px; font-weight: 700; padding: 1px 5px;
+    border-radius: 3px; letter-spacing: 0.05em; text-transform: uppercase;
+    font-family: var(--font);
+  }
+
+  /* ── Thumbnail region ────────────────────────────────────────── */
+  .thumbnail-region {
+    margin: 8px 8px 0;
+    border-radius: 6px;
+    background: var(--pressed);
+    box-shadow: var(--neu-inset);
+    overflow: hidden;
+    position: relative;
+    height: 96px;
+  }
+  .thumbnail-region::before {
+    content: '';
+    position: absolute; inset: 0;
+    background-image: radial-gradient(circle, rgba(255,255,255,0.035) 1px, transparent 1px);
+    background-size: 12px 12px;
+    pointer-events: none; z-index: 0;
+  }
+  .thumb-svg {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    pointer-events: none; z-index: 1;
+  }
+
+  /* ── Mini nodes ──────────────────────────────────────────────── */
+  .mn {
+    position: absolute; border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 7px; font-weight: 700; letter-spacing: 0.04em;
+    z-index: 2;
+  }
+
+  /* ── Dive hint ───────────────────────────────────────────────── */
+  .dive-hint {
+    position: absolute; top: 4px; right: 6px;
+    display: flex; align-items: center; gap: 3px;
+    font-size: 8px; color: rgba(255,255,255,0.22);
+    pointer-events: none; letter-spacing: 0.04em; z-index: 3;
+  }
+  .dive-hint svg { width: 9px; height: 9px; fill: none; stroke: currentColor; stroke-width: 1.75; }
+  .thumb-hover .dive-hint { color: rgba(255,255,255,0.5); }
+
+  /* ── Depth badge ─────────────────────────────────────────────── */
+  .depth-badge {
+    position: absolute; bottom: 5px; left: 6px;
+    background: rgba(0,0,0,0.55); border-radius: 3px;
+    padding: 2px 5px; font-size: 8px;
+    color: var(--text-secondary); font-family: var(--font);
+    letter-spacing: 0.04em; z-index: 3;
+  }
+
+  /* ── IO summary row (between thumb and ports) ────────────────── */
+  .io-row {
+    display: flex; align-items: center;
+    padding: 5px 8px 3px; gap: 0;
+  }
+  .port-group { display: flex; align-items: center; gap: 4px; flex: 1; }
+  .port-group.outputs { justify-content: flex-end; }
+  .port-pip {
+    width: 8px; height: 8px; border-radius: 50%;
+    box-shadow: 0 0 3px var(--pip-color, transparent); flex-shrink: 0;
+  }
+  .port-label { font-size: 8.5px; color: var(--text-secondary); font-family: var(--font); letter-spacing: 0.03em; }
+  .io-arrow { flex-shrink: 0; padding: 0 4px; color: var(--text-dim); font-size: 8px; }
+
+  /* ── IO bar lanes (option-2 style, borrowed) ─────────────────── */
+  .io-summary {
+    margin: 0 8px 5px;
+    background: var(--pressed); border-radius: 5px;
+    box-shadow: var(--neu-inset);
+    padding: 4px 8px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .io-signal { display: flex; align-items: center; gap: 3px; flex: 1; }
+  .io-pip { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .io-pip.diamond { border-radius: 2px; transform: rotate(45deg); }
+  .io-text { font-size: 9px; color: var(--text-secondary); font-family: var(--font); letter-spacing: 0.03em; white-space: nowrap; }
+  .io-div { width: 1px; height: 14px; background: rgba(255,255,255,0.06); flex-shrink: 0; }
+
+  /* ── Stats row ───────────────────────────────────────────────── */
+  .stats-row {
+    display: flex; align-items: center;
+    padding: 3px 8px 7px; gap: 8px;
+  }
+  .stat-item {
+    display: flex; align-items: center; gap: 3px;
+    font-size: 9px; color: var(--text-dim); font-family: var(--font);
+  }
+  .stat-item svg { width: 9px; height: 9px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+  .stat-value { color: var(--text-secondary); }
+
+  /* ── Port handles ────────────────────────────────────────────── */
+  .ports-row { display: flex; align-items: stretch; padding: 0 0 6px; gap: 0; }
+  .port-col { display: flex; flex-direction: column; gap: 4px; padding: 0 6px; }
+  .port-col.right { margin-left: auto; align-items: flex-end; }
+  .port-handle { display: flex; align-items: center; gap: 4px; height: 18px; cursor: crosshair; }
+  .port-handle.right { flex-direction: row-reverse; }
+  .handle-pip {
+    width: 9px; height: 9px; border-radius: 50%;
+    box-shadow: 0 0 4px var(--pip-color, transparent); flex-shrink: 0;
+  }
+  .handle-pip.diamond { border-radius: 2px; transform: rotate(45deg); }
+  .handle-label { font-size: 8.5px; color: var(--text-dim); font-family: var(--font); letter-spacing: 0.03em; white-space: nowrap; }
+
+  /* ── Container block widths ──────────────────────────────────── */
+  .container-block  { width: 240px; }
+  .container-narrow { width: 200px; }
+  .container-compact{ width: 160px; }
+  .normal-block     { width: 180px; }
+
+  /* ── Section layout ──────────────────────────────────────────── */
+  .specimen {
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .section-label {
+    font-size: 9px; font-weight: 700; letter-spacing: 0.09em;
+    text-transform: uppercase; color: var(--text-dim);
+    margin-bottom: 10px; margin-top: 4px;
+  }
+  .row-group { display: flex; align-items: flex-start; gap: 16px; }
+
+  /* ── Section header ──────────────────────────────────────────── */
+  .spec-header {
+    width: 100%;
+    padding: 10px 0 6px;
+    border-top: 1px solid rgba(255,255,255,0.05);
+    margin-bottom: 4px;
+  }
+  .spec-header:first-child { border-top: none; }
+  .spec-num {
+    font-size: 8px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--cat-instrument); font-family: var(--font); margin-bottom: 2px;
+  }
+  .spec-title {
+    font-size: 12px; font-weight: 700; color: var(--text-primary); letter-spacing: 0.01em;
+  }
+  .spec-note {
+    font-size: 10px; color: var(--text-secondary); margin-top: 3px; line-height: 1.5;
+  }
+
+  /* ── State modifiers ─────────────────────────────────────────── */
+  /* Hover */
+  .state-hover {
+    box-shadow: -3px -3px 8px rgba(255,255,255,0.07), 5px 5px 14px rgba(0,0,0,0.6),
+                0 0 0 1px rgba(255,255,255,0.06);
+  }
+  /* Selected */
+  .state-selected {
+    box-shadow: -3px -3px 8px rgba(255,255,255,0.07), 5px 5px 14px rgba(0,0,0,0.6),
+                0 0 0 1.5px var(--cat-instrument), 0 0 10px rgba(74,144,217,0.25);
+  }
+  /* Muted overlay */
+  .overlay-muted {
+    position: absolute; inset: 0; border-radius: 10px;
+    background: rgba(200,50,50,0.08);
+    border: 1.5px solid rgba(220,60,60,0.55);
+    pointer-events: none; z-index: 10;
+    box-shadow: inset 0 0 12px rgba(200,40,40,0.18);
+  }
+  .overlay-muted-badge {
+    position: absolute; top: 7px; right: 8px; z-index: 11;
+    font-size: 8px; font-weight: 800; letter-spacing: 0.1em;
+    text-transform: uppercase; font-family: var(--font);
+    color: #ff4444;
+    text-shadow: 0 0 8px rgba(255,60,60,0.7);
+  }
+  /* Bypassed overlay */
+  .overlay-bypass {
+    position: absolute; inset: 0; border-radius: 10px;
+    background: rgba(100,100,100,0.07);
+    border: 1.5px solid rgba(130,130,130,0.35);
+    pointer-events: none; z-index: 10;
+  }
+  .overlay-bypass-badge {
+    position: absolute; top: 7px; right: 8px; z-index: 11;
+    font-size: 8px; font-weight: 800; letter-spacing: 0.1em;
+    text-transform: uppercase; font-family: var(--font);
+    color: #777; text-shadow: none;
+  }
+
+  /* ── Portal marker ───────────────────────────────────────────── */
+  .portal-badge {
+    display: inline-flex; align-items: center; gap: 3px;
+    font-size: 7.5px; font-weight: 700; padding: 1px 5px;
+    border-radius: 3px; letter-spacing: 0.05em; text-transform: uppercase;
+    font-family: var(--font);
+    background: rgba(43,196,196,0.15); color: var(--cat-midifx);
+  }
+  .portal-badge svg { width: 8px; height: 8px; fill: none; stroke: currentColor; stroke-width: 1.75; }
+
+  /* ── Activity pulse ring on thumbnail ───────────────────────── */
+  .activity-ring {
+    position: absolute; inset: 0; border-radius: 6px;
+    border: 1px solid rgba(74,144,217,0.0);
+    pointer-events: none; z-index: 4;
+  }
+  .activity-active .activity-ring {
+    border-color: rgba(74,144,217,0.45);
+    box-shadow: inset 0 0 8px rgba(74,144,217,0.12);
+  }
+
+  /* activity "hot" mini-nodes pulse with a glow */
+  .mn-hot {
+    box-shadow: 0 0 6px var(--mn-glow, transparent) !important;
+  }
+
+  /* ── Density bars (dense fallback) ──────────────────────────── */
+  .density-body {
+    margin: 8px 8px 6px;
+    border-radius: 6px;
+    background: var(--pressed);
+    box-shadow: var(--neu-inset);
+    overflow: hidden;
+    height: 60px;
+    position: relative;
+    display: flex; align-items: flex-end;
+    padding: 0 6px 6px; gap: 3px;
+  }
+  .density-bar {
+    flex: 1; border-radius: 2px 2px 0 0;
+    min-width: 4px; max-width: 10px;
+    opacity: 0.75;
+  }
+  .density-count {
+    position: absolute; top: 6px; right: 8px;
+    font-size: 9px; font-weight: 700; font-family: var(--font);
+    color: var(--text-secondary); letter-spacing: 0.03em;
+  }
+  .density-label {
+    position: absolute; top: 6px; left: 8px;
+    font-size: 8px; color: var(--text-dim); font-family: var(--font);
+    letter-spacing: 0.06em; text-transform: uppercase;
+  }
+  .density-threshold-note {
+    font-size: 9px; color: var(--text-dim); font-family: var(--font);
+    padding: 0 8px 6px; letter-spacing: 0.02em;
+    display: flex; align-items: center; gap: 4px;
+  }
+  .density-threshold-note::before {
+    content: ''; display: inline-block;
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--cat-modulator); flex-shrink: 0;
+    opacity: 0.7;
+  }
+
+  /* ── Annotation panel ────────────────────────────────────────── */
+  .ann-panel {
+    background: rgba(255,255,255,0.02);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 8px; padding: 18px 22px;
+    margin-top: 8px; max-width: 1100px;
+  }
+  .ann-title {
+    font-size: 9px; font-weight: 700; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--cat-audiofx); margin-bottom: 14px;
+  }
+  .ann-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  .ann-item-title {
+    font-size: 9px; font-weight: 700; color: var(--text-secondary);
+    margin-bottom: 4px; letter-spacing: 0.04em; text-transform: uppercase;
+  }
+  .ann-item-body { font-size: 10.5px; color: var(--text-secondary); line-height: 1.55; }
+  code {
+    font-family: var(--font); font-size: 10px; color: var(--text-primary);
+    background: var(--elevated); padding: 1px 4px; border-radius: 3px;
+  }
+  .ann-questions {
+    margin-top: 14px; padding-top: 14px;
+    border-top: 1px solid rgba(255,255,255,0.05);
+  }
+  .ann-q-title {
+    font-size: 9px; font-weight: 700; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--cat-midifx); margin-bottom: 8px;
+  }
+  .ann-q { font-size: 10.5px; color: var(--text-secondary); line-height: 1.6; padding: 2px 0; }
+  .ann-q::before { content: 'Q: '; color: var(--cat-midifx); font-weight: 700; font-family: var(--font); font-size: 9px; }
+  .ann-rec {
+    margin-top: 14px; padding-top: 14px;
+    border-top: 1px solid rgba(255,255,255,0.05);
+    font-size: 10.5px; color: var(--text-primary); line-height: 1.6;
+  }
+  .ann-rec strong { color: var(--cat-audiofx); }
+
+</style>
+</head>
+<body>
+
+<div class="page-label">CONTAINER BLOCK — OPTION 1 · ITERATION 2 · FULL VARIANT COVERAGE</div>
+<div class="page-subtitle">
+  Extends Option 1 (mini-graph thumbnail) with all 8 specimen states. Locked neumorphic system throughout.<br>
+  Each section is labelled and independent — share with Glen for feedback.
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     SHARED MACROS — container icon + mini-graph cables reused below
+     ═══════════════════════════════════════════════════════════════ -->
+<template id="tpl-container-icon">
+  <svg viewBox="0 0 14 14" width="13" height="13" fill="none">
+    <rect x="1" y="1" width="12" height="12" rx="2" stroke="rgba(255,255,255,0.35)" stroke-width="1.2"/>
+    <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" stroke="rgba(255,255,255,0.55)" stroke-width="1.2"/>
+  </svg>
+</template>
+
+<!-- ══════════════════════════════════════════════════════════════
+     SPECIMEN 1 — Standard 96 px mini-graph: idle / hover / selected
+     ══════════════════════════════════════════════════════════════ -->
+<div class="canvas-bg" id="s1">
+
+  <!-- ── 1a idle ─────────────────────────────────────────────────── -->
+  <div class="specimen">
+    <div class="section-label">S1a — Idle</div>
+    <div class="block container-block">
+      <div class="block-header" style="--cat-color:rgba(255,255,255,0.15);">
+        <div class="block-cat-glyph">
+          <svg viewBox="0 0 14 14" width="13" height="13" fill="none">
+            <rect x="1" y="1" width="12" height="12" rx="2" stroke="rgba(255,255,255,0.35)" stroke-width="1.2"/>
+            <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" stroke="rgba(255,255,255,0.55)" stroke-width="1.2"/>
+          </svg>
+        </div>
+        <span class="block-name">Drum Bus</span>
+        <div class="block-status">
+          <span class="block-badge" style="background:rgba(74,144,217,0.12);color:var(--cat-instrument);">Container</span>
+          <div class="led" style="background:rgba(255,255,255,0.25);box-shadow:none;"></div>
+        </div>
+      </div>
+      <div class="thumbnail-region">
+        <div class="mn" style="left:10px;top:37px;width:32px;height:16px;background:rgba(74,144,217,0.22);border:1px solid rgba(74,144,217,0.38);color:var(--cat-instrument);">IN</div>
+        <div class="mn" style="left:56px;top:27px;width:34px;height:16px;background:rgba(232,168,56,0.18);border:1px solid rgba(232,168,56,0.32);color:var(--cat-audiofx);">EQ</div>
+        <div class="mn" style="left:56px;top:49px;width:34px;height:16px;background:rgba(232,168,56,0.18);border:1px solid rgba(232,168,56,0.32);color:var(--cat-audiofx);">COMP</div>
+        <div class="mn" style="left:106px;top:37px;width:28px;height:16px;background:rgba(168,127,224,0.18);border:1px solid rgba(168,127,224,0.32);color:var(--cat-modulator);">MRG</div>
+        <div class="mn" style="left:148px;top:37px;width:36px;height:16px;background:rgba(74,144,217,0.22);border:1px solid rgba(74,144,217,0.38);color:var(--cat-instrument);">OUT</div>
+        <svg class="thumb-svg" viewBox="0 0 240 96">
+          <path d="M42 45 C52 45 46 35 56 35" stroke="rgba(74,144,217,0.45)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          <path d="M42 45 C52 45 46 57 56 57" stroke="rgba(74,144,217,0.35)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          <path d="M90 35 C100 35 99 45 106 45" stroke="rgba(232,168,56,0.45)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          <path d="M90 57 C100 57 99 45 106 45" stroke="rgba(232,168,56,0.38)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          <line x1="134" y1="45" x2="148" y2="45" stroke="rgba(168,127,224,0.45)" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        <div class="dive-hint"><svg viewBox="0 0 24 24"><path d="M5 12h14M13 18l6-6-6-6"/></svg>double-click</div>
+        <div class="depth-badge">4 blocks · 5 cables</div>
+      </div>
+      <div class="io-row">
+        <div class="port-group">
+          <div class="port-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div>
+          <span class="port-label">2 audio in</span>
+        </div>
+        <div class="io-arrow">→</div>
+        <div class="port-group outputs">
+          <span class="port-label">2 audio out</span>
+          <div class="port-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div>
+        </div>
+      </div>
+      <div class="stats-row">
+        <div class="stat-item">
+          <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+          <span class="stat-value">4</span> blocks
+        </div>
+        <div class="stat-item">
+          <svg viewBox="0 0 24 24"><path d="M17 7 L7 17M7 7l10 10"/></svg>
+          <span class="stat-value">5</span> cables
+        </div>
+      </div>
+      <div class="ports-row">
+        <div class="port-col">
+          <div class="port-handle"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="handle-label">in L</span></div>
+          <div class="port-handle"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="handle-label">in R</span></div>
+        </div>
+        <div class="port-col right">
+          <div class="port-handle right"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="handle-label">out L</span></div>
+          <div class="port-handle right"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="handle-label">out R</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 1b hover ─────────────────────────────────────────────────── -->
+  <div class="specimen">
+    <div class="section-label">S1b — Hover (raised + glow + hint brightens)</div>
+    <div class="block container-block state-hover">
+      <div class="block-header" style="--cat-color:rgba(255,255,255,0.18);">
+        <div class="block-cat-glyph">
+          <svg viewBox="0 0 14 14" width="13" height="13" fill="none">
+            <rect x="1" y="1" width="12" height="12" rx="2" stroke="rgba(255,255,255,0.5)" stroke-width="1.2"/>
+            <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" stroke="rgba(255,255,255,0.7)" stroke-width="1.2"/>
+          </svg>
+        </div>
+        <span class="block-name">Drum Bus</span>
+        <div class="block-status">
+          <span class="block-badge" style="background:rgba(74,144,217,0.18);color:var(--cat-instrument);">Container</span>
+          <div class="led" style="background:rgba(255,255,255,0.38);box-shadow:none;"></div>
+        </div>
+      </div>
+      <div class="thumbnail-region" style="box-shadow:var(--neu-inset),0 0 0 1px rgba(255,255,255,0.05);">
+        <div class="mn" style="left:10px;top:37px;width:32px;height:16px;background:rgba(74,144,217,0.35);border:1px solid rgba(74,144,217,0.58);color:var(--cat-instrument);">IN</div>
+        <div class="mn" style="left:56px;top:27px;width:34px;height:16px;background:rgba(232,168,56,0.3);border:1px solid rgba(232,168,56,0.52);color:var(--cat-audiofx);">EQ</div>
+        <div class="mn" style="left:56px;top:49px;width:34px;height:16px;background:rgba(232,168,56,0.3);border:1px solid rgba(232,168,56,0.52);color:var(--cat-audiofx);">COMP</div>
+        <div class="mn" style="left:106px;top:37px;width:28px;height:16px;background:rgba(168,127,224,0.3);border:1px solid rgba(168,127,224,0.5);color:var(--cat-modulator);">MRG</div>
+        <div class="mn" style="left:148px;top:37px;width:36px;height:16px;background:rgba(74,144,217,0.35);border:1px solid rgba(74,144,217,0.58);color:var(--cat-instrument);">OUT</div>
+        <svg class="thumb-svg" viewBox="0 0 240 96">
+          <path d="M42 45 C52 45 46 35 56 35" stroke="rgba(74,144,217,0.7)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          <path d="M42 45 C52 45 46 57 56 57" stroke="rgba(74,144,217,0.6)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          <path d="M90 35 C100 35 99 45 106 45" stroke="rgba(232,168,56,0.7)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          <path d="M90 57 C100 57 99 45 106 45" stroke="rgba(232,168,56,0.6)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          <line x1="134" y1="45" x2="148" y2="45" stroke="rgba(168,127,224,0.7)" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        <div class="dive-hint" style="color:rgba(255,255,255,0.52);">
+          <svg viewBox="0 0 24 24" style="width:9px;height:9px;fill:none;stroke:currentColor;stroke-width:1.75;"><path d="M5 12h14M13 18l6-6-6-6"/></svg>
+          double-click to enter
+        </div>
+        <div class="depth-badge">4 blocks · 5 cables</div>
+      </div>
+      <div class="io-row">
+        <div class="port-group"><div class="port-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="port-label">2 audio in</span></div>
+        <div class="io-arrow">→</div>
+        <div class="port-group outputs"><span class="port-label">2 audio out</span><div class="port-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div></div>
+      </div>
+      <div class="stats-row">
+        <div class="stat-item"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><span class="stat-value">4</span> blocks</div>
+        <div class="stat-item"><svg viewBox="0 0 24 24"><path d="M17 7 L7 17M7 7l10 10"/></svg><span class="stat-value">5</span> cables</div>
+      </div>
+      <div class="ports-row">
+        <div class="port-col">
+          <div class="port-handle"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="handle-label">in L</span></div>
+          <div class="port-handle"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="handle-label">in R</span></div>
+        </div>
+        <div class="port-col right">
+          <div class="port-handle right"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="handle-label">out L</span></div>
+          <div class="port-handle right"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="handle-label">out R</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 1c selected ──────────────────────────────────────────────── -->
+  <div class="specimen">
+    <div class="section-label">S1c — Selected (instrument-colour ring + outer glow)</div>
+    <div class="block container-block state-selected">
+      <div class="block-header" style="--cat-color:var(--cat-instrument);">
+        <div class="block-cat-glyph">
+          <svg viewBox="0 0 14 14" width="13" height="13" fill="none">
+            <rect x="1" y="1" width="12" height="12" rx="2" stroke="rgba(74,144,217,0.6)" stroke-width="1.2"/>
+            <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" stroke="rgba(74,144,217,0.85)" stroke-width="1.2"/>
+          </svg>
+        </div>
+        <span class="block-name">Drum Bus</span>
+        <div class="block-status">
+          <span class="block-badge" style="background:rgba(74,144,217,0.22);color:var(--cat-instrument);">Container</span>
+          <div class="led" style="background:var(--cat-instrument);box-shadow:0 0 6px var(--cat-instrument);"></div>
+        </div>
+      </div>
+      <div class="thumbnail-region" style="box-shadow:var(--neu-inset),0 0 0 1px rgba(74,144,217,0.2);">
+        <div class="mn" style="left:10px;top:37px;width:32px;height:16px;background:rgba(74,144,217,0.38);border:1px solid rgba(74,144,217,0.65);color:var(--cat-instrument);">IN</div>
+        <div class="mn" style="left:56px;top:27px;width:34px;height:16px;background:rgba(232,168,56,0.32);border:1px solid rgba(232,168,56,0.55);color:var(--cat-audiofx);">EQ</div>
+        <div class="mn" style="left:56px;top:49px;width:34px;height:16px;background:rgba(232,168,56,0.32);border:1px solid rgba(232,168,56,0.55);color:var(--cat-audiofx);">COMP</div>
+        <div class="mn" style="left:106px;top:37px;width:28px;height:16px;background:rgba(168,127,224,0.32);border:1px solid rgba(168,127,224,0.55);color:var(--cat-modulator);">MRG</div>
+        <div class="mn" style="left:148px;top:37px;width:36px;height:16px;background:rgba(74,144,217,0.38);border:1px solid rgba(74,144,217,0.65);color:var(--cat-instrument);">OUT</div>
+        <svg class="thumb-svg" viewBox="0 0 240 96">
+          <path d="M42 45 C52 45 46 35 56 35" stroke="rgba(74,144,217,0.75)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          <path d="M42 45 C52 45 46 57 56 57" stroke="rgba(74,144,217,0.65)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          <path d="M90 35 C100 35 99 45 106 45" stroke="rgba(232,168,56,0.75)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          <path d="M90 57 C100 57 99 45 106 45" stroke="rgba(232,168,56,0.65)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          <line x1="134" y1="45" x2="148" y2="45" stroke="rgba(168,127,224,0.75)" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        <div class="dive-hint" style="color:rgba(255,255,255,0.55);">
+          <svg viewBox="0 0 24 24" style="width:9px;height:9px;fill:none;stroke:currentColor;stroke-width:1.75;"><path d="M5 12h14M13 18l6-6-6-6"/></svg>
+          double-click to enter
+        </div>
+        <div class="depth-badge">4 blocks · 5 cables</div>
+      </div>
+      <div class="io-row">
+        <div class="port-group"><div class="port-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="port-label">2 audio in</span></div>
+        <div class="io-arrow">→</div>
+        <div class="port-group outputs"><span class="port-label">2 audio out</span><div class="port-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div></div>
+      </div>
+      <div class="stats-row">
+        <div class="stat-item"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><span class="stat-value">4</span> blocks</div>
+        <div class="stat-item"><svg viewBox="0 0 24 24"><path d="M17 7 L7 17M7 7l10 10"/></svg><span class="stat-value">5</span> cables</div>
+      </div>
+      <div class="ports-row">
+        <div class="port-col">
+          <div class="port-handle"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="handle-label">in L</span></div>
+          <div class="port-handle"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="handle-label">in R</span></div>
+        </div>
+        <div class="port-col right">
+          <div class="port-handle right"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="handle-label">out L</span></div>
+          <div class="port-handle right"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="handle-label">out R</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /canvas-bg S1 -->
+
+<!-- ══════════════════════════════════════════════════════════════
+     SPECIMEN 2 — Compact tier: micro density strip / count chip
+     (triggered at zoom < ~0.55 — title stays legible, thumb shrinks)
+     ══════════════════════════════════════════════════════════════ -->
+<div class="canvas-bg" id="s2">
+
+  <!-- ── 2a micro-density strip (zoom ~0.45) ──────────────────────── -->
+  <div class="specimen">
+    <div class="section-label">S2a — Compact: micro-strip (zoom ≈ 0.45)</div>
+    <!-- Collapsed header + a 28px strip instead of full 96px thumb -->
+    <div class="block container-compact">
+      <div class="block-header" style="--cat-color:rgba(255,255,255,0.15);">
+        <div class="block-cat-glyph">
+          <svg viewBox="0 0 14 14" width="11" height="11" fill="none">
+            <rect x="1" y="1" width="12" height="12" rx="2" stroke="rgba(255,255,255,0.35)" stroke-width="1.2"/>
+            <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" stroke="rgba(255,255,255,0.55)" stroke-width="1.2"/>
+          </svg>
+        </div>
+        <span class="block-name" style="font-size:10px;">Drum Bus</span>
+        <div class="led" style="background:rgba(255,255,255,0.22);box-shadow:none;"></div>
+      </div>
+      <!-- Micro strip: category colour dots only, no labels -->
+      <div style="margin:5px 8px 0;border-radius:4px;background:var(--pressed);box-shadow:var(--neu-inset);height:24px;display:flex;align-items:center;padding:0 7px;gap:4px;overflow:hidden;">
+        <!-- 1 VI dot -->
+        <div style="width:8px;height:8px;border-radius:50%;background:var(--cat-instrument);flex-shrink:0;"></div>
+        <!-- 2 FX dots -->
+        <div style="width:8px;height:8px;border-radius:2px;background:var(--cat-audiofx);transform:rotate(45deg);flex-shrink:0;"></div>
+        <div style="width:8px;height:8px;border-radius:2px;background:var(--cat-audiofx);transform:rotate(45deg);flex-shrink:0;"></div>
+        <!-- 1 Mod dot -->
+        <div style="width:8px;height:8px;background:var(--cat-modulator);flex-shrink:0;clip-path:polygon(50% 0%,93% 25%,93% 75%,50% 100%,7% 75%,7% 25%);"></div>
+        <!-- count -->
+        <span style="margin-left:auto;font-size:8px;font-family:var(--font);color:var(--text-dim);letter-spacing:0.04em;">4</span>
+      </div>
+      <!-- Minimal IO text -->
+      <div style="padding:3px 8px 7px;font-size:8px;font-family:var(--font);color:var(--text-dim);letter-spacing:0.03em;display:flex;gap:5px;align-items:center;">
+        <div style="width:5px;height:5px;border-radius:50%;background:var(--cat-instrument);flex-shrink:0;"></div>
+        <span>2→2 audio</span>
+      </div>
+      <div class="ports-row">
+        <div class="port-col">
+          <div class="port-handle"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="handle-label">in L</span></div>
+          <div class="port-handle"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="handle-label">in R</span></div>
+        </div>
+        <div class="port-col right">
+          <div class="port-handle right"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="handle-label">out L</span></div>
+          <div class="port-handle right"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="handle-label">out R</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 2b count chip (zoom < 0.35 — thumbnail collapses to single chip) ─ -->
+  <div class="specimen">
+    <div class="section-label">S2b — Title tier: count chip only (zoom ≤ 0.35)</div>
+    <div class="block" style="width:130px;">
+      <div class="block-header" style="--cat-color:rgba(255,255,255,0.12);">
+        <div class="block-cat-glyph">
+          <svg viewBox="0 0 14 14" width="10" height="10" fill="none">
+            <rect x="1" y="1" width="12" height="12" rx="2" stroke="rgba(255,255,255,0.3)" stroke-width="1.2"/>
+            <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" stroke="rgba(255,255,255,0.45)" stroke-width="1.2"/>
+          </svg>
+        </div>
+        <span class="block-name" style="font-size:10px;">Drum Bus</span>
+        <!-- single block-count chip replaces entire thumbnail -->
+        <span style="font-size:8px;font-weight:700;font-family:var(--font);color:var(--text-secondary);
+          background:var(--pressed);border-radius:3px;padding:1px 5px;letter-spacing:0.04em;
+          box-shadow:var(--neu-button);flex-shrink:0;">4×</span>
+      </div>
+      <!-- No thumbnail at this zoom — just ports -->
+      <div class="ports-row" style="padding-top:3px;">
+        <div class="port-col">
+          <div class="port-handle"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="handle-label">L</span></div>
+          <div class="port-handle"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="handle-label">R</span></div>
+        </div>
+        <div class="port-col right">
+          <div class="port-handle right"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="handle-label">L</span></div>
+          <div class="port-handle right"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="handle-label">R</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 2c icon-only (zoom < 0.2) ────────────────────────────────── -->
+  <div class="specimen">
+    <div class="section-label">S2c — Icon tier (zoom ≤ 0.20)</div>
+    <!-- At extreme zoom: just the nested-squares icon + tiny count badge -->
+    <div class="block" style="width:52px;">
+      <div style="height:44px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:3px;position:relative;">
+        <svg viewBox="0 0 20 20" width="20" height="20" fill="none">
+          <rect x="1" y="1" width="18" height="18" rx="3" stroke="rgba(255,255,255,0.3)" stroke-width="1.3"/>
+          <rect x="5" y="5" width="10" height="10" rx="2" stroke="rgba(255,255,255,0.5)" stroke-width="1.3"/>
+        </svg>
+        <span style="font-size:7px;font-weight:700;font-family:var(--font);color:var(--text-dim);letter-spacing:0.05em;">4</span>
+      </div>
+      <!-- Port handles shrink to just the pips, no labels -->
+      <div style="display:flex;justify-content:space-between;padding:0 4px 6px;">
+        <div style="display:flex;flex-direction:column;gap:5px;">
+          <div style="width:7px;height:7px;border-radius:50%;background:var(--cat-instrument);box-shadow:0 0 3px var(--cat-instrument);"></div>
+          <div style="width:7px;height:7px;border-radius:50%;background:var(--cat-instrument);box-shadow:0 0 3px var(--cat-instrument);"></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:5px;align-items:flex-end;">
+          <div style="width:7px;height:7px;border-radius:50%;background:var(--cat-instrument);box-shadow:0 0 3px var(--cat-instrument);"></div>
+          <div style="width:7px;height:7px;border-radius:50%;background:var(--cat-instrument);box-shadow:0 0 3px var(--cat-instrument);"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /canvas-bg S2 -->
+
+<!-- ══════════════════════════════════════════════════════════════
+     SPECIMEN 3 — Dense fallback (>12 internal blocks)
+     Thumbnail switches from node-by-node to density heatmap bars
+     ══════════════════════════════════════════════════════════════ -->
+<div class="canvas-bg" id="s3">
+
+  <!-- ── 3a density heatmap (16 blocks) ───────────────────────────── -->
+  <div class="specimen">
+    <div class="section-label">S3a — Dense (16 blocks): heatmap bars</div>
+    <div class="block container-block">
+      <div class="block-header" style="--cat-color:rgba(255,255,255,0.15);">
+        <div class="block-cat-glyph">
+          <svg viewBox="0 0 14 14" width="13" height="13" fill="none">
+            <rect x="1" y="1" width="12" height="12" rx="2" stroke="rgba(255,255,255,0.35)" stroke-width="1.2"/>
+            <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" stroke="rgba(255,255,255,0.55)" stroke-width="1.2"/>
+          </svg>
+        </div>
+        <span class="block-name">Full Mix Chain</span>
+        <div class="block-status">
+          <span class="block-badge" style="background:rgba(74,144,217,0.12);color:var(--cat-instrument);">Container</span>
+          <div class="led" style="background:rgba(255,255,255,0.22);box-shadow:none;"></div>
+        </div>
+      </div>
+      <!-- Density body: category-coloured bars proportional to count -->
+      <div class="density-body">
+        <span class="density-label">density</span>
+        <span class="density-count">16 blocks</span>
+        <!-- VI ×3 -->
+        <div class="density-bar" style="height:45%;background:var(--cat-instrument);"></div>
+        <div class="density-bar" style="height:45%;background:var(--cat-instrument);"></div>
+        <div class="density-bar" style="height:45%;background:var(--cat-instrument);"></div>
+        <!-- MIDI ×2 -->
+        <div class="density-bar" style="height:32%;background:var(--cat-midifx);"></div>
+        <div class="density-bar" style="height:32%;background:var(--cat-midifx);"></div>
+        <!-- FX ×7 -->
+        <div class="density-bar" style="height:72%;background:var(--cat-audiofx);"></div>
+        <div class="density-bar" style="height:80%;background:var(--cat-audiofx);"></div>
+        <div class="density-bar" style="height:65%;background:var(--cat-audiofx);"></div>
+        <div class="density-bar" style="height:55%;background:var(--cat-audiofx);"></div>
+        <div class="density-bar" style="height:68%;background:var(--cat-audiofx);"></div>
+        <div class="density-bar" style="height:75%;background:var(--cat-audiofx);"></div>
+        <div class="density-bar" style="height:60%;background:var(--cat-audiofx);"></div>
+        <!-- Mod ×4 -->
+        <div class="density-bar" style="height:50%;background:var(--cat-modulator);"></div>
+        <div class="density-bar" style="height:58%;background:var(--cat-modulator);"></div>
+        <div class="density-bar" style="height:42%;background:var(--cat-modulator);"></div>
+        <div class="density-bar" style="height:48%;background:var(--cat-modulator);"></div>
+      </div>
+      <div class="density-threshold-note">switches at 12+ blocks · double-click to enter</div>
+      <div class="io-row">
+        <div class="port-group"><div class="port-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="port-label">4 audio in</span></div>
+        <div class="io-arrow">→</div>
+        <div class="port-group outputs"><span class="port-label">2 audio out</span><div class="port-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div></div>
+      </div>
+      <div class="ports-row">
+        <div class="port-col">
+          <div class="port-handle"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="handle-label">in 1</span></div>
+          <div class="port-handle"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="handle-label">in 2</span></div>
+          <div class="port-handle"><div class="handle-pip" style="background:var(--cat-midifx);--pip-color:var(--cat-midifx);"></div><span class="handle-label">MIDI</span></div>
+        </div>
+        <div class="port-col right">
+          <div class="port-handle right"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="handle-label">out L</span></div>
+          <div class="port-handle right"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="handle-label">out R</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 3b threshold comparison: just-below (12 blocks = still graph) ── -->
+  <div class="specimen">
+    <div class="section-label">S3b — At threshold (12 blocks): still uses mini-graph</div>
+    <div class="block container-block">
+      <div class="block-header" style="--cat-color:rgba(255,255,255,0.15);">
+        <div class="block-cat-glyph">
+          <svg viewBox="0 0 14 14" width="13" height="13" fill="none">
+            <rect x="1" y="1" width="12" height="12" rx="2" stroke="rgba(255,255,255,0.35)" stroke-width="1.2"/>
+            <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" stroke="rgba(255,255,255,0.55)" stroke-width="1.2"/>
+          </svg>
+        </div>
+        <span class="block-name">Synth Stack</span>
+        <div class="block-status">
+          <span class="block-badge" style="background:rgba(74,144,217,0.12);color:var(--cat-instrument);">Container</span>
+        </div>
+      </div>
+      <!-- Denser mini-graph: nodes packed tighter, smaller labels -->
+      <div class="thumbnail-region">
+        <!-- Row 1 -->
+        <div class="mn" style="left:6px;top:8px;width:26px;height:13px;background:rgba(74,144,217,0.22);border:1px solid rgba(74,144,217,0.38);color:var(--cat-instrument);font-size:6px;">IN</div>
+        <div class="mn" style="left:38px;top:8px;width:26px;height:13px;background:rgba(43,196,196,0.2);border:1px solid rgba(43,196,196,0.35);color:var(--cat-midifx);font-size:6px;">ARP</div>
+        <div class="mn" style="left:70px;top:8px;width:26px;height:13px;background:rgba(232,168,56,0.18);border:1px solid rgba(232,168,56,0.32);color:var(--cat-audiofx);font-size:6px;">EQ</div>
+        <div class="mn" style="left:102px;top:8px;width:28px;height:13px;background:rgba(232,168,56,0.18);border:1px solid rgba(232,168,56,0.32);color:var(--cat-audiofx);font-size:6px;">CMP</div>
+        <div class="mn" style="left:136px;top:8px;width:26px;height:13px;background:rgba(168,127,224,0.18);border:1px solid rgba(168,127,224,0.32);color:var(--cat-modulator);font-size:6px;">LFO</div>
+        <div class="mn" style="left:168px;top:8px;width:26px;height:13px;background:rgba(232,168,56,0.18);border:1px solid rgba(232,168,56,0.32);color:var(--cat-audiofx);font-size:6px;">DLY</div>
+        <!-- Row 2 -->
+        <div class="mn" style="left:6px;top:28px;width:26px;height:13px;background:rgba(74,144,217,0.22);border:1px solid rgba(74,144,217,0.38);color:var(--cat-instrument);font-size:6px;">OSC</div>
+        <div class="mn" style="left:38px;top:28px;width:26px;height:13px;background:rgba(168,127,224,0.18);border:1px solid rgba(168,127,224,0.32);color:var(--cat-modulator);font-size:6px;">ENV</div>
+        <div class="mn" style="left:70px;top:28px;width:26px;height:13px;background:rgba(232,168,56,0.18);border:1px solid rgba(232,168,56,0.32);color:var(--cat-audiofx);font-size:6px;">REV</div>
+        <div class="mn" style="left:102px;top:28px;width:28px;height:13px;background:rgba(232,168,56,0.18);border:1px solid rgba(232,168,56,0.32);color:var(--cat-audiofx);font-size:6px;">FLT</div>
+        <div class="mn" style="left:136px;top:28px;width:26px;height:13px;background:rgba(168,127,224,0.18);border:1px solid rgba(168,127,224,0.32);color:var(--cat-modulator);font-size:6px;">CV</div>
+        <div class="mn" style="left:168px;top:28px;width:26px;height:13px;background:rgba(74,144,217,0.22);border:1px solid rgba(74,144,217,0.38);color:var(--cat-instrument);font-size:6px;">OUT</div>
+        <svg class="thumb-svg" viewBox="0 0 224 96" style="opacity:0.5;">
+          <line x1="32" y1="14" x2="38" y2="14" stroke="rgba(74,144,217,0.6)" stroke-width="1" stroke-linecap="round"/>
+          <line x1="64" y1="14" x2="70" y2="14" stroke="rgba(43,196,196,0.6)" stroke-width="1" stroke-linecap="round"/>
+          <line x1="96" y1="14" x2="102" y2="14" stroke="rgba(232,168,56,0.6)" stroke-width="1" stroke-linecap="round"/>
+        </svg>
+        <div class="dive-hint"><svg viewBox="0 0 24 24"><path d="M5 12h14M13 18l6-6-6-6"/></svg>double-click</div>
+        <div class="depth-badge" style="bottom:4px;">12 blocks</div>
+      </div>
+      <div class="stats-row">
+        <div class="stat-item"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><span class="stat-value">12</span> blocks</div>
+        <span style="font-size:8px;color:var(--cat-modulator);font-family:var(--font);letter-spacing:0.04em;">threshold</span>
+      </div>
+      <div class="ports-row">
+        <div class="port-col">
+          <div class="port-handle"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="handle-label">in L</span></div>
+          <div class="port-handle"><div class="handle-pip" style="background:var(--cat-midifx);--pip-color:var(--cat-midifx);"></div><span class="handle-label">MIDI</span></div>
+        </div>
+        <div class="port-col right">
+          <div class="port-handle right"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="handle-label">out L</span></div>
+          <div class="port-handle right"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="handle-label">out R</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /canvas-bg S3 -->
+
+<!-- ══════════════════════════════════════════════════════════════
+     SPECIMEN 4 — Portal (linked .elboard) vs local Container
+     ══════════════════════════════════════════════════════════════ -->
+<div class="canvas-bg" id="s4">
+
+  <!-- ── 4a local Container ──────────────────────────────────────── -->
+  <div class="specimen">
+    <div class="section-label">S4a — Local Container (embedded in project)</div>
+    <div class="block container-narrow">
+      <div class="block-header" style="--cat-color:rgba(255,255,255,0.15);">
+        <div class="block-cat-glyph">
+          <svg viewBox="0 0 14 14" width="13" height="13" fill="none">
+            <rect x="1" y="1" width="12" height="12" rx="2" stroke="rgba(255,255,255,0.35)" stroke-width="1.2"/>
+            <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" stroke="rgba(255,255,255,0.55)" stroke-width="1.2"/>
+          </svg>
+        </div>
+        <span class="block-name">Drum Bus</span>
+        <div class="block-status">
+          <span class="block-badge" style="background:rgba(255,255,255,0.08);color:var(--text-secondary);">Local</span>
+          <div class="led" style="background:rgba(255,255,255,0.22);box-shadow:none;"></div>
+        </div>
+      </div>
+      <div class="thumbnail-region">
+        <div class="mn" style="left:8px;top:37px;width:28px;height:14px;background:rgba(74,144,217,0.22);border:1px solid rgba(74,144,217,0.38);color:var(--cat-instrument);font-size:6.5px;">IN</div>
+        <div class="mn" style="left:46px;top:27px;width:30px;height:14px;background:rgba(232,168,56,0.18);border:1px solid rgba(232,168,56,0.32);color:var(--cat-audiofx);font-size:6.5px;">EQ</div>
+        <div class="mn" style="left:46px;top:47px;width:30px;height:14px;background:rgba(232,168,56,0.18);border:1px solid rgba(232,168,56,0.32);color:var(--cat-audiofx);font-size:6.5px;">CMP</div>
+        <div class="mn" style="left:88px;top:37px;width:24px;height:14px;background:rgba(168,127,224,0.18);border:1px solid rgba(168,127,224,0.32);color:var(--cat-modulator);font-size:6.5px;">MRG</div>
+        <div class="mn" style="left:122px;top:37px;width:32px;height:14px;background:rgba(74,144,217,0.22);border:1px solid rgba(74,144,217,0.38);color:var(--cat-instrument);font-size:6.5px;">OUT</div>
+        <svg class="thumb-svg" viewBox="0 0 200 96">
+          <path d="M36 44 C44 44 40 34 46 34" stroke="rgba(74,144,217,0.45)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          <path d="M36 44 C44 44 40 54 46 54" stroke="rgba(74,144,217,0.35)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          <path d="M76 34 C84 34 83 44 88 44" stroke="rgba(232,168,56,0.45)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          <path d="M76 54 C84 54 83 44 88 44" stroke="rgba(232,168,56,0.38)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          <line x1="112" y1="44" x2="122" y2="44" stroke="rgba(168,127,224,0.45)" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        <div class="dive-hint"><svg viewBox="0 0 24 24"><path d="M5 12h14M13 18l6-6-6-6"/></svg>double-click</div>
+        <div class="depth-badge">4 blocks</div>
+      </div>
+      <div class="io-row">
+        <div class="port-group"><div class="port-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="port-label">2 in</span></div>
+        <div class="io-arrow">→</div>
+        <div class="port-group outputs"><span class="port-label">2 out</span><div class="port-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div></div>
+      </div>
+      <div class="ports-row">
+        <div class="port-col">
+          <div class="port-handle"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="handle-label">in L</span></div>
+          <div class="port-handle"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="handle-label">in R</span></div>
+        </div>
+        <div class="port-col right">
+          <div class="port-handle right"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="handle-label">out L</span></div>
+          <div class="port-handle right"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="handle-label">out R</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 4b Portal (linked external .elboard) ───────────────────── -->
+  <div class="specimen">
+    <div class="section-label">S4b — Portal (linked .elboard file)</div>
+    <!-- Portal differentiators: teal header accent, link icon, filename path, dashed thumbnail border -->
+    <div class="block container-narrow" style="box-shadow:var(--neu-raised),0 0 0 1px rgba(43,196,196,0.18);">
+      <div class="block-header" style="--cat-color:var(--cat-midifx);">
+        <div class="block-cat-glyph">
+          <!-- Portal icon: nested squares + outward link arrow -->
+          <svg viewBox="0 0 14 14" width="13" height="13" fill="none">
+            <rect x="1" y="1" width="10" height="10" rx="2" stroke="rgba(43,196,196,0.5)" stroke-width="1.2"/>
+            <rect x="3.5" y="3.5" width="5" height="5" rx="1" stroke="rgba(43,196,196,0.75)" stroke-width="1.2"/>
+            <!-- link arrow top-right -->
+            <path d="M9 1.5 L12.5 1.5 L12.5 5" stroke="rgba(43,196,196,0.8)" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/>
+            <line x1="9.5" y1="4.5" x2="12.5" y2="1.5" stroke="rgba(43,196,196,0.8)" stroke-width="1.1" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <span class="block-name">Snare Verb</span>
+        <div class="block-status">
+          <span class="portal-badge">
+            <svg viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+            Portal
+          </span>
+          <div class="led" style="background:var(--cat-midifx);box-shadow:0 0 4px rgba(43,196,196,0.5);"></div>
+        </div>
+      </div>
+      <!-- Thumbnail with dashed teal overlay border to signal external link -->
+      <div class="thumbnail-region" style="outline:1.5px dashed rgba(43,196,196,0.35);outline-offset:-2px;">
+        <!-- filename watermark -->
+        <div style="position:absolute;bottom:5px;left:6px;right:6px;font-size:7px;font-family:var(--font);
+          color:rgba(43,196,196,0.45);letter-spacing:0.03em;white-space:nowrap;overflow:hidden;
+          text-overflow:ellipsis;z-index:3;">snare-verb.elboard</div>
+        <div class="mn" style="left:8px;top:30px;width:28px;height:14px;background:rgba(43,196,196,0.2);border:1px solid rgba(43,196,196,0.38);color:var(--cat-midifx);font-size:6.5px;">IN</div>
+        <div class="mn" style="left:46px;top:22px;width:30px;height:14px;background:rgba(232,168,56,0.18);border:1px solid rgba(232,168,56,0.32);color:var(--cat-audiofx);font-size:6.5px;">REV</div>
+        <div class="mn" style="left:46px;top:42px;width:30px;height:14px;background:rgba(168,127,224,0.18);border:1px solid rgba(168,127,224,0.32);color:var(--cat-modulator);font-size:6.5px;">MOD</div>
+        <div class="mn" style="left:88px;top:30px;width:32px;height:14px;background:rgba(43,196,196,0.2);border:1px solid rgba(43,196,196,0.38);color:var(--cat-midifx);font-size:6.5px;">OUT</div>
+        <svg class="thumb-svg" viewBox="0 0 200 96">
+          <path d="M36 37 C42 37 40 29 46 29" stroke="rgba(43,196,196,0.45)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          <path d="M36 37 C42 37 40 49 46 49" stroke="rgba(43,196,196,0.35)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          <path d="M76 29 C82 29 81 37 88 37" stroke="rgba(232,168,56,0.45)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          <path d="M76 49 C82 49 81 37 88 37" stroke="rgba(168,127,224,0.4)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+        </svg>
+        <div class="dive-hint" style="color:rgba(43,196,196,0.4);">
+          <svg viewBox="0 0 24 24"><path d="M5 12h14M13 18l6-6-6-6"/></svg>
+          open board
+        </div>
+      </div>
+      <!-- Linked file path row -->
+      <div style="padding:4px 8px 3px;display:flex;align-items:center;gap:5px;">
+        <svg viewBox="0 0 24 24" width="9" height="9" fill="none" stroke="rgba(43,196,196,0.5)" stroke-width="1.75" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+        <span style="font-size:8px;font-family:var(--font);color:rgba(43,196,196,0.55);letter-spacing:0.03em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">snare-verb.elboard</span>
+      </div>
+      <div class="ports-row">
+        <div class="port-col">
+          <div class="port-handle"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="handle-label">in L</span></div>
+          <div class="port-handle"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="handle-label">in R</span></div>
+        </div>
+        <div class="port-col right">
+          <div class="port-handle right"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="handle-label">out L</span></div>
+          <div class="port-handle right"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="handle-label">out R</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 4c Portal — missing file ─────────────────────────────────── -->
+  <div class="specimen">
+    <div class="section-label">S4c — Portal: missing .elboard (error state)</div>
+    <div class="block container-narrow" style="box-shadow:var(--neu-raised),0 0 0 1px rgba(220,80,80,0.35);">
+      <div class="block-header" style="--cat-color:rgba(220,80,80,0.5);">
+        <div class="block-cat-glyph">
+          <svg viewBox="0 0 14 14" width="13" height="13" fill="none">
+            <rect x="1" y="1" width="10" height="10" rx="2" stroke="rgba(220,80,80,0.5)" stroke-width="1.2"/>
+            <rect x="3.5" y="3.5" width="5" height="5" rx="1" stroke="rgba(220,80,80,0.7)" stroke-width="1.2"/>
+            <path d="M9 1.5 L12.5 1.5 L12.5 5" stroke="rgba(220,80,80,0.7)" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/>
+            <line x1="9.5" y1="4.5" x2="12.5" y2="1.5" stroke="rgba(220,80,80,0.7)" stroke-width="1.1" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <span class="block-name">Old Reverb</span>
+        <div class="block-status">
+          <span class="block-badge" style="background:rgba(220,60,60,0.15);color:rgba(255,100,100,0.9);">Missing</span>
+        </div>
+      </div>
+      <div class="thumbnail-region" style="display:flex;align-items:center;justify-content:center;flex-direction:column;gap:6px;">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="rgba(220,80,80,0.45)" stroke-width="1.5" stroke-linecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <span style="font-size:8px;font-family:var(--font);color:rgba(220,80,80,0.6);letter-spacing:0.04em;text-align:center;padding:0 8px;">old-reverb.elboard<br>not found</span>
+      </div>
+      <div style="padding:3px 8px 7px;font-size:8px;font-family:var(--font);color:rgba(220,80,80,0.55);letter-spacing:0.03em;">
+        right-click → Locate file
+      </div>
+      <div class="ports-row">
+        <div class="port-col">
+          <div class="port-handle"><div class="handle-pip" style="background:rgba(100,100,100,0.4);"></div><span class="handle-label" style="color:rgba(100,100,100,0.5);">in L</span></div>
+          <div class="port-handle"><div class="handle-pip" style="background:rgba(100,100,100,0.4);"></div><span class="handle-label" style="color:rgba(100,100,100,0.5);">in R</span></div>
+        </div>
+        <div class="port-col right">
+          <div class="port-handle right"><div class="handle-pip" style="background:rgba(100,100,100,0.4);"></div><span class="handle-label" style="color:rgba(100,100,100,0.5);">out L</span></div>
+          <div class="port-handle right"><div class="handle-pip" style="background:rgba(100,100,100,0.4);"></div><span class="handle-label" style="color:rgba(100,100,100,0.5);">out R</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /canvas-bg S4 -->
+
+<!-- ══════════════════════════════════════════════════════════════
+     SPECIMEN 5 — Muted (red+heavy) and Bypassed (grey+heavy) overlays
+     ══════════════════════════════════════════════════════════════ -->
+<div class="canvas-bg" id="s5">
+
+  <!-- ── 5a Active (baseline for comparison) ──────────────────────── -->
+  <div class="specimen">
+    <div class="section-label">S5a — Active (baseline)</div>
+    <div class="block container-narrow">
+      <div class="block-header" style="--cat-color:rgba(255,255,255,0.15);">
+        <div class="block-cat-glyph">
+          <svg viewBox="0 0 14 14" width="13" height="13" fill="none">
+            <rect x="1" y="1" width="12" height="12" rx="2" stroke="rgba(255,255,255,0.35)" stroke-width="1.2"/>
+            <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" stroke="rgba(255,255,255,0.55)" stroke-width="1.2"/>
+          </svg>
+        </div>
+        <span class="block-name">Drum Bus</span>
+        <div class="block-status">
+          <span class="block-badge" style="background:rgba(74,144,217,0.12);color:var(--cat-instrument);">Container</span>
+          <div class="led" style="background:rgba(255,255,255,0.25);box-shadow:none;"></div>
+        </div>
+      </div>
+      <div class="thumbnail-region">
+        <div class="mn" style="left:8px;top:37px;width:28px;height:14px;background:rgba(74,144,217,0.22);border:1px solid rgba(74,144,217,0.38);color:var(--cat-instrument);font-size:6.5px;">IN</div>
+        <div class="mn" style="left:46px;top:27px;width:30px;height:14px;background:rgba(232,168,56,0.18);border:1px solid rgba(232,168,56,0.32);color:var(--cat-audiofx);font-size:6.5px;">EQ</div>
+        <div class="mn" style="left:46px;top:47px;width:30px;height:14px;background:rgba(232,168,56,0.18);border:1px solid rgba(232,168,56,0.32);color:var(--cat-audiofx);font-size:6.5px;">CMP</div>
+        <div class="mn" style="left:88px;top:37px;width:32px;height:14px;background:rgba(74,144,217,0.22);border:1px solid rgba(74,144,217,0.38);color:var(--cat-instrument);font-size:6.5px;">OUT</div>
+        <svg class="thumb-svg" viewBox="0 0 200 96">
+          <path d="M36 44 C42 44 40 34 46 34" stroke="rgba(74,144,217,0.45)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          <path d="M36 44 C42 44 40 54 46 54" stroke="rgba(74,144,217,0.35)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          <line x1="76" y1="37" x2="88" y2="44" stroke="rgba(232,168,56,0.45)" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="76" y1="54" x2="88" y2="44" stroke="rgba(232,168,56,0.38)" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        <div class="depth-badge">3 blocks</div>
+      </div>
+      <div class="ports-row">
+        <div class="port-col">
+          <div class="port-handle"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="handle-label">in L</span></div>
+          <div class="port-handle"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="handle-label">in R</span></div>
+        </div>
+        <div class="port-col right">
+          <div class="port-handle right"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="handle-label">out L</span></div>
+          <div class="port-handle right"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="handle-label">out R</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 5b Muted ──────────────────────────────────────────────────── -->
+  <div class="specimen">
+    <div class="section-label">S5b — Muted (red border + heavy label + desaturated thumb)</div>
+    <div class="block container-narrow" style="position:relative;">
+      <div class="overlay-muted"></div>
+      <div class="overlay-muted-badge">MUTED</div>
+      <div class="block-header" style="--cat-color:rgba(220,60,60,0.4);">
+        <div class="block-cat-glyph" style="opacity:0.5;">
+          <svg viewBox="0 0 14 14" width="13" height="13" fill="none">
+            <rect x="1" y="1" width="12" height="12" rx="2" stroke="rgba(255,255,255,0.25)" stroke-width="1.2"/>
+            <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" stroke="rgba(255,255,255,0.35)" stroke-width="1.2"/>
+          </svg>
+        </div>
+        <span class="block-name" style="color:rgba(229,229,234,0.5);">Drum Bus</span>
+        <div class="block-status">
+          <div class="led" style="background:rgba(220,60,60,0.7);box-shadow:0 0 5px rgba(220,60,60,0.6);"></div>
+        </div>
+      </div>
+      <!-- Thumbnail desaturated via filter -->
+      <div class="thumbnail-region" style="filter:saturate(0.15) brightness(0.65);">
+        <div class="mn" style="left:8px;top:37px;width:28px;height:14px;background:rgba(74,144,217,0.22);border:1px solid rgba(74,144,217,0.38);color:var(--cat-instrument);font-size:6.5px;">IN</div>
+        <div class="mn" style="left:46px;top:27px;width:30px;height:14px;background:rgba(232,168,56,0.18);border:1px solid rgba(232,168,56,0.32);color:var(--cat-audiofx);font-size:6.5px;">EQ</div>
+        <div class="mn" style="left:46px;top:47px;width:30px;height:14px;background:rgba(232,168,56,0.18);border:1px solid rgba(232,168,56,0.32);color:var(--cat-audiofx);font-size:6.5px;">CMP</div>
+        <div class="mn" style="left:88px;top:37px;width:32px;height:14px;background:rgba(74,144,217,0.22);border:1px solid rgba(74,144,217,0.38);color:var(--cat-instrument);font-size:6.5px;">OUT</div>
+        <svg class="thumb-svg" viewBox="0 0 200 96">
+          <path d="M36 44 C42 44 40 34 46 34" stroke="rgba(74,144,217,0.45)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          <path d="M36 44 C42 44 40 54 46 54" stroke="rgba(74,144,217,0.35)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div class="ports-row" style="opacity:0.45;">
+        <div class="port-col">
+          <div class="port-handle"><div class="handle-pip" style="background:var(--cat-instrument);"></div><span class="handle-label">in L</span></div>
+          <div class="port-handle"><div class="handle-pip" style="background:var(--cat-instrument);"></div><span class="handle-label">in R</span></div>
+        </div>
+        <div class="port-col right">
+          <div class="port-handle right"><div class="handle-pip" style="background:var(--cat-instrument);"></div><span class="handle-label">out L</span></div>
+          <div class="port-handle right"><div class="handle-pip" style="background:var(--cat-instrument);"></div><span class="handle-label">out R</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 5c Bypassed ──────────────────────────────────────────────── -->
+  <div class="specimen">
+    <div class="section-label">S5c — Bypassed (grey border + heavy label + greyed thumb)</div>
+    <div class="block container-narrow" style="position:relative;">
+      <div class="overlay-bypass"></div>
+      <div class="overlay-bypass-badge">BYPASSED</div>
+      <div class="block-header" style="--cat-color:rgba(120,120,120,0.3);">
+        <div class="block-cat-glyph" style="opacity:0.4;">
+          <svg viewBox="0 0 14 14" width="13" height="13" fill="none">
+            <rect x="1" y="1" width="12" height="12" rx="2" stroke="rgba(255,255,255,0.2)" stroke-width="1.2"/>
+            <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" stroke="rgba(255,255,255,0.3)" stroke-width="1.2"/>
+          </svg>
+        </div>
+        <span class="block-name" style="color:rgba(229,229,234,0.38);">Drum Bus</span>
+        <div class="block-status">
+          <div class="led" style="background:rgba(120,120,120,0.4);box-shadow:none;"></div>
+        </div>
+      </div>
+      <div class="thumbnail-region" style="filter:saturate(0) brightness(0.5);">
+        <div class="mn" style="left:8px;top:37px;width:28px;height:14px;background:rgba(74,144,217,0.22);border:1px solid rgba(74,144,217,0.38);color:var(--cat-instrument);font-size:6.5px;">IN</div>
+        <div class="mn" style="left:46px;top:27px;width:30px;height:14px;background:rgba(232,168,56,0.18);border:1px solid rgba(232,168,56,0.32);color:var(--cat-audiofx);font-size:6.5px;">EQ</div>
+        <div class="mn" style="left:46px;top:47px;width:30px;height:14px;background:rgba(232,168,56,0.18);border:1px solid rgba(232,168,56,0.32);color:var(--cat-audiofx);font-size:6.5px;">CMP</div>
+        <div class="mn" style="left:88px;top:37px;width:32px;height:14px;background:rgba(74,144,217,0.22);border:1px solid rgba(74,144,217,0.38);color:var(--cat-instrument);font-size:6.5px;">OUT</div>
+        <svg class="thumb-svg" viewBox="0 0 200 96">
+          <path d="M36 44 C42 44 40 34 46 34" stroke="rgba(74,144,217,0.45)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          <path d="M36 44 C42 44 40 54 46 54" stroke="rgba(74,144,217,0.35)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <!-- Bypass through-line to show signal passes uninhibited -->
+      <div style="padding:3px 8px 4px;display:flex;align-items:center;gap:5px;">
+        <svg viewBox="0 0 24 24" width="9" height="9" fill="none" stroke="rgba(120,120,120,0.5)" stroke-width="1.75" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        <span style="font-size:8px;font-family:var(--font);color:rgba(120,120,120,0.55);letter-spacing:0.04em;">signal passes through</span>
+      </div>
+      <div class="ports-row" style="opacity:0.3;">
+        <div class="port-col">
+          <div class="port-handle"><div class="handle-pip" style="background:var(--cat-instrument);"></div><span class="handle-label">in L</span></div>
+          <div class="port-handle"><div class="handle-pip" style="background:var(--cat-instrument);"></div><span class="handle-label">in R</span></div>
+        </div>
+        <div class="port-col right">
+          <div class="port-handle right"><div class="handle-pip" style="background:var(--cat-instrument);"></div><span class="handle-label">out L</span></div>
+          <div class="port-handle right"><div class="handle-pip" style="background:var(--cat-instrument);"></div><span class="handle-label">out R</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /canvas-bg S5 -->
+
+<!-- ══════════════════════════════════════════════════════════════
+     SPECIMEN 6 — IO summary lanes around the thumbnail
+     (option-2 IO bar borrowed and wrapped above+below thumb)
+     ══════════════════════════════════════════════════════════════ -->
+<div class="canvas-bg" id="s6">
+
+  <!-- ── 6a audio-only IO lanes ───────────────────────────────────── -->
+  <div class="specimen">
+    <div class="section-label">S6a — IO lanes: audio only</div>
+    <div class="block container-block">
+      <div class="block-header" style="--cat-color:rgba(255,255,255,0.15);">
+        <div class="block-cat-glyph">
+          <svg viewBox="0 0 14 14" width="13" height="13" fill="none">
+            <rect x="1" y="1" width="12" height="12" rx="2" stroke="rgba(255,255,255,0.35)" stroke-width="1.2"/>
+            <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" stroke="rgba(255,255,255,0.55)" stroke-width="1.2"/>
+          </svg>
+        </div>
+        <span class="block-name">Drum Bus</span>
+        <div class="block-status">
+          <span class="block-badge" style="background:rgba(74,144,217,0.12);color:var(--cat-instrument);">Container</span>
+        </div>
+      </div>
+      <!-- IO bar ABOVE thumbnail — inputs -->
+      <div style="margin:6px 8px 3px;background:var(--pressed);border-radius:4px 4px 0 0;
+        box-shadow:var(--neu-inset);padding:3px 8px;display:flex;align-items:center;gap:5px;">
+        <div class="io-pip" style="background:var(--cat-instrument);"></div>
+        <span class="io-text">2 audio in</span>
+        <div style="margin-left:auto;font-size:8px;font-family:var(--font);color:var(--text-dim);letter-spacing:0.05em;text-transform:uppercase;">IN</div>
+      </div>
+      <!-- Thumbnail (no top/bottom margin — IO bars flush) -->
+      <div class="thumbnail-region" style="margin:0 8px;border-radius:0;">
+        <div class="mn" style="left:10px;top:37px;width:28px;height:14px;background:rgba(74,144,217,0.22);border:1px solid rgba(74,144,217,0.38);color:var(--cat-instrument);font-size:6.5px;">IN</div>
+        <div class="mn" style="left:48px;top:27px;width:30px;height:14px;background:rgba(232,168,56,0.18);border:1px solid rgba(232,168,56,0.32);color:var(--cat-audiofx);font-size:6.5px;">EQ</div>
+        <div class="mn" style="left:48px;top:47px;width:30px;height:14px;background:rgba(232,168,56,0.18);border:1px solid rgba(232,168,56,0.32);color:var(--cat-audiofx);font-size:6.5px;">CMP</div>
+        <div class="mn" style="left:92px;top:37px;width:28px;height:14px;background:rgba(168,127,224,0.18);border:1px solid rgba(168,127,224,0.32);color:var(--cat-modulator);font-size:6.5px;">MRG</div>
+        <div class="mn" style="left:132px;top:37px;width:30px;height:14px;background:rgba(74,144,217,0.22);border:1px solid rgba(74,144,217,0.38);color:var(--cat-instrument);font-size:6.5px;">OUT</div>
+        <svg class="thumb-svg" viewBox="0 0 240 96">
+          <path d="M38 44 C48 44 42 34 48 34" stroke="rgba(74,144,217,0.45)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          <path d="M38 44 C48 44 42 54 48 54" stroke="rgba(74,144,217,0.35)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          <path d="M78 34 C88 34 87 44 92 44" stroke="rgba(232,168,56,0.45)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          <path d="M78 54 C88 54 87 44 92 44" stroke="rgba(232,168,56,0.38)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          <line x1="120" y1="44" x2="132" y2="44" stroke="rgba(168,127,224,0.45)" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        <div class="dive-hint"><svg viewBox="0 0 24 24"><path d="M5 12h14M13 18l6-6-6-6"/></svg>double-click</div>
+        <div class="depth-badge">4 blocks</div>
+      </div>
+      <!-- IO bar BELOW thumbnail — outputs -->
+      <div style="margin:0 8px 6px;background:var(--pressed);border-radius:0 0 4px 4px;
+        box-shadow:var(--neu-inset);padding:3px 8px;display:flex;align-items:center;gap:5px;">
+        <div style="font-size:8px;font-family:var(--font);color:var(--text-dim);letter-spacing:0.05em;text-transform:uppercase;">OUT</div>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:5px;">
+          <span class="io-text">2 audio out</span>
+          <div class="io-pip" style="background:var(--cat-instrument);"></div>
+        </div>
+      </div>
+      <div class="ports-row">
+        <div class="port-col">
+          <div class="port-handle"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="handle-label">in L</span></div>
+          <div class="port-handle"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="handle-label">in R</span></div>
+        </div>
+        <div class="port-col right">
+          <div class="port-handle right"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="handle-label">out L</span></div>
+          <div class="port-handle right"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="handle-label">out R</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 6b multi-signal IO lanes ─────────────────────────────────── -->
+  <div class="specimen">
+    <div class="section-label">S6b — IO lanes: audio + MIDI + CV</div>
+    <div class="block container-block">
+      <div class="block-header" style="--cat-color:rgba(255,255,255,0.15);">
+        <div class="block-cat-glyph">
+          <svg viewBox="0 0 14 14" width="13" height="13" fill="none">
+            <rect x="1" y="1" width="12" height="12" rx="2" stroke="rgba(255,255,255,0.35)" stroke-width="1.2"/>
+            <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" stroke="rgba(255,255,255,0.55)" stroke-width="1.2"/>
+          </svg>
+        </div>
+        <span class="block-name">Synth Chain</span>
+        <div class="block-status">
+          <span class="block-badge" style="background:rgba(74,144,217,0.12);color:var(--cat-instrument);">Container</span>
+        </div>
+      </div>
+      <!-- Multi-signal IN bar -->
+      <div style="margin:6px 8px 3px;background:var(--pressed);border-radius:4px 4px 0 0;
+        box-shadow:var(--neu-inset);padding:3px 7px;display:flex;align-items:center;gap:4px;">
+        <div class="io-pip" style="background:var(--cat-midifx);"></div>
+        <span class="io-text">1 MIDI</span>
+        <div class="io-div" style="margin:0 2px;"></div>
+        <div class="io-pip diamond" style="background:var(--cat-audiofx);width:6px;height:6px;"></div>
+        <span class="io-text">2 CV</span>
+        <div style="margin-left:auto;font-size:8px;font-family:var(--font);color:var(--text-dim);letter-spacing:0.05em;text-transform:uppercase;">IN</div>
+      </div>
+      <div class="thumbnail-region" style="margin:0 8px;border-radius:0;">
+        <div class="mn" style="left:10px;top:30px;width:28px;height:14px;background:rgba(43,196,196,0.2);border:1px solid rgba(43,196,196,0.38);color:var(--cat-midifx);font-size:6.5px;">MIDI</div>
+        <div class="mn" style="left:48px;top:22px;width:30px;height:14px;background:rgba(74,144,217,0.22);border:1px solid rgba(74,144,217,0.38);color:var(--cat-instrument);font-size:6.5px;">SYNTH</div>
+        <div class="mn" style="left:48px;top:42px;width:30px;height:14px;background:rgba(232,168,56,0.18);border:1px solid rgba(232,168,56,0.32);color:var(--cat-audiofx);font-size:6.5px;">EQ</div>
+        <div class="mn" style="left:92px;top:30px;width:28px;height:14px;background:rgba(168,127,224,0.18);border:1px solid rgba(168,127,224,0.32);color:var(--cat-modulator);font-size:6.5px;">LFO</div>
+        <div class="mn" style="left:130px;top:30px;width:30px;height:14px;background:rgba(74,144,217,0.22);border:1px solid rgba(74,144,217,0.38);color:var(--cat-instrument);font-size:6.5px;">OUT</div>
+        <svg class="thumb-svg" viewBox="0 0 240 96">
+          <path d="M38 37 C46 37 42 29 48 29" stroke="rgba(43,196,196,0.45)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          <path d="M78 29 C86 29 85 37 92 37" stroke="rgba(74,144,217,0.45)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          <line x1="120" y1="37" x2="130" y2="37" stroke="rgba(168,127,224,0.4)" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        <div class="dive-hint"><svg viewBox="0 0 24 24"><path d="M5 12h14M13 18l6-6-6-6"/></svg>double-click</div>
+        <div class="depth-badge">5 blocks</div>
+      </div>
+      <!-- Multi-signal OUT bar -->
+      <div style="margin:0 8px 6px;background:var(--pressed);border-radius:0 0 4px 4px;
+        box-shadow:var(--neu-inset);padding:3px 7px;display:flex;align-items:center;gap:4px;">
+        <div style="font-size:8px;font-family:var(--font);color:var(--text-dim);letter-spacing:0.05em;text-transform:uppercase;">OUT</div>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:4px;">
+          <div class="io-pip" style="background:var(--cat-instrument);"></div>
+          <span class="io-text">2 audio</span>
+        </div>
+      </div>
+      <div class="ports-row">
+        <div class="port-col">
+          <div class="port-handle"><div class="handle-pip" style="background:var(--cat-midifx);--pip-color:var(--cat-midifx);"></div><span class="handle-label">MIDI</span></div>
+          <div class="port-handle"><div class="handle-pip diamond" style="background:var(--cat-audiofx);--pip-color:var(--cat-audiofx);"></div><span class="handle-label">CV1</span></div>
+          <div class="port-handle"><div class="handle-pip diamond" style="background:var(--cat-audiofx);--pip-color:var(--cat-audiofx);"></div><span class="handle-label">CV2</span></div>
+        </div>
+        <div class="port-col right">
+          <div class="port-handle right"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="handle-label">out L</span></div>
+          <div class="port-handle right"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="handle-label">out R</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /canvas-bg S6 -->
+
+<!-- ══════════════════════════════════════════════════════════════
+     SPECIMEN 7 — Nested container visible inside the thumbnail
+     ══════════════════════════════════════════════════════════════ -->
+<div class="canvas-bg" id="s7">
+
+  <div class="specimen">
+    <div class="section-label">S7 — Nested Container visible in thumbnail (depth badge shows level)</div>
+    <div class="block container-block">
+      <div class="block-header" style="--cat-color:rgba(255,255,255,0.15);">
+        <div class="block-cat-glyph">
+          <svg viewBox="0 0 14 14" width="13" height="13" fill="none">
+            <rect x="1" y="1" width="12" height="12" rx="2" stroke="rgba(255,255,255,0.35)" stroke-width="1.2"/>
+            <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" stroke="rgba(255,255,255,0.55)" stroke-width="1.2"/>
+          </svg>
+        </div>
+        <span class="block-name">Master Chain</span>
+        <div class="block-status">
+          <span class="block-badge" style="background:rgba(74,144,217,0.12);color:var(--cat-instrument);">Container</span>
+          <div class="led" style="background:rgba(255,255,255,0.22);box-shadow:none;"></div>
+        </div>
+      </div>
+      <div class="thumbnail-region">
+        <!-- Normal nodes -->
+        <div class="mn" style="left:8px;top:37px;width:26px;height:14px;background:rgba(74,144,217,0.22);border:1px solid rgba(74,144,217,0.38);color:var(--cat-instrument);font-size:6.5px;">IN</div>
+        <div class="mn" style="left:44px;top:37px;width:28px;height:14px;background:rgba(232,168,56,0.18);border:1px solid rgba(232,168,56,0.32);color:var(--cat-audiofx);font-size:6.5px;">EQ</div>
+        <!-- Nested container block inside the thumbnail — rendered as a small bordered rectangle -->
+        <div style="position:absolute;left:84px;top:20px;width:64px;height:48px;z-index:2;
+          background:rgba(255,255,255,0.025);border:1px solid rgba(255,255,255,0.1);
+          border-radius:4px;">
+          <!-- tiny nested icon top-left -->
+          <div style="position:absolute;top:3px;left:4px;display:flex;align-items:center;gap:2px;">
+            <svg viewBox="0 0 10 10" width="8" height="8" fill="none">
+              <rect x="0.5" y="0.5" width="9" height="9" rx="1.5" stroke="rgba(255,255,255,0.25)" stroke-width="1"/>
+              <rect x="2.5" y="2.5" width="5" height="5" rx="1" stroke="rgba(255,255,255,0.4)" stroke-width="1"/>
+            </svg>
+            <span style="font-size:6px;font-family:var(--font);color:rgba(255,255,255,0.3);letter-spacing:0.04em;">Verb</span>
+          </div>
+          <!-- micro nodes inside the nested container -->
+          <div style="position:absolute;left:4px;top:16px;width:14px;height:8px;
+            background:rgba(232,168,56,0.2);border:1px solid rgba(232,168,56,0.35);
+            border-radius:2px;display:flex;align-items:center;justify-content:center;
+            font-size:5px;font-weight:700;color:var(--cat-audiofx);">REV</div>
+          <div style="position:absolute;left:24px;top:16px;width:14px;height:8px;
+            background:rgba(168,127,224,0.18);border:1px solid rgba(168,127,224,0.32);
+            border-radius:2px;display:flex;align-items:center;justify-content:center;
+            font-size:5px;font-weight:700;color:var(--cat-modulator);">MOD</div>
+          <div style="position:absolute;left:44px;top:16px;width:14px;height:8px;
+            background:rgba(232,168,56,0.2);border:1px solid rgba(232,168,56,0.35);
+            border-radius:2px;display:flex;align-items:center;justify-content:center;
+            font-size:5px;font-weight:700;color:var(--cat-audiofx);">MX</div>
+          <!-- depth indicator bottom-right -->
+          <div style="position:absolute;bottom:3px;right:4px;font-size:6px;font-family:var(--font);
+            color:rgba(255,255,255,0.25);letter-spacing:0.04em;">3</div>
+        </div>
+        <!-- Post-nest node -->
+        <div class="mn" style="left:160px;top:37px;width:30px;height:14px;background:rgba(74,144,217,0.22);border:1px solid rgba(74,144,217,0.38);color:var(--cat-instrument);font-size:6.5px;">OUT</div>
+        <svg class="thumb-svg" viewBox="0 0 240 96">
+          <line x1="34" y1="44" x2="44" y2="44" stroke="rgba(74,144,217,0.45)" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="72" y1="44" x2="84" y2="44" stroke="rgba(232,168,56,0.45)" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="148" y1="44" x2="160" y2="44" stroke="rgba(232,168,56,0.35)" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        <div class="dive-hint"><svg viewBox="0 0 24 24"><path d="M5 12h14M13 18l6-6-6-6"/></svg>double-click</div>
+        <!-- depth shows 2 levels -->
+        <div class="depth-badge" style="background:rgba(0,0,0,0.6);">4 blocks · 2 levels deep</div>
+      </div>
+      <div class="io-row">
+        <div class="port-group"><div class="port-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="port-label">2 audio in</span></div>
+        <div class="io-arrow">→</div>
+        <div class="port-group outputs"><span class="port-label">2 audio out</span><div class="port-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div></div>
+      </div>
+      <div class="ports-row">
+        <div class="port-col">
+          <div class="port-handle"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="handle-label">in L</span></div>
+          <div class="port-handle"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="handle-label">in R</span></div>
+        </div>
+        <div class="port-col right">
+          <div class="port-handle right"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="handle-label">out L</span></div>
+          <div class="port-handle right"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);"></div><span class="handle-label">out R</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /canvas-bg S7 -->
+
+<!-- ══════════════════════════════════════════════════════════════
+     SPECIMEN 8 — Activity hint (static mock + motion-intent note)
+     ══════════════════════════════════════════════════════════════ -->
+<div class="canvas-bg" id="s8">
+
+  <!-- ── 8a idle — no activity ─────────────────────────────────────── -->
+  <div class="specimen">
+    <div class="section-label">S8a — No activity (idle)</div>
+    <div class="block container-narrow">
+      <div class="block-header" style="--cat-color:rgba(255,255,255,0.12);">
+        <div class="block-cat-glyph">
+          <svg viewBox="0 0 14 14" width="13" height="13" fill="none">
+            <rect x="1" y="1" width="12" height="12" rx="2" stroke="rgba(255,255,255,0.28)" stroke-width="1.2"/>
+            <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" stroke="rgba(255,255,255,0.42)" stroke-width="1.2"/>
+          </svg>
+        </div>
+        <span class="block-name">Drum Bus</span>
+        <div class="led" style="background:rgba(255,255,255,0.12);box-shadow:none;"></div>
+      </div>
+      <div class="thumbnail-region">
+        <div class="mn" style="left:8px;top:37px;width:28px;height:14px;background:rgba(74,144,217,0.15);border:1px solid rgba(74,144,217,0.25);color:rgba(74,144,217,0.6);font-size:6.5px;">IN</div>
+        <div class="mn" style="left:46px;top:27px;width:30px;height:14px;background:rgba(232,168,56,0.12);border:1px solid rgba(232,168,56,0.2);color:rgba(232,168,56,0.5);font-size:6.5px;">EQ</div>
+        <div class="mn" style="left:46px;top:47px;width:30px;height:14px;background:rgba(232,168,56,0.12);border:1px solid rgba(232,168,56,0.2);color:rgba(232,168,56,0.5);font-size:6.5px;">CMP</div>
+        <div class="mn" style="left:88px;top:37px;width:30px;height:14px;background:rgba(74,144,217,0.15);border:1px solid rgba(74,144,217,0.25);color:rgba(74,144,217,0.6);font-size:6.5px;">OUT</div>
+        <svg class="thumb-svg" viewBox="0 0 200 96">
+          <path d="M36 44 C42 44 40 34 46 34" stroke="rgba(74,144,217,0.2)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          <path d="M36 44 C42 44 40 54 46 54" stroke="rgba(74,144,217,0.15)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          <path d="M76 34 C82 34 81 44 88 44" stroke="rgba(232,168,56,0.2)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          <path d="M76 54 C82 54 81 44 88 44" stroke="rgba(232,168,56,0.15)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+        </svg>
+        <div class="depth-badge" style="opacity:0.5;">3 blocks</div>
+      </div>
+      <div class="ports-row">
+        <div class="port-col">
+          <div class="port-handle"><div class="handle-pip" style="background:rgba(74,144,217,0.3);"></div><span class="handle-label">in L</span></div>
+          <div class="port-handle"><div class="handle-pip" style="background:rgba(74,144,217,0.3);"></div><span class="handle-label">in R</span></div>
+        </div>
+        <div class="port-col right">
+          <div class="port-handle right"><div class="handle-pip" style="background:rgba(74,144,217,0.3);"></div><span class="handle-label">out L</span></div>
+          <div class="port-handle right"><div class="handle-pip" style="background:rgba(74,144,217,0.3);"></div><span class="handle-label">out R</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 8b active — audio flowing ────────────────────────────────── -->
+  <div class="specimen">
+    <div class="section-label">S8b — Active: audio flowing (static mock of "lit" state)</div>
+    <!-- Active: cables glow at full opacity, LED on, thumbnail border pulse -->
+    <div class="block container-narrow" style="box-shadow:var(--neu-raised),0 0 6px rgba(74,144,217,0.12);">
+      <div class="block-header" style="--cat-color:var(--cat-instrument);">
+        <div class="block-cat-glyph">
+          <svg viewBox="0 0 14 14" width="13" height="13" fill="none">
+            <rect x="1" y="1" width="12" height="12" rx="2" stroke="rgba(74,144,217,0.5)" stroke-width="1.2"/>
+            <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" stroke="rgba(74,144,217,0.75)" stroke-width="1.2"/>
+          </svg>
+        </div>
+        <span class="block-name">Drum Bus</span>
+        <!-- small VU-style activity bars in header -->
+        <div style="display:flex;align-items:flex-end;gap:2px;height:12px;flex-shrink:0;">
+          <div style="width:3px;height:55%;background:rgba(74,144,217,0.7);border-radius:1px;"></div>
+          <div style="width:3px;height:80%;background:rgba(74,144,217,0.8);border-radius:1px;"></div>
+          <div style="width:3px;height:40%;background:rgba(74,144,217,0.6);border-radius:1px;"></div>
+          <div style="width:3px;height:65%;background:rgba(74,144,217,0.75);border-radius:1px;"></div>
+        </div>
+        <div class="led" style="background:var(--cat-instrument);box-shadow:0 0 6px rgba(74,144,217,0.7);margin-left:3px;"></div>
+      </div>
+      <!-- Thumbnail: cables at full intensity, hot nodes glow -->
+      <div class="thumbnail-region" style="border:1px solid rgba(74,144,217,0.2);">
+        <div class="mn mn-hot" style="left:8px;top:37px;width:28px;height:14px;background:rgba(74,144,217,0.38);border:1px solid rgba(74,144,217,0.65);color:var(--cat-instrument);font-size:6.5px;--mn-glow:rgba(74,144,217,0.6);">IN</div>
+        <div class="mn mn-hot" style="left:46px;top:27px;width:30px;height:14px;background:rgba(232,168,56,0.32);border:1px solid rgba(232,168,56,0.6);color:var(--cat-audiofx);font-size:6.5px;--mn-glow:rgba(232,168,56,0.5);">EQ</div>
+        <div class="mn mn-hot" style="left:46px;top:47px;width:30px;height:14px;background:rgba(232,168,56,0.32);border:1px solid rgba(232,168,56,0.6);color:var(--cat-audiofx);font-size:6.5px;--mn-glow:rgba(232,168,56,0.5);">CMP</div>
+        <div class="mn mn-hot" style="left:88px;top:37px;width:30px;height:14px;background:rgba(74,144,217,0.38);border:1px solid rgba(74,144,217,0.65);color:var(--cat-instrument);font-size:6.5px;--mn-glow:rgba(74,144,217,0.6);">OUT</div>
+        <svg class="thumb-svg" viewBox="0 0 200 96">
+          <path d="M36 44 C42 44 40 34 46 34" stroke="rgba(74,144,217,0.85)" stroke-width="2" fill="none" stroke-linecap="round"/>
+          <path d="M36 44 C42 44 40 54 46 54" stroke="rgba(74,144,217,0.75)" stroke-width="2" fill="none" stroke-linecap="round"/>
+          <path d="M76 34 C82 34 81 44 88 44" stroke="rgba(232,168,56,0.85)" stroke-width="2" fill="none" stroke-linecap="round"/>
+          <path d="M76 54 C82 54 81 44 88 44" stroke="rgba(232,168,56,0.75)" stroke-width="2" fill="none" stroke-linecap="round"/>
+          <!-- cable glow duplicate pass -->
+          <path d="M36 44 C42 44 40 34 46 34" stroke="rgba(74,144,217,0.3)" stroke-width="4" fill="none" stroke-linecap="round"/>
+        </svg>
+        <div class="depth-badge">3 blocks</div>
+      </div>
+      <div class="ports-row">
+        <div class="port-col">
+          <div class="port-handle"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);box-shadow:0 0 5px rgba(74,144,217,0.7);"></div><span class="handle-label">in L</span></div>
+          <div class="port-handle"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);box-shadow:0 0 5px rgba(74,144,217,0.7);"></div><span class="handle-label">in R</span></div>
+        </div>
+        <div class="port-col right">
+          <div class="port-handle right"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);box-shadow:0 0 5px rgba(74,144,217,0.7);"></div><span class="handle-label">out L</span></div>
+          <div class="port-handle right"><div class="handle-pip" style="background:var(--cat-instrument);--pip-color:var(--cat-instrument);box-shadow:0 0 5px rgba(74,144,217,0.7);"></div><span class="handle-label">out R</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 8c motion intent note ──────────────────────────────────────── -->
+  <div class="specimen" style="max-width:280px;">
+    <div class="section-label">S8c — Motion intent (no animation in file)</div>
+    <div style="background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.07);border-radius:8px;padding:14px 16px;">
+      <div style="font-size:9px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--cat-audiofx);margin-bottom:10px;">Intended live behaviour</div>
+      <div style="font-size:10.5px;color:var(--text-secondary);line-height:1.65;">
+        <p style="margin-bottom:7px;"><strong style="color:var(--text-primary);">Cable shimmer:</strong> active cables in the thumbnail animate a travelling dash-offset at ~1.5 s/cycle using <code>stroke-dasharray</code> + <code>stroke-dashoffset</code> CSS animation. Only cables with live signal; idle cables remain static.</p>
+        <p style="margin-bottom:7px;"><strong style="color:var(--text-primary);">Header VU bars:</strong> 4 mini bars in the header animate height from <code>requestAnimationFrame</code> driven by the block's peak RMS. Bars are 3 px wide, 12 px tall max. Only while audio is flowing.</p>
+        <p style="margin-bottom:0;"><strong style="color:var(--text-primary);">Thumbnail border pulse:</strong> a 1 px border fades between <code>rgba(74,144,217,0.0)</code> and <code>rgba(74,144,217,0.3)</code> on a 2 s ease-in-out loop when signal is present. Stops on silence after 500 ms.</p>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /canvas-bg S8 -->
+
+<!-- ══════════════════════════════════════════════════════════════
+     ANNOTATION PANEL
+     ══════════════════════════════════════════════════════════════ -->
+<div class="ann-panel">
+  <div class="ann-title">Design rationale + open questions for Glen</div>
+  <div class="ann-grid">
+    <div>
+      <div class="ann-item-title">S1 — Standard 96 px (idle/hover/selected)</div>
+      <div class="ann-item-body">Idle keeps cable opacity low so the thumbnail reads as a schematic, not noise. Hover brightens cables and the dive hint simultaneously — the two cues reinforce each other. Selected swaps the icon stroke to the instrument colour and adds a 1.5 px ring at 25 % glow; the selection signal comes from the ring, not from filling the whole block with colour.</div>
+    </div>
+    <div>
+      <div class="ann-item-title">S2 — Compact / title tiers</div>
+      <div class="ann-item-body">Three discrete breakpoints driven by zoom level: micro-strip (dots only, no labels) at ~0.45×, count chip in the header at ~0.35×, icon-only at ~0.20×. The count chip is purely typographic — no thumbnail DOM at all, so no layout cost. The icon tier drops even the IO label; only port pips remain for cable-drag affordance.</div>
+    </div>
+    <div>
+      <div class="ann-item-title">S3 — Dense fallback (>12 blocks)</div>
+      <div class="ann-item-body">Above 12 internal blocks the mini-graph becomes unreadable pixel noise. The heatmap replaces it: each bar is one block, coloured by category, height proportional to the block's output port count (as a rough complexity proxy). The threshold note is always shown so the user understands the switch. At-threshold specimen (S3b) shows the mini-graph is still usable at 12 — the cutoff is intentionally generous.</div>
+    </div>
+    <div>
+      <div class="ann-item-title">S4 — Portal vs Container</div>
+      <div class="ann-item-body">Local Container uses a neutral "Local" badge and the standard white icon. Portal uses a teal accent throughout (header line, icon arrow, badge, LED) and a dashed outline on the thumbnail — dashes signal "externally linked" without explaining it in text. The filename path row is a secondary cue. Missing-file state (S4c) escalates to a red ring + warning icon — the thumbnail region becomes an error surface with a right-click instruction.</div>
+    </div>
+    <div>
+      <div class="ann-item-title">S5 — Muted / Bypassed</div>
+      <div class="ann-item-body">Muted: red ring (1.5 px, 55 % opacity) + <code>filter:saturate(0.15) brightness(0.65)</code> on the thumbnail. The saturation drop is the visual key — colour is the information medium, so draining it communicates "this isn't contributing." Bypassed: grey ring only + full desaturation (<code>saturate(0)</code>) + a "signal passes through" hint row. Bypassed is visually quieter than muted because it's the safer state.</div>
+    </div>
+    <div>
+      <div class="ann-item-title">S6 — IO summary lanes</div>
+      <div class="ann-item-body">IN/OUT bars sit flush above and below the thumbnail, sharing its inset shadow — they read as part of the same recessed panel, not separate controls. Multi-signal (S6b) uses the pip shape vocabulary from the rest of the system: circle = audio, triangle-fill = MIDI, rotated square = CV. The bars are purely informational; they don't add interactive affordance.</div>
+    </div>
+    <div>
+      <div class="ann-item-title">S7 — Nested container in thumbnail</div>
+      <div class="ann-item-body">The nested container is a bordered rectangle inside the thumbnail with its own mini icon and a tiny node row. It deliberately looks like a block-inside-a-block — the visual metaphor is recursive without needing text. The depth badge switches to "N levels deep" when nesting is detected. The outer dive hint still says "double-click to enter" (entering the outer container, not the inner one).</div>
+    </div>
+    <div>
+      <div class="ann-item-title">S8 — Activity hint</div>
+      <div class="ann-item-body">Static mock shows two states: idle (low-opacity cables, dim LED) and active (cables at full intensity + a 4-bar VU strip in the header + a soft outer glow on the block). The motion intent note documents the three animation layers — cable dash-offset, VU bars via rAF, thumbnail border pulse — so Glen can judge cost vs value before any animation code is written. The intent is that all three cues switch off when the block is silent.</div>
+    </div>
+  </div>
+
+  <div class="ann-questions">
+    <div class="ann-q-title">Open questions for Glen</div>
+    <div class="ann-q">Density threshold at 12 blocks: does this feel right for typical sessions, or should it be lower (e.g. 8) to keep the thumbnail uncluttered earlier?</div>
+    <div class="ann-q">Portal dashed-outline: clear enough to distinguish from Container at a glance, or would a different colour (e.g. teal fill strip on the thumbnail top edge) be stronger?</div>
+    <div class="ann-q">Activity hint: are all three motion layers (cable shimmer + VU bars + border pulse) wanted, or should only one cue be used to avoid visual noise during playback?</div>
+  </div>
+
+  <div class="ann-rec">
+    <strong>Recommendation:</strong> Ship S1 (idle/hover/selected) + S2 (compact tiers) + S5 (muted/bypassed) as the first implementation slice — these cover the everyday editing states. Add S4 (Portal) and S6 (IO lanes) in the same pass since they reuse existing CSS classes. S3 (dense fallback) and S7 (nested visible) can follow once the mini-graph renderer is stable. S8 activity hints should wait for a deliberate motion pass so the rAF budget is evaluated with real audio running.
+  </div>
+</div>
+
+
+<style>/* review-wizard embed: rationale lives in the TLDR pane, not the iframe */
+.ann-panel, .annotation, .ann-grid, .ann-questions, .ann-rec, .ann-title { display: none !important; }
+</style>
+</body>
+</html>

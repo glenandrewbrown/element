@@ -25,6 +25,33 @@ import { fileURLToPath } from "node:url";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SINK = resolve(HERE, "../../.omo/audit/ui-comments.jsonl");
 
+/**
+ * One on-UI annotation (pin / rectangle / freehand pen) drawn over the specimen
+ * pane during review. Coords are stored in BOTH absolute px and PERCENT of the
+ * specimen pane so an agent can reconstruct WHERE Glen meant regardless of pane
+ * size. `note` is the inline text he typed for that mark.
+ */
+export interface Annotation {
+  n: number;
+  tool: "pin" | "rect" | "pen";
+  note: string;
+  /** pin: top-left anchor point */
+  point?: { x: number; y: number; xPct: number; yPct: number };
+  /** rect: bounding box */
+  rect?: {
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    xPct: number;
+    yPct: number;
+    wPct: number;
+    hPct: number;
+  };
+  /** pen: stroke polyline */
+  points?: { x: number; y: number; xPct: number; yPct: number }[];
+}
+
 export interface CommentRecord {
   id: string;
   ts: string;
@@ -34,12 +61,37 @@ export interface CommentRecord {
   severity: string | null;
   text: string;
   status: string;
+  /** On-UI annotations (pins / rects / pen strokes) captured for this step */
+  annotations?: Annotation[];
   /** ISO timestamp when this record was resolved/fixed */
   resolvedAt?: string;
   /** Human note describing what was done to resolve */
   resolvedNote?: string;
   /** Git commit sha or branch reference where fix landed */
   resolvedCommit?: string;
+}
+
+/** Defensively normalise a posted annotations array (caps + shape guard). */
+function sanitizeAnnotations(raw: unknown): Annotation[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: Annotation[] = [];
+  for (const a of raw.slice(0, 200)) {
+    if (!a || typeof a !== "object") continue;
+    const tool = (a as { tool?: unknown }).tool;
+    if (tool !== "pin" && tool !== "rect" && tool !== "pen") continue;
+    const rec = a as Record<string, unknown>;
+    const ann: Annotation = {
+      n: typeof rec.n === "number" ? rec.n : out.length + 1,
+      tool,
+      note: String(rec.note ?? "").slice(0, 2000),
+    };
+    if (rec.point) ann.point = rec.point as Annotation["point"];
+    if (rec.rect) ann.rect = rec.rect as Annotation["rect"];
+    if (Array.isArray(rec.points))
+      ann.points = (rec.points as Annotation["points"])!.slice(0, 2000);
+    out.push(ann);
+  }
+  return out;
 }
 
 function genId(ts: string): string {
@@ -71,6 +123,8 @@ async function readAll(): Promise<CommentRecord[]> {
         text: String(d.text ?? ""),
         status: typeof d.status === "string" ? d.status : "open",
       };
+      const anns = sanitizeAnnotations(d.annotations);
+      if (anns && anns.length) rec.annotations = anns;
       if (typeof d.resolvedAt === "string") rec.resolvedAt = d.resolvedAt;
       if (typeof d.resolvedNote === "string") rec.resolvedNote = d.resolvedNote;
       if (typeof d.resolvedCommit === "string") rec.resolvedCommit = d.resolvedCommit;
@@ -202,6 +256,8 @@ export function uiCommentSink(): Plugin {
                 text: String(data.text ?? "").slice(0, 4000),
                 status: "open",
               };
+              const anns = sanitizeAnnotations(data.annotations);
+              if (anns && anns.length) rec.annotations = anns;
               const all = await readAll();
               all.push(rec);
               await writeAll(all);

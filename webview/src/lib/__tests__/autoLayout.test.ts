@@ -179,9 +179,9 @@ describe("computeAutoLayout", () => {
     }
   });
 
-  it("spreads DISCONNECTED nodes into a multi-column grid (not one stacked column)", () => {
-    // Four disconnected nodes (no edges) — the fresh-default-board case. They
-    // must NOT all share one x (the old layer-0 single-column pile).
+  it("parks non-IO DISCONNECTED nodes in one loose ROW (not a stacked column)", () => {
+    // Four disconnected non-IO blocks (no edges, no io role). Under the new
+    // model they park in a single loose bottom row → distinct X, shared Y.
     const nodes: LayoutNode[] = [
       { id: "n0", height: 100 },
       { id: "n1", height: 100 },
@@ -190,7 +190,9 @@ describe("computeAutoLayout", () => {
     ];
     const out = computeAutoLayout(nodes, []);
     const xs = new Set(out.map((p) => p.x));
-    expect(xs.size).toBeGreaterThan(1); // more than one column → a grid.
+    const ys = new Set(out.map((p) => p.y));
+    expect(xs.size).toBe(nodes.length); // every parked block on its own X.
+    expect(ys.size).toBe(1); // one flat row → a single shared baseline Y.
     // No two share the SAME (x,y) cell.
     const cells = out.map((p) => `${p.x},${p.y}`);
     expect(new Set(cells).size).toBe(cells.length);
@@ -220,71 +222,119 @@ describe("computeAutoLayout", () => {
     }
   });
 
-  // ── Aligned grid: same X per column, same Y per row ───────────────────────
-  it("aligned grid: all nodes in the same column share identical X", () => {
-    // 6 disconnected nodes → 2 cols × 3 rows. Col-0 gets nodes [0,2,4] and
-    // col-1 gets [1,3,5] (row-major fill). Every node in col-0 must share one X;
-    // every node in col-1 must share a different X.
+  // ── IO-anchor model: inputs far-left, outputs far-right, parked along bottom ──
+  // (Glen 2026-06-10 — replaces the rejected parallel-column "aligned grid".)
+  it("IO inputs anchor far LEFT of IO outputs by ≥ the anchor span", () => {
+    // The default-session blocks: 2 inputs, 2 outputs (all disconnected).
     const nodes: LayoutNode[] = [
-      { id: "n0", height: 100 },
-      { id: "n1", height: 100 },
-      { id: "n2", height: 100 },
-      { id: "n3", height: 100 },
-      { id: "n4", height: 100 },
-      { id: "n5", height: 100 },
+      { id: "audioIn", height: 200, io: "input" },
+      { id: "midiIn", height: 200, io: "input" },
+      { id: "audioOut", height: 200, io: "output" },
+      { id: "midiOut", height: 200, io: "output" },
     ];
-    const out = computeAutoLayout(nodes, [], { columnGap: 280, rowGap: 40 });
+    const anchorSpan = 960;
+    const out = computeAutoLayout(nodes, [], { anchorSpan });
     const m = byId(out);
-    // Row-major: sorted order → n0,n1,n2,n3,n4,n5 (uniform heights, no
-    // reordering by group). Col = i % 2, so col-0 = {n0,n2,n4}, col-1 = {n1,n3,n5}.
-    const col0X = m.get("n0")!.x;
-    const col1X = m.get("n1")!.x;
-    expect(col0X).not.toBe(col1X);
-    expect(m.get("n2")!.x).toBe(col0X);
-    expect(m.get("n4")!.x).toBe(col0X);
-    expect(m.get("n3")!.x).toBe(col1X);
-    expect(m.get("n5")!.x).toBe(col1X);
+    // Both inputs share the far-left X; both outputs share the far-right X.
+    expect(m.get("audioIn")!.x).toBe(m.get("midiIn")!.x);
+    expect(m.get("audioOut")!.x).toBe(m.get("midiOut")!.x);
+    // Outputs sit at least `anchorSpan` to the right of the inputs (wide-open
+    // middle workspace for the user's chain).
+    const span = m.get("audioOut")!.x - m.get("audioIn")!.x;
+    expect(span).toBeGreaterThanOrEqual(anchorSpan);
   });
 
-  it("aligned grid: all nodes in the same ROW share identical Y (baseline alignment)", () => {
-    // 4 disconnected nodes with DIFFERENT heights to expose the centering bug:
-    // col-0 has a 262px block, col-1 has a 60px block. With the old
-    // per-column centering these would float at different Y; the new row-major
-    // grid must align them to the SAME topY.
+  it("stacked IO anchors do not overlap (generous vertical gap)", () => {
+    const H = 262;
     const nodes: LayoutNode[] = [
-      { id: "tallA", height: 262 }, // row 0, col 0
-      { id: "shortB", height: 60 }, // row 0, col 1
-      { id: "tallC", height: 262 }, // row 1, col 0
-      { id: "shortD", height: 60 }, // row 1, col 1
+      { id: "audioIn", height: H, io: "input" },
+      { id: "midiIn", height: H, io: "input" },
+      { id: "audioOut", height: H, io: "output" },
+      { id: "midiOut", height: H, io: "output" },
     ];
-    const out = computeAutoLayout(nodes, [], { columnGap: 280, rowGap: 40 });
+    const out = computeAutoLayout(nodes, []);
+    // Group by X column; within each column adjacent rows must clear H.
+    const byCol = new Map<number, number[]>();
+    for (const p of out) {
+      const arr = byCol.get(p.x) ?? [];
+      arr.push(p.y);
+      byCol.set(p.x, arr);
+    }
+    expect(byCol.size).toBe(2); // exactly two anchor columns (left + right).
+    for (const ys of byCol.values()) {
+      ys.sort((a, b) => a - b);
+      for (let i = 1; i < ys.length; i++) {
+        expect(ys[i] - ys[i - 1]).toBeGreaterThanOrEqual(H);
+      }
+    }
+  });
+
+  it("non-IO disconnected blocks park along the BOTTOM, below the IO line", () => {
+    // 2 IO inputs + 2 IO outputs + 2 loose utility blocks (all disconnected).
+    const H = 200;
+    const nodes: LayoutNode[] = [
+      { id: "audioIn", height: H, io: "input" },
+      { id: "midiIn", height: H, io: "input" },
+      { id: "audioOut", height: H, io: "output" },
+      { id: "midiOut", height: H, io: "output" },
+      { id: "util0", height: 60 },
+      { id: "util1", height: 60 },
+    ];
+    const out = computeAutoLayout(nodes, []);
     const m = byId(out);
-    // Row 0: tallA and shortB must share the same Y.
-    expect(m.get("tallA")!.y).toBe(m.get("shortB")!.y);
-    // Row 1: tallC and shortD must share the same Y.
-    expect(m.get("tallC")!.y).toBe(m.get("shortD")!.y);
-    // Row 1 baseline must be below row 0 baseline by at least the row-0 max
-    // height (262) + rowGap (40).
-    expect(m.get("tallC")!.y - m.get("tallA")!.y).toBeGreaterThanOrEqual(
-      262 + 40,
+    // The two parked blocks share ONE flat baseline row (same Y, distinct X).
+    expect(m.get("util0")!.y).toBe(m.get("util1")!.y);
+    expect(m.get("util0")!.x).not.toBe(m.get("util1")!.x);
+    // That parked row sits BELOW the bottom of every IO anchor block.
+    const ioBottom = Math.max(
+      m.get("audioIn")!.y + H,
+      m.get("midiIn")!.y + H,
+      m.get("audioOut")!.y + H,
+      m.get("midiOut")!.y + H,
     );
+    expect(m.get("util0")!.y).toBeGreaterThan(ioBottom);
+    expect(m.get("util1")!.y).toBeGreaterThan(ioBottom);
   });
 
-  it("aligned grid: no AABB overlap when blocks have mixed heights", () => {
+  it("no parallel-column grid: disconnected blocks only stack in the 2 IO anchors", () => {
+    // The exact arrangement Glen rejected was unconnected blocks in adjacent
+    // PARALLEL columns. The new model permits stacking ONLY in the two IO anchor
+    // columns (far-left inputs, far-right outputs); every other disconnected
+    // block (parked) sits alone on its own X (a flat row, never a column pile).
+    const nodes: LayoutNode[] = [
+      { id: "audioIn", height: 304, io: "input" },
+      { id: "midiIn", height: 304, io: "input" },
+      { id: "audioOut", height: 304, io: "output" },
+      { id: "midiOut", height: 304, io: "output" },
+      { id: "util0", height: 60 },
+      { id: "util1", height: 60 },
+    ];
+    const out = computeAutoLayout(nodes, []);
+    // Count how many blocks sit at each X. Only the 2 IO anchor X's may hold
+    // more than one block; any other X (parked) must hold exactly one.
+    const countByX = new Map<number, number>();
+    for (const p of out) countByX.set(p.x, (countByX.get(p.x) ?? 0) + 1);
+    const stackedColumns = [...countByX.values()].filter((c) => c > 1);
+    expect(stackedColumns.length).toBeLessThanOrEqual(2); // ≤ the 2 IO anchors.
+    // The two parked utility blocks must not stack on each other (a flat row).
+    const m = byId(out);
+    expect(m.get("util0")!.x).not.toBe(m.get("util1")!.x);
+  });
+
+  it("no AABB overlap when blocks have mixed heights (IO-anchor + parked)", () => {
     // Default session scenario: 4 tall IO blocks (304px) + 2 small utility
     // blocks (60px). All disconnected (fresh board).
     const H_TALL = 304;
     const H_SMALL = 60;
-    const GAP = 40;
     const nodes: LayoutNode[] = [
-      { id: "audioIn", height: H_TALL },
-      { id: "audioOut", height: H_TALL },
-      { id: "midiIn", height: H_TALL },
-      { id: "midiOut", height: H_TALL },
+      { id: "audioIn", height: H_TALL, io: "input" },
+      { id: "audioOut", height: H_TALL, io: "output" },
+      { id: "midiIn", height: H_TALL, io: "input" },
+      { id: "midiOut", height: H_TALL, io: "output" },
       { id: "noteRange", height: H_SMALL },
       { id: "dupBlocker", height: H_SMALL },
     ];
-    const out = computeAutoLayout(nodes, [], { rowGap: GAP });
+    const out = computeAutoLayout(nodes, []);
     // Check every pair for AABB non-overlap (using node height from our list).
     const heightMap = new Map(nodes.map((n) => [n.id, n.height!]));
     for (let i = 0; i < out.length; i++) {
@@ -293,13 +343,34 @@ describe("computeAutoLayout", () => {
         const b = out[j];
         const aH = heightMap.get(a.id)!;
         const bH = heightMap.get(b.id)!;
-        const W = 220; // block width (same for all)
+        const W = 200; // block width (same for all)
         // AABB overlap check: no overlap iff separated on X or Y axis.
         const overlapX = Math.abs(a.x - b.x) < W;
-        const overlapY =
-          a.y < b.y + bH && b.y < a.y + aH;
+        const overlapY = a.y < b.y + bH && b.y < a.y + aH;
         expect(overlapX && overlapY).toBe(false);
       }
     }
+  });
+
+  // ── Vertical mode transposes the model: inputs top, outputs bottom, parked right ──
+  it("vertical mode: IO inputs anchor ABOVE outputs; parked blocks to the right", () => {
+    const H = 200;
+    const nodes: LayoutNode[] = [
+      { id: "audioIn", height: H, io: "input" },
+      { id: "midiIn", height: H, io: "input" },
+      { id: "audioOut", height: H, io: "output" },
+      { id: "midiOut", height: H, io: "output" },
+      { id: "util0", height: 60 },
+    ];
+    const out = computeAutoLayout(nodes, [], { direction: "vertical" });
+    const m = byId(out);
+    // Inputs share one Y (top row); outputs share a lower Y (bottom row).
+    expect(m.get("audioIn")!.y).toBe(m.get("midiIn")!.y);
+    expect(m.get("audioOut")!.y).toBe(m.get("midiOut")!.y);
+    expect(m.get("audioOut")!.y).toBeGreaterThan(m.get("audioIn")!.y);
+    // The parked block (horizontal "bottom row") transposes to the RIGHT —
+    // its X is greater than both IO anchor columns' X.
+    const anchorMaxX = Math.max(m.get("audioIn")!.x, m.get("audioOut")!.x);
+    expect(m.get("util0")!.x).toBeGreaterThan(anchorMaxX);
   });
 });
