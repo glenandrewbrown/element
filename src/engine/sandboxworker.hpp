@@ -843,10 +843,47 @@ inline void SandboxWorker::rtProcessingLoop()
                 logger->logMessage ("[sandbox-worker] Warning: could not set RT thread priority");
     }
 
+    // Adaptive idle back-off (P1-T9). Each sandbox worker has its own RT wait loop.
+    // When audio is flowing the host posts triggerSemaphore every block, so the wait
+    // returns early (HOT) and the loop stays tight — zero added latency. When NO audio
+    // is flowing (transport stopped / host not rendering), the HOT 50 µs-granularity
+    // poll on macOS burns ~10k sem_trywait syscalls per 500 ms wait (~9% idle CPU per
+    // worker). After kColdAfterMisses consecutive HOT timeouts (kColdAfterMisses x
+    // kHotTimeoutUs of continuous silence) we switch to a COLD wait: the same kind of
+    // timed wait but with a coarse 5 ms poll granularity instead of 50 µs,
+    // cutting the idle syscall rate ~100x. The FIRST successful wake resets straight
+    // back to HOT so the next active block pays no extra latency. Linux/Windows already
+    // block in-kernel, so the granularity arg is a no-op there — they were never the
+    // CPU culprit, but the same state machine keeps behaviour uniform.
+    //
+    // HOT params reproduce the previous behaviour exactly (500 ms timeout, 50 µs poll),
+    // so the active render handshake is byte-for-byte unchanged. The transition only
+    // fires after kColdAfterMisses x 500 ms of continuous silence — far longer than any
+    // inter-block gap during real rendering — so it never trips mid-stream and the
+    // seq-counter self-heal (the shared-buffer workerSeq handshake in processAudioBlock)
+    // is untouched: COLD wakes call processAudioBlock() identically to HOT wakes.
+    constexpr uint64_t kHotTimeoutUs    = 500000;  // 500 ms — unchanged hot wait
+    constexpr uint32_t kHotPollUs       = 50;      // 50 µs — unchanged hot poll
+    constexpr uint64_t kColdTimeoutUs   = 250000;  // 250 ms — re-evaluate cold every 250 ms
+    constexpr uint32_t kColdPollUs      = 5000;    // 5 ms — coarse cold poll (~100x fewer syscalls)
+    constexpr int      kColdAfterMisses = 5;       // 5 x 500 ms ≈ 2.5 s of silence -> cold
+
+    int consecutiveMisses = 0;
+
     while (rtThreadRunning.load (std::memory_order_acquire))
     {
-        if (! triggerSemaphore.timedWait (500000))
+        const bool cold = consecutiveMisses >= kColdAfterMisses;
+        const uint64_t timeoutUs = cold ? kColdTimeoutUs : kHotTimeoutUs;
+        const uint32_t pollUs    = cold ? kColdPollUs    : kHotPollUs;
+
+        if (! triggerSemaphore.timedWait (timeoutUs, pollUs))
+        {
+            ++consecutiveMisses;  // saturates harmlessly; stays >= kColdAfterMisses
             continue;
+        }
+
+        // Woken by a real trigger — back to HOT for the next block.
+        consecutiveMisses = 0;
 
         if (! rtThreadRunning.load (std::memory_order_acquire))
             break;

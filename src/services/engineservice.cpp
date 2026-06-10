@@ -13,6 +13,7 @@
 #include "engine/portprovisioning.hpp"
 #include "nodes/mididevice.hpp"
 #include "engine/rootgraph.hpp"
+#include "services/presetservice.hpp"
 #include <element/engine.hpp>
 #include <element/ui.hpp>
 
@@ -1388,6 +1389,23 @@ Node EngineService::addPlugin (GraphManager& c, const PluginDescription& desc)
             jassertfalse;
             ValueTree nodeData = node.data();
             nodeData.setProperty (tags::uuid, Uuid().toString(), 0);
+        }
+
+        // Auto-apply the user's saved default preset for this plugin (T21).
+        // FRESH adds only — session loads restore their own saved state and never
+        // pass through here. loadBlockPreset stamps tags::state onto the node's
+        // ValueTree and calls restorePluginState(): live processors apply it now;
+        // async/sandboxed placeholders carry it on the ValueTree until setupNode's
+        // restorePluginState applies it to the real processor on swap.
+        if (auto* presets = sibling<PresetService>())
+        {
+            const auto defaultName = presets->getDefaultPresetName (node.getFormat().toString(),
+                                                                    node.getIdentifier().toString());
+            if (defaultName.isNotEmpty())
+            {
+                Node mutableNode = node;
+                presets->loadBlockPreset (mutableNode, defaultName);
+            }
         }
         return node;
     }

@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <memory>
+
 #include <element/juce/core.hpp>
 #include <element/juce/data_structures.hpp>
 
@@ -207,6 +209,36 @@ public:
     const uint32_t bNode, bPort;
     const juce::String signalType;
     const double x, y;
+
+    void createActions (Services& app, juce::OwnedArray<juce::UndoableAction>& actions) const override;
+};
+
+/** P2-T16 — Group a selection of ≥2 Blocks into a new Container (nested Board)
+    as a SINGLE undoable operation (Cmd+G / "group selection"). Wraps
+    EngineService::groupNodes — which absorbs the selected nodes into a freshly
+    created Container and rewires every internal + boundary cable — in one
+    UndoableAction so a single Cmd-Z removes the Container and restores the
+    previous state (the original Blocks back at top level with their cables),
+    and redo re-applies it.
+
+    The Container's uuid is not known until perform() runs (groupNodes creates
+    it), so the host cannot learn it from construction. The action writes the
+    created Container's uuid into `result` (a shared holder) on perform(); the
+    host reads it back after the synchronous GuiService::handleMessage call to
+    answer the webview's elementGroupNodes request. */
+struct GroupNodesMessage : public AppMessage
+{
+    GroupNodesMessage (const Node& board_, const juce::Array<juce::Uuid>& nodeIds_)
+        : board (board_), nodeIds (nodeIds_),
+          result (std::make_shared<juce::Uuid> (juce::Uuid::null())) {}
+
+    const Node board;
+    const juce::Array<juce::Uuid> nodeIds;
+
+    /** Set by GroupNodesAction::perform() to the created Container's uuid
+        (Uuid::null() if grouping was refused). Shared so the host can read the
+        result after handleMessage() performs the action synchronously. */
+    const std::shared_ptr<juce::Uuid> result;
 
     void createActions (Services& app, juce::OwnedArray<juce::UndoableAction>& actions) const override;
 };

@@ -37,8 +37,10 @@
 #include <element/node.hpp>
 #include <element/services.hpp>
 #include <element/session.hpp>
+#include <element/ui.hpp> // GuiService (handleMessage / performUndo / performRedo)
 #include <element/ui/element_webview_host.hpp>
 
+#include "messages.hpp" // GroupNodesMessage / GroupNodesAction (P2-T16 undo)
 #include "nodes/logicnodes.hpp" // ComparatorNode (Op enum, getOperator)
 #include "services/sessionservice.hpp" // newSession / resetChanges (clean graph)
 #include "fixture/ServicesFixture.hpp" // test::getService<T>()
@@ -383,6 +385,105 @@ BOOST_AUTO_TEST_CASE (io_node_in_selection_refuses_group)
     BOOST_CHECK_MESSAGE (! container.isValid(), "groupNodes accepted an IO node in the selection");
     BOOST_CHECK_EQUAL (nodeCount (active), before);
     BOOST_CHECK (! firstContainer (active).isValid());
+}
+
+// ── (h) P2-T16 — group is ONE undoable transaction: undo removes the Container
+//        and restores the originals at top level (+ their cables); redo re-applies ──
+//
+// Drives the SAME GroupNodesAction the production undo pipeline uses (the host's
+// elementGroupNodes now dispatches GroupNodesMessage through
+// GuiService::handleMessage, which performs the action inside one
+// UndoManager::beginNewTransaction()). Exercising the action's perform()/undo()/
+// perform() directly is exactly what UndoManager drives on Cmd-Z / redo — without
+// depending on UI plumbing.
+BOOST_AUTO_TEST_CASE (group_is_a_single_undoable_transaction)
+{
+    const Node active (freshActiveGraph());
+    BOOST_REQUIRE (active.isGraph());
+
+    auto* es = test::getService<EngineService>();
+    BOOST_REQUIRE (es != nullptr);
+
+    // ext → [a → b]: ext unselected boundary source; a,b selected. a→b is an
+    // internal cable; ext→a is a boundary cable. Both must come back on undo.
+    const Node ext (addInternal (*es, "element.volume.stereo"));
+    const Node a   (addInternal (*es, "element.volume.stereo"));
+    const Node b   (addInternal (*es, "element.volume.stereo"));
+    BOOST_REQUIRE (ext.isValid() && a.isValid() && b.isValid());
+
+    constexpr int kAudioOut0 = 2, kAudioIn0 = 0;
+    es->addConnection (ext.getNodeId(), kAudioOut0, a.getNodeId(), kAudioIn0, active);
+    es->addConnection (a.getNodeId(),   kAudioOut0, b.getNodeId(), kAudioIn0, active);
+    juce::MessageManager::getInstance()->runDispatchLoopUntil (10);
+
+    const int before = nodeCount (active);
+    const String aUuid (a.getUuidString());
+    const String bUuid (b.getUuidString());
+
+    // Count parent arcs that touch a OR b before grouping (the cables that must
+    // be restored on undo: ext→a boundary + a→b internal = 2).
+    auto arcsTouching = [] (const Node& g, const String& u0, const String& u1) {
+        const Node n0 (g.getNodeByUuid (Uuid (u0), false));
+        const Node n1 (g.getNodeByUuid (Uuid (u1), false));
+        const uint32 id0 = n0.isValid() ? n0.getNodeId() : 0;
+        const uint32 id1 = n1.isValid() ? n1.getNodeId() : 0;
+        const ValueTree arcs (g.getArcsValueTree());
+        int count = 0;
+        for (int i = 0; i < arcs.getNumChildren(); ++i)
+        {
+            const ValueTree arc (arcs.getChild (i));
+            const uint32 s = (uint32) (int64) arc.getProperty (tags::sourceNode);
+            const uint32 d = (uint32) (int64) arc.getProperty (tags::destNode);
+            if (s == id0 || d == id0 || s == id1 || d == id1)
+                ++count;
+        }
+        return count;
+    };
+    const int arcsBefore = arcsTouching (active, aUuid, bUuid);
+    BOOST_REQUIRE_EQUAL (arcsBefore, 2);
+
+    auto* gui = test::getService<GuiService>();
+    BOOST_REQUIRE (gui != nullptr);
+
+    // PERFORM via the real undoable message pipeline (handleMessage wraps it in a
+    // single UndoManager transaction). The action writes the Container uuid back
+    // through msg.result.
+    Array<Uuid> sel { a.getUuid(), b.getUuid() };
+    GroupNodesMessage msg (active, sel);
+    BOOST_REQUIRE (gui->handleMessage (msg));
+    juce::MessageManager::getInstance()->runDispatchLoopUntil (10);
+
+    BOOST_REQUIRE_MESSAGE (msg.result != nullptr && ! msg.result->isNull(),
+                           "GroupNodesMessage produced no Container uuid");
+    const String containerUuid (msg.result->toString());
+
+    // Grouped: originals gone, container present, count = before - 1.
+    BOOST_CHECK (! hasDirectChild (active, aUuid));
+    BOOST_CHECK (! hasDirectChild (active, bUuid));
+    BOOST_CHECK (hasDirectChild (active, containerUuid));
+    BOOST_CHECK_EQUAL (nodeCount (active), before - 1);
+
+    // UNDO (Cmd-Z): container gone, the 2 originals back at top level (by uuid),
+    // node count restored, and their 2 cables (boundary + internal) restored.
+    gui->performUndo();
+    juce::MessageManager::getInstance()->runDispatchLoopUntil (10);
+
+    BOOST_CHECK_MESSAGE (! hasDirectChild (active, containerUuid),
+                         "undo did not remove the Container");
+    BOOST_CHECK_MESSAGE (hasDirectChild (active, aUuid), "undo did not restore node a");
+    BOOST_CHECK_MESSAGE (hasDirectChild (active, bUuid), "undo did not restore node b");
+    BOOST_CHECK_EQUAL (nodeCount (active), before);
+    BOOST_CHECK_MESSAGE (arcsTouching (active, aUuid, bUuid) == 2,
+                         "undo did not restore both cables (boundary + internal)");
+
+    // REDO: the group re-applies — originals absorbed again, a container present.
+    gui->performRedo();
+    juce::MessageManager::getInstance()->runDispatchLoopUntil (10);
+
+    BOOST_CHECK_MESSAGE (! hasDirectChild (active, aUuid), "redo did not re-absorb node a");
+    BOOST_CHECK_MESSAGE (! hasDirectChild (active, bUuid), "redo did not re-absorb node b");
+    BOOST_CHECK_MESSAGE (firstContainer (active).isValid(), "redo did not recreate a Container");
+    BOOST_CHECK_EQUAL (nodeCount (active), before - 1);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

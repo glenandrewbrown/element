@@ -306,7 +306,148 @@ private:
     }
 };
 
+// P2-T16 — atomic, undoable "group a selection of Blocks into a Container".
+//
+// ONE UndoableAction so a single Cmd-Z removes the Container AND restores the
+// previous board state (the original Blocks back at top level with their
+// cables), and redo re-applies the whole group.
+//
+// perform(): snapshot every selected node (serialised data WITH plugin state,
+// relative position, uuid, original node-id) and its arcs BEFORE grouping, then
+// run EngineService::groupNodes — which absorbs the selection into a new
+// Container and rewires every internal + boundary cable. The created Container's
+// uuid is captured (and written back through the message's `result` holder so
+// the host can answer the webview synchronously).
+//
+// undo(): remove the Container, then re-add each snapshotted original (preserving
+// its uuid, exactly like RemoveNodeAction::undo) and restore its position. Node
+// re-adds mint FRESH runtime node-ids, so the captured arcs (which reference the
+// ORIGINAL ids) are remapped through an old-id→new-id table built by resolving
+// each restored node by its stable uuid; arc endpoints OUTSIDE the selection keep
+// their ids (those external nodes were never touched). Each unique arc is added
+// once.
+class GroupNodesAction : public juce::UndoableAction
+{
+public:
+    GroupNodesAction (Services& a, const GroupNodesMessage& msg)
+        : app (a), board (msg.board), nodeIds (msg.nodeIds), result (msg.result)
+    {
+    }
+
+    bool perform() override
+    {
+        auto* ec = app.find<EngineService>();
+        if (ec == nullptr || ! board.isGraph())
+            return false;
+
+        // --- Snapshot the originals BEFORE grouping (RemoveNodeAction recipe) ---
+        captured.clear();
+        for (const auto& uuid : nodeIds)
+        {
+            Node n (board.getNodeByUuid (uuid, false));
+            if (! n.isValid())
+                continue;
+
+            auto* c = new Captured();
+            c->uuid = n.getUuid();
+            c->oldId = n.getNodeId();
+            n.getRelativePosition (c->x, c->y);
+            n.savePluginState();
+            c->data = n.data().createCopy();
+            Node::sanitizeRuntimeProperties (c->data);
+            n.getArcs (c->arcs);
+            captured.add (c);
+        }
+
+        const Node container (ec->groupNodes (board, nodeIds));
+        if (! container.isValid())
+        {
+            captured.clear();
+            if (result != nullptr)
+                *result = juce::Uuid::null();
+            return false;
+        }
+
+        containerUuid = container.getUuid();
+        if (result != nullptr)
+            *result = containerUuid;
+        return true;
+    }
+
+    bool undo() override
+    {
+        auto* ec = app.find<EngineService>();
+        if (ec == nullptr || ! board.isGraph() || containerUuid.isNull())
+            return false;
+
+        // Remove the Container first (frees the absorbed children + their wiring).
+        const Node container (board.getNodeByUuid (containerUuid, false));
+        if (container.isValid())
+            ec->removeNode (container);
+
+        // Re-add each original (uuid preserved → stable identity) + restore pos.
+        juce::HashMap<juce::int64, juce::int64> oldToNew; // original node-id → restored node-id
+        for (const auto* c : captured)
+        {
+            const Node newNode (c->data, false);
+            Node created (ec->addNode (newNode, board, builder));
+            if (! created.isValid())
+                continue;
+            created.setRelativePosition (c->x, c->y);
+            oldToNew.set ((juce::int64) c->oldId, (juce::int64) created.getNodeId());
+        }
+
+        // Remap + restore each captured arc once. Endpoints inside the selection
+        // map old→new; external endpoints (untouched) keep their original ids.
+        auto remap = [&oldToNew] (uint32 id) -> uint32 {
+            const juce::int64 key = (juce::int64) id;
+            return oldToNew.contains (key) ? (uint32) (int) oldToNew[key] : id;
+        };
+
+        ValueTree boardArcs (board.getArcsValueTree());
+        for (const auto* c : captured)
+        {
+            for (const auto* arc : c->arcs)
+            {
+                const uint32 s  = remap (arc->sourceNode);
+                const uint32 sp = arc->sourcePort;
+                const uint32 d  = remap (arc->destNode);
+                const uint32 dp = arc->destPort;
+                if (Node::connectionExists (boardArcs, s, sp, d, dp))
+                    continue; // already restored (shared internal arc captured twice)
+                ec->addConnection (s, sp, d, dp, board);
+            }
+        }
+
+        return true;
+    }
+
+private:
+    struct Captured
+    {
+        juce::ValueTree data;
+        juce::Uuid uuid;
+        uint32 oldId = 0;
+        double x = 0.5, y = 0.5;
+        juce::OwnedArray<Arc> arcs;
+    };
+
+    Services& app;
+    const Node board;
+    const juce::Array<juce::Uuid> nodeIds;
+    const std::shared_ptr<juce::Uuid> result;
+    ConnectionBuilder builder;
+
+    juce::Uuid containerUuid;          // set on perform(), used by undo()
+    juce::OwnedArray<Captured> captured; // snapshot of the originals (perform→undo)
+};
+
 //=============================================================================
+
+void GroupNodesMessage::createActions (Services& app, OwnedArray<UndoableAction>& actions) const
+{
+    actions.add (new GroupNodesAction (app, *this));
+}
 
 void AddPluginMessage::createActions (Services& app, OwnedArray<UndoableAction>& actions) const
 {

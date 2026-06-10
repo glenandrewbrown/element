@@ -68,6 +68,76 @@ BOOST_AUTO_TEST_CASE (MultiplePostsConsumedIndividually)
     BOOST_CHECK (! sem.timedWait (1000));
 }
 
+//==============================================================================
+// Adaptive idle back-off (P1-T9): the COLD wait uses a coarse poll granularity
+// (5 ms vs the HOT 50 µs) so an idle worker stops burning ~9% CPU. These cases
+// prove the new pollGranularityMicroseconds arg preserves correctness — wakes on
+// post, times out without one, and a pre-queued signal returns immediately even
+// under a coarse poll. (Syscall-rate reduction is exercised live: see the
+// rtProcessingLoop top-comment + the report's `top -pid` procedure.)
+
+BOOST_AUTO_TEST_CASE (CoarsePollTimedWaitTimesOut)
+{
+    // COLD-style wait: 250 ms budget, 5 ms poll. With no signal it must time out
+    // (and not return early). This is the idle steady state.
+    SandboxSemaphore sem;
+    BOOST_REQUIRE (sem.open (SandboxSemaphore::generateName ('t'), SandboxSemaphore::Mode::Owner));
+
+    auto start = std::chrono::steady_clock::now();
+    bool signaled = sem.timedWait (250000, 5000); // 250 ms timeout, 5 ms poll
+    auto elapsed = std::chrono::steady_clock::now() - start;
+
+    BOOST_CHECK (! signaled);
+    // Should have waited roughly the full budget (allow slack for poll granularity).
+    BOOST_CHECK (elapsed >= std::chrono::milliseconds (200));
+}
+
+BOOST_AUTO_TEST_CASE (CoarsePollTimedWaitWakesOnPost)
+{
+    // A signal posted from another thread must still wake a COLD (coarse-poll)
+    // waiter — this is the cold->hot transition that resets back to the tight loop.
+    SandboxSemaphore sem;
+    BOOST_REQUIRE (sem.open (SandboxSemaphore::generateName ('t'), SandboxSemaphore::Mode::Owner));
+    std::atomic<bool> posted { false };
+
+    std::thread poster ([&] {
+        std::this_thread::sleep_for (std::chrono::milliseconds (10));
+        sem.post();
+        posted.store (true);
+    });
+
+    bool signaled = sem.timedWait (500000, 5000); // 500 ms timeout, 5 ms coarse poll
+    BOOST_CHECK (signaled);
+    poster.join();
+    BOOST_CHECK (posted.load());
+}
+
+BOOST_AUTO_TEST_CASE (CoarsePollReturnsImmediatelyWhenAlreadySignaled)
+{
+    // A pre-queued signal must be consumed on the first poll iteration even under a
+    // coarse granularity — i.e. the coarse poll never adds latency to an already-hot
+    // semaphore (guards against sleeping before the first sem_trywait).
+    SandboxSemaphore sem;
+    BOOST_REQUIRE (sem.open (SandboxSemaphore::generateName ('t'), SandboxSemaphore::Mode::Owner));
+    sem.post();
+
+    auto start = std::chrono::steady_clock::now();
+    bool signaled = sem.timedWait (500000, 5000); // coarse poll, but signal is ready
+    auto elapsed = std::chrono::steady_clock::now() - start;
+
+    BOOST_CHECK (signaled);
+    BOOST_CHECK (elapsed < std::chrono::milliseconds (5)); // no coarse-poll sleep incurred
+}
+
+BOOST_AUTO_TEST_CASE (DefaultPollGranularityPreservesHotBehaviour)
+{
+    // The default (HOT) overload must behave exactly as before: post then wait wakes.
+    SandboxSemaphore sem;
+    BOOST_REQUIRE (sem.open (SandboxSemaphore::generateName ('t'), SandboxSemaphore::Mode::Owner));
+    sem.post();
+    BOOST_CHECK (sem.timedWait (100000)); // default 50 µs poll
+}
+
 BOOST_AUTO_TEST_CASE (WaitUnblocksOnPost)
 {
     SandboxSemaphore sem;

@@ -160,11 +160,23 @@ public:
     }
 
     /** Wait with a bounded timeout.
-        @param timeoutMicroseconds Maximum time to wait in microseconds.
+
+        @param timeoutMicroseconds      Maximum time to wait in microseconds.
+        @param pollGranularityMicroseconds
+               macOS only: the sleep interval between `sem_trywait` polls while
+               waiting (named semaphores have no `sem_timedwait` there — we poll).
+               Defaults to 50 µs for a tight, low-latency HOT wait (the active
+               render handshake). Pass a much larger value (e.g. 5000 µs) for a
+               COLD/idle wait to cut the poll-syscall rate ~100x and eliminate the
+               idle-CPU burn. Ignored on Linux/Windows, which block in-kernel.
         @return true if the semaphore was signaled, false on timeout or error. */
-    bool timedWait (uint64_t timeoutMicroseconds) noexcept
+    bool timedWait (uint64_t timeoutMicroseconds,
+                    uint32_t pollGranularityMicroseconds = 50) noexcept
     {
 #if __linux__
+        // Linux blocks in-kernel via sem_timedwait — naturally ~0% idle CPU.
+        // pollGranularityMicroseconds is unused here.
+        (void) pollGranularityMicroseconds;
         if (sem_ == SEM_FAILED || sem_ == nullptr)
             return false;
 
@@ -186,10 +198,17 @@ public:
         }
 #elif __APPLE__
         // macOS: sem_timedwait does not exist for named semaphores. Poll sem_trywait
-        // with a 50 µs granularity until the deadline. Latency budget is dominated
-        // by the audio-thread spin phase (~390 µs in _mm_pause loop) so this is fine.
+        // at pollGranularityMicroseconds until the deadline. HOT (default 50 µs): the
+        // active render handshake — latency budget is dominated by the audio-thread
+        // spin phase (~390 µs in _mm_pause loop) so this is fine. COLD (caller passes a
+        // large granularity, e.g. 5 ms): an idle worker would otherwise burn ~10k
+        // sem_trywait syscalls per 500 ms wait (~9% CPU); the coarse poll drops that to
+        // ~100 syscalls/500 ms and idle CPU to well under 1%.
         if (sem_ == SEM_FAILED || sem_ == nullptr)
             return false;
+
+        // Guard against a 0 granularity busy-spin.
+        const uint32_t pollUs = pollGranularityMicroseconds > 0 ? pollGranularityMicroseconds : 50;
 
         const auto deadline = std::chrono::steady_clock::now()
                             + std::chrono::microseconds (timeoutMicroseconds);
@@ -201,9 +220,11 @@ public:
                 return false;
             if (std::chrono::steady_clock::now() >= deadline)
                 return false;
-            usleep (50);
+            usleep (pollUs);
         }
 #elif _WIN32
+        // Windows blocks in-kernel via WaitForSingleObject — naturally ~0% idle CPU.
+        (void) pollGranularityMicroseconds;
         if (sem_ == nullptr)
             return false;
         DWORD ms = static_cast<DWORD> (timeoutMicroseconds / 1000ULL);
