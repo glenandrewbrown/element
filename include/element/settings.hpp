@@ -168,16 +168,19 @@ public:
     /** Default plugin sandbox mode when the user has set no explicit preference.
      *  Glen's INTENT (2026-06-09): ALL third-party plugins out-of-process by
      *  default (crash isolation + no message-thread freeze on heavy loads).
-     *  HELD AT 0 (off) for now — live verification regressed: (a) the helper does
-     *  not launch from the app bundle yet (re-sign via the updated sign-all-macos.sh
-     *  + debug discovery/entitlements), and (b) the SYNCHRONOUS session-load path
-     *  (createFilter) hangs when a sandboxed plugin's worker stalls — it lacks the
-     *  graceful in-process fallback that the live-add path (addExternalPluginAsync)
-     *  has. Flip to 1 only AFTER both are fixed + verified live (see
-     *  .omo/plans/out-of-process-plugin-hosting-2026-06-09.md "NEXT").
+     *  FLIPPED TO 1 (2026-06-10) after the two blockers proved fixed live:
+     *  (a) "helper does not launch" was a misdiagnosis — the worker launches
+     *  and loads AUs out-of-process; the real defect was wantsContext()==false
+     *  on SandboxedProcessorNode routing the render op to a null AudioProcessor
+     *  (audio-thread SIGSEGV, masked by a leaked empty crash handler), and
+     *  (b) the session-load "hang" was the same crash + a permanent xrun storm
+     *  from a diverged host sequence counter — both fixed (self-healing
+     *  expected-sequence + teardown-guarded restarts). Verified live: empty-board
+     *  add, Default.els session load with 2 sandboxed AUs, and worker SIGKILL →
+     *  single restart recovery, host alive throughout.
      *  0 = disabled · 1 = all external plugins sandboxed · 2 = AU-only.
      */
-    static constexpr int defaultPluginSandboxMode = 0;
+    static constexpr int defaultPluginSandboxMode = 1;
 
     /** Get plugin sandbox mode.
      *  0 = disabled

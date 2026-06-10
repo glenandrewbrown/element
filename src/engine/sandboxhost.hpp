@@ -331,10 +331,26 @@ private:
     // thread) sees the flag in timerCallback() and drives attemptRestart() there.
     std::atomic<bool> restartRequested { false };
 
+    // True while killWorkerProcess() is tearing a worker down DELIBERATELY
+    // (attemptRestart / shutdown). JUCE's disconnect fires connectionLost for our
+    // own kill; without this guard that self-inflicted notification re-flags
+    // restartRequested, and the next timer tick kills the freshly-recovered
+    // HEALTHY worker — an infinite kill/relaunch loop (~1 cycle/s, observed live
+    // 2026-06-10: "Attempting sandbox restart 1/3" forever, shm names leaking).
+    std::atomic<bool> tearingDownWorker { false };
+
     // Set by attemptRestart() before re-issuing loadPlugin() so the PluginLoaded
     // handler knows this load is a crash-RECOVERY (fire sandboxRestarted + reset
     // the attempt budget) rather than a first-time load.
     std::atomic<bool> awaitingRestartLoad { false };
+
+    // True once prepareToPlay() has run for the CURRENT worker process. Cleared
+    // on every (re)launch — a fresh worker must receive a prepare (it has no shm
+    // attachment yet). The PluginLoaded handler uses this to issue the one
+    // post-launch prepare BEFORE opening the audio gate; the NODE's
+    // sandboxPluginLoaded listener no longer prepares (its post-gate re-prepare
+    // re-created the shm under the live audio thread — RT verifier 2026-06-10).
+    std::atomic<bool> preparedSinceLaunch { false };
 
     // Separate-window editor bridge state
     std::atomic<bool> editorOpen { false };
@@ -365,6 +381,7 @@ inline bool SandboxHost::launch()
         return false;
 
     state.store (State::Starting);
+    preparedSinceLaunch.store (false); // fresh worker needs a prepare (no shm yet)
 
     if (! launchWorkerProcess())
     {
@@ -518,6 +535,8 @@ inline void SandboxHost::prepareToPlay (double sampleRate, int maxBlockSize,
     sendMessage (SandboxMessageType::PrepareToPlay,
                  payload.getData(),
                  static_cast<uint32_t> (payload.getSize()));
+
+    preparedSinceLaunch.store (true);
 }
 
 inline void SandboxHost::processBlock (juce::AudioSampleBuffer& buffer,
@@ -545,17 +564,29 @@ inline void SandboxHost::processBlock (juce::AudioSampleBuffer& buffer,
         __atomic_store_n (&header->midiInputSize, midiSize, __ATOMIC_RELEASE);
     }
 
-    // 3. Signal data is ready (atomic sequence + buffer swap + semaphore)
+    // 3. Signal data is ready (atomic sequence + buffer swap + semaphore).
+    //    Derive this block's completion target from the worker's ACTUAL
+    //    progress (header->workerSequence + 1), not a host-private mirror
+    //    counter. A private counter diverges PERMANENTLY when the worker
+    //    misses triggers — e.g. during session load it is still loading the
+    //    plugin / attaching the new shm generation on its message thread
+    //    while the host already renders against that generation — and the
+    //    absolute >= check then never passes again: every block times out,
+    //    outputs silence, and spams xruns forever (observed live 2026-06-10,
+    //    Default.els + 2 sandboxed AUs). Reading the header each block is one
+    //    RT-safe atomic acquire load and makes the protocol self-healing
+    //    within a single block of any missed-trigger window.
+    const uint32_t expectedSeq = audioBuffer.getWorkerSequence() + 1;
     audioBuffer.swapBuffers();
     audioBuffer.signalHostReady();
-    expectedWorkerSequence++;
+    expectedWorkerSequence = expectedSeq; // kept for diagnostics/back-compat
     triggerSemaphore.post();
 
     // 4. Spin-wait phase: fast path for responsive plugins
     bool workerDone = false;
     for (int i = 0; i < spinIterations; ++i)
     {
-        if (audioBuffer.isWorkerDone (expectedWorkerSequence))
+        if (audioBuffer.isWorkerDone (expectedSeq))
         {
             workerDone = true;
             break;
@@ -574,7 +605,7 @@ inline void SandboxHost::processBlock (juce::AudioSampleBuffer& buffer,
         const double bufferPeriodUs = (static_cast<double> (buffer.getNumSamples()) / currentSampleRate) * 1000000.0;
         const uint64_t timeoutUs = static_cast<uint64_t> (bufferPeriodUs * 0.8);
         doneSemaphore.timedWait (std::max (timeoutUs, uint64_t (1000)));
-        workerDone = audioBuffer.isWorkerDone (expectedWorkerSequence);
+        workerDone = audioBuffer.isWorkerDone (expectedSeq);
     }
 
     // 6. Handle result
@@ -601,7 +632,10 @@ inline void SandboxHost::processBlock (juce::AudioSampleBuffer& buffer,
         midi.clear();
         audioBuffer.recordXrun();
 
-        if (audioBuffer.getConsecutiveXruns() >= maxConsecutiveXruns)
+        // Log ONLY on the threshold CROSSING (==), never per-block (>=) — the
+        // old >= fired Logger::writeToLog (file I/O!) on the AUDIO THREAD for
+        // every block of a stalled worker (~94 lines/s observed live).
+        if (audioBuffer.getConsecutiveXruns() == maxConsecutiveXruns)
         {
             juce::Logger::writeToLog ("[sandbox] " + juce::String (maxConsecutiveXruns)
                                       + " consecutive xruns - worker may be hung");
@@ -689,6 +723,13 @@ inline void SandboxHost::handleMessageFromWorker (const juce::MemoryBlock& mb)
 
 inline void SandboxHost::handleConnectionLost()
 {
+    // Deliberate teardown (attemptRestart/shutdown killing the OLD worker's pipe)
+    // also lands here via JUCE's disconnect notification. It is NOT a crash —
+    // re-flagging restartRequested for it kills the healthy replacement worker
+    // on the next tick, forever (the live 2026-06-10 restart loop).
+    if (tearingDownWorker.load())
+        return;
+
     juce::Logger::writeToLog ("Sandbox worker connection lost");
 
     // NOTE: JUCE's ChildProcessCoordinator delivers this on the connection's OWN
@@ -1000,27 +1041,39 @@ inline void SandboxHost::handleWorkerMessage (const SandboxMessageHeader& header
             break;
 
         case SandboxMessageType::PluginLoaded:
-            pluginLoaded.store (true);
-            state.store (State::Active);
-            pluginReadyFailed.store (false);
-            pluginReadyEvent.signal();
-            listeners.call (&Listener::sandboxPluginLoaded, this);
-
-            // If this load completes a crash-recovery, finish the restart here on
-            // the IPC thread the same way the initial load is finished by the node
-            // (setPluginState / prepareToPlay are pipe sends — safe off the audio
-            // thread). Then reset the attempt budget and fire sandboxRestarted.
-            if (awaitingRestartLoad.exchange (false))
+            // Restore state (recovery only) and ensure the ONE post-launch
+            // prepare has run BEFORE publishing pluginLoaded/Active. The audio
+            // thread resumes processBlock the instant those flip, and
+            // prepareToPlay() unmaps + remaps the very shm the render path reads
+            // — re-creating it under an in-flight readOutputAudio crashes the
+            // host (EXC_BAD_ACCESS in memmove, live .ips 2026-06-10-134144).
+            // preparedSinceLaunch gates the prepare to once per worker process;
+            // the NODE's sandboxPluginLoaded listener intentionally does NOT
+            // prepare any more (its post-gate prepare was the residual race the
+            // RT verifier rejected). setPluginState/prepareToPlay are pipe
+            // sends + shm setup on this IPC thread — safe off the audio thread.
             {
-                if (lastKnownState.getSize() > 0)
+                const bool isRecovery = awaitingRestartLoad.exchange (false);
+
+                if (isRecovery && lastKnownState.getSize() > 0)
                     setPluginState (lastKnownState);
 
-                if (currentSampleRate > 0 && currentBlockSize > 0)
+                if (! preparedSinceLaunch.load()
+                    && currentSampleRate > 0 && currentBlockSize > 0)
                     prepareToPlay (currentSampleRate, currentBlockSize,
                                    numInputChannels, numOutputChannels);
 
-                restartAttempts = 0;
-                listeners.call (&Listener::sandboxRestarted, this);
+                pluginLoaded.store (true);
+                state.store (State::Active);
+                pluginReadyFailed.store (false);
+                pluginReadyEvent.signal();
+                listeners.call (&Listener::sandboxPluginLoaded, this);
+
+                if (isRecovery)
+                {
+                    restartAttempts = 0;
+                    listeners.call (&Listener::sandboxRestarted, this);
+                }
             }
             break;
 
@@ -1231,13 +1284,18 @@ inline void SandboxHost::attemptRestart()
                                juce::String (maxRestartAttempts));
 
     // Safe on the message thread: killWorkerProcess() -> stopThread() is NOT the
-    // IPC thread here, so there is no self-join.
+    // IPC thread here, so there is no self-join. Guard the deliberate teardown so
+    // the old pipe's connectionLost (fired inline/joined inside the kill) is not
+    // mistaken for a fresh crash (see tearingDownWorker).
+    tearingDownWorker.store (true);
     killWorkerProcess();
+    tearingDownWorker.store (false);
 
     // Relaunch. NON-BLOCKING: we do NOT wait for PluginLoaded. The normal
     // PluginLoaded / PluginLoadFailed / connection-lost callbacks drive the next
     // state transition — exactly like the initial load — so there is no
     // 5s-per-attempt stall and the IPC thread is never blocked.
+    preparedSinceLaunch.store (false); // replacement worker has no shm attachment yet
     if (launchWorkerProcess())
     {
         connectionAlive.store (true);

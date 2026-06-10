@@ -119,6 +119,12 @@ struct ManagedGraph
           model (types::Graph)
     {
         dynamic_cast<GraphNode*> (graph.get())->prepareToRender (sampleRate, blockSize);
+        // Pin the sandbox routing decision to IN-PROCESS so these tests are
+        // independent of the machine's real Element.conf / the shipped default
+        // (pluginSandboxMode=1 routes external adds out-of-process — the
+        // in-process swap cases here would otherwise never reach "ready").
+        // The sandbox-route cases override this per-test with `return true`.
+        mgr.setSandboxPolicyForTesting ([] (const PluginDescription&) { return false; });
         mgr.setNodeModel (model);
         baseNodeCount = model.getNumNodes(); // 4 enforced IO nodes
     }
@@ -534,6 +540,22 @@ BOOST_AUTO_TEST_CASE (sandbox_unavailable_falls_back_in_process_preserving_uuid)
     BOOST_CHECK_EQUAL (fellBack.load(), 1);
 
     conn.disconnect();
+}
+
+// REGRESSION (live host crash 2026-06-10): a SandboxedProcessorNode has NO
+// in-process AudioProcessor (getAudioPluginInstance() == nullptr) and renders
+// via render(RenderContext&) → SandboxHost::processBlock. wantsContext() MUST
+// therefore be true: ProcessBufferOp::perform caches getAudioPluginInstance()
+// at construction and, for a wantsContext()==false node, derefs that cached
+// pointer on the AUDIO THREAD — for a sandboxed node that pointer is null, so
+// the first render of any sandboxed node SIGSEGV'd the host.
+BOOST_AUTO_TEST_CASE (sandboxed_node_must_render_via_context_api)
+{
+    ensureTestFormatRegistered();
+    const auto desc = testEchoDescription();
+    SandboxedProcessorNode node (desc, test::context()->plugins());
+    BOOST_CHECK (node.wantsContext());
+    BOOST_CHECK (node.getAudioPluginInstance() == nullptr);
 }
 
 // The DEFAULT route (no seam, policy = Settings::shouldSandboxPlugin) is

@@ -194,14 +194,13 @@ class PluginScannerWorker : public juce::ChildProcessWorker,
                             public juce::AsyncUpdater
 {
 public:
-    PluginScannerWorker()
-    {
-        SystemStats::setApplicationCrashHandler (detail::pluginScannerCrashHandler);
-        auto logfile = DataPath::applicationDataDir().getChildFile ("log/scanner.log");
-        logfile.create();
-        logger = std::make_unique<juce::FileLogger> (logfile, "Plugin Scanner");
-        Logger::setCurrentLogger (logger.get());
-    }
+    // Side-effect-free: Application::maybeLaunchScannerWorker constructs this
+    // class in the HOST on every boot just to PROBE for scanner mode. The crash
+    // handler + logger install moved to handleConnectionMade() — installing them
+    // here leaked the empty pluginScannerCrashHandler into the host process,
+    // converting every host crash into a silent self-SIGKILL with no crash
+    // report (JUCE handleCrash() calls the handler then kill(getpid, SIGKILL)).
+    PluginScannerWorker() = default;
 
     ~PluginScannerWorker()
     {
@@ -314,6 +313,15 @@ public:
 
     void handleConnectionMade() override
     {
+        // This process is now CONFIRMED as a real scanner child (pipe to the
+        // coordinator is up) — only here may the crash handler and scanner
+        // logger be installed (see ctor note).
+        SystemStats::setApplicationCrashHandler (detail::pluginScannerCrashHandler);
+        auto logfile = DataPath::applicationDataDir().getChildFile ("log/scanner.log");
+        logfile.create();
+        logger = std::make_unique<juce::FileLogger> (logfile, "Plugin Scanner");
+        Logger::setCurrentLogger (logger.get());
+
         logger->logMessage ("[scanner] connection to coordinator established");
         logger->logMessage ("[scanner] creating global objects");
         settings = std::make_unique<Settings>();

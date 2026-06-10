@@ -765,6 +765,19 @@ public:
         return __atomic_load_n (&header->coordinatorSequence, __ATOMIC_ACQUIRE);
     }
 
+    /** Get the worker's completed-block sequence number (RT-safe acquire read).
+        The host derives its per-block expectation from THIS value (+1) rather
+        than a private mirror counter — a private counter diverges permanently
+        when the worker misses triggers (e.g. it is still attaching a new shm
+        generation while the host already renders against it) and the >= done
+        check then never passes again (the 2026-06-10 session-load xrun storm). */
+    uint32_t getWorkerSequence() const
+    {
+        if (header == nullptr)
+            return 0;
+        return __atomic_load_n (&header->workerSequence, __ATOMIC_ACQUIRE);
+    }
+
 private:
     void setupPointersCommon (uint8_t* base, int numChannels, int numSamples)
     {

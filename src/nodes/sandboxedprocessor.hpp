@@ -113,7 +113,12 @@ public:
     void refreshPorts() override;
     void getPluginDescription (juce::PluginDescription& desc) const override;
 
-    bool wantsContext() const noexcept override { return false; }
+    // MUST be true: this node has NO in-process AudioProcessor
+    // (getAudioPluginInstance() == nullptr) and renders via render(RenderContext&)
+    // → SandboxHost::processBlock. Returning false routes ProcessBufferOp::perform
+    // to its cached AudioProcessor* branch, which derefs nullptr on the AUDIO
+    // THREAD the first time the op renders (SIGSEGV — found live 2026-06-10).
+    bool wantsContext() const noexcept override { return true; }
 
     //==========================================================================
     // SandboxHost::Listener interface
@@ -452,12 +457,13 @@ inline void SandboxedProcessorNode::sandboxPluginLoaded (SandboxHost*)
     // the parameter list + I/O config. PluginInfo always follows PluginLoaded
     // on the wire, so doing it here would just be replaced milliseconds later.
 
-    // Re-prepare if we have valid settings
-    if (currentSampleRate > 0 && currentBlockSize > 0 && sandbox)
-    {
-        sandbox->prepareToPlay (currentSampleRate, currentBlockSize,
-                                numInputChannels, numOutputChannels);
-    }
+    // Do NOT prepareToPlay here. This listener fires AFTER SandboxHost's
+    // PluginLoaded handler publishes pluginLoaded/Active — the audio thread may
+    // already be inside processBlock, and prepareToPlay() unmaps + remaps the
+    // shm that render path reads (use-after-unmap host crash; RT verifier
+    // 2026-06-10). The host now owns the single post-launch prepare, gated by
+    // preparedSinceLaunch and issued BEFORE the gate opens; rate/buffer changes
+    // keep flowing through prepareToRender() with the device stopped.
 }
 
 inline void SandboxedProcessorNode::sandboxPluginLoadFailed (SandboxHost*,
