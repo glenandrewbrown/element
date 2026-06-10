@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Container Block — Option 2: Count Badges + IO Summary</title>
+<style>
+  :root {
+    --canvas:   #1E1E22;
+    --panel:    #222226;
+    --surface:  #252529;
+    --elevated: #2A2A2E;
+    --pressed:  #1A1A1E;
+    --text-primary:   #E5E5EA;
+    --text-secondary: #8E8E93;
+    --text-dim:       #55555A;
+    --cat-instrument: #4A90D9;
+    --cat-midifx:     #2BC4C4;
+    --cat-audiofx:    #E8A838;
+    --cat-modulator:  #A87FE0;
+    --neu-raised: -2px -2px 6px rgba(255,255,255,0.05), 4px 4px 10px rgba(0,0,0,0.5);
+    --neu-inset: inset 2px 2px 5px rgba(0,0,0,0.5), inset -1px -1px 3px rgba(255,255,255,0.04);
+    --neu-button: -1px -1px 3px rgba(255,255,255,0.05), 2px 2px 5px rgba(0,0,0,0.4);
+    --font: 'SF Mono', 'JetBrains Mono', ui-monospace, monospace;
+    --font-ui: system-ui, -apple-system, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--canvas);
+    font-family: var(--font-ui);
+    color: var(--text-primary);
+    padding: 40px 32px 48px;
+    min-height: 100vh;
+  }
+  .page-label {
+    font-size: 10px; color: var(--text-dim);
+    letter-spacing: 0.07em; text-transform: uppercase; font-weight: 600;
+    margin-bottom: 32px;
+  }
+
+  .canvas-bg {
+    background: var(--canvas);
+    border-radius: 12px;
+    padding: 48px 48px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 40px;
+    align-items: flex-start;
+    background-image: radial-gradient(circle, rgba(255,255,255,0.04) 1px, transparent 1px);
+    background-size: 20px 20px;
+  }
+
+  /* ── Block shell ─────────────────────────────────────────────── */
+  .block {
+    background: var(--surface);
+    border-radius: 10px;
+    box-shadow: var(--neu-raised);
+    overflow: hidden;
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  .block-header {
+    height: 30px;
+    display: flex; align-items: center;
+    padding: 0 10px; gap: 7px;
+    position: relative;
+  }
+  .block-header::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 8%; right: 8%; height: 1px;
+    background: var(--cat-color, rgba(255,255,255,0.06));
+    opacity: 0.4;
+  }
+
+  .block-cat-glyph {
+    flex-shrink: 0; width: 14px; height: 14px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .block-name {
+    flex: 1; font-size: 11px; font-weight: 600;
+    letter-spacing: 0.02em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .led {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--led-color, rgba(255,255,255,0.3));
+    box-shadow: 0 0 4px var(--led-color, transparent);
+  }
+
+  .block-badge {
+    font-size: 7.5px; font-weight: 700; padding: 1px 5px;
+    border-radius: 3px; letter-spacing: 0.05em; text-transform: uppercase;
+    font-family: var(--font); flex-shrink: 0;
+  }
+
+  /* ── Port handles ────────────────────────────────────────────── */
+  .ports-row {
+    display: flex; align-items: stretch;
+    padding: 0 0 6px;
+  }
+  .port-col { display: flex; flex-direction: column; gap: 4px; padding: 0 6px; }
+  .port-col.right { margin-left: auto; align-items: flex-end; }
+  .port-handle { display: flex; align-items: center; gap: 4px; height: 18px; cursor: crosshair; }
+  .port-handle.right { flex-direction: row-reverse; }
+  .handle-pip {
+    width: 9px; height: 9px; border-radius: 50%;
+    flex-shrink: 0;
+    box-shadow: 0 0 4px var(--pip-glow, transparent);
+  }
+  .handle-label { font-size: 8.5px; color: var(--text-dim); font-family: var(--font); white-space: nowrap; }
+
+  .normal-block { width: 180px; }
+
+  /* ── Container-specific body ─────────────────────────────────── */
+  /* Option 2: the body is a tight 3-zone layout — no thumbnail */
+
+  .container-block { width: 220px; }
+
+  /* Zone 1: category composition row (coloured count chips) */
+  .cat-composition {
+    display: flex; align-items: center; gap: 5px;
+    padding: 8px 10px 6px;
+    flex-wrap: wrap;
+  }
+
+  .cat-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    height: 22px; padding: 0 8px;
+    border-radius: 4px;
+    background: var(--pressed);
+    box-shadow: var(--neu-button);
+    cursor: default;
+    flex-shrink: 0;
+  }
+
+  .cat-chip-glyph {
+    flex-shrink: 0; width: 10px; height: 10px;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  .cat-chip-count {
+    font-size: 11px; font-weight: 700;
+    font-family: var(--font); letter-spacing: 0.02em;
+    color: var(--chip-color);
+  }
+
+  .cat-chip-label {
+    font-size: 8.5px; color: var(--text-dim);
+    letter-spacing: 0.04em; text-transform: uppercase;
+    font-weight: 600;
+  }
+
+  /* Zone 2: signal IO summary bar */
+  .io-summary {
+    margin: 0 8px 6px;
+    background: var(--pressed);
+    border-radius: 5px;
+    box-shadow: var(--neu-inset);
+    padding: 5px 8px;
+    display: flex; align-items: center; gap: 6px;
+  }
+
+  .io-signal {
+    display: flex; align-items: center; gap: 3px;
+    flex: 1;
+  }
+
+  .io-pip {
+    width: 7px; height: 7px; border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .io-text {
+    font-size: 9px; color: var(--text-secondary);
+    font-family: var(--font); letter-spacing: 0.03em;
+    white-space: nowrap;
+  }
+
+  .io-div { width: 1px; height: 14px; background: rgba(255,255,255,0.06); flex-shrink: 0; }
+
+  /* Zone 3: action row */
+  .action-row {
+    display: flex; align-items: center; gap: 5px;
+    padding: 0 8px 8px;
+  }
+
+  .action-btn {
+    flex: 1; height: 22px;
+    display: flex; align-items: center; justify-content: center;
+    gap: 4px;
+    background: var(--surface);
+    border-radius: 4px;
+    box-shadow: var(--neu-button);
+    cursor: pointer;
+    font-size: 9px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+    color: var(--text-secondary);
+    transition: color 80ms;
+  }
+  .action-btn:hover { color: var(--text-primary); }
+  .action-btn svg { width: 9px; height: 9px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+  .action-btn.primary { color: var(--cat-instrument); flex: 1.5; }
+
+  /* ── Variant: zoomed-out / compact tier ──────────────────────── */
+  /* At low zoom (< 0.5) the container collapses to title + mini bar */
+  .block-compact { width: 160px; }
+
+  .compact-body {
+    padding: 4px 8px 7px;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+
+  /* Category dots row — 1 dot per block, no labels */
+  .compact-dots {
+    display: flex; align-items: center; gap: 3px; flex-wrap: wrap;
+  }
+
+  .cdot {
+    width: 7px; height: 7px; border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .compact-io {
+    display: flex; align-items: center; gap: 4px;
+    font-size: 8.5px; color: var(--text-dim); font-family: var(--font);
+  }
+
+  .compact-pip { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+
+  /* ── Nested container variant (container inside container) ───── */
+  .block-nested-indicator {
+    position: absolute;
+    top: 6px; right: 8px;
+    display: flex; align-items: center; gap: 2px;
+  }
+  .nest-level {
+    font-size: 8px; font-weight: 700; font-family: var(--font);
+    color: var(--text-dim); background: var(--pressed);
+    padding: 1px 4px; border-radius: 3px;
+    letter-spacing: 0.04em;
+  }
+
+  /* ── State: error/missing ────────────────────────────────────── */
+  .block-error {
+    box-shadow: var(--neu-raised), 0 0 0 1px rgba(255,80,80,0.35);
+  }
+
+  /* ── Section labels ──────────────────────────────────────────── */
+  .section-label {
+    font-size: 9px; font-weight: 700; letter-spacing: 0.09em;
+    text-transform: uppercase; color: var(--text-dim);
+    margin-bottom: 12px; margin-top: 8px;
+  }
+
+  /* ── Annotation panel ────────────────────────────────────────── */
+  .ann-panel {
+    background: rgba(255,255,255,0.02);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 8px; padding: 16px 20px;
+    margin-top: 32px; max-width: 900px;
+  }
+  .ann-title { font-size: 9px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--cat-instrument); margin-bottom: 12px; }
+  .ann-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+  .ann-item-title { font-size: 9px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; letter-spacing: 0.04em; text-transform: uppercase; }
+  .ann-item-body { font-size: 11px; color: var(--text-secondary); line-height: 1.55; }
+  code { font-family: var(--font); font-size: 10px; color: var(--text-primary); background: var(--elevated); padding: 1px 4px; border-radius: 3px; }
+
+  /* ── vs Option 1 comparison row ─────────────────────────────── */
+  .compare-row {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 12px; margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid rgba(255,255,255,0.05);
+  }
+  .compare-col-title { font-size: 9px; font-weight: 700; color: var(--text-dim); letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 5px; }
+  .compare-point { font-size: 10.5px; color: var(--text-secondary); line-height: 1.5; padding: 2px 0; }
+  .compare-point::before { content: '→ '; color: var(--text-dim); }
+  .compare-pro::before { content: '✓ '; color: rgba(100,200,100,0.7); }
+  .compare-con::before { content: '✕ '; color: rgba(200,100,100,0.6); }
+</style>
+</head>
+<body>
+
+<div class="page-label">CONTAINER BLOCK — OPTION 2 · COUNT BADGES + IO SUMMARY</div>
+
+<div class="canvas-bg">
+
+  <!-- ── Context: normal block ─────────────────────────────────── -->
+  <div style="display:flex;flex-direction:column;gap:6px;">
+    <div class="section-label">Normal block (context)</div>
+    <div class="block normal-block">
+      <div class="block-header" style="--cat-color:var(--cat-audiofx);">
+        <div class="block-cat-glyph">
+          <svg viewBox="0 0 12 12" width="12" height="12"><rect x="1.5" y="1.5" width="9" height="9" rx="1" transform="rotate(45 6 6)" fill="var(--cat-audiofx)"/></svg>
+        </div>
+        <span class="block-name">Pro-Q 3</span>
+        <div class="led" style="--led-color:var(--cat-audiofx);"></div>
+      </div>
+      <div class="ports-row">
+        <div class="port-col">
+          <div class="port-handle"><div class="handle-pip" style="background:var(--cat-instrument);--pip-glow:var(--cat-instrument);"></div><span class="handle-label">in L</span></div>
+          <div class="port-handle"><div class="handle-pip" style="background:var(--cat-instrument);--pip-glow:var(--cat-instrument);"></div><span class="handle-label">in R</span></div>
+        </div>
+        <div class="port-col right">
+          <div class="port-handle right"><div class="handle-pip" style="background:var(--cat-instrument);--pip-glow:var(--cat-instrument);"></div><span class="handle-label">out L</span></div>
+          <div class="port-handle right"><div class="handle-pip" style="background:var(--cat-instrument);--pip-glow:var(--cat-instrument);"></div><span class="handle-label">out R</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Container: simple (4 blocks) ──────────────────────────── -->
+  <div style="display:flex;flex-direction:column;gap:6px;">
+    <div class="section-label">Container — simple (4 blocks)</div>
+    <div class="block container-block">
+      <div class="block-header" style="--cat-color:rgba(255,255,255,0.15);">
+        <div class="block-cat-glyph">
+          <svg viewBox="0 0 14 14" width="13" height="13" fill="none">
+            <rect x="1" y="1" width="12" height="12" rx="2" stroke="rgba(255,255,255,0.35)" stroke-width="1.2"/>
+            <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" stroke="rgba(255,255,255,0.55)" stroke-width="1.2"/>
+          </svg>
+        </div>
+        <span class="block-name">Drum Bus</span>
+        <span class="block-badge" style="background:rgba(74,144,217,0.15);color:var(--cat-instrument);">Container</span>
+        <div class="led" style="--led-color:rgba(255,255,255,0.25);"></div>
+      </div>
+
+      <!-- Zone 1: Category composition chips -->
+      <div class="cat-composition">
+        <!-- 1 instrument (Audio In) -->
+        <div class="cat-chip">
+          <div class="cat-chip-glyph">
+            <svg viewBox="0 0 10 10" width="10" height="10"><circle cx="5" cy="5" r="4" fill="var(--cat-instrument)"/></svg>
+          </div>
+          <span class="cat-chip-count" style="--chip-color:var(--cat-instrument);">1</span>
+          <span class="cat-chip-label">VI</span>
+        </div>
+        <!-- 2 audio fx -->
+        <div class="cat-chip">
+          <div class="cat-chip-glyph">
+            <svg viewBox="0 0 10 10" width="10" height="10"><rect x="1.5" y="1.5" width="7" height="7" rx="1" transform="rotate(45 5 5)" fill="var(--cat-audiofx)"/></svg>
+          </div>
+          <span class="cat-chip-count" style="--chip-color:var(--cat-audiofx);">2</span>
+          <span class="cat-chip-label">FX</span>
+        </div>
+        <!-- 1 modulator -->
+        <div class="cat-chip">
+          <div class="cat-chip-glyph">
+            <svg viewBox="0 0 10 10" width="10" height="10"><polygon points="5,0.5 8.8,2.75 8.8,7.25 5,9.5 1.2,7.25 1.2,2.75" fill="var(--cat-modulator)"/></svg>
+          </div>
+          <span class="cat-chip-count" style="--chip-color:var(--cat-modulator);">1</span>
+          <span class="cat-chip-label">Mod</span>
+        </div>
+      </div>
+
+      <!-- Zone 2: IO summary -->
+      <div class="io-summary">
+        <div class="io-signal">
+          <div class="io-pip" style="background:var(--cat-instrument);"></div>
+          <span class="io-text">2 in</span>
+        </div>
+        <div class="io-div"></div>
+        <div class="io-signal" style="justify-content:flex-end;">
+          <span class="io-text">2 out</span>
+          <div class="io-pip" style="background:var(--cat-instrument);"></div>
+        </div>
+      </div>
+
+      <!-- Zone 3: action row -->
+      <div class="action-row">
+        <div class="action-btn primary">
+          <svg viewBox="0 0 24 24"><path d="M5 12h14M13 18l6-6-6-6"/></svg>
+          Enter
+        </div>
+        <div class="action-btn">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+          Edit
+        </div>
+      </div>
+
+      <!-- Port handles -->
+      <div class="ports-row">
+        <div class="port-col">
+          <div class="port-handle"><div class="handle-pip" style="background:var(--cat-instrument);--pip-glow:var(--cat-instrument);"></div><span class="handle-label">in L</span></div>
+          <div class="port-handle"><div class="handle-pip" style="background:var(--cat-instrument);--pip-glow:var(--cat-instrument);"></div><span class="handle-label">in R</span></div>
+        </div>
+        <div class="port-col right">
+          <div class="port-handle right"><div class="handle-pip" style="background:var(--cat-instrument);--pip-glow:var(--cat-instrument);"></div><span class="handle-label">out L</span></div>
+          <div class="port-handle right"><div class="handle-pip" style="background:var(--cat-instrument);--pip-glow:var(--cat-instrument);"></div><span class="handle-label">out R</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Container: multi-signal (audio + MIDI + CV) ─────────── -->
+  <div style="display:flex;flex-direction:column;gap:6px;">
+    <div class="section-label">Container — multi-signal IO</div>
+    <div class="block container-block">
+      <div class="block-header" style="--cat-color:rgba(255,255,255,0.12);">
+        <div class="block-cat-glyph">
+          <svg viewBox="0 0 14 14" width="13" height="13" fill="none">
+            <rect x="1" y="1" width="12" height="12" rx="2" stroke="rgba(255,255,255,0.35)" stroke-width="1.2"/>
+            <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" stroke="rgba(255,255,255,0.55)" stroke-width="1.2"/>
+          </svg>
+        </div>
+        <span class="block-name">Synth Chain</span>
+        <span class="block-badge" style="background:rgba(74,144,217,0.15);color:var(--cat-instrument);">Container</span>
+        <div class="led" style="--led-color:rgba(255,255,255,0.25);"></div>
+      </div>
+
+      <div class="cat-composition">
+        <div class="cat-chip">
+          <div class="cat-chip-glyph"><svg viewBox="0 0 10 10" width="10" height="10"><circle cx="5" cy="5" r="4" fill="var(--cat-instrument)"/></svg></div>
+          <span class="cat-chip-count" style="--chip-color:var(--cat-instrument);">3</span>
+          <span class="cat-chip-label">VI</span>
+        </div>
+        <div class="cat-chip">
+          <div class="cat-chip-glyph"><svg viewBox="0 0 10 10" width="10" height="10"><polygon points="5,0.8 9.2,8.5 0.8,8.5" fill="var(--cat-midifx)"/></svg></div>
+          <span class="cat-chip-count" style="--chip-color:var(--cat-midifx);">2</span>
+          <span class="cat-chip-label">MIDI</span>
+        </div>
+        <div class="cat-chip">
+          <div class="cat-chip-glyph"><svg viewBox="0 0 10 10" width="10" height="10"><rect x="1.5" y="1.5" width="7" height="7" rx="1" transform="rotate(45 5 5)" fill="var(--cat-audiofx)"/></svg></div>
+          <span class="cat-chip-count" style="--chip-color:var(--cat-audiofx);">4</span>
+          <span class="cat-chip-label">FX</span>
+        </div>
+        <div class="cat-chip">
+          <div class="cat-chip-glyph"><svg viewBox="0 0 10 10" width="10" height="10"><polygon points="5,0.5 8.8,2.75 8.8,7.25 5,9.5 1.2,7.25 1.2,2.75" fill="var(--cat-modulator)"/></svg></div>
+          <span class="cat-chip-count" style="--chip-color:var(--cat-modulator);">2</span>
+          <span class="cat-chip-label">Mod</span>
+        </div>
+      </div>
+
+      <!-- Multi-signal IO: audio + MIDI + CV -->
+      <div class="io-summary">
+        <div class="io-signal" style="gap:3px;flex:2;">
+          <div class="io-pip" style="background:var(--cat-instrument);"></div>
+          <span class="io-text">2 audio</span>
+          <div class="io-div" style="margin:0 2px;"></div>
+          <div class="io-pip" style="background:var(--cat-midifx);"></div>
+          <span class="io-text">1 MIDI</span>
+          <div class="io-div" style="margin:0 2px;"></div>
+          <div class="io-pip" style="background:var(--cat-audiofx);border-radius:2px;width:6px;height:6px;transform:rotate(45deg);"></div>
+          <span class="io-text">2 CV</span>
+        </div>
+        <div class="io-div"></div>
+        <div class="io-signal" style="justify-content:flex-end;flex:1;">
+          <div class="io-pip" style="background:var(--cat-instrument);"></div>
+          <span class="io-text">2 out</span>
+        </div>
+      </div>
+
+      <div class="action-row">
+        <div class="action-btn primary">
+          <svg viewBox="0 0 24 24"><path d="M5 12h14M13 18l6-6-6-6"/></svg>
+          Enter
+        </div>
+        <div class="action-btn">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+          Edit
+        </div>
+      </div>
+
+      <div class="ports-row">
+        <div class="port-col">
+          <div class="port-handle"><div class="handle-pip" style="background:var(--cat-instrument);"></div><span class="handle-label">in L</span></div>
+          <div class="port-handle"><div class="handle-pip" style="background:var(--cat-instrument);"></div><span class="handle-label">in R</span></div>
+          <div class="port-handle"><div class="handle-pip" style="background:var(--cat-midifx);"></div><span class="handle-label">MIDI</span></div>
+          <div class="port-handle"><div class="handle-pip" style="background:var(--cat-audiofx);border-radius:2px;transform:rotate(45deg);"></div><span class="handle-label">CV1</span></div>
+          <div class="port-handle"><div class="handle-pip" style="background:var(--cat-audiofx);border-radius:2px;transform:rotate(45deg);"></div><span class="handle-label">CV2</span></div>
+        </div>
+        <div class="port-col right">
+          <div class="port-handle right"><div class="handle-pip" style="background:var(--cat-instrument);"></div><span class="handle-label">out L</span></div>
+          <div class="port-handle right"><div class="handle-pip" style="background:var(--cat-instrument);"></div><span class="handle-label">out R</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Compact / zoomed-out tier ─────────────────────────────── -->
+  <div style="display:flex;flex-direction:column;gap:6px;">
+    <div class="section-label">Compact tier (zoom &lt; 0.55)</div>
+
+    <div class="block block-compact">
+      <div class="block-header" style="--cat-color:rgba(255,255,255,0.12);height:26px;">
+        <div class="block-cat-glyph">
+          <svg viewBox="0 0 14 14" width="12" height="12" fill="none">
+            <rect x="1" y="1" width="12" height="12" rx="2" stroke="rgba(255,255,255,0.35)" stroke-width="1.2"/>
+            <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" stroke="rgba(255,255,255,0.55)" stroke-width="1.2"/>
+          </svg>
+        </div>
+        <span class="block-name" style="font-size:10.5px;">Drum Bus</span>
+      </div>
+      <div class="compact-body">
+        <!-- 1 dot per block, grouped by colour -->
+        <div class="compact-dots">
+          <div class="cdot" style="background:var(--cat-instrument);"></div>
+          <div class="cdot" style="background:var(--cat-audiofx);"></div>
+          <div class="cdot" style="background:var(--cat-audiofx);"></div>
+          <div class="cdot" style="background:var(--cat-modulator);"></div>
+        </div>
+        <div class="compact-io">
+          <div class="compact-pip" style="background:var(--cat-instrument);"></div>
+          <span style="color:var(--text-dim);font-size:8px;">2↓ · 2↑</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:16px;" class="section-label">Normal block compact (context)</div>
+    <div class="block block-compact">
+      <div class="block-header" style="--cat-color:var(--cat-audiofx);height:26px;">
+        <div class="block-cat-glyph">
+          <svg viewBox="0 0 12 12" width="11" height="11"><rect x="1.5" y="1.5" width="9" height="9" rx="1" transform="rotate(45 6 6)" fill="var(--cat-audiofx)"/></svg>
+        </div>
+        <span class="block-name" style="font-size:10.5px;">Pro-Q 3</span>
+        <div class="led" style="--led-color:var(--cat-audiofx);width:5px;height:5px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Portal variant ─────────────────────────────────────────── -->
+  <div style="display:flex;flex-direction:column;gap:6px;">
+    <div class="section-label">Portal variant (linked .elboard)</div>
+    <div class="block container-block" style="box-shadow:var(--neu-raised),0 0 0 1px rgba(43,196,196,0.2);">
+      <div class="block-header" style="--cat-color:rgba(43,196,196,0.3);">
+        <div class="block-cat-glyph">
+          <!-- Portal: nested squares + link indicator -->
+          <svg viewBox="0 0 14 14" width="13" height="13" fill="none">
+            <rect x="1" y="1" width="12" height="12" rx="2" stroke="rgba(43,196,196,0.5)" stroke-width="1.2"/>
+            <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" stroke="rgba(43,196,196,0.7)" stroke-width="1.2"/>
+            <line x1="9" y1="5" x2="12" y2="2" stroke="rgba(43,196,196,0.8)" stroke-width="1" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <span class="block-name">Reverb Send</span>
+        <span class="block-badge" style="background:rgba(43,196,196,0.15);color:var(--cat-midifx);">Portal</span>
+        <div class="led" style="--led-color:var(--cat-midifx);"></div>
+      </div>
+
+      <div class="cat-composition">
+        <div class="cat-chip">
+          <div class="cat-chip-glyph"><svg viewBox="0 0 10 10" width="10" height="10"><rect x="1.5" y="1.5" width="7" height="7" rx="1" transform="rotate(45 5 5)" fill="var(--cat-audiofx)"/></svg></div>
+          <span class="cat-chip-count" style="--chip-color:var(--cat-audiofx);">3</span>
+          <span class="cat-chip-label">FX</span>
+        </div>
+        <!-- Linked file badge -->
+        <div style="margin-left:auto;display:flex;align-items:center;gap:3px;font-size:8.5px;color:var(--cat-midifx);font-family:var(--font);">
+          <svg viewBox="0 0 14 14" width="10" height="10" fill="none"><path d="M8 3H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V8M10 1h3v3M6.5 7.5l6-6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          reverb.elboard
+        </div>
+      </div>
+
+      <div class="io-summary">
+        <div class="io-signal">
+          <div class="io-pip" style="background:var(--cat-instrument);"></div>
+          <span class="io-text">2 in</span>
+        </div>
+        <div class="io-div"></div>
+        <div class="io-signal" style="justify-content:flex-end;">
+          <span class="io-text">2 out</span>
+          <div class="io-pip" style="background:var(--cat-instrument);"></div>
+        </div>
+      </div>
+
+      <div class="action-row">
+        <div class="action-btn primary" style="color:var(--cat-midifx);">
+          <svg viewBox="0 0 24 24"><path d="M5 12h14M13 18l6-6-6-6"/></svg>
+          Enter
+        </div>
+        <div class="action-btn">
+          <svg viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3"/></svg>
+          Open
+        </div>
+      </div>
+
+      <div class="ports-row">
+        <div class="port-col">
+          <div class="port-handle"><div class="handle-pip" style="background:var(--cat-instrument);"></div><span class="handle-label">in L</span></div>
+          <div class="port-handle"><div class="handle-pip" style="background:var(--cat-instrument);"></div><span class="handle-label">in R</span></div>
+        </div>
+        <div class="port-col right">
+          <div class="port-handle right"><div class="handle-pip" style="background:var(--cat-instrument);"></div><span class="handle-label">out L</span></div>
+          <div class="port-handle right"><div class="handle-pip" style="background:var(--cat-instrument);"></div><span class="handle-label">out R</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── Annotations ────────────────────────────────────────────── -->
+<div class="ann-panel">
+  <div class="ann-title">Option 2 — Count Badges + IO Summary · Design Rationale</div>
+  <div class="ann-grid">
+    <div class="ann-item">
+      <div class="ann-item-title">What it shows</div>
+      <div class="ann-item-body">Three compact zones replace the thumbnail: (1) category composition chips — one chip per category present, with a count and the canonical ●▲◆⬡ glyph; (2) a signal IO summary bar showing input/output signal types and counts; (3) an action row with Enter (primary) and Edit. The block stays close to normal block height (+40–50px at most).</div>
+    </div>
+    <div class="ann-item">
+      <div class="ann-item-title">Implementation cost</div>
+      <div class="ann-item-body">Low. All data is already available: <code>containerNodeCount</code> exists on <code>BlockData</code>. A category breakdown (how many of each type) needs one extra host field or is derived client-side from the container's block list in the graph store. No SVG generation, no snapshot logic. The compact tier (dots + IO) just reads the same data.</div>
+    </div>
+    <div class="ann-item">
+      <div class="ann-item-title">Trade-offs</div>
+      <div class="ann-item-body">Pro: same compact footprint as a normal block (+2 zones). No implementation risk. Portal/Container/nested containers all work identically — just different badge text. Works at all zoom levels (compact tier at low zoom is just dots). Con: no spatial memory — two containers with the same category mix look identical. The user must remember names, not shapes.</div>
+    </div>
+  </div>
+
+  <div class="compare-row">
+    <div>
+      <div class="compare-col-title">Option 1 (Thumbnail) strengths</div>
+      <div class="compare-point compare-pro">Spatial identity — topology shape is visually unique per container</div>
+      <div class="compare-point compare-pro">Communicates graph complexity at a glance</div>
+      <div class="compare-point compare-con">+96px height — bigger footprint on canvas</div>
+      <div class="compare-point compare-con">Moderate implementation cost (SVG snapshot generation)</div>
+      <div class="compare-point compare-con">Thumbnail becomes misleading after internal edits until regenerated</div>
+    </div>
+    <div>
+      <div class="compare-col-title">Option 2 (Badges) strengths</div>
+      <div class="compare-point compare-pro">Near-zero implementation cost — all data already available</div>
+      <div class="compare-point compare-pro">Compact — close to normal block height</div>
+      <div class="compare-point compare-pro">Always accurate — live counts, no snapshot staleness</div>
+      <div class="compare-point compare-con">No spatial identity — two "2 FX + 1 VI" containers look identical</div>
+      <div class="compare-point compare-con">Does not communicate internal wiring topology</div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

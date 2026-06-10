@@ -249,3 +249,45 @@ The two "NEXT" blockers were **misdiagnoses**. Live debugging (real crash report
 **P4 DONE:** `Settings::defaultPluginSandboxMode = 1` (all third-party out-of-process — Glen's locked decision). Glen's `Element.conf` explicit `pluginSandboxMode` key REMOVED so the new default governs (Preferences → Plugins → Sandbox Mode remains the escape hatch).
 
 **Still open (follow-ups, not gates):** P3 floating-editor React wiring (double-click a sandboxed block currently opens an empty host-side window; the worker's real-GUI window path is built but unwired); worker idle poll duty ~9%/worker CPU (50 µs `sem_trywait` loop — consider blocking wait); P0.2 worker quit NSException ('Periodic events are already being generated') — cosmetic; Kontakt-scale feel-test owed (pizmidi only proves the mechanism; Kontakt is the #1 acceptance, needs Glen/GUI); CV-through-sandbox still a known gap; helper signing still required for SHIPPING (any non-dev Mac / notarization) — scripts updated (P2) but re-run + verify at install/packaging time.
+
+## STATUS 2026-06-10 PM — GLEN FEEL-TEST FAILED → P0 ASYNC-LAUNCH WAVE (Option A) IMPLEMENTED
+
+Glen's feel-test of mode=1: Kontakt live-add FROZE the UI (the #1 acceptance failed), all
+adds "very very slow", "Node" naming back, blocks overlap, sandboxed editor blank/wrong-size.
+Ralplan consensus (Planner→Architect→Critic, 2 iterations, both APPROVE) produced the wave plan
+at ~/.claude/plans/you-are-continuing-from-dreamy-volcano-agent-aa84fd0eb224e7bc4.md.
+
+Root cause of the freeze (Architect-verified): the ONE blocking primitive is the
+`connectToPipe` handshake inside `SandboxHost::launch()` (juce_ConnectedChildProcess.cpp:228
+via sandboxhost.hpp:1028) running on the message thread inside the SandboxedProcessorNode
+ctor at `kickSandboxedInstantiation`. `loadPlugin` was ALREADY a non-blocking pipe send.
+
+P0 shipped in working tree (commit pending):
+- T1: deferred-launch ctor + handshake on a GraphManager-scoped 1-thread ThreadPool;
+  watcher observes atomic LaunchPhase; fast-fallback moved into watcher; `forceSlowWorkerLaunch`
+  seam + SandboxAsyncInstantiationTest (<50ms return-to-loop assertion). RT-VERIFIER: APPROVE
+  (.omc/state/qa-wave-reports/p0-async-sandbox-RT-VERDICT-2026-06-10.md).
+- T2: session-load path routes sandboxed nodes through installSessionLoadingPlaceholder →
+  same machinery (boot never blocks; saved port topology preserved so cables survive).
+- T3: webview-host loading-name emission never shows "Node" (cleaned tags::name short-circuit).
+- T4: webview swap-aware de-overlap keyed on loadState loading→ready (count-gated passes were
+  blind to in-place placeholder→real swaps).
+- T5: worker editor window ComponentListener async resize (AU late-resize), 400×300 dropped.
+- T6: presentPluginWindow routes sandboxed nodes to the worker editor (no empty host window);
+  snapshot isSandboxed self-corrects via the dirty-gated graph push on swap.
+- Bonus: DeviceService::add no longer pops a modal under the test runner (pre-existing
+  headless ctest hang); stale WantsContextReturnsFalse test fixed to assert the true contract.
+
+Gates: build 0-err · vitest 3126/0 · tsc clean · full ctest green except 4 classified
+(2 pre-existing: DeviceService modal hang [now fixed], stale wantsContext test [fixed];
+terminology-guard allowlisted sentinel-detection; SandboxStressTests timeout under
+classification — isolated rerun in flight). New suites green: SandboxAsyncInstantiation,
+migrated AsyncPluginLoad.
+
+P1-P3 lanes launched in parallel (ultrawork): T9 idle-CPU hot/cold semaphore (done, pending
+central build), T16 container-add undo via GroupNodesAction (done), T21 block presets C++,
+W1 canvas lane (T10/T12/T13/T14/T15), W2 cables/snippets (T11/T20/T21W), D1 design variations
+(T17/T18). T7 warm pool held until T9 verified + RT pass.
+
+EXPECTATION (tell Glen at feel-test): P0 = NO FREEZE while heavy plugins load.
+NOT instant adds — that's P1-T7. Kontakt still takes its ~20s; the app stays usable.
