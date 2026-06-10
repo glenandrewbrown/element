@@ -12,11 +12,79 @@ export interface PluginEntry {
   category: BlockCategory;
   format: string;
   /**
+   * Vendor / manufacturer (V2 list secondary column). Optional: the V1 fav/recent
+   * builders predate it; the live hook always populates it ("" when unknown).
+   */
+  manufacturer?: string;
+  /**
+   * V2 — coarse sub-type within the category, derived from the host's raw
+   * `category` tag + the plugin name (e.g. Audio FX → "Equalizers" /
+   * "Compression" / "Reverb"). Drives the in-list dividers. Never invented:
+   * unmatched plugins fall into a generic "Other" bucket so the divider set is
+   * always honest. Optional for the same back-compat reason as `manufacturer`.
+   */
+  subtype?: string;
+  /**
    * N2 — every format variant of this plugin family (primary-first). Length 1
    * for a solitary plugin. The "also available as AU" reveal lists the
    * non-primary entries; selecting one inserts with that variant's REAL id.
    */
   variants: PluginVariant[];
+}
+
+/**
+ * V2 sub-type derivation (Variation 2 category-led dividers). Coarse buckets
+ * keyed off the host's raw juce `category` tag and the plugin NAME — no new host
+ * data required (the README's "auto-derived from BrowserPlugin.tags" note). The
+ * mapping is intentionally small + honest: anything unmatched lands in "Other"
+ * so a divider always reflects real membership, never a fabricated label.
+ *
+ * Exported for unit testing (the divider grouping is the V2's load-bearing IA).
+ */
+export function deriveSubType(
+  category: BlockCategory,
+  rawCategory: string,
+  name: string,
+): string {
+  const hay = `${rawCategory} ${name}`.toLowerCase();
+  const has = (...words: string[]) => words.some((w) => hay.includes(w));
+
+  switch (category) {
+    case "audiofx":
+      if (has("eq", "equaliz", "filter", "parametr")) return "Equalizers";
+      if (has("comp", "limit", "gate", "expand", "dynamic", "maxim"))
+        return "Dynamics";
+      if (has("reverb", "verb", "room", "hall", "plate", "space"))
+        return "Reverb";
+      if (has("delay", "echo")) return "Delay";
+      if (has("chorus", "flange", "phaser", "tremolo", "modulat"))
+        return "Modulation";
+      if (has("sat", "drive", "dist", "crush", "fuzz", "amp", "tape"))
+        return "Saturation";
+      if (has("restore", "denoise", "de-noise", "repair", "spectral", "izotope"))
+        return "Repair / Spectral";
+      if (has("meter", "analy", "scope", "tuner", "loud")) return "Metering";
+      return "Other Effects";
+    case "instrument":
+      if (has("synth")) return "Synths";
+      if (has("sampl", "kontakt", "rompler", "battery")) return "Samplers";
+      if (has("piano", "keys", "rhodes", "organ")) return "Keys";
+      if (has("drum", "kick", "beat", "perc")) return "Drums";
+      return "Other Instruments";
+    case "midifx":
+      if (has("arp", "arpegg")) return "Arpeggiators";
+      if (has("chord", "harmoniz", "scale")) return "Chord / Scale";
+      if (has("rout", "split", "merge", "channel", "filter")) return "Routing";
+      if (has("transpose", "pitch", "velocity")) return "Transform";
+      return "Other MIDI";
+    case "modulator":
+    default:
+      if (has("lfo")) return "LFOs";
+      if (has("env", "adsr")) return "Envelopes";
+      if (has("script", "lua", "code")) return "Scripting";
+      if (has("osc", "network", "send", "receive")) return "I/O / Utility";
+      return "Other Utilities";
+  }
 }
 
 /**
@@ -69,6 +137,8 @@ export function usePaletteFilters(
         description: p.description ?? "",
         category: p.blockCategory,
         format: p.format,
+        manufacturer: p.manufacturer ?? "",
+        subtype: deriveSubType(p.blockCategory, p.category ?? "", p.name),
         variants: p.variants ?? [{ format: p.format, identifier: p.identifier }],
       })),
     [nativePlugins],
@@ -163,4 +233,51 @@ export function usePaletteFilters(
     favoriteIds,
     recentRankById,
   };
+}
+
+/** A divider row in the grouped V2 list. */
+export interface SubTypeDivider {
+  kind: "divider";
+  label: string;
+}
+
+/** A plugin row in the grouped V2 list. */
+export interface SubTypeRow {
+  kind: "row";
+  plugin: PluginEntry;
+}
+
+export type SubTypeListItem = SubTypeDivider | SubTypeRow;
+
+/**
+ * V2 minimum list length before sub-type dividers are inserted (README: "Only
+ * appears when list > 12"). Below this the flat list is clearer than headers.
+ */
+export const SUBTYPE_DIVIDER_MIN = 12;
+
+/**
+ * Interleave sub-type divider rows into a category-filtered plugin list
+ * (Variation 2). Preserves the incoming order (already sorted by the caller),
+ * emitting a {@link SubTypeDivider} the first time each new `subtype` is seen so
+ * groups appear in first-encounter order — no re-sorting, so the active facet
+ * sort (e.g. ⏱ Recent) is respected. Returns plain rows (no dividers) when the
+ * list is at/under {@link SUBTYPE_DIVIDER_MIN} so short lists stay flat.
+ *
+ * Pure + exported for unit testing (the divider grouping is V2's IA).
+ */
+export function groupBySubType(entries: PluginEntry[]): SubTypeListItem[] {
+  if (entries.length <= SUBTYPE_DIVIDER_MIN) {
+    return entries.map((plugin) => ({ kind: "row", plugin }));
+  }
+  const out: SubTypeListItem[] = [];
+  let current: string | null = null;
+  for (const plugin of entries) {
+    const sub = plugin.subtype || "Other";
+    if (sub !== current) {
+      out.push({ kind: "divider", label: sub });
+      current = sub;
+    }
+    out.push({ kind: "row", plugin });
+  }
+  return out;
 }

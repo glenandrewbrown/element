@@ -254,6 +254,14 @@ const booleanCases: BoolCase[] = [
     nativeName: "elementGraphAddPlugin",
     args: ["vst3:foo"],
   },
+  // T19 — drag-to-Board: the same native, now carrying the flow-space drop
+  // coords as optional args[1]/[2] (host positions the new Block there).
+  {
+    name: "nativeGraphAddPlugin (with drop coords)",
+    call: () => nativeGraphAddPlugin("vst3:foo", 240, 96),
+    nativeName: "elementGraphAddPlugin",
+    args: ["vst3:foo", 240, 96],
+  },
   {
     name: "nativeGraphRemoveNode",
     call: () => nativeGraphRemoveNode("n-1"),

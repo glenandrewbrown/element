@@ -110,6 +110,9 @@ vi.mock("../../../stores/useHostExtrasStore", () => ({
 const bridge = vi.hoisted(() => ({
   nativeGraphMoveNodes: vi.fn(),
   nativeMoleculeInsert: vi.fn(async () => true),
+  nativeGraphAddPlugin: vi.fn(
+    async (_id: string, _x?: number, _y?: number) => true,
+  ),
 }));
 
 vi.mock("../../../bridge/nativeGraph", () => ({
@@ -119,6 +122,7 @@ vi.mock("../../../bridge/nativeGraph", () => ({
   nativeGraphCommentUpsert: vi.fn(),
   nativeGraphConnect: vi.fn(),
   nativeGraphAddPluginConnected: vi.fn(async () => true),
+  nativeGraphAddPlugin: bridge.nativeGraphAddPlugin,
   nativeGraphDisconnect: vi.fn(),
   nativeGraphMoveNodes: bridge.nativeGraphMoveNodes,
   nativeGraphRenameNode: vi.fn(),
@@ -295,6 +299,39 @@ describe("GraphCanvas — snippet drop (Item 4a-iii)", () => {
       clientY: 10,
       dataTransfer: dataTransfer as unknown as DataTransfer,
     });
+    expect(bridge.nativeMoleculeInsert).not.toHaveBeenCalled();
+  });
+});
+
+// T19 — a plugin ROW dragged from the left browser onto the Board adds the
+// Block at the drop point via nativeGraphAddPlugin (NOT nativeMoleculeInsert).
+describe("GraphCanvas — plugin drop (T19 drag-to-Board)", () => {
+  beforeEach(() => {
+    bridge.nativeGraphAddPlugin.mockClear();
+    bridge.nativeMoleculeInsert.mockClear();
+    mockGraphStore.nodes = [];
+    mockAppStore.autoTidyOnAdd = false;
+  });
+
+  it("adds the dropped plugin via nativeGraphAddPlugin with the identifier", () => {
+    const { container } = render(<GraphCanvas />);
+    const root = container.firstChild as HTMLElement;
+    const dataTransfer = {
+      types: ["application/x-element-plugin"],
+      getData: (t: string) =>
+        t === "application/x-element-plugin"
+          ? JSON.stringify({ identifier: "vst3:Pro-Q 3", name: "Pro-Q 3" })
+          : "",
+      dropEffect: "none",
+    };
+    fireEvent.drop(root, {
+      clientX: 120,
+      clientY: 80,
+      dataTransfer: dataTransfer as unknown as DataTransfer,
+    });
+    expect(bridge.nativeGraphAddPlugin).toHaveBeenCalledTimes(1);
+    expect(bridge.nativeGraphAddPlugin.mock.calls[0][0]).toBe("vst3:Pro-Q 3");
+    // A plugin drop must NOT mis-route to the molecule insert path.
     expect(bridge.nativeMoleculeInsert).not.toHaveBeenCalled();
   });
 });

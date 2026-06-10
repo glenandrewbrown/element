@@ -1,9 +1,10 @@
 import { useRef, useReducer } from "react";
 import { EmptyState } from "../../neu";
 import { nativeGraphAddPlugin } from "../../../bridge/nativeGraph";
+import { usePluginBrowserStore } from "../../../stores/usePluginBrowserStore";
 import { EV_OPEN_PREFERENCES } from "../../../events";
 import { PluginCard } from "./PluginCard";
-import type { PluginEntry } from "./usePaletteFilters";
+import { groupBySubType, type PluginEntry } from "./usePaletteFilters";
 import { CATEGORY_FILTERS } from "./CategoryChips";
 import type { BlockCategory } from "../../../data/types";
 
@@ -29,6 +30,18 @@ interface PluginListProps {
   viewMode: "grid" | "list";
   activeCategory: BlockCategory | null;
   onSelect: (id: string) => void;
+  /**
+   * V2 — render sub-type dividers within the list (Variation 2 category-led).
+   * Only honoured in list view; the divider grouping itself self-gates on list
+   * length (see groupBySubType / SUBTYPE_DIVIDER_MIN). Default off so the flat
+   * search list and grid view are unchanged.
+   */
+  grouped?: boolean;
+  /** V2 — show the vendor column on each row (category-led layout). */
+  showVendor?: boolean;
+  /** V2 — hide the built-in "<Category> plugins · N" sticky heading (the list
+   *  pane supplies its own category titlebar). */
+  hideHeading?: boolean;
 }
 
 /**
@@ -45,7 +58,11 @@ export function PluginList({
   viewMode,
   activeCategory,
   onSelect,
+  grouped = false,
+  showVendor = false,
+  hideHeading = false,
 }: PluginListProps) {
+  const toggleFavorite = usePluginBrowserStore((s) => s.toggleFavorite);
   const scrollRef = useRef<HTMLDivElement>(null);
   // PluginList now owns the panel's SINGLE scroll region (Task 3.D), so a
   // scroll no longer rides a parent re-render — we force a cheap local one.
@@ -65,13 +82,29 @@ export function PluginList({
   // Lives INSIDE the single scroll region (PluginList owns the only scroll now
   // — Task 3.D), pinned to the top so the "All plugins · N" count stays visible
   // while the list scrolls. `bg-panel` so rows don't show through behind it.
-  const heading = (
+  const heading = hideHeading ? null : (
     <div className="sticky top-0 z-10 bg-panel text-[9px] font-bold text-text-secondary tracking-widest uppercase px-1 pt-1 pb-1 flex items-center justify-between">
       <span>{categoryLabel} plugins</span>
       {filtered.length > 0 ? (
         <span className="text-text-dim tabular font-bold">{filtered.length}</span>
       ) : null}
     </div>
+  );
+
+  // Shared row factory so the flat virtualized path and the grouped (divider)
+  // path render identical PluginCards — only the layout around them differs.
+  const renderRow = (plugin: PluginEntry) => (
+    <PluginCard
+      plugin={plugin}
+      view="list"
+      selected={plugin.id === selectedId}
+      isFavourite={favoriteIds.has(plugin.id)}
+      onSelect={() => onSelect(plugin.id)}
+      onAdd={() => void nativeGraphAddPlugin(plugin.id)}
+      onAddVariant={(id) => void nativeGraphAddPlugin(id)}
+      onToggleFavourite={() => toggleFavorite(plugin.id)}
+      showVendor={showVendor}
+    />
   );
 
   // ── Empty / no-results states ───────────────────────────────────────────────
@@ -137,6 +170,35 @@ export function PluginList({
     );
   }
 
+  // ── List mode — grouped (V2 category-led, sub-type dividers) ────────────────
+  // Used when the caller opts in (a category is active) AND the list is long
+  // enough for dividers to help (groupBySubType self-gates on length). Not
+  // virtualized — divider rows break the uniform-height window math, and a
+  // single category's list is bounded; the flat "All" list keeps virtualization.
+  if (grouped) {
+    const items = groupBySubType(filtered);
+    return (
+      <div
+        className="flex-1 min-h-0 overflow-y-auto px-2"
+        data-testid="plugin-list-grouped"
+      >
+        {heading}
+        {items.map((item, i) =>
+          item.kind === "divider" ? (
+            <div
+              key={`div-${item.label}-${i}`}
+              className="px-1 pt-2 pb-1 text-[8.5px] font-bold uppercase tracking-widest text-text-dim border-t border-white/[0.03] first:border-t-0 first:pt-1"
+            >
+              {item.label}
+            </div>
+          ) : (
+            <div key={item.plugin.id}>{renderRow(item.plugin)}</div>
+          ),
+        )}
+      </div>
+    );
+  }
+
   // ── List mode — virtualized ─────────────────────────────────────────────────
   const totalH = filtered.length * LIST_ROW_H;
   // Viewport height: 400px is a safe minimum; actual height is unknown at
@@ -171,15 +233,7 @@ export function PluginList({
         <div style={{ position: "absolute", top: offsetTop, left: 0, right: 0 }}>
           {slice.map((plugin) => (
             <div key={plugin.id} style={{ height: LIST_ROW_H }}>
-              <PluginCard
-                plugin={plugin}
-                view="list"
-                selected={plugin.id === selectedId}
-                isFavourite={favoriteIds.has(plugin.id)}
-                onSelect={() => onSelect(plugin.id)}
-                onAdd={() => void nativeGraphAddPlugin(plugin.id)}
-                onAddVariant={(id) => void nativeGraphAddPlugin(id)}
-              />
+              {renderRow(plugin)}
             </div>
           ))}
         </div>

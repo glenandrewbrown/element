@@ -84,3 +84,87 @@ describe("PluginCard — N2 variant reveal", () => {
     expect(screen.queryByLabelText(/other formats/i)).toBeNull();
   });
 });
+
+// ── T19 / V2: inline ★ favourite toggle + drag source ───────────────────────
+describe("PluginCard — inline favourite + drag (V2)", () => {
+  it("renders a clickable ★ that toggles favourite without selecting/adding", () => {
+    const onToggleFavourite = vi.fn();
+    const onSelect = vi.fn();
+    const onAdd = vi.fn();
+    render(
+      <PluginCard
+        plugin={solo}
+        view="list"
+        selected={false}
+        isFavourite={false}
+        onSelect={onSelect}
+        onAdd={onAdd}
+        onToggleFavourite={onToggleFavourite}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /add to favourites/i }));
+    expect(onToggleFavourite).toHaveBeenCalledTimes(1);
+    // The star is its own button — clicking it must NOT add or select.
+    expect(onAdd).not.toHaveBeenCalled();
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("shows the favourited state + 'remove' affordance when isFavourite", () => {
+    render(
+      <PluginCard
+        plugin={solo}
+        view="list"
+        selected={false}
+        isFavourite
+        onSelect={vi.fn()}
+        onAdd={vi.fn()}
+        onToggleFavourite={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByRole("button", { name: /remove from favourites/i }),
+    ).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("shows the vendor column when showVendor is set", () => {
+    render(
+      <PluginCard
+        plugin={{ ...solo, manufacturer: "FabFilter" }}
+        view="list"
+        selected={false}
+        isFavourite={false}
+        onSelect={vi.fn()}
+        onAdd={vi.fn()}
+        showVendor
+      />,
+    );
+    expect(screen.getByText("FabFilter")).toBeInTheDocument();
+  });
+
+  it("is an HTML5 drag source carrying the plugin identifier", () => {
+    render(
+      <PluginCard
+        plugin={solo}
+        view="list"
+        selected={false}
+        isFavourite={false}
+        onSelect={vi.fn()}
+        onAdd={vi.fn()}
+      />,
+    );
+    const row = screen.getByRole("button", { name: /Solo/i });
+    expect(row).toHaveAttribute("draggable", "true");
+
+    // Fire a dragstart and assert the pluginDrag payload was written.
+    const store: Record<string, string> = {};
+    const dataTransfer = {
+      setData: (k: string, v: string) => {
+        store[k] = v;
+      },
+      getData: (k: string) => store[k] ?? "",
+      effectAllowed: "none",
+    };
+    fireEvent.dragStart(row, { dataTransfer });
+    expect(store["application/x-element-plugin"]).toContain("vst3:Solo");
+  });
+});

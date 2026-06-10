@@ -3,6 +3,7 @@ import type { BlockCategory } from "../../../data/types";
 import type { PluginEntry } from "./usePaletteFilters";
 import { Icon } from "../../neu/Icon";
 import { categoryIconName } from "../../neu/iconForCategory";
+import { setPluginDragData } from "../../../lib/pluginDrag";
 
 export type { PluginEntry };
 
@@ -74,6 +75,22 @@ interface PluginCardProps {
    * available as AU" reveal). When omitted, the reveal is not rendered.
    */
   onAddVariant?: (identifier: string) => void;
+  /**
+   * T19 / V2 — toggle this plugin's persistent favourite (inline ★ per row).
+   * When omitted the star is render-only (the prior read-only behaviour).
+   */
+  onToggleFavourite?: () => void;
+  /**
+   * V2 — show the vendor/manufacturer as a secondary column (list view). The
+   * category-led layout surfaces the vendor; the flat search list does not.
+   */
+  showVendor?: boolean;
+  /**
+   * T19 — make the list row an HTML5 drag source so it can be dragged onto the
+   * Board. Drop is handled by GraphCanvas via lib/pluginDrag. Click/double-click
+   * add still works regardless. Default true in list view; ignored in grid.
+   */
+  draggable?: boolean;
 }
 
 /**
@@ -94,6 +111,9 @@ export function PluginCard({
   onSelect,
   onAdd,
   onAddVariant,
+  onToggleFavourite,
+  showVendor = false,
+  draggable = true,
 }: PluginCardProps) {
   const accent = `hsl(var(--cat-${plugin.category}))`;
   const base =
@@ -144,6 +164,16 @@ export function PluginCard({
         tabIndex={0}
         aria-pressed={selected}
         aria-label={`${plugin.name} (${plugin.format || "plugin"})`}
+        draggable={draggable}
+        onDragStart={
+          draggable
+            ? (e) =>
+                setPluginDragData(e.dataTransfer, {
+                  identifier: plugin.id,
+                  name: plugin.name,
+                })
+            : undefined
+        }
         onClick={onSelect}
         onDoubleClick={onAdd}
         onKeyDown={(e) => {
@@ -159,7 +189,33 @@ export function PluginCard({
         >
           {plugin.name}
         </span>
-        {isFavourite ? (
+        {showVendor && plugin.manufacturer ? (
+          <span
+            className="text-[9px] text-text-dim tabular truncate max-w-[72px] shrink-0"
+            title={plugin.manufacturer}
+          >
+            {plugin.manufacturer}
+          </span>
+        ) : null}
+        {onToggleFavourite ? (
+          <button
+            type="button"
+            aria-label={isFavourite ? "Remove from favourites" : "Add to favourites"}
+            aria-pressed={isFavourite}
+            title={isFavourite ? "Remove from favourites" : "Add to favourites"}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleFavourite();
+            }}
+            className={`shrink-0 transition-opacity ${
+              isFavourite
+                ? "text-accent-orange opacity-100"
+                : "text-text-dim opacity-0 group-hover:opacity-60 hover:!opacity-100"
+            }`}
+          >
+            <StarGlyph size={10} filled={isFavourite} />
+          </button>
+        ) : isFavourite ? (
           <span className="text-accent-orange shrink-0" aria-label="Favourite" role="img">
             <StarGlyph size={9} />
           </span>

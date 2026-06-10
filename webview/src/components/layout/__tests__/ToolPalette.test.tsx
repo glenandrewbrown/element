@@ -294,28 +294,39 @@ describe("<ToolPalette /> — category filters", () => {
     mockCpuLoad = 0;
   });
 
-  it("clicking INST filters to instrument plugins only", () => {
+  // V2 Category-Led: filters are the persistent rail entries (aria-label
+  // "<LABEL> Blocks"), not chips.
+  it("clicking INST (rail) filters to instrument plugins only", () => {
     renderPalette();
-    fireEvent.click(screen.getByText("INST").closest("button")!);
+    fireEvent.click(screen.getByRole("button", { name: "INST Blocks" }));
     expect(screen.getByText("Surge XT")).toBeInTheDocument();
     expect(screen.queryByText("Pro-Q 3")).not.toBeInTheDocument();
   });
 
-  it("clicking FX filters to audiofx plugins only", () => {
+  it("clicking FX (rail) filters to audiofx plugins only", () => {
     renderPalette();
-    fireEvent.click(screen.getByText("FX").closest("button")!);
+    fireEvent.click(screen.getByRole("button", { name: "FX Blocks" }));
     expect(screen.getByText("Pro-Q 3")).toBeInTheDocument();
     expect(screen.queryByText("Surge XT")).not.toBeInTheDocument();
   });
 
-  it("clicking active filter again clears it (shows all)", () => {
+  it("clicking active rail filter again clears it (shows all)", () => {
     renderPalette();
-    const instBtn = screen.getByText("INST").closest("button")!;
+    const instBtn = screen.getByRole("button", { name: "INST Blocks" });
     fireEvent.click(instBtn); // filter on
     expect(screen.queryByText("Pro-Q 3")).not.toBeInTheDocument();
     fireEvent.click(instBtn); // filter off
     expect(screen.getByText("Pro-Q 3")).toBeInTheDocument();
     expect(screen.getByText("Surge XT")).toBeInTheDocument();
+  });
+
+  it("clicking ALL (rail) resets category, favourites and recent", () => {
+    renderPalette();
+    fireEvent.click(screen.getByRole("button", { name: "INST Blocks" }));
+    expect(screen.queryByText("Pro-Q 3")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "All Blocks" }));
+    expect(screen.getByText("Surge XT")).toBeInTheDocument();
+    expect(screen.getByText("Pro-Q 3")).toBeInTheDocument();
   });
 });
 

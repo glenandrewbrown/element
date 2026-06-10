@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "../neu/Icon";
 import { categoryIconName } from "../neu/iconForCategory";
 import type { BlockCategory } from "../../data/types";
@@ -8,7 +8,7 @@ import { useSessionStore } from "../../stores/useSessionStore";
 import { nativeSessionListFiles, nativeSessionOpenPath, nativeSessionRecover, type SessionFileEntry } from "../../bridge/nativeSession";
 import { PaletteSearch } from "./palette/PaletteSearch";
 import { CATEGORY_FILTERS } from "./palette/CategoryChips";
-import { FacetChips } from "./palette/FacetChips";
+import { CategoryRail, type RailSelection } from "./palette/CategoryRail";
 import { ScanControls } from "./palette/ScanControls";
 import { MoleculesSection } from "./palette/MoleculesSection";
 import { BoardsSection } from "./palette/BoardsSection";
@@ -105,6 +105,45 @@ export function ToolPalette({
   const hasFavourites = favPlugins.length > 0;
   const hasRecents = recentPlugins.length > 0;
 
+  // V2 — rail badge counts over the FULL list (ignore search): total, per
+  // category, and favourites. Cheap memo over the already-mapped entries.
+  const railCounts = useMemo(() => {
+    const byCategory: Record<BlockCategory, number> = {
+      instrument: 0,
+      audiofx: 0,
+      midifx: 0,
+      modulator: 0,
+    };
+    for (const p of plugins) byCategory[p.category] += 1;
+    return { all: plugins.length, byCategory, favourites: favPlugins.length };
+  }, [plugins, favPlugins.length]);
+
+  // V2 — show sub-type dividers only when narrowed to ONE category (the
+  // category-led drill-down); the flat "All" / search list stays virtualized.
+  const grouped = activeCategory !== null;
+
+  // Map a rail entry tap to the existing filter state (single source of truth —
+  // the rail just MOVES the chip controls into a persistent column).
+  const onRailSelect = (sel: RailSelection) => {
+    if (browseTab !== "plugins") setBrowseTab("plugins");
+    switch (sel.kind) {
+      case "all":
+        setActiveCategory(null);
+        setFavouritesOnly(false);
+        setRecentSort(false);
+        break;
+      case "category":
+        setActiveCategory(activeCategory === sel.category ? null : sel.category);
+        break;
+      case "favourites":
+        setFavouritesOnly((v) => !v);
+        break;
+      case "recents":
+        setRecentSort((v) => !v);
+        break;
+    }
+  };
+
   // Self-heal a facet whose data has gone away (e.g. the last favourite was
   // unstarred, or recents cleared) so the single list never gets stuck empty
   // behind a facet the user can no longer see anything through.
@@ -176,37 +215,35 @@ export function ToolPalette({
     );
   }
 
-  // ── Expanded panel ──────────────────────────────────────────────────────────
+  // ── Expanded panel (V2 Category-Led: 52px rail + list pane) ─────────────────
+  // The category nav rail is a persistent left column that drives the list pane.
+  // It subsumes the old FacetChips row (categories + ★ Fav + ⏱ Recent) and also
+  // carries a Projects entry that switches the right pane's tab.
   return (
-    <div className="flex flex-col h-full">
-      {/* ── Header: tabs + view controls ── */}
+    <div className="flex h-full">
+      <CategoryRail
+        activeTab={browseTab}
+        activeCategory={activeCategory}
+        favouritesOnly={favouritesOnly}
+        recentSort={recentSort}
+        counts={railCounts}
+        hasFavourites={hasFavourites}
+        hasRecents={hasRecents}
+        onSelect={onRailSelect}
+        onSelectProjects={() => setBrowseTab("projects")}
+      />
+
+      <div className="flex-1 min-w-0 flex flex-col h-full">
+      {/* ── Header: title + view controls ──
+          V2 Category-Led: the rail IS the tab strip (its Projects entry + the
+          category/All entries switch context), so there is no separate Plugins/
+          Projects tab-row. The header just labels the active pane + holds the
+          grid/list/collapse view controls. */}
       <div className="p-3 pb-2 space-y-2 shrink-0">
         <div className="flex items-center justify-between gap-2">
-          {/* Tab row */}
-          <div className="flex rounded overflow-hidden border border-white/10 text-[9px] font-bold uppercase">
-            <button
-              type="button"
-              className={
-                browseTab === "plugins"
-                  ? "px-2.5 py-1 bg-accent-blue/25 text-accent-blue"
-                  : "px-2.5 py-1 text-text-secondary hover:bg-white/5 transition-colors"
-              }
-              onClick={() => setBrowseTab("plugins")}
-            >
-              Plugins
-            </button>
-            <button
-              type="button"
-              className={
-                browseTab === "projects"
-                  ? "px-2.5 py-1 bg-accent-blue/25 text-accent-blue"
-                  : "px-2.5 py-1 text-text-secondary hover:bg-white/5 transition-colors"
-              }
-              onClick={() => setBrowseTab("projects")}
-            >
-              Projects
-            </button>
-          </div>
+          <span className="text-[10px] font-bold uppercase tracking-widest text-text-secondary">
+            {browseTab === "plugins" ? "Blocks" : "Projects"}
+          </span>
 
           {/* View controls */}
           <div className="flex gap-1 items-center">
@@ -264,18 +301,41 @@ export function ToolPalette({
           onToggleScan={() => setShowScan((v) => !v)}
         />
 
-        {/* Facet chips (Plugins tab only): 4 categories + ★ Fav + ⏱ Recent */}
+        {/* V2 category titlebar (Plugins tab only): the active rail entry's
+            identity, mirrored as a glyph + name + count. Replaces the old facet
+            chip row — categories/Fav/Recent now live in the rail. */}
         {browseTab === "plugins" ? (
-          <FacetChips
-            activeCategory={activeCategory}
-            onSelectCategory={setActiveCategory}
-            favouritesOnly={favouritesOnly}
-            onToggleFavourites={() => setFavouritesOnly((v) => !v)}
-            hasFavourites={hasFavourites}
-            recentSort={recentSort}
-            onToggleRecent={() => setRecentSort((v) => !v)}
-            hasRecents={hasRecents}
-          />
+          <div className="flex items-center gap-1.5 pt-0.5">
+            {(() => {
+              const cat = activeCategory;
+              const accent = cat
+                ? `hsl(var(--cat-${cat}))`
+                : "var(--color-text-secondary)";
+              const label = favouritesOnly
+                ? "Favourites"
+                : recentSort
+                  ? "Recent"
+                  : cat
+                    ? (CATEGORY_FILTERS.find((c) => c.cat === cat)?.label ?? "All")
+                    : "All";
+              return (
+                <>
+                  {cat ? (
+                    <span style={{ color: accent }} className="inline-flex shrink-0">
+                      <Icon name={categoryIconName(cat)} size={13} strokeWidth={1.75} aria-hidden />
+                    </span>
+                  ) : null}
+                  <span
+                    className="text-[10px] font-bold uppercase tracking-widest flex-1 truncate"
+                    style={{ color: cat ? accent : undefined }}
+                  >
+                    {label}
+                  </span>
+                  <span className="text-[9px] text-text-dim tabular">{filtered.length}</span>
+                </>
+              );
+            })()}
+          </div>
         ) : null}
       </div>
 
@@ -381,6 +441,9 @@ export function ToolPalette({
               viewMode={viewMode}
               activeCategory={activeCategory}
               onSelect={setSelectedId}
+              grouped={grouped && viewMode === "list"}
+              showVendor
+              hideHeading
             />
 
             {/* ── Footer disclosure — below the fold, shrink-0 (does NOT
@@ -405,6 +468,7 @@ export function ToolPalette({
 
       {/* ── Footer: CPU meter only ── */}
       <PaletteFooter />
+      </div>
     </div>
   );
 }

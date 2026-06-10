@@ -481,10 +481,11 @@ export const CategoryFilter: Story = {
   ],
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    // The chip's accessible name is its visible text ("INST"), not the title.
-    const instChip = canvas.getByRole("button", { name: "INST" });
-    await userEvent.click(instChip);
-    await waitFor(() => expect(instChip).toHaveAttribute("aria-pressed", "true"));
+    // V2 Category-Led: the category filter is a persistent rail entry whose
+    // accessible name is "<LABEL> Blocks", not a chip labelled "INST".
+    const instEntry = canvas.getByRole("button", { name: "INST Blocks" });
+    await userEvent.click(instEntry);
+    await waitFor(() => expect(instEntry).toHaveAttribute("aria-pressed", "true"));
     // Instruments shown…
     await expect(
       canvas.getByRole("button", { name: /Mini V3/ }),
@@ -684,23 +685,17 @@ export const SearchFirstIA: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
 
-    // (1) Search FIRST: the search input is the ONLY text input and it sits
-    // ABOVE both the facet chips and the plugin list in document order — i.e.
-    // it is the first thing the eye/keyboard reaches in the content flow, not
-    // buried below stacked sections (the old IA's failure). We compare DOM
-    // positions: search precedes the facet chips, which precede the list.
+    // (1) Search FIRST within the list pane: the search input is the ONLY text
+    // input and it sits ABOVE the plugin list in document order — the first
+    // thing the eye/keyboard reaches in the list-pane flow, not buried below
+    // stacked sections (the old IA's failure). The category/Fav/Recent controls
+    // moved to the persistent rail COLUMN (V2), so they no longer stack above
+    // the search — the list pane is search-then-list.
     const search = canvas.getByPlaceholderText("Search plugins…");
-    const favChip = canvas.getByRole("button", { name: /show favourites only/i });
     const listContainer = canvas.getByTestId("plugin-list-virtual");
     const POS = Node.DOCUMENT_POSITION_FOLLOWING;
-    // search → facet chip
-    expect(
-      search.compareDocumentPosition(favChip) & POS,
-    ).toBeTruthy();
-    // facet chip → list
-    expect(
-      favChip.compareDocumentPosition(listContainer) & POS,
-    ).toBeTruthy();
+    // search → list (search precedes the list within the pane)
+    expect(search.compareDocumentPosition(listContainer) & POS).toBeTruthy();
     // The search input is the only text input in the panel (no competing field).
     expect(canvasElement.querySelectorAll('input[type="text"]').length).toBe(1);
 
@@ -709,10 +704,13 @@ export const SearchFirstIA: Story = {
     expect(rendered.length).toBeLessThan(50);
     expect(rendered.length).toBeGreaterThan(0);
 
-    // (3) Favourites/Recents are CHIPS (toggle buttons), not stacked sections…
-    await expect(favChip).toBeInTheDocument();
+    // (3) Favourites/Recents are persistent RAIL entries (toggle buttons), not
+    // stacked sections…
     await expect(
-      canvas.getByRole("button", { name: /sort by most recently used/i }),
+      canvas.getByRole("button", { name: "Favourites only" }),
+    ).toBeInTheDocument();
+    await expect(
+      canvas.getByRole("button", { name: "Most recently used first" }),
     ).toBeInTheDocument();
     // …and there is NO separate section heading pushing the list down.
     expect(canvas.queryByTestId("favourites-section")).not.toBeInTheDocument();
@@ -750,8 +748,8 @@ export const FacetFavourites: Story = {
       canvas.getByRole("button", { name: /EchoBoy/ }),
     ).toBeInTheDocument();
 
-    // Toggle the ★ facet on.
-    const favChip = canvas.getByRole("button", { name: /show favourites only/i });
+    // Toggle the ★ facet on (V2 rail entry).
+    const favChip = canvas.getByRole("button", { name: "Favourites only" });
     await userEvent.click(favChip);
     await waitFor(() => expect(favChip).toHaveAttribute("aria-pressed", "true"));
 
@@ -794,7 +792,7 @@ export const FacetRecent: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const recentChip = canvas.getByRole("button", {
-      name: /sort by most recently used/i,
+      name: "Most recently used first",
     });
     await userEvent.click(recentChip);
     await waitFor(() => expect(recentChip).toHaveAttribute("aria-pressed", "true"));

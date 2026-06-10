@@ -16,10 +16,27 @@ export async function nativeMoleculeSave(
   return r === true;
 }
 
+/**
+ * Add a Block to the current Board.
+ *
+ * `identifier` is the real BrowserPlugin.identifier (PluginDescription id
+ * string). When `x` / `y` (FLOW-space coords, e.g. from
+ * reactFlow.screenToFlowPosition) are supplied — as the palette drag-to-Board
+ * drop does — the host positions the new Block at that drop point via the same
+ * deferred-apply mechanism as `elementGraphAddPluginConnected` (no
+ * auto-connect). Omitting them is the click/double-click path: the host
+ * grid-seeds the Block as before, so this stays backward-compatible.
+ */
 export async function nativeGraphAddPlugin(
   identifier: string,
+  x?: number,
+  y?: number,
 ): Promise<boolean> {
-  const r = await invokeElementNative("elementGraphAddPlugin", [identifier]);
+  const args =
+    typeof x === "number" && typeof y === "number"
+      ? [identifier, x, y]
+      : [identifier];
+  const r = await invokeElementNative("elementGraphAddPlugin", args);
   return r === true;
 }
 

@@ -109,6 +109,8 @@ describe("usePaletteFilters", () => {
         description: "",
         category: "instrument",
         format: "VST3",
+        manufacturer: "Surge Synth",
+        subtype: "Other Instruments",
         variants: [{ format: "VST3", identifier: "surge.vst3" }],
       });
     });

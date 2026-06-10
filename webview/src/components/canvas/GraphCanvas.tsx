@@ -46,6 +46,7 @@ import {
   nativeGraphRenameNode,
   nativeGraphSetViewport,
   nativeMoleculeInsert,
+  nativeGraphAddPlugin,
 } from "../../bridge/nativeGraph";
 import {
   nativeOpenSandboxedEditor,
@@ -96,6 +97,7 @@ import {
   type CableGeometry,
 } from "../../lib/cableSplice";
 import { isSnippetDrag, parseSnippetDrop } from "../../lib/snippetDrag";
+import { isPluginDrag, parsePluginDrop } from "../../lib/pluginDrag";
 import type {
   BlockData,
   CableData,
@@ -1489,7 +1491,11 @@ export function GraphCanvas() {
   // molecule AT the drop point via the existing nativeMoleculeInsert(name,x,y).
   const onSnippetDragOver = useCallback(
     (event: ReactDragEvent<HTMLDivElement>) => {
-      if (!isEdit || !isSnippetDrag(event.dataTransfer)) return;
+      if (!isEdit) return;
+      // Accept both snippet drags (SnippetShelf) and plugin-row drags (T19 —
+      // dragging a Block from the left browser onto the Board).
+      if (!isSnippetDrag(event.dataTransfer) && !isPluginDrag(event.dataTransfer))
+        return;
       event.preventDefault();
       event.dataTransfer.dropEffect = "copy";
     },
@@ -1499,6 +1505,22 @@ export function GraphCanvas() {
   const onSnippetDrop = useCallback(
     (event: ReactDragEvent<HTMLDivElement>) => {
       if (!isEdit) return;
+
+      // T19 — a plugin row dragged from the left browser. Add the Block AT the
+      // flow-space drop point via the existing add bridge (coords honoured
+      // end-to-end by buildActiveGraphJson / Node::getPosition). Click-to-add
+      // remains the no-coords path.
+      const plugin = parsePluginDrop(event.dataTransfer);
+      if (plugin) {
+        event.preventDefault();
+        const flow = reactFlow.screenToFlowPosition({
+          x: event.clientX,
+          y: event.clientY,
+        });
+        void nativeGraphAddPlugin(plugin.identifier, flow.x, flow.y);
+        return;
+      }
+
       const payload = parseSnippetDrop(event.dataTransfer);
       if (!payload) return; // not our drag — leave for any other handler
       event.preventDefault();
