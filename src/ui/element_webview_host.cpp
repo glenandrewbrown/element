@@ -6212,7 +6212,7 @@ void ElementWebViewHost::timerCallback()
     {
         if (auto peak = metering.popLatestPeak())
         {
-            const String js = "window.__elementNative && window.__elementNative.onMetering("
+            const String js = "window.__elementNative && window.__elementNative.onMetering && window.__elementNative.onMetering("
                                 + String (*peak, 6) + ");";
             evalInBrowser (js);
         }
@@ -6682,7 +6682,13 @@ void ElementWebViewHost::pushGraphSnapshot()
     {
         lastPushedGraphJson = json;
         lastGraphPushMs = nowMs;
-        evalInBrowser ("window.__elementNative && window.__elementNative.onGraphState(" + json + ");");
+        // Double-guard the METHOD, not just the bridge object: the JUCE backend
+        // object (window.__elementNative) exists before React's useJuceBridge
+        // installs onGraphState, so an early push (now possible via the ~1.5s
+        // self-heal tick) would call undefined and throw inside the WebView —
+        // surfaced by the new evalInBrowser failure logging on boot. Mirrors the
+        // onCableLevels guard.
+        evalInBrowser ("window.__elementNative && window.__elementNative.onGraphState && window.__elementNative.onGraphState(" + json + ");");
     }
     if (auto* ss = context.services().find<SessionService>())
         lastPushedSessionDirty = ss->hasSessionChanged();
