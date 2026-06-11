@@ -114,7 +114,12 @@ public:
         if (maxParked <= 0 || host == nullptr)
             return false;
         if (! (host->isHealthy() && host->isPluginLoaded()))
+        {
+            juce::Logger::writeToLog ("[sandbox-pool] park rejected \"" + desc.name
+                                      + "\" — worker "
+                                      + (host->isHealthy() ? "has no plugin loaded" : "unhealthy"));
             return false;
+        }
 
         while ((int) parked.size() >= maxParked)
             if (! evictOne())
@@ -242,8 +247,15 @@ private:
                 juce::Logger::writeToLog ("[sandbox-pool] claim parked \"" + desc.name + "\"");
                 return std::move (entry.host);
             }
-            entry.host->shutdown(); // rotten — discard, keep scanning older ones
+            // Rotten — discard, keep scanning older ones. Logged so a live
+            // session can tell "match found but dead" from "no match at all".
+            juce::Logger::writeToLog ("[sandbox-pool] parked \"" + desc.name
+                                      + "\" entry rotten — discarding");
+            entry.host->shutdown();
         }
+        if (! parked.empty())
+            juce::Logger::writeToLog ("[sandbox-pool] no parked match for \"" + desc.name
+                                      + "\" (" + juce::String ((int) parked.size()) + " parked)");
         return nullptr;
     }
 

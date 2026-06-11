@@ -19,6 +19,7 @@
 #include <boost/test/unit_test.hpp>
 
 #include <atomic>
+#include <memory>
 #include <thread>
 
 #include <element/context.hpp>
@@ -158,6 +159,54 @@ BOOST_AUTO_TEST_CASE (repeated_rebuild_without_render_is_clean)
     // PreparedGraph destructor ran releaseResources + clear + ~GraphNode
     // (force reclamation). JUCE's leak detector flags leaked ops at exit.
     BOOST_CHECK (true);
+}
+
+// Parked-instance ordering (2026-06-11): a removed node's Processor lives on
+// inside the RETIRED render-op array until a later rebuild reclaims it. The
+// sandbox worker-pool relies on that destructor running BEFORE the pool claim
+// of a re-add (the dtor is what parks the loaded worker), so GraphNode exposes
+// reclaimRetiredRenderOps() for an on-demand, generation-gated reclaim. This
+// pins both halves: the reclaim must NOT free while the render generation has
+// not advanced past the retirement, and MUST run the dtor once it has.
+BOOST_AUTO_TEST_CASE (removed_node_reclaim_runs_dtor_on_demand)
+{
+    struct DtorProbeNode : public ConstantNode
+    {
+        explicit DtorProbeNode (std::shared_ptr<std::atomic<bool>> f) : flag (std::move (f)) {}
+        ~DtorProbeNode() override { flag->store (true); }
+        std::shared_ptr<std::atomic<bool>> flag;
+    };
+
+    PreparedGraph pg;
+    auto destroyed = std::make_shared<std::atomic<bool>> (false);
+
+    ProcessorPtr probe = pg.graph.addNode (new DtorProbeNode (destroyed));
+    ProcessorPtr readout = pg.graph.addNode (new ReadoutNode());
+    BOOST_REQUIRE (probe != nullptr && readout != nullptr);
+    BOOST_REQUIRE (pg.graph.addConnection (probe->nodeId, 0, readout->nodeId, 0));
+    pumpRebuild();
+    renderOneBlock (pg.graph, 512); // generation advances past the build
+
+    const auto probeId = probe->nodeId;
+    probe = nullptr; // drop the test's own reference — graph + ops own it now
+
+    // removeNode rebuilds synchronously: the superseded op array (still
+    // holding the probe) is RETIRED at the current generation, not freed.
+    BOOST_REQUIRE (pg.graph.removeNode (probeId));
+    BOOST_CHECK (! destroyed->load());
+
+    // Generation has not advanced since the retirement — the reclaim must
+    // refuse (an in-flight render could still hold the retired array).
+    pg.graph.reclaimRetiredRenderOps();
+    BOOST_CHECK (! destroyed->load());
+
+    // One render pass advances the generation past the retirement; now the
+    // on-demand reclaim must free the array and run the node's destructor —
+    // this is the ordering kickSandboxedInstantiation depends on to see a
+    // parked worker before claiming.
+    renderOneBlock (pg.graph, 512);
+    pg.graph.reclaimRetiredRenderOps();
+    BOOST_CHECK (destroyed->load());
 }
 
 BOOST_AUTO_TEST_SUITE_END()

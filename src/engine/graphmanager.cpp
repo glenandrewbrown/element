@@ -898,6 +898,15 @@ void GraphManager::kickSandboxedInstantiation (const String& finalUuid, uint32 p
 
     juce::Logger::writeToLog ("[sandbox-load] kick \"" + desc.name + "\" uuid=" + finalUuid);
 
+    // Parked-instance ordering fix (2026-06-11): a node deleted shortly before
+    // this add may still be alive inside RETIRED render ops (GraphNode defers
+    // freeing swapped-out op arrays until a later rebuild — the C1 lifetime
+    // rule). That node's destructor is what PARKS its loaded worker, so
+    // reclaim now: otherwise claim() below runs one message-pump before the
+    // park and a delete→re-add of the same plugin always misses the parked
+    // instance (observed live: park logged 88 ms AFTER claim).
+    processor.reclaimRetiredRenderOps();
+
     // ── Worker pool fast paths (2026-06-11) ──────────────────────────────────
     // Try the process-wide pool before any cold launch: a PARKED instance of
     // this very plugin (skips the entire load — instant ready) or a BLANK warm

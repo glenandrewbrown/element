@@ -190,6 +190,17 @@ public:
     /** Rebuild rendering ops immediately. */
     void rebuild() noexcept;
 
+    /** Reclaim retired render-op arrays whose render generation has passed
+        (message thread only — same generation gate the rebuild paths use).
+
+        Rebuilds reclaim implicitly; call this when a deferred Processor
+        destruction must happen NOW. The sandbox worker-pool claim path needs
+        a just-removed node's destructor (which PARKS its loaded worker) to
+        run BEFORE claiming a worker for a re-add of the same plugin —
+        otherwise the parked instance lands one message-pump too late and the
+        claim always misses it. */
+    void reclaimRetiredRenderOps() { freeRetiredRenderOps (false); }
+
 protected:
     //==========================================================================
     virtual void preRenderNodes() {}
