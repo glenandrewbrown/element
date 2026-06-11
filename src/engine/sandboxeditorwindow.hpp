@@ -153,10 +153,18 @@ private:
     thread (SandboxWorker marshals coordinator messages there before calling). */
 namespace sandbox_editor_window {
 
-/** Create + show the plugin editor in its own window at the requested screen
+/** Create the plugin editor in its own window at the requested screen
     position. Returns true and fills outW/outH with the editor's size; false if
-    the plugin/editor could not be created. Replaces any window already open. */
-bool openEditorWindow (juce::AudioProcessor* proc, int x, int y, int& outW, int& outH);
+    the plugin/editor could not be created. Replaces any window already open.
+    `makeVisible = false` builds the window + editor WITHOUT showing it
+    (pre-warm: the editor's construction-time init runs, no window appears);
+    reveal it later with revealEditorWindow(). */
+bool openEditorWindow (juce::AudioProcessor* proc, int x, int y, int& outW, int& outH,
+                       bool makeVisible = true);
+
+/** Show + raise a window previously created hidden (pre-warm). Positions at
+    x/y when non-zero, fills outW/outH, returns false if no window exists. */
+bool revealEditorWindow (int x, int y, int& outW, int& outH);
 
 /** Close + destroy the editor window if one is open. Safe to call when nothing
     is open. */

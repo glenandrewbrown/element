@@ -295,6 +295,12 @@ private:
 GraphManager::GraphManager (GraphNode& pg, PluginManager& pm)
     : pluginManager (pm), processor (pg), lastUID (0)
 {
+    // NOTE: the warm worker pool (T7) is deliberately NOT primed here — a
+    // GraphManager exists in many headless/unit-test contexts where spawning
+    // helpers is noise. The pool self-primes on first sandboxed use:
+    // SandboxWorkerPool::claim() triggers replenishAsync() on every claim
+    // (hit or miss), so a session load containing sandboxed nodes leaves a
+    // warm worker ready for the next live add.
 }
 
 GraphManager::~GraphManager()
@@ -882,6 +888,26 @@ void GraphManager::kickSandboxedInstantiation (const String& finalUuid, uint32 p
     }
 
     juce::Logger::writeToLog ("[sandbox-load] kick \"" + desc.name + "\" uuid=" + finalUuid);
+
+    // ── Worker pool fast paths (2026-06-11) ──────────────────────────────────
+    // Try the process-wide pool before any cold launch: a PARKED instance of
+    // this very plugin (skips the entire load — instant ready) or a BLANK warm
+    // worker (skips spawn + handshake, ~1.5-2.5 s). The watcher below drives
+    // the identical uuid-preserving swap in every case; an adopted node starts
+    // at LaunchPhase::Succeeded so the watcher goes straight to state checks.
+    {
+        bool wasLoaded = false;
+        if (auto claimed = pluginManager.workerPool().claim (desc, wasLoaded))
+        {
+            auto* rawNode = new SandboxedProcessorNode (desc, pluginManager,
+                                                        SandboxedProcessorNode::AdoptHost {},
+                                                        std::move (claimed));
+            ProcessorPtr sandboxNode (rawNode);
+            sandboxWatchers.add (new SandboxLoadWatcher (*this, sandboxNode, finalUuid, placeholderId, desc));
+            juce::ignoreUnused (wasLoaded);
+            return;
+        }
+    }
 
     // Construct the sandboxed node WITHOUT launching (DeferLaunch) — the ctor is now
     // free of the blocking connectToPipe handshake. THE FREEZE FIX (T1): the

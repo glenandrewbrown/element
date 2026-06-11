@@ -11,6 +11,7 @@
 
 #include "engine/clapprovider.hpp"
 #include "engine/sandboxhost.hpp"
+#include "engine/sandboxworkerpool.hpp"
 #include "engine/ionode.hpp"
 #include "nodes/nodetypes.hpp"
 #include "nodes/sandboxedprocessor.hpp"
@@ -904,6 +905,7 @@ private:
     std::unique_ptr<PluginScanner> scanner;
     bool hasAddedFormats = false;
     std::unique_ptr<PluginUsageTracker> usageTracker;
+    std::unique_ptr<SandboxWorkerPool> workerPool;
 
     void scanAudioPlugins (const StringArray& names)
     {
@@ -1266,6 +1268,13 @@ KnownPluginList& PluginManager::getKnownPlugins() { return priv->allPlugins; }
 const KnownPluginList& PluginManager::getKnownPlugins() const { return priv->allPlugins; }
 const File& PluginManager::getDeadAudioPluginsFile() const { return priv->deadAudioPlugins; }
 PluginUsageTracker& PluginManager::getUsageTracker() { return *priv->usageTracker; }
+
+SandboxWorkerPool& PluginManager::workerPool()
+{
+    if (priv->workerPool == nullptr)
+        priv->workerPool = std::make_unique<SandboxWorkerPool> (*this);
+    return *priv->workerPool;
+}
 
 void PluginManager::saveUserPlugins (ApplicationProperties& settings)
 {

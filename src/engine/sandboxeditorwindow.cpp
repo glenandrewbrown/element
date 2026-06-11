@@ -39,7 +39,8 @@ void closeEditorWindow()
     g_window.reset();
 }
 
-bool openEditorWindow (juce::AudioProcessor* proc, int x, int y, int& outW, int& outH)
+bool openEditorWindow (juce::AudioProcessor* proc, int x, int y, int& outW, int& outH,
+                       bool makeVisible)
 {
     jassert (juce::MessageManager::getInstance()->isThisTheMessageThread());
     outW = outH = 0;
@@ -96,15 +97,22 @@ bool openEditorWindow (juce::AudioProcessor* proc, int x, int y, int& outW, int&
     else
         window->centreWithSize (window->getWidth(), window->getHeight());
 
-    window->setVisible (true);
-    window->addToDesktop (window->getDesktopWindowStyleFlags());
-    window->toFront (true);
+    if (makeVisible)
+    {
+        window->setVisible (true);
+        window->addToDesktop (window->getDesktopWindowStyleFlags());
+        window->toFront (true);
+    }
+    // Hidden pre-warm: the editor component is fully constructed (its
+    // init-time work — licence checks, content scans — runs now) but no
+    // window reaches the desktop. revealEditorWindow() shows it later.
 
     g_window = std::move (window);
 
     // Bring the dock-hidden worker process forward so the window is visible +
     // can take key focus (no-op off macOS).
-    sandboxWorkerActivateForEditor();
+    if (makeVisible)
+        sandboxWorkerActivateForEditor();
 
     // Report the window's current size (which equals the editor's synchronous
     // size after setContentOwned).  If the editor reports real bounds only after
@@ -114,7 +122,36 @@ bool openEditorWindow (juce::AudioProcessor* proc, int x, int y, int& outW, int&
     outW = g_window->getWidth();
     outH = g_window->getHeight();
 
-    juce::Logger::writeToLog ("[sandbox-editor-window] editor window open, initial size "
+    juce::Logger::writeToLog (juce::String ("[sandbox-editor-window] editor window ")
+                              + (makeVisible ? "open" : "pre-warmed (hidden)")
+                              + ", initial size "
+                              + juce::String (outW) + "x" + juce::String (outH));
+    return true;
+}
+
+bool revealEditorWindow (int x, int y, int& outW, int& outH)
+{
+    jassert (juce::MessageManager::getInstance()->isThisTheMessageThread());
+    outW = outH = 0;
+
+    if (g_window == nullptr)
+        return false;
+
+    if (x != 0 || y != 0)
+        g_window->setTopLeftPosition (x, y);
+
+    if (! g_window->isVisible())
+    {
+        g_window->setVisible (true);
+        g_window->addToDesktop (g_window->getDesktopWindowStyleFlags());
+    }
+    g_window->toFront (true);
+    sandboxWorkerActivateForEditor();
+
+    outW = g_window->getWidth();
+    outH = g_window->getHeight();
+
+    juce::Logger::writeToLog ("[sandbox-editor-window] revealed pre-warmed editor, size "
                               + juce::String (outW) + "x" + juce::String (outH));
     return true;
 }

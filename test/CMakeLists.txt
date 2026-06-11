@@ -343,6 +343,8 @@ set_tests_properties(GraphNodeRenderSafetyTests PROPERTIES RUN_SERIAL TRUE TIMEO
 # RUN_SERIAL to avoid contending the shared MessageManager with other suites.
 add_test(NAME "AsyncPluginLoadTests"       COMMAND test_element --run_test=AsyncPluginLoadTests)
 set_tests_properties(AsyncPluginLoadTests PROPERTIES RUN_SERIAL TRUE TIMEOUT 120)
+add_test(NAME "SandboxWorkerPoolTests"     COMMAND test_element --run_test=SandboxWorkerPoolTests)
+set_tests_properties(SandboxWorkerPoolTests PROPERTIES TIMEOUT 60)
 
 # T1/T2 message-thread-freeze fix: the deferred-launch handshake runs on a pool
 # thread so kickSandboxedInstantiation returns to the message loop immediately.

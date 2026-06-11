@@ -21,6 +21,7 @@ class PluginScannerCoordinator;
 class PluginScanner;
 class SandboxedProcessorNode;
 class PluginUsageTracker;
+class SandboxWorkerPool;
 
 class PluginManager : public juce::ChangeBroadcaster {
 public:
@@ -42,6 +43,11 @@ public:
 
     /** Access the plugin usage tracker (favorites, recently used) */
     PluginUsageTracker& getUsageTracker();
+
+    /** Process-wide sandbox worker pool (T7 warm workers + parked loaded
+        instances). Lazily constructed on first use; lives for the manager's
+        lifetime so parked workers survive graph/session rebuilds. */
+    SandboxWorkerPool& workerPool();
 
     /** Scan/Add a description to the known plugins */
     void addToKnownPlugins (const juce::PluginDescription& desc);

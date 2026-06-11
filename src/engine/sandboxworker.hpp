@@ -98,6 +98,7 @@ private:
 
     // Separate-window editor bridge (REAPER model)
     void handleOpenEditorWindow (const void* payload, uint32_t payloadSize);
+    void handleResetToPristine();
     void handleCloseEditorWindow();
     void closeEditorWindowIfOpen();
 
@@ -145,6 +146,11 @@ private:
     std::mutex initMutex;
     bool havePendingLoad { false };          // guarded by initMutex
     juce::MemoryBlock pendingLoadPayload;    // guarded by initMutex
+
+    // Instance reuse (2026-06-11): the plugin's state captured immediately
+    // after load, applied again on ResetToPristine when a parked worker is
+    // adopted for a fresh add. Message-thread only.
+    juce::MemoryBlock pristineState;
 
     // Drain any LoadPlugin that arrived before init completed. Called once at the
     // tail of initializeWorker(). Runs on the main/message thread.
@@ -581,6 +587,10 @@ inline void SandboxWorker::handleMessage (const SandboxMessageHeader& header,
             handleCloseEditorWindow();
             break;
 
+        case SandboxMessageType::ResetToPristine:
+            handleResetToPristine();
+            break;
+
         default:
             juce::Logger::writeToLog ("Unknown message type: " +
                                        juce::String (static_cast<int> (header.type)));
@@ -750,6 +760,13 @@ inline void SandboxWorker::handleLoadPlugin (const void* payload, uint32_t paylo
             plugin->prepareToPlay (sampleRate, blockSize);
             isPrepared = true;
         }
+
+        // Instance reuse (2026-06-11): capture the PRISTINE post-load state so a
+        // parked worker adopted for a fresh add can be reset (ResetToPristine)
+        // instead of resurrecting the previous node's settings. Local call — no
+        // IPC, costs one state serialization on the worker MT.
+        pristineState.reset();
+        plugin->getStateInformation (pristineState);
 
         juce::Logger::writeToLog ("Plugin loaded successfully: " + desc.name);
         sendResponse (SandboxMessageType::PluginLoaded);
@@ -1268,11 +1285,38 @@ inline void SandboxWorker::handleOpenEditorWindow (const void* payload, uint32_t
     auto* proc = plugin.get();
     int w = 0, h = 0;
     bool ok = false;
+    const bool wantHidden = req.hidden != 0;
 
-    juce::MessageManager::getInstance()->callSync ([proc, &req, &w, &h, &ok]
+    juce::MessageManager::getInstance()->callSync ([proc, &req, &w, &h, &ok, wantHidden]
     {
-        ok = sandbox_editor_window::openEditorWindow (proc, req.x, req.y, w, h);
+        // Pre-warm request while ANY window already exists (visible or warm):
+        // nothing to do — the editor init is already paid.
+        if (wantHidden && sandbox_editor_window::hasOpenEditorWindow())
+        {
+            ok = true;
+            return;
+        }
+
+        // Visible request with a pre-warmed (hidden) window parked: REVEAL it
+        // instead of destroy+recreate — keeping the editor instance is the
+        // whole point of the warm-up.
+        if (! wantHidden && sandbox_editor_window::hasOpenEditorWindow())
+            ok = sandbox_editor_window::revealEditorWindow (req.x, req.y, w, h);
+
+        if (! ok)
+            ok = sandbox_editor_window::openEditorWindow (proc, req.x, req.y, w, h,
+                                                          ! wantHidden);
     });
+
+    if (wantHidden)
+    {
+        // Silent pre-warm: the host's editor-open state must NOT change and no
+        // window appeared — reply with nothing (success and failure alike; a
+        // failed warm-up simply means the user pays the init at first open).
+        juce::Logger::writeToLog (ok ? "[sandbox-worker] editor pre-warmed (hidden)"
+                                     : "[sandbox-worker] editor pre-warm failed (no editor?)");
+        return;
+    }
 
     if (! ok)
     {
@@ -1286,6 +1330,28 @@ inline void SandboxWorker::handleOpenEditorWindow (const void* payload, uint32_t
     reply.width = w;
     reply.height = h;
     sendResponse (SandboxMessageType::EditorWindowOpened, &reply, sizeof (reply));
+}
+
+inline void SandboxWorker::handleResetToPristine()
+{
+    // Instance reuse: restore the state captured right after load. Marshal to
+    // the message thread (setStateInformation is a plugin main-thread call) —
+    // same idiom as the other editor/lifecycle handlers.
+    auto apply = [this]
+    {
+        if (plugin != nullptr && pristineState.getSize() > 0)
+        {
+            plugin->setStateInformation (pristineState.getData(),
+                                         (int) pristineState.getSize());
+            juce::Logger::writeToLog ("[sandbox-worker] plugin reset to pristine post-load state");
+        }
+    };
+
+    auto* mm = juce::MessageManager::getInstanceWithoutCreating();
+    if (mm != nullptr && ! mm->isThisTheMessageThread())
+        mm->callSync (apply);
+    else
+        apply();
 }
 
 inline void SandboxWorker::handleCloseEditorWindow()

@@ -113,6 +113,11 @@ enum class SandboxMessageType : uint32_t
                         // busy-but-alive plugin still keeps the PROCESS Heartbeat
                         // flowing. Appended at the END of the enum so existing
                         // ordinals (and the wire format) are unchanged.
+    ResetToPristine,    // Coordinator -> Worker: restore the plugin to the state
+                        // captured immediately after it loaded (instance-reuse:
+                        // a parked worker adopted for a FRESH add must not
+                        // resurrect the deleted node's settings). Appended at
+                        // the END — ordinals unchanged.
 };
 
 //==============================================================================
@@ -133,6 +138,9 @@ struct EditorWindowPayload
     int32_t  y { 0 };
     int32_t  width { 0 };   ///< editor size (worker -> host); 0 on request
     int32_t  height { 0 };
+    int32_t  hidden { 0 };  ///< host -> worker: 1 = create the editor but keep the
+                            ///< window invisible (pre-warm — pays the plugin's
+                            ///< editor-time init before the user first opens it)
 };
 
 //==============================================================================

@@ -193,6 +193,23 @@ public:
     /** Check if a specific plugin should be sandboxed based on current mode. */
     bool shouldSandboxPlugin (const juce::PluginDescription& desc) const;
 
+    /** Number of pre-launched blank sandbox workers kept warm so an add skips
+        process spawn + connect (T7 warm pool). 0 disables the warm pool. */
+    int getSandboxWarmPoolSize() const;
+
+    /** Max parked (still-loaded) sandbox workers kept alive after their node is
+        removed, for instant re-add / session-reload reuse. 0 disables parking. */
+    int getMaxParkedSandboxInstances() const;
+
+    /** Pre-open the plugin editor HIDDEN in the worker right after load, so
+        heavy editor-time init (Kontakt licence/content scan) is paid before the
+        user first opens it. */
+    bool shouldPrewarmSandboxEditor() const;
+
+    static const char* sandboxWarmPoolSizeKey;
+    static const char* sandboxParkedMaxKey;
+    static const char* sandboxPrewarmEditorKey;
+
     /** Obfuscate a string for storage (XOR + base64). Not cryptographic —
         prevents casual plaintext exposure in preference files. */
     static juce::String obfuscate (const juce::String& plaintext);

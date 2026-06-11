@@ -4,6 +4,7 @@
 #pragma once
 
 #include <element/juce.hpp>
+#include <element/settings.hpp>
 #include <element/signals.hpp>
 
 #include "sandboxipc.hpp"
@@ -270,6 +271,11 @@ public:
     /** True if the host believes the worker has an editor window open. */
     bool isEditorOpen() const { return editorOpen.load(); }
 
+    /** Restore the plugin to the state captured right after it loaded
+        (instance-reuse: a parked worker adopted for a fresh add must not
+        resurrect the deleted node's settings). MESSAGE THREAD. */
+    void resetToPristineState();
+
     //==========================================================================
     /** Add a listener for sandbox events. */
     void addListener (Listener* l) { listeners.add (l); }
@@ -449,6 +455,11 @@ private:
     // Separate-window editor bridge state
     std::atomic<bool> editorOpen { false };
 
+    // Editor pre-warm (2026-06-11): set on the MESSAGE thread in loadPlugin
+    // (Settings read), consumed on the IPC thread in the PluginLoaded handler
+    // (where Settings must not be touched).
+    std::atomic<bool> prewarmEditorOnLoad { false };
+
     // Message sequencing
     std::atomic<uint32_t> messageSequence { 0 };
 
@@ -597,6 +608,19 @@ inline void SandboxHost::loadPlugin (const juce::PluginDescription& desc)
                  static_cast<uint32_t> (xmlString.getNumBytesAsUTF8()));
 
     loadedPlugin = desc;
+
+    // Editor pre-warm (2026-06-11): cache the Settings read HERE (message
+    // thread) — the PluginLoaded handler that consumes it runs on the IPC
+    // thread, where touching Settings/PropertiesFile is not safe.
+    prewarmEditorOnLoad.store (Settings().shouldPrewarmSandboxEditor());
+}
+
+inline void SandboxHost::resetToPristineState()
+{
+    // Instance reuse: ask the worker to restore the state it captured right
+    // after the plugin loaded. Plain pipe send — safe on the message thread.
+    if (pluginLoaded.load() && connectionAlive.load())
+        sendMessage (SandboxMessageType::ResetToPristine);
 }
 
 inline void SandboxHost::unloadPlugin()
@@ -855,6 +879,8 @@ inline void SandboxHost::openEditor (int screenX, int screenY)
     req.x = screenX;
     req.y = screenY;
     sendMessage (SandboxMessageType::OpenEditorWindow, &req, sizeof (req));
+    // A user-visible open supersedes any pending pre-warm intent.
+    prewarmEditorOnLoad.store (false);
 }
 
 inline void SandboxHost::closeEditor()
@@ -1335,6 +1361,18 @@ inline void SandboxHost::handleWorkerMessage (const SandboxMessageHeader& header
                 pluginReadyFailed.store (false);
                 pluginReadyEvent.signal();
                 listeners.call (&Listener::sandboxPluginLoaded, this);
+
+                // Editor pre-warm (2026-06-11): create the editor HIDDEN in the
+                // worker now, so editor-time init (Kontakt licence check +
+                // content scan — measured ~15-20 s) is paid in the background
+                // instead of when the user first opens it. Plain pipe send —
+                // safe on this IPC thread. Skipped if an editor already exists.
+                if (prewarmEditorOnLoad.exchange (false) && ! editorOpen.load())
+                {
+                    EditorWindowPayload req {};
+                    req.hidden = 1;
+                    sendMessage (SandboxMessageType::OpenEditorWindow, &req, sizeof (req));
+                }
 
                 if (isRecovery)
                 {

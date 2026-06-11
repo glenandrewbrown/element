@@ -8,6 +8,7 @@
 
 #include "engine/sandboxhost.hpp"
 #include "engine/sandboxparameter.hpp"
+#include "engine/sandboxworkerpool.hpp"
 #include "engine/graphnode.hpp"
 
 namespace element {
@@ -66,6 +67,12 @@ public:
         + pool threads so the blocking handshake never freezes the message thread. */
     struct DeferLaunch {};
 
+    /** Tag for the pool-adoption constructor (T7/instance-reuse, 2026-06-11):
+        build the node around an ALREADY-RUNNING worker claimed from the
+        SandboxWorkerPool — either a blank warm worker (handshake done, plugin
+        still to load) or a parked instance already hosting this plugin. */
+    struct AdoptHost {};
+
     //==========================================================================
     /** Create a sandboxed processor for the given plugin. */
     SandboxedProcessorNode (uint32 nodeId,
@@ -82,6 +89,16 @@ public:
     SandboxedProcessorNode (const juce::PluginDescription& pluginDesc,
                              PluginManager& plugins,
                              DeferLaunch);
+
+    /** POOL-ADOPTION ctor: take ownership of a worker claimed from the
+        SandboxWorkerPool. MESSAGE THREAD only. A blank worker gets loadPlugin
+        issued immediately (non-blocking); a parked loaded worker is reset to
+        its pristine post-load state and is ready as soon as the watcher
+        observes it (typically the next poll). */
+    SandboxedProcessorNode (const juce::PluginDescription& pluginDesc,
+                             PluginManager& plugins,
+                             AdoptHost,
+                             std::unique_ptr<SandboxHost> claimedHost);
 
     ~SandboxedProcessorNode() override;
 
@@ -244,6 +261,52 @@ inline SandboxedProcessorNode::SandboxedProcessorNode (
     sandbox->addListener (this);
 }
 
+inline SandboxedProcessorNode::SandboxedProcessorNode (
+    const juce::PluginDescription& pluginDesc,
+    PluginManager& plugins,
+    AdoptHost,
+    std::unique_ptr<SandboxHost> claimedHost)
+    : Processor (0),
+      pluginManager (plugins),
+      description (pluginDesc)
+{
+    // MESSAGE THREAD (loadPlugin's non-atomic write + the listener wiring).
+    jassert (juce::MessageManager::getInstance()->isThisTheMessageThread());
+    jassert (claimedHost != nullptr);
+
+    setName (description.name + " (Sandboxed)");
+    sandbox = std::move (claimedHost);
+    sandbox->addListener (this);
+
+    // The pool worker's handshake already succeeded — the watcher can go
+    // straight to observing sandbox State instead of waiting on LaunchPhase.
+    launchPhase.store (static_cast<int> (LaunchPhase::Succeeded));
+
+    if (sandbox->isPluginLoaded())
+    {
+        // Parked instance for this very plugin: already loaded. Mirror the
+        // listener effects that fired into the previous owner — local flag,
+        // params + ports from the host's cached PluginInfo — and reset the
+        // plugin to its pristine post-load state so a fresh add never
+        // resurrects the deleted node's settings. (When this node comes from a
+        // SESSION load, the saved state lands via setState() after the swap
+        // and overwrites the pristine baseline — both paths end correct.)
+        pluginLoaded.store (true);
+        if (sandbox->hasReceivedPluginInfo())
+            sandboxPluginInfo (sandbox.get());
+        sandbox->resetToPristineState();
+        juce::Logger::writeToLog ("[sandbox-load] adopted PARKED instance for \""
+                                  + description.name + "\" — skipping load");
+    }
+    else
+    {
+        // Blank warm worker: connected, formats registered — just load.
+        sandbox->loadPlugin (description);
+        juce::Logger::writeToLog ("[sandbox-load] adopted warm worker for \""
+                                  + description.name + "\" — skipping spawn/handshake");
+    }
+}
+
 inline bool SandboxedProcessorNode::beginLaunch()
 {
     if (! sandbox)
@@ -289,11 +352,28 @@ inline void SandboxedProcessorNode::finishLaunch (bool handshakeOk)
 
 inline SandboxedProcessorNode::~SandboxedProcessorNode()
 {
-    if (sandbox)
+    if (sandbox == nullptr)
+        return;
+
+    sandbox->removeListener (this);
+
+    // Instance reuse (2026-06-11): a healthy worker still hosting its plugin is
+    // PARKED in the process-wide pool instead of killed, so re-adding the same
+    // plugin (or re-opening a session that contains it) skips the entire load.
+    // Park only from the message thread — the pool's shelves are message-thread
+    // state. Node releases on other threads (defensive: refcounted release
+    // paths) take the plain shutdown.
+    auto* mm = juce::MessageManager::getInstanceWithoutCreating();
+    if (mm != nullptr && mm->isThisTheMessageThread()
+        && sandbox->isPluginLoaded() && sandbox->isHealthy())
     {
-        sandbox->removeListener (this);
-        sandbox->shutdown();
+        sandbox->closeEditor();
+        if (pluginManager.workerPool().park (std::move (sandbox), description))
+            return;
     }
+
+    if (sandbox != nullptr)
+        sandbox->shutdown();
 }
 
 inline void SandboxedProcessorNode::initializeSandbox()

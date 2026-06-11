@@ -42,6 +42,9 @@ const char* Settings::updateKeyKey = "updateKey";
 const char* Settings::updateKeyUserKey = "updateKeyUserKey";
 const char* Settings::transportStartStopContinue = "transportStartStopContinueKey";
 const char* Settings::pluginSandboxModeKey = "pluginSandboxMode";
+const char* Settings::sandboxWarmPoolSizeKey = "sandboxWarmPoolSize";
+const char* Settings::sandboxParkedMaxKey = "sandboxParkedInstanceMax";
+const char* Settings::sandboxPrewarmEditorKey = "sandboxPrewarmEditor";
 
 //=============================================================================
 enum OptionsMenuItemId
@@ -648,6 +651,34 @@ bool Settings::shouldSandboxPlugin (const juce::PluginDescription& desc) const
         default:
             return false;
     }
+}
+
+int Settings::getSandboxWarmPoolSize() const
+{
+    // T7 warm pool (2026-06-11): blank pre-launched workers. Default 1 — a
+    // single warm worker covers the common one-add-at-a-time flow; the pool
+    // replenishes in the background after each claim.
+    if (auto* p = getProps())
+        return jlimit (0, 4, p->getIntValue (sandboxWarmPoolSizeKey, 1));
+    return 1;
+}
+
+int Settings::getMaxParkedSandboxInstances() const
+{
+    // Instance reuse (2026-06-11): healthy loaded workers are parked when their
+    // node is removed and re-claimed when the same plugin is added again or a
+    // session re-opens — the route to ~instant heavy-instrument re-adds. Each
+    // parked instance keeps its plugin's memory resident; bound it.
+    if (auto* p = getProps())
+        return jlimit (0, 8, p->getIntValue (sandboxParkedMaxKey, 3));
+    return 3;
+}
+
+bool Settings::shouldPrewarmSandboxEditor() const
+{
+    if (auto* p = getProps())
+        return p->getBoolValue (sandboxPrewarmEditorKey, true);
+    return true;
 }
 
 //=============================================================================
