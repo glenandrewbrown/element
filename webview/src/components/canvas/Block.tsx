@@ -19,6 +19,7 @@ import {
   selectFacePins,
   FACE_PIN_CAP,
 } from "../../stores/useFacePinStore";
+import { ContainerMiniGraph } from "./ContainerMiniGraph";
 import {
   usePortExpandStore,
   selectPortExpanded,
@@ -307,8 +308,6 @@ function PortHandle({
 
 const shadowRaised =
   "4px 4px 12px rgba(0,0,0,0.4), -2px -2px 8px rgba(255,255,255,0.05)";
-const shadowPressed =
-  "inset 2px 2px 6px rgba(0,0,0,0.4), inset -1px -1px 4px rgba(255,255,255,0.05)";
 
 // ── State overlays ──────────────────────────────────────────────────────────
 // Two SEMANTICALLY-DISTINCT states (Glen, feedback 7/8):
@@ -1483,18 +1482,121 @@ function BlockComponent({ data, selected }: NodeProps) {
   }, [edges, cableBus, d.id]);
 
   // ── Portal: distinct treatment ──
+  // ── Portal: T17 Option 1 — teal-accented container with dashed thumbnail ──
+  //
+  // Portal blocks share the Container chassis but carry a teal border accent on
+  // the header line, a Portal badge, a dashed thumbnail outline, and a filename
+  // row below the thumbnail (mockup S4). The ContainerMiniGraph component handles
+  // the thumbnail + Portal differentiators via `isPortal` + `portalFilename`.
   if (isPortal) {
+    const portalNodeCount = d.containerNodeCount ?? 0;
+    const portalTier = (d.collapseTier ?? "macro") as "title" | "macro" | "expanded";
     return (
       <div
-        style={{ contain: "content" }}
-        className="w-40 border-2 border-dashed border-[#E8A838]/30 bg-[#E8A838]/5 rounded-lg flex flex-col items-center justify-center py-3 px-2"
+        style={{
+          contain: "layout style",
+          width: 240,
+          background: "#252529",
+          border: "1.5px solid rgba(43,196,196,0.35)",
+          borderRadius: 10,
+          boxShadow: shadowRaised,
+          overflow: "visible",
+          position: "relative",
+        }}
       >
-        <span className="text-[10px] text-[#E8A838] font-black uppercase">
-          External Portal
-        </span>
-        <span className="text-[11px] text-white/70 mt-0.5">{d.name}</span>
+        {/* Header — teal accent line + Portal badge */}
+        <div
+          className="flex items-center gap-1.5 px-2 shrink-0"
+          style={{
+            height: 28,
+            borderBottom: "1px solid rgba(43,196,196,0.2)",
+            borderTopLeftRadius: "inherit",
+            borderTopRightRadius: "inherit",
+          }}
+        >
+          {/* Nested-squares icon — teal tint for Portal */}
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 12 12"
+            fill="none"
+            stroke="#2BC4C4"
+            strokeWidth="1.5"
+            aria-hidden
+            style={{ flexShrink: 0, opacity: 0.85 }}
+          >
+            <rect x="1" y="1" width="10" height="10" rx="2" />
+            <rect x="3.5" y="3.5" width="5" height="5" rx="1" />
+          </svg>
+          <span
+            className="text-[10px] font-bold truncate flex-1 leading-none tracking-wide cursor-text"
+            style={{ color: "#E5E5EA" }}
+            title="Rename (⌘R)"
+          >
+            {d.name?.trim() || "Portal"}
+          </span>
+          {/* Portal badge */}
+          <span
+            className="text-[7.5px] font-mono font-bold px-1.5 py-[1px] rounded-[3px] shrink-0 uppercase tracking-[0.05em]"
+            style={{
+              background: "rgba(43,196,196,0.15)",
+              color: "#2BC4C4",
+              border: "1px solid rgba(43,196,196,0.3)",
+            }}
+          >
+            Portal
+          </span>
+        </div>
 
-        {/* Ports */}
+        {/* T17 thumbnail (macro + expanded only) */}
+        <ContainerMiniGraph
+          nodeId={d.id}
+          name={d.name}
+          category={d.category}
+          containerNodeCount={portalNodeCount}
+          isPortal
+          portalFilename={d.portalFilename}
+          containerPreview={d.containerPreview}
+          muted={!!d.muted}
+          bypassed={d.bypassed}
+          collapseTier={portalTier}
+        />
+
+        {/* Boundary I/O signature — real essential ports only, no fake 0▸0 */}
+        {(() => {
+          const essIn = essentialInputs.length;
+          const essOut = essentialOutputs.length;
+          if (essIn === 0 && essOut === 0) return null;
+          return (
+            <div
+              className="flex items-center justify-center gap-1 px-2 pb-1"
+              style={{ paddingTop: 4 }}
+            >
+              <span
+                className="font-mono text-[10px]"
+                style={{ color: "#8E8E93" }}
+                aria-label={`${essIn} in to ${essOut} out`}
+              >
+                {essIn}
+                <span style={{ margin: "0 4px", color: "#55555A" }}>▸</span>
+                {essOut}
+              </span>
+            </div>
+          );
+        })()}
+
+        {/* Load bar — 2px teal status rail at the chassis foot */}
+        <div
+          className="shrink-0"
+          style={{
+            height: 2,
+            borderBottomLeftRadius: "inherit",
+            borderBottomRightRadius: "inherit",
+            background: "rgba(43,196,196,0.4)",
+          }}
+        />
+
+        {/* Port handles */}
         {inputPorts.map((port, i) => (
           <PortHandle
             key={port.id}
@@ -1503,7 +1605,7 @@ function BlockComponent({ data, selected }: NodeProps) {
             connected={port.connected}
             handleType="target"
             position={Position.Left}
-            topPercent={40 + i * 20}
+            topPercent={28 + i * 14}
             busName={portBusMap.get(port.id)}
           />
         ))}
@@ -1515,7 +1617,7 @@ function BlockComponent({ data, selected }: NodeProps) {
             connected={port.connected}
             handleType="source"
             position={Position.Right}
-            topPercent={40 + i * 20}
+            topPercent={28 + i * 14}
             busName={portBusMap.get(port.id)}
           />
         ))}
@@ -1523,66 +1625,122 @@ function BlockComponent({ data, selected }: NodeProps) {
     );
   }
 
-  // ── Container: inset background, child slots ──
+  // ── Container: T17 Option 1 — neumorphic chassis with mini-graph thumbnail ──
+  //
+  // A Container is a nested Board. This render gives it the same raised chassis
+  // as a standard Block (pressed-in recess for the thumbnail, raised header) so
+  // it fits the "one continuous dark chassis" design language. The thumbnail
+  // region (ContainerMiniGraph) shows a scaled-down SVG snapshot of internal
+  // topology when host preview data is available, or falls back to the honest
+  // density-bar / neutral-bar representations. NOTHING-fake: child count and
+  // preview data come from the engine snapshot only.
   if (isContainer) {
+    const containerTier = (d.collapseTier ?? "macro") as "title" | "macro" | "expanded";
+    const containerCount = d.containerNodeCount ?? 0;
+    const essIn = essentialInputs.length;
+    const essOut = essentialOutputs.length;
+    const hasIO = essIn > 0 || essOut > 0;
     return (
       <div
-        style={{ contain: "content", boxShadow: shadowPressed }}
-        className="w-[280px] bg-pressed border border-white/5 rounded-xl p-3"
+        style={{
+          contain: "layout style",
+          width: 240,
+          background: "#252529",
+          border: "1px solid rgba(255,255,255,0.06)",
+          borderRadius: 10,
+          boxShadow: shadowRaised,
+          overflow: "visible",
+          position: "relative",
+        }}
       >
-        <div className="flex items-center justify-between mb-3">
-          {/* Container label: real name + "(Nested)" qualifier. Falls back to
-              "Container" when unnamed so it never reads as a bare " (Nested)".
-              Hover hints rename (Cmd+R/Cmd+T → in-place editor), same as Blocks. */}
+        {/* Header — mirrors standard Block header language */}
+        <div
+          className="flex items-center gap-1.5 px-2 shrink-0"
+          style={{
+            height: 28,
+            borderBottom: "1px solid rgba(255,255,255,0.05)",
+            borderTopLeftRadius: "inherit",
+            borderTopRightRadius: "inherit",
+          }}
+        >
+          {/* Nested-squares icon — the universal Container glyph */}
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 12 12"
+            fill="none"
+            stroke="rgba(229,229,234,0.55)"
+            strokeWidth="1.5"
+            aria-hidden
+            style={{ flexShrink: 0 }}
+          >
+            <rect x="1" y="1" width="10" height="10" rx="2" />
+            <rect x="3.5" y="3.5" width="5" height="5" rx="1" />
+          </svg>
           <span
-            className="text-[10px] font-bold text-white/30 uppercase tracking-tighter cursor-text hover:text-white/50"
+            data-testid="container-title"
+            className="text-[10px] font-bold truncate flex-1 leading-none tracking-wide cursor-text hover:underline decoration-white/20 underline-offset-2"
+            style={{ color: "#E5E5EA" }}
             title="Rename (⌘R)"
           >
-            {(d.name?.trim() || "Container") + " (Nested)"}
+            {d.name?.trim() || "Container"}
           </span>
-          <span className="text-[12px] text-white/20 cursor-pointer hover:text-white/50">
-            ⤢
+          {/* Local badge — neutral white (vs Portal's teal) */}
+          <span
+            className="text-[7.5px] font-mono font-bold px-1.5 py-[1px] rounded-[3px] shrink-0 uppercase tracking-[0.05em]"
+            style={{
+              background: "rgba(255,255,255,0.06)",
+              color: "rgba(229,229,234,0.55)",
+              border: "1px solid rgba(255,255,255,0.1)",
+            }}
+          >
+            Local
           </span>
         </div>
-        {/* Honest in-canvas affordance (P3-B / Task 5.3): a Container is a
-            nested Board. Show its REAL boundary-I/O signature (essential ports
-            only, and ONLY when real ports exist — never a fabricated/assumed
-            "audio in → out" label) plus the REAL child count. Double-click
-            dives into the actual nested Board. */}
-        {(() => {
-          const n = d.containerNodeCount ?? 0;
-          const childText =
-            n === 0
-              ? "Empty — open to edit"
-              : `${n} ${n === 1 ? "Block" : "Blocks"} — open to edit`;
-          // Real boundary I/O: essential (non-param/value) ports only — reuse
-          // the same essentialInputs/Outputs the port lane derives (single
-          // predicate, no drift). Omit the signature entirely when there is no
-          // real I/O — no fake 0 ▸ 0.
-          const essIn = essentialInputs.length;
-          const essOut = essentialOutputs.length;
-          const hasIO = essIn > 0 || essOut > 0;
-          return (
-            <div
-              className="h-14 rounded bg-[#252529] border border-white/5 flex flex-col items-center justify-center gap-1 text-[11px] text-text-secondary"
-              style={{ boxShadow: shadowRaised }}
-            >
-              {hasIO && (
-                <span
-                  className="font-bold text-[12px] text-text-primary/70"
-                  aria-label={`${essIn} in to ${essOut} out`}
-                >
-                  {essIn}
-                  <span className="mx-1.5 text-text-dim">▸</span>
-                  {essOut}
-                </span>
-              )}
-              <span className="text-text-secondary">{childText}</span>
-            </div>
-          );
-        })()}
 
-        {/* Ports */}
+        {/* T17 thumbnail (macro + expanded only) */}
+        <ContainerMiniGraph
+          nodeId={d.id}
+          name={d.name}
+          category={d.category}
+          containerNodeCount={containerCount}
+          isPortal={false}
+          containerPreview={d.containerPreview}
+          muted={!!d.muted}
+          bypassed={d.bypassed}
+          collapseTier={containerTier}
+        />
+
+        {/* Boundary I/O signature — real essential ports only, no fake 0▸0 */}
+        {hasIO && (
+          <div
+            className="flex items-center justify-center gap-1 px-2"
+            style={{ paddingTop: 4, paddingBottom: 2 }}
+          >
+            <span
+              className="font-mono text-[10px]"
+              style={{ color: "#8E8E93" }}
+              aria-label={`${essIn} in to ${essOut} out`}
+            >
+              {essIn}
+              <span style={{ margin: "0 4px", color: "#55555A" }}>▸</span>
+              {essOut}
+            </span>
+          </div>
+        )}
+
+        {/* Load bar — 2px neutral status rail at the chassis foot */}
+        <div
+          className="shrink-0"
+          style={{
+            height: 2,
+            borderBottomLeftRadius: "inherit",
+            borderBottomRightRadius: "inherit",
+            background: "rgba(255,255,255,0.08)",
+          }}
+        />
+
+        {/* Port handles */}
         {inputPorts.map((port, i) => (
           <PortHandle
             key={port.id}
@@ -1591,7 +1749,7 @@ function BlockComponent({ data, selected }: NodeProps) {
             connected={port.connected}
             handleType="target"
             position={Position.Left}
-            topPercent={35 + i * 20}
+            topPercent={28 + i * 14}
             busName={portBusMap.get(port.id)}
           />
         ))}
@@ -1603,7 +1761,7 @@ function BlockComponent({ data, selected }: NodeProps) {
             connected={port.connected}
             handleType="source"
             position={Position.Right}
-            topPercent={35 + i * 20}
+            topPercent={28 + i * 14}
             busName={portBusMap.get(port.id)}
           />
         ))}

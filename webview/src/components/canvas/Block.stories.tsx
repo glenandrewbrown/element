@@ -990,3 +990,203 @@ export const PortCapLongTitle: Story = {
     await expect(chassis.style.width).toBe("280px");
   },
 };
+
+// ── T17 Container Mini-Graph Thumbnail ────────────────────────────────────────
+//
+// Design: .omo/bakeoff/container-representation-2026-06-10/option-1-iteration-2/
+// Three stories covering the three render paths in ContainerMiniGraph:
+//   1. ContainerMiniGraphSVG  — preview data present (≤12 nodes): pill SVG + cables
+//   2. ContainerMiniGraphDense — >12 nodes: density-bar heatmap fallback (S3)
+//   3. ContainerPortal        — Portal variant: teal accent + dashed outline + filename
+
+/** Container block with mini-graph preview data (≤ threshold — SVG branch). */
+function containerBlock(over: Partial<BlockData> = {}): BlockData {
+  return makeBlock({
+    name: "Reverb Chain",
+    category: "audiofx",
+    format: "INT",
+    collapseTier: "macro",
+    containerNodeCount: 4,
+    containerPreview: {
+      children: [
+        { category: "instrument", x: 0.1, y: 0.35 },
+        { category: "audiofx",   x: 0.38, y: 0.35 },
+        { category: "audiofx",   x: 0.62, y: 0.65 },
+        { category: "modulator", x: 0.88, y: 0.5  },
+      ],
+      cables: [
+        { from: 0, to: 1 },
+        { from: 1, to: 2 },
+        { from: 2, to: 3 },
+      ],
+    },
+    ports: [
+      { id: "in-l",  type: "audio", direction: "input",  label: "In L",  connected: true },
+      { id: "in-r",  type: "audio", direction: "input",  label: "In R",  connected: true },
+      { id: "out-l", type: "audio", direction: "output", label: "Out L", connected: true },
+      { id: "out-r", type: "audio", direction: "output", label: "Out R", connected: false },
+    ],
+    ...over,
+  });
+}
+
+export const ContainerMiniGraphSVG: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "T17 Option 1 — Container block with a mini-graph thumbnail (S1). " +
+          "Preview data is present (4 child nodes ≤ the 12-node threshold), so the " +
+          "thumbnail renders pill-nodes coloured by category + curved SVG cables. " +
+          "Hover brightens the cable opacity and reveals the 'enter' dive-hint. " +
+          "The 'Local' badge + neutral white icon distinguish it from a Portal. " +
+          "Boundary I/O signature (2▸2) is honest: from the real port list only.",
+      },
+    },
+  },
+  render: () => (
+    <MiniFlow
+      nodes={[flowNode(containerBlock())]}
+      nodeTypes={nodeTypes}
+      height={300}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    const body = within(canvasElement.ownerDocument.body);
+    // Thumbnail region is present
+    await expect(
+      body.getByTestId("mini-graph-thumbnail"),
+    ).toBeInTheDocument();
+    // SVG is rendered (mini-graph branch)
+    const svg = canvasElement.ownerDocument.body.querySelector(
+      "[data-testid='mini-graph-thumbnail'] svg",
+    );
+    await expect(svg).not.toBeNull();
+    // No density bars (count ≤ threshold)
+    await expect(
+      body.queryByTestId("container-density-bars"),
+    ).toBeNull();
+  },
+};
+
+export const ContainerMiniGraphDense: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "T17 Option 1 — Container block with the density-bar heatmap fallback (S3). " +
+          "This container has 16 child nodes, exceeding the 12-node threshold, so the " +
+          "mini-graph SVG is replaced by a heatmap of category-coloured bars (one bar " +
+          "per block). The 'dense' label + block count are always shown so the user " +
+          "understands why the schematic view is absent. The dive hint and depth badge " +
+          "remain unchanged.",
+      },
+    },
+  },
+  render: () => (
+    <MiniFlow
+      nodes={[
+        flowNode(
+          containerBlock({
+            name: "Dense Board",
+            containerNodeCount: 16,
+            containerPreview: {
+              children: Array.from({ length: 16 }, (_, i) => ({
+                category: (
+                  ["instrument", "audiofx", "audiofx", "midifx", "modulator"] as const
+                )[i % 5],
+                x: (i + 0.5) / 16,
+                y: 0.5,
+              })),
+              cables: Array.from({ length: 15 }, (_, i) => ({
+                from: i,
+                to: i + 1,
+              })),
+            },
+          }),
+        ),
+      ]}
+      nodeTypes={nodeTypes}
+      height={300}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    const body = within(canvasElement.ownerDocument.body);
+    await expect(
+      body.getByTestId("container-density-bars"),
+    ).toBeInTheDocument();
+    // No SCHEMATIC svg (density fallback active). Target the schematic's own
+    // testid — the thumbnail region also contains small decorative icon svgs
+    // (dive-hint chevron) that a bare `svg[viewBox]` query would match.
+    await expect(
+      canvasElement.ownerDocument.body.querySelector(
+        "[data-testid='mini-graph-schematic']",
+      ),
+    ).toBeNull();
+  },
+};
+
+export const ContainerPortal: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "T17 Option 1 — Portal block (S4). Portal differentiators vs local Container: " +
+          "teal border accent on the chassis, teal header line, a 'Portal' badge, a " +
+          "dashed teal outline on the thumbnail (signals externally linked), and a " +
+          "filename row below the thumbnail showing the linked .elboard path. " +
+          "The mini-graph SVG renders when preview data is available (3 child nodes here).",
+      },
+    },
+  },
+  render: () => (
+    <MiniFlow
+      nodes={[
+        flowNode(
+          makeBlock({
+            name: "Drum Bus",
+            category: "audiofx",
+            format: "INT",
+            collapseTier: "macro",
+            containerNodeCount: 3,
+            isPortal: true,
+            portalFilename: "/boards/drum-bus.elboard",
+            containerPreview: {
+              children: [
+                { category: "instrument", x: 0.15, y: 0.4 },
+                { category: "audiofx",   x: 0.5,  y: 0.4 },
+                { category: "modulator", x: 0.85, y: 0.4 },
+              ],
+              cables: [
+                { from: 0, to: 1 },
+                { from: 1, to: 2 },
+              ],
+            },
+            ports: [
+              { id: "in-l",  type: "audio", direction: "input",  label: "In",  connected: true },
+              { id: "out-l", type: "audio", direction: "output", label: "Out", connected: true },
+            ],
+          }),
+        ),
+      ]}
+      nodeTypes={nodeTypes}
+      height={320}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    const body = within(canvasElement.ownerDocument.body);
+    // Filename row is present for the portal
+    await expect(
+      body.getByText("drum-bus.elboard"),
+    ).toBeInTheDocument();
+    // Thumbnail is present
+    await expect(
+      body.getByTestId("mini-graph-thumbnail"),
+    ).toBeInTheDocument();
+    // SVG is rendered (mini-graph branch — 3 nodes ≤ threshold)
+    const svg = canvasElement.ownerDocument.body.querySelector(
+      "[data-testid='mini-graph-thumbnail'] svg",
+    );
+    await expect(svg).not.toBeNull();
+  },
+};

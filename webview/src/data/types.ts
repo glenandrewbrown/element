@@ -55,6 +55,24 @@ export interface BlockData {
   containerNodeCount?: number;
   isPortal?: boolean;
   /**
+   * T17 — Optional mini-graph topology preview for Container/Portal blocks.
+   * Emitted by the host when the container's internal graph is available.
+   * `children` = array of {category, x, y} with x/y normalised 0..1 within
+   * the container's bounding box. `cables` = array of {from, to} index pairs
+   * into `children`. When ABSENT the ContainerMiniGraph falls back honestly:
+   * >MINI_GRAPH_THRESHOLD children → density-bar heatmap; otherwise a neutral
+   * bar driven by containerNodeCount alone. NOTHING-fake: never invent child
+   * data; absent data = the honest fallback path always renders.
+   */
+  containerPreview?: {
+    /** Mini pill-nodes, normalised position 0..1. */
+    children: Array<{ category: BlockCategory; x: number; y: number }>;
+    /** Cable index pairs into `children`. */
+    cables: Array<{ from: number; to: number }>;
+  };
+  /** Portal linked file path (shown in the filename row below the thumbnail). */
+  portalFilename?: string;
+  /**
    * Free-form user note (per blueprint §7.4.11). Edited in the Inspector,
    * persists in the Node ValueTree as "userNote" so it survives save/load.
    */

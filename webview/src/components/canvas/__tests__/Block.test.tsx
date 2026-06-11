@@ -314,41 +314,46 @@ describe("<Block />", () => {
   // ── Container / Portal labels ─────────────────────────────────────────────
 
   it("shows the honest real child-count affordance for Container blocks (P3-B)", () => {
-    // The old fake 2×2 "NODE_A…NODE_D" placeholder grid was a NOTHING-fake
-    // violation (invented identities) and is gone. A Container now shows its
-    // REAL child count (engine getNumNodes() → containerNodeCount) and an
-    // "open to edit" affordance — the dive opens the actual nested Board.
+    // T17: Container now renders a mini-graph thumbnail region with an aria-label
+    // depth badge ("N blocks inside") instead of a plain text "N Blocks — open to edit"
+    // sentence. The depth badge is the honest engine-truth count display.
     renderBlock({ containerNodeCount: 4 });
-    expect(screen.getByText("4 Blocks — open to edit")).toBeInTheDocument();
+    // The depth badge has aria-label "4 Blocks inside" (ContainerMiniGraph).
+    expect(screen.getByLabelText("4 Blocks inside")).toBeInTheDocument();
     // No fabricated per-child labels remain.
     expect(screen.queryByText("NODE_A")).toBeNull();
   });
 
   it("pluralises the child count honestly (1 Block, not 1 Blocks)", () => {
     renderBlock({ containerNodeCount: 1 });
-    expect(screen.getByText("1 Block — open to edit")).toBeInTheDocument();
+    // Depth badge aria-label: "1 Block inside" (singular).
+    expect(screen.getByLabelText("1 Block inside")).toBeInTheDocument();
   });
 
   it("shows an Empty affordance for a Container with zero children", () => {
+    // count 0 → NeutralDensityBar shows "Empty — open to edit" text.
     renderBlock({ containerNodeCount: 0 });
     expect(screen.getByText("Empty — open to edit")).toBeInTheDocument();
   });
 
-  it("labels a Container with its REAL name + (Nested) — never a raw UUID", () => {
+  it("labels a Container with its REAL name — never a raw UUID", () => {
+    // T17: the header span now shows just the name (no "(Nested)" qualifier).
     renderBlock({ containerNodeCount: 2, name: "Synth Layer" });
-    expect(screen.getByText("Synth Layer (Nested)")).toBeInTheDocument();
+    expect(screen.getByTestId("container-title")).toHaveTextContent("Synth Layer");
+    expect(screen.queryByText(/NODE_A/)).toBeNull();
   });
 
-  it("falls back to 'Container (Nested)' (never bare ' (Nested)' or 'Graph') when unnamed", () => {
+  it("falls back to 'Container' title (never bare or 'Graph') when unnamed", () => {
+    // T17: empty name → header shows "Container" (the fallback in the title span).
     renderBlock({ containerNodeCount: 2, name: "" });
-    expect(screen.getByText("Container (Nested)")).toBeInTheDocument();
-    expect(screen.queryByText(/^\s*\(Nested\)$/)).toBeNull();
-    expect(screen.queryByText(/GRAPH \(NESTED\)/i)).toBeNull();
+    expect(screen.getByTestId("container-title")).toHaveTextContent("Container");
+    expect(screen.queryByText(/GRAPH/i)).toBeNull();
   });
 
-  it("shows PORTAL label for portal blocks", () => {
+  it("shows Portal badge for portal blocks", () => {
+    // T17: Portal blocks render a 'Portal' badge in the header (not 'External Portal').
     renderBlock({ isPortal: true });
-    expect(screen.getByText("External Portal")).toBeInTheDocument();
+    expect(screen.getByText("Portal")).toBeInTheDocument();
   });
 
   // ── Edge cases ────────────────────────────────────────────────────────────

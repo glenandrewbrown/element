@@ -7036,6 +7036,78 @@ String ElementWebViewHost::buildActiveGraphJson() const
         {
             const Graph sub (n);
             b->setProperty ("containerNodeCount", sub.getNumNodes());
+
+            // T17 Option 1 (mini-graph thumbnail, 2026-06-11): normalised child
+            // topology for the container Block face. Children carry category +
+            // 0..1 position (bbox-normalised); cables are index pairs into the
+            // children array. Bounded so a huge nested Board can't bloat the
+            // 60Hz snapshot: children capped at 32 (the webview's density bar
+            // renders from these + containerNodeCount); cables emitted only in
+            // the schematic range (≤12 children, matching the webview's
+            // schematic→density threshold).
+            constexpr int kPreviewMaxChildren = 32;
+            constexpr int kPreviewSchematicMax = 12;
+            const int childCount = juce::jmin (sub.getNumNodes(), kPreviewMaxChildren);
+            if (childCount > 0)
+            {
+                struct PreviewKid { String category; double x, y; };
+                std::vector<PreviewKid> raw;
+                raw.reserve ((size_t) childCount);
+                std::map<uint32, int> childIndexForNodeId;
+                for (int ci = 0; ci < childCount; ++ci)
+                {
+                    const Node child (sub.getNode (ci));
+                    double cx = 0, cy = 0;
+                    child.getPosition (cx, cy);
+                    const String cid (child.getProperty (tags::pluginIdentifierString).toString());
+                    raw.push_back ({ mapBlockCategory (child, categoryForPluginIdentifier (cid)), cx, cy });
+                    childIndexForNodeId[child.getNodeId()] = ci;
+                }
+
+                double minX = raw[0].x, maxX = raw[0].x, minY = raw[0].y, maxY = raw[0].y;
+                for (const auto& k : raw)
+                {
+                    minX = std::min (minX, k.x); maxX = std::max (maxX, k.x);
+                    minY = std::min (minY, k.y); maxY = std::max (maxY, k.y);
+                }
+                // Zero/tiny span (single child or stacked nodes) → centre at 0.5.
+                const double spanX = (maxX - minX) > 1.0 ? (maxX - minX) : 0.0;
+                const double spanY = (maxY - minY) > 1.0 ? (maxY - minY) : 0.0;
+
+                juce::Array<juce::var> childrenArr;
+                for (const auto& k : raw)
+                {
+                    auto* c = new DynamicObject();
+                    c->setProperty ("category", k.category);
+                    c->setProperty ("x", spanX > 0.0 ? (k.x - minX) / spanX : 0.5);
+                    c->setProperty ("y", spanY > 0.0 ? (k.y - minY) / spanY : 0.5);
+                    childrenArr.add (c);
+                }
+
+                juce::Array<juce::var> cablesArr;
+                if (childCount <= kPreviewSchematicMax)
+                {
+                    const auto arcs = n.getArcsValueTree();
+                    for (int ai = 0; ai < arcs.getNumChildren(); ++ai)
+                    {
+                        const auto arc = arcs.getChild (ai);
+                        const auto s = childIndexForNodeId.find ((uint32) (int64) arc.getProperty (tags::sourceNode));
+                        const auto d = childIndexForNodeId.find ((uint32) (int64) arc.getProperty (tags::destNode));
+                        if (s == childIndexForNodeId.end() || d == childIndexForNodeId.end()
+                            || s->second == d->second)
+                            continue;
+                        auto* cb = new DynamicObject();
+                        cb->setProperty ("from", s->second);
+                        cb->setProperty ("to", d->second);
+                        cablesArr.add (cb);
+                    }
+                }
+
+                auto* pv = new DynamicObject();
+                pv->setProperty ("children", juce::var (childrenArr));
+                pv->setProperty ("cables", juce::var (cablesArr));
+                b->setProperty ("containerPreview", pv);
+            }
         }
         // Emit the user node colour as "#AARRGGBB" (leading '#') so the webview's
         // Block.hostColourOutline (which keys off a '#' prefix) renders it, and so

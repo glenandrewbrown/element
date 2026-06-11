@@ -43,6 +43,7 @@ import {
   type CollisionRect,
 } from "../../lib/resolveCollisions";
 import { visiblePortRowCount, hasCappedPorts } from "./portCap";
+import { THUMBNAIL_H } from "./ContainerMiniGraph";
 
 /**
  * Proximity radius in flow-space px — the maximum EDGE-to-edge gap between
@@ -126,6 +127,33 @@ function essentialPorts(ports: Port[], direction: "input" | "output"): Port[] {
  */
 export function estimateBlockHeight(block: BlockData): number {
   const ports = block.ports ?? [];
+
+  // Container / Portal blocks: T17 thumbnail adds THUMBNAIL_H below the header
+  // (rendered at macro + expanded tiers — the default for a freshly-placed
+  // container). Mirrors Block.tsx: ContainerMiniGraph renders `null` only at
+  // the `title` tier; all other tiers show the 96px thumbnail region (margin
+  // included). Port lane uses the same port-row arithmetic as standard blocks.
+  if (block.containerNodeCount != null || block.isPortal) {
+    const containerTier = block.collapseTier ?? "macro";
+    // Thumbnail margin (8px top) + THUMBNAIL_H + 2px load bar + optional
+    // filename row for portals (≈18px). Conservative: always include the
+    // thumbnail at macro/expanded (the default fresh-load tier).
+    const thumbH =
+      containerTier !== "title"
+        ? 6 + THUMBNAIL_H // 6px top margin (ContainerMiniGraph: margin: "6px 8px 0")
+        : 0;
+    // IO row (≈16px) + load bar
+    const footH = 16 + LOADBAR_H;
+    // Portal filename row adds ~18px when present.
+    const filenameH = block.isPortal && block.portalFilename ? 18 : 0;
+    // Port handles: use same port-row math as standard blocks.
+    const essIn = essentialPorts(ports, "input");
+    const essOut = essentialPorts(ports, "output");
+    const portRows = Math.max(essIn.length, essOut.length, 1);
+    const portH = portRows * PORT_LANE_H;
+    return HEADER_H + thumbH + footH + filenameH + portH;
+  }
+
   if (block.loadState === "loading") {
     // Loading face — no port lane; a prominent placeholder body (mirrors
     // Block.tsx's loading face height) rather than a 1-row sliver.
@@ -143,7 +171,7 @@ export function estimateBlockHeight(block: BlockData): number {
   );
   const expanderRow = hasCappedPorts(essIn, essOut, false) ? 1 : 0;
   const shownRows = visibleRows + expanderRow;
-  // Block.tsx:1882 — lane height = max(shownRows, 1) * PORT_LANE_H + 6.
+  // Block.tsx — lane height = max(shownRows, 1) * PORT_LANE_H + 6.
   const laneH = Math.max(shownRows, 1) * PORT_LANE_H + PORT_LANE_PAD;
   return HEADER_H + ACTIVITY_H + laneH + LOADBAR_H;
 }

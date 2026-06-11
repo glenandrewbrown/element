@@ -260,6 +260,60 @@ function mapPorts(b: EngineBlock): Port[] {
   });
 }
 
+/** Validate + coerce the host's containerPreview payload (T17 mini-graph).
+ *  Anything malformed → undefined (the Block renders its honest fallback). */
+function mapContainerPreview(
+  raw: unknown,
+): BlockData["containerPreview"] | undefined {
+  if (raw == null || typeof raw !== "object") return undefined;
+  const r = raw as {
+    children?: Array<{ category?: unknown; x?: unknown; y?: unknown }>;
+    cables?: Array<{ from?: unknown; to?: unknown }>;
+  };
+  if (!Array.isArray(r.children) || r.children.length === 0) return undefined;
+  const children = r.children
+    .filter(
+      (c) =>
+        c != null &&
+        typeof c === "object" &&
+        typeof c.x === "number" &&
+        Number.isFinite(c.x) &&
+        typeof c.y === "number" &&
+        Number.isFinite(c.y),
+    )
+    .map((c) => ({
+      category: normalizeCategory(c.category),
+      x: Math.min(1, Math.max(0, c.x as number)),
+      y: Math.min(1, Math.max(0, c.y as number)),
+    }));
+  if (children.length === 0) return undefined;
+  const cables = (Array.isArray(r.cables) ? r.cables : [])
+    .filter(
+      (c) =>
+        c != null &&
+        typeof c === "object" &&
+        Number.isInteger(c.from) &&
+        Number.isInteger(c.to) &&
+        (c.from as number) >= 0 &&
+        (c.from as number) < children.length &&
+        (c.to as number) >= 0 &&
+        (c.to as number) < children.length,
+    )
+    .map((c) => ({ from: c.from as number, to: c.to as number }));
+  return { children, cables };
+}
+
+/** Coerce an arbitrary category string to a valid BlockCategory (instrument
+ *  fallback matches inferCategory's default). */
+function normalizeCategory(raw: unknown): BlockData["category"] {
+  return raw === "instrument" ||
+    raw === "audiofx" ||
+    raw === "midifx" ||
+    raw === "modulator"
+    ? raw
+    : "modulator";
+}
+
 function mapBlock(b: EngineBlock): BlockData {
   return {
     id: b.id,
@@ -290,6 +344,11 @@ function mapBlock(b: EngineBlock): BlockData {
     error: false,
     isMacroTagged: false,
     containerNodeCount: b.containerNodeCount,
+    // T17 mini-graph: normalised child topology emitted by the host for
+    // container blocks. Validate shape defensively — a malformed entry must
+    // degrade to "no preview" (density/neutral bar), never throw mid-apply
+    // (the 2026-06-11 stuck-badge incident was a throwing snapshot apply).
+    containerPreview: mapContainerPreview((b as any).containerPreview),
     isPortal: false,
     note: typeof b.note === "string" ? b.note : undefined,
     // Hidden param-port ids: the host emits a CSV ("userHiddenParams"); split
