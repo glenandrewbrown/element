@@ -395,6 +395,19 @@ private:
     // IPC thread (handleWorkerMessage); a plain atomic is sufficient.
     std::atomic<uint32_t> loadInProgressSinceMs { 0 };
 
+    // Forensic load-timeline anchor (2026-06-11): stamped when a launch is armed
+    // (launch()/beginDeferredLaunch()); the [sandbox-load] log lines report their
+    // deltas from this so main.log alone reconstructs spawn→handshake→instantiate
+    // →loaded timings per worker. Logging only — never drives behaviour.
+    std::atomic<uint32_t> launchStartMs { 0 };
+
+    /** Milliseconds elapsed since the launch was armed (logging only). */
+    uint32_t msSinceLaunchStart() const noexcept
+    {
+        const uint32_t start = launchStartMs.load();
+        return start != 0 ? juce::Time::getMillisecondCounter() - start : 0;
+    }
+
     juce::WaitableEvent shutdownAcked;
     static constexpr int shutdownAckTimeoutMs { 2000 };
 
@@ -464,6 +477,7 @@ inline bool SandboxHost::launch()
     state.store (State::Starting);
     preparedSinceLaunch.store (false); // fresh worker needs a prepare (no shm yet)
     loadInProgressSinceMs.store (0);   // BUG B: clear any stale load-grace window
+    launchStartMs.store (juce::Time::getMillisecondCounter());
 
     if (! launchWorkerProcess())
     {
@@ -491,6 +505,7 @@ inline bool SandboxHost::beginDeferredLaunch()
     state.store (State::Starting);
     preparedSinceLaunch.store (false); // fresh worker needs a prepare (no shm yet)
     loadInProgressSinceMs.store (0);   // BUG B: clear any stale load-grace window
+    launchStartMs.store (juce::Time::getMillisecondCounter());
     return true;
 }
 
@@ -521,6 +536,8 @@ inline void SandboxHost::finishDeferredLaunch (bool handshakeOk)
     postLoadSettleSinceMs.store (0);
     startTimer (EL_SANDBOX_HEARTBEAT_MS);
     state.store (State::Ready);
+    juce::Logger::writeToLog ("[sandbox-load 0x" + juce::String::toHexString ((juce::pointer_sized_int) this)
+                              + "] handshake complete +" + juce::String (msSinceLaunchStart()) + "ms");
 }
 
 inline void SandboxHost::shutdown()
@@ -1258,6 +1275,8 @@ inline void SandboxHost::handleWorkerMessage (const SandboxMessageHeader& header
                 // Treat the LoadInProgress itself as a liveness signal so the very
                 // first post-launch load can't trip the watchdog on its own latency.
                 heartbeat.beat();
+                juce::Logger::writeToLog ("[sandbox-load 0x" + juce::String::toHexString ((juce::pointer_sized_int) this)
+                                          + "] worker began plugin instantiation +" + juce::String (msSinceLaunchStart()) + "ms");
             }
             break;
 
@@ -1277,6 +1296,14 @@ inline void SandboxHost::handleWorkerMessage (const SandboxMessageHeader& header
                 // BUG B: load finished — clear the heartbeat-suspend window and
                 // record a fresh beat (the worker's message thread was blocked, so
                 // its last real Heartbeat may be stale by up to the load duration).
+                {
+                    const uint32_t instStart = loadInProgressSinceMs.load();
+                    const uint32_t instMs = instStart != 0
+                        ? juce::Time::getMillisecondCounter() - instStart : 0;
+                    juce::Logger::writeToLog ("[sandbox-load 0x" + juce::String::toHexString ((juce::pointer_sized_int) this)
+                                              + "] plugin loaded +" + juce::String (msSinceLaunchStart())
+                                              + "ms (instantiation " + juce::String (instMs) + "ms)");
+                }
                 loadInProgressSinceMs.store (0);
                 heartbeat.beat();
 

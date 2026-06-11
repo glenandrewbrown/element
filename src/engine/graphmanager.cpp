@@ -692,12 +692,16 @@ private:
         }
     }
 
-    void fallbackInProcess()
+    void fallbackInProcess (const juce::String& reason)
     {
         // Worker route failed AFTER the placeholder was shown (launch ok but load
         // crashed/failed, or the bounded deadline elapsed). Re-kick the SAME
         // placeholder uuid through the in-process async path so the plugin still
         // loads, and emit the honesty badge so the user knows they are unprotected.
+        juce::Logger::writeToLog ("[sandbox-load] FALLBACK in-process \"" + description.name
+                                  + "\" +" + juce::String (juce::Time::getMillisecondCounter()
+                                                           - (deadlineMs - (juce::uint32) kLoadTimeoutMs))
+                                  + "ms — " + reason);
         auto* m = manager.get();
         if (m == nullptr)
         {
@@ -751,7 +755,7 @@ private:
         const auto phase = node->getLaunchPhase();
         if (phase == SandboxedProcessorNode::LaunchPhase::Failed)
         {
-            fallbackInProcess();
+            fallbackInProcess ("launch handshake failed");
             return;
         }
         if (phase == SandboxedProcessorNode::LaunchPhase::NotStarted
@@ -760,7 +764,7 @@ private:
             // Worker not yet connected. Do not interpret Idle/Starting as a crash.
             // Bound the wait so a wedged handshake still degrades to in-process.
             if (juce::Time::getMillisecondCounter() > deadlineMs)
-                fallbackInProcess();
+                fallbackInProcess ("launch deadline elapsed before handshake completed");
             return;
         }
 
@@ -773,7 +777,9 @@ private:
             || state == SandboxHost::State::Idle
             || state == SandboxHost::State::Error)
         {
-            fallbackInProcess();
+            fallbackInProcess ("worker state "
+                               + juce::String (static_cast<int> (state))
+                               + " (crashed/idle/error) after launch");
             return;
         }
 
@@ -793,6 +799,11 @@ private:
             if (++stableLoadedPolls < 2)
                 return; // wait one more poll to confirm a stable Loaded state
 
+            juce::Logger::writeToLog ("[sandbox-load] swap \"" + description.name
+                                      + "\" — block ready +"
+                                      + juce::String (juce::Time::getMillisecondCounter()
+                                                      - (deadlineMs - (juce::uint32) kLoadTimeoutMs))
+                                      + "ms after kick");
             if (auto* m = manager.get())
             {
                 // Re-resolve the placeholder's CURRENT engine id by uuid (stable
@@ -818,7 +829,7 @@ private:
         // that stops reporting (hung) loses the grace at the ceiling and falls back.
         if (juce::Time::getMillisecondCounter() > deadlineMs
             && ! node->isWorkerLoadInProgress())
-            fallbackInProcess();
+            fallbackInProcess ("load deadline elapsed with no worker load in progress");
     }
 
     juce::WeakReference<GraphManager> manager;
@@ -869,6 +880,8 @@ void GraphManager::kickSandboxedInstantiation (const String& finalUuid, uint32 p
         kickInProcessFallback (finalUuid, placeholderId, desc);
         return;
     }
+
+    juce::Logger::writeToLog ("[sandbox-load] kick \"" + desc.name + "\" uuid=" + finalUuid);
 
     // Construct the sandboxed node WITHOUT launching (DeferLaunch) — the ctor is now
     // free of the blocking connectToPipe handshake. THE FREEZE FIX (T1): the

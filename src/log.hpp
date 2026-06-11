@@ -68,14 +68,24 @@ public:
     */
     void logMessage (const String& message) override
     {
+        // Millisecond wall-clock prefix: load/launch timelines must be
+        // reconstructable from main.log alone (the 2026-06-11 Kontakt-load
+        // forensics required unified-log archaeology because these lines
+        // carried no time).
+        const auto now = juce::Time::getCurrentTime();
+        juce::String line;
+        line << now.formatted ("%H:%M:%S.")
+             << juce::String (now.getMilliseconds()).paddedLeft ('0', 3)
+             << " " << message;
+
         juce::ScopedLock sl (lock);
-        mainlogger->logMessage (message);
-        history.add (message);
+        mainlogger->logMessage (line);
+        history.add (line);
         if (history.size() > maxLines)
             history.remove (0);
 
-        listeners.call ([&message] (Listener& l) {
-            l.messageLogged (message);
+        listeners.call ([&line] (Listener& l) {
+            l.messageLogged (line);
         });
     }
 
