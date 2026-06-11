@@ -1,0 +1,46 @@
+diff --git a/modules/juce_gui_basics/native/juce_PerScreenDisplayLinks_mac.h b/modules/juce_gui_basics/native/juce_PerScreenDisplayLinks_mac.h
+index 983a77231..c96af1f63 100644
+--- a/modules/juce_gui_basics/native/juce_PerScreenDisplayLinks_mac.h
++++ b/modules/juce_gui_basics/native/juce_PerScreenDisplayLinks_mac.h
+@@ -53,7 +53,40 @@ class ScopedDisplayLink
+ public:
+     static CGDirectDisplayID getDisplayIdForScreen (NSScreen* screen)
+     {
+-        return (CGDirectDisplayID) [[screen.deviceDescription objectForKey: @"NSScreenNumber"] unsignedIntegerValue];
++        // Element hardening (2026-06-11): the stock JUCE lookup reads
++        // -[NSScreen deviceDescription], which CRASHES inside AppKit
++        // (EXC_BAD_ACCESS while +[NSDictionary dictionaryWithObjectsAndKeys:]
++        // builds the screen's description dict) on a hardware-MIRRORED, dual-GPU
++        // Mac (AMD W5700X + RX 6600). Reproduced 5/5 on boot, live .ips
++        // 2026-06-11-21*. A screen-validity guard did NOT help — the screen is
++        // valid; AppKit's own dict build faults — and a SIGSEGV is uncatchable.
++        //
++        // Resolve the display id via pure CoreGraphics instead (no AppKit dict
++        // construction): match the screen's bounds SIZE to an active display.
++        // CGDisplayBounds and -[NSScreen frame] share the global display point
++        // space, so the size compare is origin-independent; on a mirror every
++        // display shares bounds, so any match drives vsync correctly. Falls back
++        // to the main display, which is always valid. -[NSScreen frame] is a
++        // cached geometry getter (not a dict builder) and is safe here.
++        if (screen == nil)
++            return CGMainDisplayID();
++
++        const NSRect frame = [screen frame];
++
++        CGDirectDisplayID ids[16];
++        uint32_t count = 0;
++        if (CGGetActiveDisplayList ((uint32_t) 16, ids, &count) == kCGErrorSuccess)
++        {
++            for (uint32_t i = 0; i < count; ++i)
++            {
++                const CGRect b = CGDisplayBounds (ids[i]);
++                if (std::abs (b.size.width  - frame.size.width)  < 1.0
++                    && std::abs (b.size.height - frame.size.height) < 1.0)
++                    return ids[i];
++            }
++        }
++
++        return CGMainDisplayID();
+     }
+ 
+     ScopedDisplayLink (NSScreen* screenIn, std::function<void (double)> onCallbackIn)
