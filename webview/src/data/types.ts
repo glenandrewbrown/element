@@ -87,6 +87,14 @@ export interface BlockData {
    */
   hiddenParams?: string[];
   /**
+   * TOTAL param (Control/value) port count on the node, from the host. The
+   * snapshot caps UNCONNECTED param ports at 64 emitted rows (a 4096-param
+   * plugin like Kontakt otherwise ships a ~400KB snapshot), so the visible
+   * value-port array can be shorter than the truth — the "▸ N params" lane
+   * count uses THIS. Absent ⇒ the emitted port array is complete.
+   */
+  paramPortsTotal?: number;
+  /**
    * Persisted collapse TIER (Wave-3 Task 2.0; widens the legacy `collapsed`
    * boolean). 'title' = header only · 'macro' = header + curated Macro row
    * (lean default) · 'expanded' = full control deck. Persisted in the Node

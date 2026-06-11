@@ -1432,8 +1432,14 @@ function BlockComponent({ data, selected }: NodeProps) {
     isParamPort(p) && !hiddenParamIds.has(p.id);
   const paramInputs = inputPorts.filter(isVisibleParamPort);
   const paramOutputs = outputPorts.filter(isVisibleParamPort);
-  // Count = VISIBLE (non-hidden) param ports — what the expander actually shows.
-  const paramPortCount = paramInputs.length + paramOutputs.length;
+  // Count = VISIBLE (non-hidden) param ports. The host caps UNCONNECTED param
+  // ports at 64 emitted rows (Kontakt = 4096 — see BlockData.paramPortsTotal),
+  // so when a total is supplied the lane label reads the honest total (minus
+  // hidden) even though the expandable rows are the emitted subset.
+  const paramPortCount = Math.max(
+    paramInputs.length + paramOutputs.length,
+    (d.paramPortsTotal ?? 0) - (d.hiddenParams?.length ?? 0),
+  );
   const hasParamPorts = paramPortCount > 0;
 
   // BUG-1 (Glen 2026-06-10): the Macro FACE surfaces ONLY the params the user

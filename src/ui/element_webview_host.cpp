@@ -53,6 +53,7 @@
 #include <cstring>
 #include <map>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace element {
@@ -652,6 +653,12 @@ struct LaneSnapshots
     // 0 on graph push / teardown with the rest of this struct (harmless — it is
     // just a parity counter).
     unsigned telemetryTick = 0;
+    // Graph self-heal cadence (2026-06-11): pushGraphSnapshot is otherwise
+    // event/debounce-driven, so a single dropped eval or throwing JS apply
+    // froze the canvas on stale state with NO retry. Every ~90 ticks (1.5 s)
+    // the timer calls pushGraphSnapshot(); its internal dedupe+TTL decides
+    // whether anything is actually re-sent.
+    unsigned graphHealTick = 0;
 };
 
 static std::unordered_map<const void*, LaneSnapshots> snapshots;
@@ -6192,6 +6199,15 @@ void ElementWebViewHost::timerCallback()
     constexpr unsigned kTelemetryDivider = 2;
     const bool runTelemetry = (++snaps.telemetryTick % kTelemetryDivider) == 0;
 
+    // Graph self-heal cadence — see LaneSnapshots::graphHealTick. The push's
+    // own dedupe skips the eval when the JSON is unchanged AND inside the
+    // re-push TTL, so the steady-state cost here is one JSON build per 1.5 s.
+    if (++snaps.graphHealTick >= 90)
+    {
+        snaps.graphHealTick = 0;
+        pushGraphSnapshot();
+    }
+
     if (runTelemetry)
     {
         if (auto peak = metering.popLatestPeak())
@@ -6681,8 +6697,21 @@ void ElementWebViewHost::pushMeteringIfNeeded()
 
 void ElementWebViewHost::evalInBrowser (const String& js)
 {
-    if (browser != nullptr)
-        browser->evaluateJavascript (js, nullptr);
+    if (browser == nullptr)
+        return;
+
+    // Surface evaluation FAILURES (2026-06-11): a null callback made every
+    // dropped/oversized/throwing eval invisible — the stuck-loading forensics
+    // burned hours because the transport was a black box. Log size + message
+    // for failures only; successes stay silent.
+    const auto jsBytes = (int) js.getNumBytesAsUTF8();
+    browser->evaluateJavascript (js, [jsBytes] (juce::WebBrowserComponent::EvaluationResult result)
+    {
+        if (const auto* err = result.getError())
+            juce::Logger::writeToLog ("[webview] evaluateJavascript FAILED ("
+                                      + String (jsBytes) + " bytes): "
+                                      + err->message);
+    });
 }
 
 void ElementWebViewHost::emitSandboxEventToWeb (juce::uint32 nodeId, int kind, const String& reason)
@@ -6901,6 +6930,29 @@ String ElementWebViewHost::buildActiveGraphJson() const
         activeSampleRate = dev->getCurrentSampleRate();
         activeBlockSize = dev->getCurrentBufferSizeSamples();
     }
+
+    // Param-port emission cap (2026-06-11, Kontakt forensics): a huge plugin
+    // exposes up to EL_SANDBOX_MAX_PARAMETERS (4096) Control ports; emitting
+    // every one made this snapshot ~400 KB (Kontakt = 4162 port rows) — heavy
+    // to rebuild on every push and the prime suspect for the silently-failing
+    // oversized evaluateJavascript that froze the canvas on stale state. Cap
+    // UNCONNECTED Control ports per node; CONNECTED ones always emit (a cable
+    // must keep its handle — mirrors the webview port-cap rule 1). The honest
+    // total ships as paramPortsTotal so the "▸ N params" lane never lies.
+    // Pre-walk the board's arcs once → per-node set of connected port indices.
+    std::unordered_map<juce::uint32, std::unordered_set<juce::uint32>> connectedPortsByNode;
+    {
+        const auto arcsTree = Node (G).getArcsValueTree();
+        for (int ai = 0; ai < arcsTree.getNumChildren(); ++ai)
+        {
+            const auto arc = arcsTree.getChild (ai);
+            connectedPortsByNode[(juce::uint32) (juce::int64) arc.getProperty (tags::sourceNode)]
+                .insert ((juce::uint32) (juce::int64) arc.getProperty (tags::sourcePort));
+            connectedPortsByNode[(juce::uint32) (juce::int64) arc.getProperty (tags::destNode)]
+                .insert ((juce::uint32) (juce::int64) arc.getProperty (tags::destPort));
+        }
+    }
+    constexpr int kMaxUnconnectedParamPorts = 64;
 
     Array<var> blocks;
     for (int i = 0; i < G.getNumNodes(); ++i)
@@ -7179,11 +7231,26 @@ String ElementWebViewHost::buildActiveGraphJson() const
         // (The placeholder already derives 0 ports, but gating here makes the
         // "nothing fake" guarantee explicit and independent of the placeholder.)
         Array<var> portsVar;
+        int paramPortsTotal = 0;
         if (! nodeIsLoading)
         {
+            const auto connIt = connectedPortsByNode.find (n.getNodeId());
+            const auto* connected = connIt != connectedPortsByNode.end() ? &connIt->second : nullptr;
+            int paramPortsEmitted = 0;
             for (int pi = 0; pi < n.getNumPorts(); ++pi)
             {
                 const Port p = n.getPort (pi);
+                // Cap UNCONNECTED Control (param/CV) ports — see the emission-cap
+                // note above the node loop. Audio/MIDI ports always emit.
+                if (p.getType() == PortType::Control)
+                {
+                    ++paramPortsTotal;
+                    const bool isConnected = connected != nullptr
+                                             && connected->count ((juce::uint32) p.index()) > 0;
+                    if (! isConnected && paramPortsEmitted >= kMaxUnconnectedParamPorts)
+                        continue;
+                    ++paramPortsEmitted;
+                }
                 DynamicObject::Ptr po (new DynamicObject());
                 const bool isIn = p.isInput();
                 po->setProperty ("id", String (isIn ? "in-" : "out-") + String ((int) p.index()));
@@ -7195,6 +7262,10 @@ String ElementWebViewHost::buildActiveGraphJson() const
             }
         }
         b->setProperty ("ports", var (portsVar));
+        // Honest param total — the webview's "▸ N params" lane shows THIS, not
+        // the (possibly capped) emitted Control-port count.
+        if (paramPortsTotal > 0)
+            b->setProperty ("paramPortsTotal", paramPortsTotal);
 
         blocks.add (var (b.get()));
     }

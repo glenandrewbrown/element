@@ -344,6 +344,12 @@ function mapBlock(b: EngineBlock): BlockData {
     error: false,
     isMacroTagged: false,
     containerNodeCount: b.containerNodeCount,
+    // Honest param total (host caps unconnected Control-port emission at 64).
+    paramPortsTotal:
+      typeof (b as any).paramPortsTotal === "number" &&
+      (b as any).paramPortsTotal > 0
+        ? ((b as any).paramPortsTotal as number)
+        : undefined,
     // T17 mini-graph: normalised child topology emitted by the host for
     // container blocks. Validate shape defensively — a malformed entry must
     // degrade to "no preview" (density/neutral bar), never throw mid-apply
