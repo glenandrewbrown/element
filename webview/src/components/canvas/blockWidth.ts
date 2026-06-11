@@ -17,11 +17,15 @@
 /** Floor — the historical `w-52` (208px) so short-named blocks are unchanged. */
 export const BLOCK_MIN_WIDTH = 208;
 /** Ceiling — a sane max so a pathological name can't make a giant block. */
-export const BLOCK_MAX_WIDTH = 240;
-/** Approx advance (px) of one 11px bold character in the header font. */
+export const BLOCK_MAX_WIDTH = 280;
+/** Approx advance (px) of one 11px bold character in the header font.
+ *  Measured live (Inter bold 11px, Storybook chromium 2026-06-11): avg advance
+ *  ≈ 5.7px — 6.4 keeps headroom for wide-glyph-heavy names. */
 const CHAR_ADVANCE_PX = 6.4;
-/** Fixed header chrome around the title: icon+gap + LED/pills/B-M-chevron + pad. */
-const HEADER_CHROME_PX = 110;
+/** Fixed header chrome around the title: icon+gap + LED/CPU pill/format pill +
+ *  B-M buttons + chevron + padding. Measured live at 151px ("22%" + "AU" pills);
+ *  160 adds slack for wider pills ("100%", "VST3"). */
+const HEADER_CHROME_PX = 160;
 
 /**
  * The chassis width (px) for a Block with the given title, clamped to

@@ -11,7 +11,8 @@ import {
   type SandboxEventKind,
 } from "../../stores/useSandboxCrashStore";
 import { useFacePinStore } from "../../stores/useFacePinStore";
-import type { BlockData } from "../../data/types";
+import type { BlockData, Port } from "../../data/types";
+import { usePortExpandStore } from "../../stores/usePortExpandStore";
 
 // ── Helpers ──
 
@@ -845,5 +846,147 @@ export const InlineCompareCVConnected: Story = {
     const body = within(canvasElement.ownerDocument.body);
     await expect(body.getByTestId("inline-face")).toBeInTheDocument();
     await expect(body.getByText("<")).toBeInTheDocument();
+  },
+};
+
+// ── Port cap (Glen 2026-06-10) — huge fixed-I/O plugins ──────────────────────
+//
+// Some plugins expose a giant fixed I/O (Kontakt = 64 audio outs). Block.tsx
+// caps the visible essential rows per side at PORT_VISIBLE_CAP (8) and offers a
+// "+N more" expander (portCap.ts). Rule 1: a CONNECTED port beyond the cap stays
+// visible (its cable must keep an anchor). Rule 2: over-cap rows collapse to
+// height 0 but keep their Handle MOUNTED so React Flow edges never orphan.
+
+/** Kontakt-shaped block: 1 MIDI in + 64 audio outs (st pair + Out 34 wired). */
+function kontaktBlock(over: Partial<BlockData> = {}): BlockData {
+  const outs: Port[] = Array.from({ length: 64 }, (_, i) => ({
+    id: `out-${i + 1}`,
+    type: "audio",
+    direction: "output",
+    label: `Out ${i + 1}`,
+    // Stereo pair wired (within the cap) + Out 34 wired (BEYOND the cap —
+    // exercises rule 1: connected ports always stay visible).
+    connected: i === 0 || i === 1 || i === 33,
+  }));
+  return makeBlock({
+    name: "Kontakt 8",
+    category: "instrument",
+    format: "AU",
+    collapseTier: "macro",
+    ports: [
+      { id: "midi-in", type: "midi", direction: "input", label: "MIDI", connected: true },
+      ...outs,
+    ],
+    ...over,
+  });
+}
+
+// The expand flag persists per-node in localStorage (usePortExpandStore) —
+// reset it around each story so runs stay isolated and deterministic.
+function PortCapFlow({ data, height = 420 }: { data: BlockData; height?: number }) {
+  useEffect(() => {
+    usePortExpandStore.setState({ expandedByNode: {} });
+    return () => {
+      usePortExpandStore.setState({ expandedByNode: {} });
+    };
+  }, []);
+  return <MiniFlow nodes={[flowNode(data)]} nodeTypes={nodeTypes} height={height} />;
+}
+
+export const PortCapCollapsed: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Port cap — COLLAPSED (default). A Kontakt-shaped block (64 audio outs) shows " +
+          "only the first 8 output rows plus any WIRED port beyond the cap (Out 34 here — " +
+          "rule 1), with a centred \"+55 more\" expander. The 55 over-cap rows collapse to " +
+          "height 0 but keep their Handles mounted (rule 2) so cables never orphan. The " +
+          "play function asserts the shown/hidden split via each row's inline height.",
+      },
+    },
+  },
+  render: () => <PortCapFlow data={kontaktBlock()} />,
+  play: async ({ canvasElement }) => {
+    const body = within(canvasElement.ownerDocument.body);
+    // Within-cap rows lay out normally…
+    const out8Row = (await body.findByText("Out 8")).closest("div.absolute") as HTMLElement;
+    await expect(out8Row.style.height).not.toBe("0px");
+    // …a WIRED port beyond the cap stays visible (rule 1)…
+    const out34Row = body.getByText("Out 34").closest("div.absolute") as HTMLElement;
+    await expect(out34Row.style.height).not.toBe("0px");
+    // …an unwired over-cap row is mounted but collapsed to height 0 (rule 2).
+    const out20Row = body.getByText("Out 20").closest("div.absolute") as HTMLElement;
+    await expect(out20Row.style.height).toBe("0px");
+    // The expander reads the real hidden count: 64 − 8 shown − 1 wired = 55.
+    const toggle = await body.findByTestId("port-more-toggle");
+    await expect(toggle).toHaveTextContent("+55 more");
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  },
+};
+
+export const PortCapExpands: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Port cap — EXPAND/COLLAPSE round-trip. Clicking \"+55 more\" reveals every " +
+          "output row (the toggle flips to \"fewer ports\", aria-expanded true); clicking " +
+          "again collapses back to the capped lane. The choice persists per node in " +
+          "usePortExpandStore (localStorage) so it survives snapshot re-renders + reload.",
+      },
+    },
+  },
+  render: () => <PortCapFlow data={kontaktBlock()} height={760} />,
+  play: async ({ canvasElement }) => {
+    const body = within(canvasElement.ownerDocument.body);
+    const toggle = await body.findByTestId("port-more-toggle");
+    await userEvent.click(toggle);
+    // Every over-cap row now lays out (height no longer pinned to 0)…
+    const out20Row = (await body.findByText("Out 20")).closest("div.absolute") as HTMLElement;
+    await expect(out20Row.style.height).not.toBe("0px");
+    // …and the toggle offers to collapse back.
+    await expect(toggle).toHaveTextContent(/fewer ports/i);
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    // Round-trip: collapse again — Out 20 returns to the hidden (height-0) set.
+    // (Re-query: the row remounts when it moves between the shown/hidden lists.)
+    await userEvent.click(toggle);
+    await expect(toggle).toHaveTextContent("+55 more");
+    const out20Collapsed = (await body.findByText("Out 20")).closest(
+      "div.absolute",
+    ) as HTMLElement;
+    await expect(out20Collapsed.style.height).toBe("0px");
+  },
+};
+
+export const PortCapLongTitle: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Adaptive chassis width (Glen 2026-06-10, bug 2). A long plugin title widens the " +
+          "block toward BLOCK_MAX_WIDTH (280px) instead of truncating to \"Kontak…\" at the " +
+          "old fixed 208px; short names keep the historical floor. Beyond the max the title " +
+          "ellipsizes — the ceiling guards block proportions.",
+      },
+    },
+  },
+  render: () => (
+    <PortCapFlow
+      data={makeBlock({
+        name: "Kontakt 8 Factory Library",
+        category: "instrument",
+        format: "AU",
+        collapseTier: "macro",
+      })}
+      height={320}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    const body = within(canvasElement.ownerDocument.body);
+    const title = await body.findByText("Kontakt 8 Factory Library");
+    const chassis = title.closest(".nodeblock-v3") as HTMLElement;
+    // 25 chars × 6.4px + 160px chrome = 320 → clamped to the 280px ceiling.
+    await expect(chassis.style.width).toBe("280px");
   },
 };
