@@ -52,6 +52,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <map>
+#include <optional>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -159,13 +160,19 @@ static int parsePortHandleIndex (const String& handle, const String& expectedPre
     return handle.substring (expectedPrefix.length()).getIntValue();
 }
 
-static const PluginDescription* findKnownPluginByIdentifier (const KnownPluginList& list, const String& identifier)
+/** Returns BY VALUE — KnownPluginList::getTypes() materialises a TEMPORARY
+    Array<PluginDescription> per call, so returning a pointer/reference into it
+    dangles the moment this function returns. That dangling pointer shipped as a
+    live heap-use-after-free: every caller copied refcounted Strings out of the
+    freed array (ASan-proven 2026-06-12, report element-asan.50057 — UAF READ in
+    AddPluginMessage's ctor, freed-by getTypes() inside this very function). */
+static std::optional<PluginDescription> findKnownPluginByIdentifier (const KnownPluginList& list, const String& identifier)
 {
     // Primary: exact createIdentifierString() match — the form the browser emits
     // (buildPluginGroupRows → s.identifier = desc.createIdentifierString()).
     for (const auto& desc : list.getTypes())
         if (desc.createIdentifierString() == identifier)
-            return &desc;
+            return desc;
 
     // Fallback: a legacy / partial identifier that is actually a plain
     // fileOrIdentifier (e.g. a saved or scripted id that predates the catalog's
@@ -174,9 +181,9 @@ static const PluginDescription* findKnownPluginByIdentifier (const KnownPluginLi
     // (the Kontakt "Node" naming bug).
     for (const auto& desc : list.getTypes())
         if (desc.fileOrIdentifier == identifier)
-            return &desc;
+            return desc;
 
-    return nullptr;
+    return {};
 }
 
 // Normalise a JUCE plugin format name to the React `PluginFormat` union the
@@ -2070,7 +2077,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             if (args.size() >= 1)
             {
                 const String identifier (args[0].toString());
-                if (const auto* desc = findKnownPluginByIdentifier (context.plugins().getKnownPlugins(), identifier))
+                if (const auto desc = findKnownPluginByIdentifier (context.plugins().getKnownPlugins(), identifier))
                 {
                     auto sess = context.session();
                     const Node graph (sess != nullptr ? currentBoard() : Node());
@@ -2139,7 +2146,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                 const Graph G (graph);
                 if (G.isGraph())
                 {
-                    if (const auto* desc = findKnownPluginByIdentifier (context.plugins().getKnownPlugins(), identifier))
+                    if (const auto desc = findKnownPluginByIdentifier (context.plugins().getKnownPlugins(), identifier))
                     {
                         const Node origin = findNodeByUuidInGraph (G, originUuid);
                         // The dragged origin port id is "out-N" / "in-N" where N is
@@ -2231,7 +2238,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
             if (args.size() >= 1)
             {
                 const String identifier (args[0].toString());
-                if (const auto* desc = findKnownPluginByIdentifier (context.plugins().getKnownPlugins(), identifier))
+                if (const auto desc = findKnownPluginByIdentifier (context.plugins().getKnownPlugins(), identifier))
                 {
                     context.plugins().getUsageTracker().toggleFavorite (*desc);
                     ok = true;
@@ -2490,7 +2497,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                         if (n.isValid())
                         {
                             const String identifier (args[1].toString());
-                            if (const auto* desc = findKnownPluginByIdentifier (context.plugins().getKnownPlugins(), identifier))
+                            if (const auto desc = findKnownPluginByIdentifier (context.plugins().getKnownPlugins(), identifier))
                             {
                                 // ReplaceNodeMessage derives the graph via n.getParentGraph().
                                 context.services().postMessage (new ReplaceNodeMessage (n, *desc, true));
@@ -2642,7 +2649,7 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
 
                         if (a.isValid() && b.isValid() && ap >= 0 && bp >= 0)
                         {
-                            if (const auto* desc = findKnownPluginByIdentifier (context.plugins().getKnownPlugins(), rerouteId))
+                            if (const auto desc = findKnownPluginByIdentifier (context.plugins().getKnownPlugins(), rerouteId))
                             {
                                 // Record the deferred absolute-position apply
                                 // BEFORE posting (the add is async): the timer
@@ -6652,14 +6659,28 @@ void ElementWebViewHost::valueTreeRedirected (ValueTree& tree)
 void ElementWebViewHost::pushGraphSnapshot()
 {
     graphPushPendingMs = 0;
-    // C4/P3: topology / board / webview-reload boundary — drop the meter-lane
+    // C4/P3: topology / board / webview-reload boundary — reset the meter-lane
     // idle-gate caches so the next tick resends full level snapshots (the new
     // cable/node ids need fresh rows even if values look numerically equal).
-    meterlanegate::snapshots.erase (this);
+    //
+    // RESET IN PLACE — NEVER erase() here. timerCallback() holds a live
+    // `auto& snaps = snapshots[this]` across its graph-heal call into THIS
+    // function (the 1.5 s re-push, 2026-06-11); erase() frees that map node and
+    // every later `snaps` use is a heap-use-after-free. That UAF shipped as the
+    // 2026-06-11/12 corruption family: libdispatch SIGILL, objc "bad weak
+    // table" SIGABRT, and a message-thread livelock spinning in
+    // meterlanegate::changed on a freed vector (ASan-proven, report
+    // element-asan.46545). Assigning a fresh LaneSnapshots clears the caches
+    // with identical semantics while keeping the node — and the caller's
+    // reference — alive. Erase only in the destructor, where no tick is live.
+    if (auto it = meterlanegate::snapshots.find (this); it != meterlanegate::snapshots.end())
+        it->second = meterlanegate::LaneSnapshots {};
     // §2.3: same boundary — a webview reload resets its engine-snapshot /
     // instances stores to defaults, so the NEXT poll must get a real reply, not
-    // the "~" no-change sentinel. Drop the per-handler reply cache to force it.
-    sentinelcache::replies.erase (this);
+    // the "~" no-change sentinel. Reset the per-handler reply cache to force it
+    // (in place, same dangling-reference hazard class as the lane caches above).
+    if (auto it = sentinelcache::replies.find (this); it != sentinelcache::replies.end())
+        it->second = {};
     const String json (buildActiveGraphJson());
     // Task 1.2a (perf-diag #2) — output-dedupe. If the freshly-built JSON is
     // byte-identical to the last push, skip the evalInBrowser entirely (the IPC
