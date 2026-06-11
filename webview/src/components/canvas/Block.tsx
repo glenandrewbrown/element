@@ -19,6 +19,12 @@ import {
   selectFacePins,
   FACE_PIN_CAP,
 } from "../../stores/useFacePinStore";
+import {
+  usePortExpandStore,
+  selectPortExpanded,
+} from "../../stores/usePortExpandStore";
+import { capPorts, hasCappedPorts, hiddenPortCount } from "./portCap";
+import { blockWidthForTitle } from "./blockWidth";
 import { nativeSetNodeParameter } from "../../bridge/nativeGraph";
 import { NeuKnob } from "../neu/NeuKnob";
 import { BlockEmbed } from "./BlockEmbed";
@@ -884,11 +890,17 @@ function PortRow({
   side,
   top,
   busName,
+  collapsed = false,
 }: {
   port: Port;
   side: "input" | "output";
   top: number;
   busName?: string;
+  /** Port-cap rule 2 (Glen 2026-06-10): a port beyond the visible cap keeps its
+   *  Handle MOUNTED (so any cable to it still anchors/draws) but its row is
+   *  visually collapsed — height 0, opacity 0, pointer-events none — so it adds
+   *  no visible bulk. Connected ports are never collapsed (rule 1, upstream). */
+  collapsed?: boolean;
 }) {
   const color = portColor[port.type] ?? portColor.audio;
   const isInput = side === "input";
@@ -906,6 +918,17 @@ function PortRow({
         ...(isInput
           ? { left: -7 }
           : { right: -7, flexDirection: "row-reverse" }),
+        // Collapsed (over-cap) row: zero height + invisible + click-through so it
+        // takes no space and can't be interacted with, yet the Handle inside
+        // stays mounted for React Flow edge anchoring.
+        ...(collapsed
+          ? {
+              height: 0,
+              opacity: 0,
+              pointerEvents: "none" as const,
+              overflow: "hidden",
+            }
+          : {}),
       }}
     >
       {/* `.port-well` recessed socket; the RF Handle is styled AS the well so
@@ -967,6 +990,95 @@ function PortRow({
         {labelText}
       </span>
     </div>
+  );
+}
+
+// Port-cap expander (Glen 2026-06-10). When a Block's essential I/O exceeds the
+// per-side cap (e.g. Kontakt's 64 audio outs), the over-cap rows collapse and a
+// single centred "+N more ▾" row reveals them (▴ fewer collapses back). Shares
+// the recessed-pill neumorphic language of ParamLaneToggle but stays neutral
+// grey (no signal hue — it governs mixed audio/MIDI rows, not Value/CV params).
+// The whole 30px band is the hit target (Fitts's law). stopPropagation keeps a
+// click from selecting/dragging the node underneath.
+function PortMoreToggle({
+  hidden,
+  expanded,
+  top,
+  onToggle,
+}: {
+  hidden: number;
+  expanded: boolean;
+  top: number;
+  onToggle: (e: React.MouseEvent) => void;
+}) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <button
+      type="button"
+      data-testid="port-more-toggle"
+      onClick={onToggle}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      title={expanded ? "Show fewer ports" : `Show ${hidden} more ports`}
+      aria-expanded={expanded}
+      aria-label={
+        expanded
+          ? "Show fewer ports"
+          : `Show ${hidden} more port${hidden === 1 ? "" : "s"}`
+      }
+      className="absolute flex items-center justify-center select-none"
+      style={{
+        top,
+        left: "50%",
+        transform: "translate(-50%, -50%)",
+        height: 30,
+        minWidth: 44,
+        background: "transparent",
+        border: "none",
+        padding: 0,
+        cursor: "pointer",
+        pointerEvents: "auto",
+      }}
+    >
+      <span
+        className="flex items-center gap-1 px-1.5 leading-none"
+        style={{
+          height: 13,
+          borderRadius: 3,
+          background: hovered
+            ? "linear-gradient(180deg, rgba(46,46,52,0.95) 0%, rgba(30,30,36,0.98) 100%)"
+            : "linear-gradient(180deg, rgba(26,26,30,0.9) 0%, rgba(20,20,24,0.95) 100%)",
+          boxShadow:
+            "inset 1px 1px 2px rgba(0,0,0,0.7), inset -0.5px -0.5px 1px rgba(255,255,255,0.04)",
+          transition: "background 90ms ease",
+        }}
+      >
+        <span
+          className="font-mono tabular-nums tracking-tight whitespace-nowrap"
+          style={{
+            fontSize: 8.5,
+            color: hovered ? "rgba(229,229,234,0.95)" : "rgba(146,146,153,0.92)",
+            letterSpacing: "0.02em",
+          }}
+        >
+          {expanded ? "fewer ports" : `+${hidden} more`}
+        </span>
+        <span
+          aria-hidden
+          className="font-mono"
+          style={{
+            fontSize: 8,
+            lineHeight: 1,
+            color: hovered ? "rgba(229,229,234,0.95)" : "rgba(146,146,153,0.92)",
+            transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
+            transition: "transform 120ms ease",
+            display: "inline-block",
+          }}
+        >
+          ▾
+        </span>
+      </span>
+    </button>
   );
 }
 
@@ -1343,6 +1455,16 @@ function BlockComponent({ data, selected }: NodeProps) {
   // the hook order stays stable (this is below all early returns' hooks).
   const [paramsExpanded, setParamsExpanded] = useState(false);
 
+  // ── Port cap (Glen 2026-06-10) — show first N essential rows per side ──
+  // A huge fixed-I/O plugin (Kontakt = 64 audio outs; Audio Out = 16) renders an
+  // unusable giant column. Cap the visible essential rows per side; over-cap rows
+  // collapse behind a "+N more" expander. Connected ports always stay visible
+  // (rule 1 — a hidden connected port would orphan its cable). The expanded flag
+  // is per-node and PERSISTED (usePortExpandStore) so it survives the 60Hz
+  // snapshot re-renders + reload, unlike the transient paramsExpanded above.
+  const portsExpanded = usePortExpandStore(selectPortExpanded(d.id));
+  const setPortsExpanded = usePortExpandStore((s) => s.setExpanded);
+
   // ── Phase 5B — derive port→busName map for this block ──
   // We look at every cable that touches this block; if useBusStore has the
   // cable flagged wireless, the corresponding port gets a bus badge. A port
@@ -1537,6 +1659,12 @@ function BlockComponent({ data, selected }: NodeProps) {
         // a function of the well's -7 position, NOT of the parent clip, so it is
         // unchanged.
         contain: "layout style",
+        // Adaptive width (Glen 2026-06-10): grow the chassis to fit a long title
+        // (e.g. "Kontakt 7", "RX 10 De-reverb") up to a sane max instead of
+        // truncating to "Kontak…" at the old fixed w-52. Short names keep the
+        // historical 208px floor. Real measured width still flows back to layout
+        // via React Flow node.measured. Loading shows the placeholder name too.
+        width: blockWidthForTitle(d.name),
         borderRadius: chassisRadius[d.category],
         // Drives the subtle category-colour hover glow (.neu-sculpt-hover);
         // raw HSL triplet so the CSS can wrap it in hsl()/alpha (P1, feedback 6).
@@ -1551,7 +1679,7 @@ function BlockComponent({ data, selected }: NodeProps) {
         // chassis edge and MUST stay un-clipped so their hit-area (centre) is
         // clickable — Wave-3 Task 2.2 (multi-cable fan-out). Decorative corner
         // rounding is preserved by the children themselves (see style note above).
-        "nodeblock-v3 w-52 overflow-visible flex flex-col relative t-precision",
+        "nodeblock-v3 overflow-visible flex flex-col relative t-precision",
         selected
           ? `neu-glow-${d.category}`
           : hovered
@@ -1694,22 +1822,35 @@ function BlockComponent({ data, selected }: NodeProps) {
       {isLoading ? (
         <div
           data-testid="block-loading"
-          className="block-body flex items-center gap-1.5 px-2 relative z-[5]"
-          style={{ height: 22 }}
+          className="block-body flex flex-col items-center justify-center gap-1.5 px-2 relative z-[5]"
+          style={{ height: 48 }}
         >
-          {/* Neutral neumorphic shimmer dot + label — no glass, no signal hue
-              (no signal exists yet). A quiet pulse keyed on a CSS class (not a
-              per-tick inline animation) so the painter guard stays green. */}
+          {/* PROMINENT loading face (Glen 2026-06-10): a centred pulse + an
+              explicit "Loading <name>…" line on the BLOCK BODY (not a tiny
+              badge), so it never reads as broken. Neutral neumorphic — no signal
+              hue (no signal exists yet), no glass. The pulse rides a CSS class
+              (not a per-tick inline animation) so the painter guard stays green.
+              On ready the block re-renders into its real face (this branch is
+              gated on isLoading). */}
+          <div className="flex items-center gap-1.5">
+            <span
+              aria-hidden
+              className="block-loading-dot shrink-0"
+              style={{ width: 8, height: 8, borderRadius: "50%" }}
+            />
+            <span
+              className="text-[10px] font-mono tracking-wide leading-none truncate"
+              style={{ color: "hsl(var(--foreground))", maxWidth: 150 }}
+              title={`Loading ${d.name}`}
+            >
+              Loading {d.name}…
+            </span>
+          </div>
           <span
-            aria-hidden
-            className="block-loading-dot shrink-0"
-            style={{ width: 6, height: 6, borderRadius: "50%" }}
-          />
-          <span
-            className="text-[10px] font-mono lowercase tracking-wide leading-none"
+            className="text-[8px] font-mono uppercase tracking-[0.18em] leading-none"
             style={{ color: "hsl(var(--muted-foreground))" }}
           >
-            loading…
+            instantiating plugin
           </span>
         </div>
       ) : null}
@@ -1899,22 +2040,43 @@ function BlockComponent({ data, selected }: NodeProps) {
             I/O at these lean tiers).
           • expanded: the full lean lane incl. the "▸ N params" toggle. */}
       {!isLoading && (() => {
-        const essentialRows = Math.max(
-          essentialInputs.length,
-          essentialOutputs.length,
+        // Port CAP (Glen 2026-06-10): cap visible essential rows per side so a
+        // 64-output plugin doesn't dump a giant column. Connected ports stay
+        // visible (rule 1); over-cap rows collapse but keep their Handle mounted
+        // (rule 2). When capped, a centred "+N more" row reveals/hides the rest.
+        const inCap = capPorts(essentialInputs, portsExpanded);
+        const outCap = capPorts(essentialOutputs, portsExpanded);
+        // Is this Block over-cap at all (independent of the expand state)? Drives
+        // whether the expander row exists — when expanded we still need a "fewer
+        // ports" affordance to collapse back, so gate on the COLLAPSED-state cap.
+        const overCap = hasCappedPorts(essentialInputs, essentialOutputs, false);
+        // Hidden count in the CURRENT state (0 when expanded — the toggle then
+        // reads "fewer ports" rather than "+N more").
+        const moreCount = hiddenPortCount(
+          essentialInputs,
+          essentialOutputs,
+          portsExpanded,
         );
+        // Visible essential rows (what occupies vertical space) = the capped
+        // shown count per side; the hidden rows are height-0 and add nothing.
+        const essentialRows = Math.max(inCap.shown.length, outCap.shown.length);
+        // The expander row exists whenever the Block is over-cap (to collapse or
+        // reveal); it takes one row below the visible essential I/O.
+        const moreRow = overCap ? 1 : 0;
+        const essentialBlockRows = essentialRows + moreRow;
+        const moreTop = essentialRows * PORT_LANE_H + PORT_LANE_H / 2 + 2;
         const paramRows = Math.max(paramInputs.length, paramOutputs.length);
-        // The toggle, when present, occupies the row directly below the
-        // essential I/O. Param rows (when expanded) stack below the toggle.
-        const toggleTop = essentialRows * PORT_LANE_H + PORT_LANE_H / 2 + 2;
-        const paramBaseRow = essentialRows + (hasParamPorts ? 1 : 0);
+        // The param toggle, when present, occupies the row directly below the
+        // essential I/O (+ expander). Param rows (when expanded) stack below it.
+        const toggleTop = essentialBlockRows * PORT_LANE_H + PORT_LANE_H / 2 + 2;
+        const paramBaseRow = essentialBlockRows + (hasParamPorts ? 1 : 0);
         // The param-port wall + "▸ N params" toggle appear ONLY at the expanded
         // tier. title + macro keep ONLY essential I/O so the Block stays
         // cablable (collapsed-socket rule) without dumping the param wall —
         // that lean lane is the wasted-space fix. Expanded: the usual lean lane.
         const showParamLane = hasParamPorts && isExpanded;
         const shownRows =
-          essentialRows +
+          essentialBlockRows +
           (showParamLane ? 1 : 0) +
           (showParamLane && paramsExpanded ? paramRows : 0);
         return (
@@ -1922,8 +2084,11 @@ function BlockComponent({ data, selected }: NodeProps) {
             className="relative shrink-0 z-20"
             style={{ height: Math.max(shownRows, 1) * PORT_LANE_H + 6 }}
           >
-            {/* ESSENTIAL — audio + MIDI I/O, exactly where they always sat. */}
-            {essentialInputs.map((port, i) => (
+            {/* ESSENTIAL — audio + MIDI I/O. Shown rows lay out normally; over-
+                cap rows render collapsed (height 0) but keep their Handle mounted
+                so any cable to them still anchors (rule 2). Their visible
+                position uses the shown index so they tuck under a visible row. */}
+            {inCap.shown.map((port, i) => (
               <PortRow
                 key={port.id}
                 port={port}
@@ -1932,7 +2097,17 @@ function BlockComponent({ data, selected }: NodeProps) {
                 busName={portBusMap.get(port.id)}
               />
             ))}
-            {essentialOutputs.map((port, i) => (
+            {inCap.hidden.map((port) => (
+              <PortRow
+                key={port.id}
+                port={port}
+                side="input"
+                top={PORT_LANE_H / 2 + 2}
+                busName={portBusMap.get(port.id)}
+                collapsed
+              />
+            ))}
+            {outCap.shown.map((port, i) => (
               <PortRow
                 key={port.id}
                 port={port}
@@ -1941,6 +2116,31 @@ function BlockComponent({ data, selected }: NodeProps) {
                 busName={portBusMap.get(port.id)}
               />
             ))}
+            {outCap.hidden.map((port) => (
+              <PortRow
+                key={port.id}
+                port={port}
+                side="output"
+                top={PORT_LANE_H / 2 + 2}
+                busName={portBusMap.get(port.id)}
+                collapsed
+              />
+            ))}
+
+            {/* Port-cap expander — reveals/hides the over-cap essential rows.
+                Present whenever the Block is over-cap (so the expanded state can
+                collapse back); shows "+N more" collapsed, "fewer ports" open. */}
+            {overCap && (
+              <PortMoreToggle
+                hidden={moreCount}
+                expanded={portsExpanded}
+                top={moreTop}
+                onToggle={(e) => {
+                  e.stopPropagation();
+                  setPortsExpanded(d.id, !portsExpanded);
+                }}
+              />
+            )}
 
             {/* PARAM/MOD — collapsed by default behind the toggle. Suppressed
                 entirely when the BLOCK is collapsed (compact tier shows only

@@ -42,6 +42,7 @@ import {
   DEFAULT_COLLISION_MARGIN,
   type CollisionRect,
 } from "../../lib/resolveCollisions";
+import { visiblePortRowCount, hasCappedPorts } from "./portCap";
 
 /**
  * Proximity radius in flow-space px — the maximum EDGE-to-edge gap between
@@ -90,25 +91,21 @@ const PORT_LANE_PAD = 6;
 const HEADER_H = 28;
 /** Activity well (title/macro single bar) above the port lane ≈ 12px. */
 const ACTIVITY_H = 12;
+/** Loading face body — prominent spinner + "Loading…" placeholder (Block.tsx). */
+const LOADING_BODY_H = 48;
 /** Load bar — thin status rail at the chassis foot (Block.tsx:1953 `height: 2`). */
 const LOADBAR_H = 2;
 
 /**
- * Essential (audio/MIDI) port count on one side. Mirrors Block.tsx's
+ * Essential (audio/MIDI) ports on one side. Mirrors Block.tsx's
  * `isParamPort = p.type === "value"` — essential ports are the non-`value`
  * (audio + MIDI) I/O that always render at every tier; the orange `value`
  * (param/CV) ports collapse behind the "▸ N params" toggle and only add height
  * at the EXPANDED tier (the default fresh-load tier is `macro`, where they are
  * hidden). Excludes hidden params, matching the render's `hiddenParams` filter.
  */
-function essentialPortCount(ports: Port[], direction: "input" | "output"): number {
-  let n = 0;
-  for (const p of ports) {
-    if (p.direction !== direction) continue;
-    if (p.type === "value") continue; // param/CV port — hidden at macro tier
-    n++;
-  }
-  return n;
+function essentialPorts(ports: Port[], direction: "input" | "output"): Port[] {
+  return ports.filter((p) => p.direction === direction && p.type !== "value");
 }
 
 /**
@@ -119,19 +116,35 @@ function essentialPortCount(ports: Port[], direction: "input" | "output"): numbe
  * absent ⇒ macro, where the param-port wall is collapsed). A loading node shows
  * no port lane, so it falls back to the minimum 1-row height (honest: it has no
  * connectable ports yet). NOTHING-fake: uses the real port array off the block.
+ *
+ * Port CAP (Glen 2026-06-10): essential rows are CAPPED at PORT_VISIBLE_CAP per
+ * side (portCap.ts) in the default (collapsed) state a fresh Block loads at, so
+ * a 64-output plugin no longer estimates a ~1000px column. The capped sides plus
+ * one "+N more" expander row are what the renderer shows, so layout/collision
+ * agree with the real height. Connected ports beyond the cap still count (they
+ * stay visible — rule 1).
  */
 export function estimateBlockHeight(block: BlockData): number {
   const ports = block.ports ?? [];
-  const essentialRows =
-    block.loadState === "loading"
-      ? 0
-      : Math.max(
-          essentialPortCount(ports, "input"),
-          essentialPortCount(ports, "output"),
-        );
-  // Block.tsx:1882 — lane height = max(shownRows, 1) * PORT_LANE_H + 6. At the
-  // macro tier shownRows === essentialRows (param lane + toggle hidden).
-  const laneH = Math.max(essentialRows, 1) * PORT_LANE_H + PORT_LANE_PAD;
+  if (block.loadState === "loading") {
+    // Loading face — no port lane; a prominent placeholder body (mirrors
+    // Block.tsx's loading face height) rather than a 1-row sliver.
+    const laneH = 1 * PORT_LANE_H + PORT_LANE_PAD;
+    return HEADER_H + LOADING_BODY_H + laneH + LOADBAR_H;
+  }
+  const essIn = essentialPorts(ports, "input");
+  const essOut = essentialPorts(ports, "output");
+  // Default lean state: the user-expand flag is per-node client state the pure
+  // estimator can't read, so assume the DEFAULT (collapsed/capped) — the state a
+  // freshly-loaded Block renders at, which is what layout/collision care about.
+  const visibleRows = Math.max(
+    visiblePortRowCount(essIn, false),
+    visiblePortRowCount(essOut, false),
+  );
+  const expanderRow = hasCappedPorts(essIn, essOut, false) ? 1 : 0;
+  const shownRows = visibleRows + expanderRow;
+  // Block.tsx:1882 — lane height = max(shownRows, 1) * PORT_LANE_H + 6.
+  const laneH = Math.max(shownRows, 1) * PORT_LANE_H + PORT_LANE_PAD;
   return HEADER_H + ACTIVITY_H + laneH + LOADBAR_H;
 }
 

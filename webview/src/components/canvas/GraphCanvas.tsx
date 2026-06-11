@@ -631,9 +631,24 @@ export function GraphCanvas() {
       if (node.type === "comment") return;
       const data = node.data as BlockData;
       // A still-loading Block (Phase-4 async load) has no real processor yet —
-      // nothing to dive into and no editor to open. Ignore double-click until
-      // loadState flips to ready (defense-in-depth over the host's safe no-op).
-      if (data.loadState === "loading") return;
+      // nothing to dive into and no editor to open. Surface a brief "Still
+      // loading…" nudge (Glen 2026-06-10) instead of silent nothing, then ignore
+      // the gesture until loadState flips to ready (defense-in-depth over the
+      // host's safe no-op). Reuses the StatusBar canvas-hint channel + the shared
+      // auto-clear timer so it never stacks with other hints.
+      if (data.loadState === "loading") {
+        // Read the action off the store at call time (the codebase's stale-
+        // closure-avoidance pattern) so the empty dep array stays honest.
+        const setHint = useAppStore.getState().setCanvasHint;
+        if (hintTimerRef.current !== undefined)
+          clearTimeout(hintTimerRef.current);
+        setHint(`Still loading ${data.name}…`);
+        hintTimerRef.current = setTimeout(() => {
+          setHint(null);
+          hintTimerRef.current = undefined;
+        }, 2000);
+        return;
+      }
       // Real LOCAL Container → dive INTO its nested Board via the engine. The
       // host re-pushes a snapshot with the nested nodes/edges + a deeper
       // breadcrumb, so the canvas + breadcrumb update from snapshot truth — no

@@ -107,13 +107,27 @@ describe("estimateBlockHeight", () => {
     expect(estimateBlockHeight(block("x", 0, 0, []))).toBe(CHROME + lane(1));
   });
 
-  it("scales with the MAX of input/output essential lanes", () => {
+  it("scales with the MAX of input/output essential lanes, CAPPED per side", () => {
     const ports: Port[] = [];
     for (let i = 0; i < 16; i++) ports.push(port(`in${i}`, "audio", "input"));
     for (let i = 0; i < 2; i++) ports.push(port(`out${i}`, "audio", "output"));
-    // 16 input lanes dominate → 16 rows. (16*16+6 = 262 lane → +42 chrome = 304.)
-    expect(estimateBlockHeight(block("io", 0, 0, ports))).toBe(CHROME + lane(16));
-    expect(estimateBlockHeight(block("io", 0, 0, ports))).toBe(304);
+    // 16 inputs > cap (8) → 8 visible rows + 1 "+N more" expander row = 9 rows.
+    expect(estimateBlockHeight(block("io", 0, 0, ports))).toBe(CHROME + lane(9));
+  });
+
+  it("under-cap blocks are NOT given an expander row", () => {
+    const ports: Port[] = [];
+    for (let i = 0; i < 8; i++) ports.push(port(`in${i}`, "audio", "input"));
+    // Exactly at the cap → no expander, 8 rows.
+    expect(estimateBlockHeight(block("io", 0, 0, ports))).toBe(CHROME + lane(8));
+  });
+
+  it("CONNECTED over-cap ports still count toward the visible height", () => {
+    const ports: Port[] = [];
+    for (let i = 0; i < 12; i++)
+      ports.push(port(`in${i}`, "audio", "input", i === 11)); // last is wired
+    // 8 within cap + 1 connected beyond it = 9 visible + 1 expander = 10 rows.
+    expect(estimateBlockHeight(block("io", 0, 0, ports))).toBe(CHROME + lane(10));
   });
 
   it("MIDI ports count as essential (non-value) lanes", () => {
@@ -135,13 +149,14 @@ describe("estimateBlockHeight", () => {
     expect(estimateBlockHeight(block("synth", 0, 0, ports))).toBe(CHROME + lane(1));
   });
 
-  it("a loading node shows no port lane (minimum height, nothing-fake)", () => {
+  it("a loading node shows no port lane (prominent loading-face height)", () => {
     const b = block("loading", 0, 0, [
       port("ai", "audio", "input"),
       port("ao", "audio", "output"),
     ]);
     b.loadState = "loading";
-    expect(estimateBlockHeight(b)).toBe(CHROME + lane(1));
+    // Loading face = HEADER 28 + LOADING_BODY 48 + lane(1) + LOADBAR 2.
+    expect(estimateBlockHeight(b)).toBe(28 + 48 + lane(1) + 2);
   });
 });
 

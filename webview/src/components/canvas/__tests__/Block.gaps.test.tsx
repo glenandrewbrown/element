@@ -279,7 +279,7 @@ describe("<Block /> (gaps)", () => {
   // ── Loading node (loading-node contract §4/§7) ────────────────────────────────
   // loadState==='loading' → pinned to title: name + "loading…", NO ports/meters.
 
-  it("LOADING node shows name + 'loading…' and NO ports or meters", () => {
+  it("LOADING node shows a prominent 'Loading <name>…' face and NO ports or meters", () => {
     renderBlock({
       name: "BigSynth",
       category: "instrument",
@@ -291,10 +291,14 @@ describe("<Block /> (gaps)", () => {
         { id: "out-l", type: "audio", direction: "output", label: "Out", connected: false },
       ],
     });
-    // Name (header) + honest loading indicator.
+    // Name (header) + a PROMINENT loading face on the body: "Loading <name>…"
+    // plus the "instantiating plugin" subline (Glen 2026-06-10 — was a tiny
+    // "loading…" badge that read as broken).
     expect(screen.getByText("BigSynth")).toBeInTheDocument();
-    expect(screen.getByTestId("block-loading")).toBeInTheDocument();
-    expect(screen.getByText("loading…")).toBeInTheDocument();
+    const loadingFace = screen.getByTestId("block-loading");
+    expect(loadingFace).toBeInTheDocument();
+    expect(loadingFace).toHaveTextContent(/Loading\s+BigSynth…/);
+    expect(loadingFace).toHaveTextContent(/instantiating plugin/i);
     // NO meters / activity bars while loading (nothing-fake — no signal yet).
     expect(screen.queryByTestId("signal-activity-bar")).toBeNull();
     expect(screen.queryByTestId("rms-meter")).toBeNull();
