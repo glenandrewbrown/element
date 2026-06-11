@@ -684,9 +684,16 @@ inline void SandboxedProcessorNode::sandboxRestarted (SandboxHost*)
 
 inline void SandboxedProcessorNode::sandboxLatencyChanged (SandboxHost*, int newLatency)
 {
-    // Add 1 buffer of IPC round-trip latency to the plugin's reported latency
-    setLatencySamples (newLatency + currentBlockSize);
-    // Note: setLatencySamples should trigger graph rebuild via Processor mechanism
+    // IPC-thread listener; setLatencySamples can trigger a graph rebuild —
+    // message-thread territory. Marshal (same idiom as sandboxPluginInfo).
+    ProcessorPtr self (this);
+    const int blockSize = currentBlockSize;
+    juce::MessageManager::callAsync ([self, newLatency, blockSize]
+    {
+        if (auto* node = static_cast<SandboxedProcessorNode*> (self.get()))
+            // Add 1 buffer of IPC round-trip latency to the plugin's latency.
+            node->setLatencySamples (newLatency + blockSize);
+    });
 }
 
 inline void SandboxedProcessorNode::sandboxPluginInfo (SandboxHost*)
@@ -694,25 +701,43 @@ inline void SandboxedProcessorNode::sandboxPluginInfo (SandboxHost*)
     if (! sandbox)
         return;
 
-    // Rebuild parameter proxies. Each proxy holds a reference to the host so
-    // setValue() pushes through the existing SetParameter IPC. The v2 wire
-    // format carries real defaults/ranges/flags/labels per parameter
-    // (SandboxParamMeta) — a v1 payload without a meta table degrades to the
-    // synthesized 0.5-midpoint defaults via SandboxHost::getParameterMeta().
-    params.clear();
-    const int n = sandbox->getParameterCount();
-    for (int i = 0; i < n; ++i)
+    // This listener fires on the IPC (pipe) thread. The params/ports rebuild
+    // mutates state the MESSAGE thread reads concurrently (the swap's
+    // resetPorts + the 60Hz snapshot build walk portList()) — rebuilding here
+    // produced a TORN port list in the first post-swap snapshot (live
+    // 2026-06-11: Kontakt's ready JSON choked the webview apply and the
+    // poisoned push-dedupe froze the UI on the loading face for 35 minutes).
+    // Marshal the rebuild to the message thread; the ProcessorPtr keeps this
+    // node alive across the hop (a post-teardown run is a safe no-op rebuild).
+    // The pool-adoption ctor calls this directly ON the message thread —
+    // callAsync simply defers a tick there, which is equally correct.
+    ProcessorPtr self (this);
+    juce::MessageManager::callAsync ([self]
     {
-        auto name = sandbox->getParameterName (i);
-        if (name.isEmpty())
-            name = "Param " + juce::String (i);
-        params.add (new SandboxParameterWithMeta (*sandbox, i, name,
-                                                  sandbox->getParameterMeta (i),
-                                                  sandbox->getParameterLabel (i)));
-    }
+        auto* node = static_cast<SandboxedProcessorNode*> (self.get());
+        if (node == nullptr || node->sandbox == nullptr)
+            return;
 
-    // Rebuild ports with real I/O config + per-parameter Control ports.
-    setupPorts();
+        // Rebuild parameter proxies. Each proxy holds a reference to the host
+        // so setValue() pushes through the existing SetParameter IPC. The v2
+        // wire format carries real defaults/ranges/flags/labels per parameter
+        // (SandboxParamMeta) — a v1 payload without a meta table degrades to
+        // the synthesized 0.5-midpoint defaults via getParameterMeta().
+        node->params.clear();
+        const int n = node->sandbox->getParameterCount();
+        for (int i = 0; i < n; ++i)
+        {
+            auto name = node->sandbox->getParameterName (i);
+            if (name.isEmpty())
+                name = "Param " + juce::String (i);
+            node->params.add (new SandboxParameterWithMeta (*node->sandbox, i, name,
+                                                            node->sandbox->getParameterMeta (i),
+                                                            node->sandbox->getParameterLabel (i)));
+        }
+
+        // Rebuild ports with real I/O config + per-parameter Control ports.
+        node->setupPorts();
+    });
 }
 
 inline void SandboxedProcessorNode::sandboxParameterChanged (SandboxHost*,

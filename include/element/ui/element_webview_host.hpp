@@ -269,6 +269,11 @@ private:
         React MOUNT hydration uses elementGetGraphState (a separate, un-deduped
         path) so a webview reload re-hydrates regardless of this cache. */
     juce::String lastPushedGraphJson;
+    /** Last graph push time — drives the ~1.5s self-heal TTL: an identical
+        snapshot is re-pushed at most once per TTL so a dropped eval or a
+        throwing JS apply can never freeze the webview on stale state forever
+        (live 2026-06-11: Kontakt's ready snapshot stuck on the loading face). */
+    juce::uint32 lastGraphPushMs { 0 };
 
     /** T3 (⌥+drop add-and-connect): a deferred absolute-position apply for the
         node a just-posted AddPluginMessage is about to create. The add is async

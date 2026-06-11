@@ -6652,9 +6652,20 @@ void ElementWebViewHost::pushGraphSnapshot()
     // the no-op IPC class that window-chrome churn / repeated identical pushes
     // produce. Mirrors sentinelcache::dedupe. The dirty-flag refresh below still
     // runs so the ~2 Hz dirty poll stays correct even on a deduped tick.
-    if (json != lastPushedGraphJson)
+    // Self-heal TTL (2026-06-11, the stuck-"instantiating" Kontakt badge): the
+    // dedupe records the push as delivered the moment it is SENT — if that one
+    // eval is dropped or the JS apply throws (live: a torn port list in the
+    // first post-swap snapshot), every subsequent identical build is skipped
+    // and the webview freezes on stale state INDEFINITELY. Re-pushing the
+    // unchanged JSON at most once per ~1.5 s bounds any such desync to one TTL
+    // instead of forever, while keeping the 60Hz no-op-eval savings.
+    const juce::uint32 nowMs = juce::Time::getMillisecondCounter();
+    constexpr juce::uint32 kGraphRepushTtlMs = 1500;
+    if (json != lastPushedGraphJson
+        || nowMs - lastGraphPushMs >= kGraphRepushTtlMs)
     {
         lastPushedGraphJson = json;
+        lastGraphPushMs = nowMs;
         evalInBrowser ("window.__elementNative && window.__elementNative.onGraphState(" + json + ");");
     }
     if (auto* ss = context.services().find<SessionService>())

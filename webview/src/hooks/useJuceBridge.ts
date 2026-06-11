@@ -680,14 +680,18 @@ export function useJuceBridge() {
       ...prev,
       onGraphState: (payload: unknown) => {
         prev.onGraphState?.(payload);
-        if (payload != null && typeof payload === "object")
-          applySnapshot(payload);
-        else if (typeof payload === "string") {
-          try {
+        // The whole apply is guarded: an exception here is SILENT native-side
+        // (evaluateJavascript swallows it) and, combined with the host's push
+        // dedupe, froze the canvas on stale state for as long as the JSON
+        // stayed byte-identical (live 2026-06-11, Kontakt loading badge).
+        // Log loudly; the host's ~1.5s re-push TTL retries the apply.
+        try {
+          if (payload != null && typeof payload === "object")
+            applySnapshot(payload);
+          else if (typeof payload === "string")
             applySnapshot(JSON.parse(payload));
-          } catch (err) {
-            logBridgeError("onGraphState.parse", err);
-          }
+        } catch (err) {
+          logBridgeError("onGraphState.apply", err);
         }
       },
       onMetering: (peak: number) => {
