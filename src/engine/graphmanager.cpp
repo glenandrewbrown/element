@@ -800,7 +800,16 @@ private:
         // already implies the host's single post-launch prepare ran (handleWorker
         // Message::PluginLoaded gates pluginLoaded/Active on preparedSinceLaunch),
         // so this only guards against a transient first-observation glitch.
-        if (node->isPluginLoaded() && state == SandboxHost::State::Active)
+        // Gate the swap on the node's message-thread ports rebuild having
+        // COMPLETED (arePortsSynced) — PluginInfo's params/ports work is
+        // deferred to the message thread, and a swap that wins that race runs
+        // setupNode/resetPorts against an EMPTY port list (live 2026-06-11:
+        // "0 IN · 0 OUT" + tags::loading stuck forever). PluginInfo follows
+        // PluginLoaded on the wire within ms, so this typically costs one
+        // extra 33ms poll; a worker that never sends PluginInfo degrades to
+        // the in-process fallback at the deadline like any other stall.
+        if (node->isPluginLoaded() && state == SandboxHost::State::Active
+            && node->arePortsSynced())
         {
             if (++stableLoadedPolls < 2)
                 return; // wait one more poll to confirm a stable Loaded state
@@ -1281,6 +1290,9 @@ void GraphManager::swapInLoadedProcessor (const String& nodeUuid, uint32 placeho
     // emits real ports + loadState:"ready" and the Block re-renders to its normal
     // tier with connectable handles. UUID never changed → Block never detaches.
     nodeData.removeProperty (tags::loading, nullptr);
+    juce::Logger::writeToLog ("[sandbox-load] swap model updated \"" + desc.name
+                              + "\" — loading flag cleared, ports="
+                              + juce::String (node.getNumPorts()));
     changed();
 }
 

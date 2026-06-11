@@ -146,6 +146,15 @@ public:
         ceiling) — lets the GraphManager watcher extend its fallback deadline. */
     bool isWorkerLoadInProgress() const noexcept;
 
+    /** True once the message-thread params/ports rebuild for the CURRENT load
+        has completed (set at the end of the marshalled sandboxPluginInfo
+        work). The GraphManager watcher gates the swap on this so the swap's
+        setupNode/resetPorts NEVER run against an empty or half-built port
+        list — the root of the 2026-06-11 stuck-loading/0-ports incidents
+        (pre-marshal: torn IPC-thread rebuild; post-marshal: swap winning the
+        race against the deferred rebuild). */
+    bool arePortsSynced() const noexcept { return portsSynced.load(); }
+
     //==========================================================================
     /** Ask the worker to open the plugin editor in its own OS window (REAPER
         model — crash-isolated, the editor lives in the worker process). The
@@ -219,6 +228,10 @@ private:
     // Deferred-launch progress (atomic int mirroring LaunchPhase). Set on the
     // message thread by begin/finishLaunch; read by the watcher (message thread).
     std::atomic<int> launchPhase { static_cast<int> (LaunchPhase::NotStarted) };
+
+    // True once the marshalled PluginInfo params/ports rebuild completed for
+    // the current load (see arePortsSynced). Written on the message thread.
+    std::atomic<bool> portsSynced { false };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SandboxedProcessorNode)
 };
@@ -737,6 +750,10 @@ inline void SandboxedProcessorNode::sandboxPluginInfo (SandboxHost*)
 
         // Rebuild ports with real I/O config + per-parameter Control ports.
         node->setupPorts();
+
+        // Publish "ports are real" — the GraphManager watcher holds the swap
+        // until this flips, so setupNode/resetPorts always see the final list.
+        node->portsSynced.store (true);
     });
 }
 
