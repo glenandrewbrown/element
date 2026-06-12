@@ -40,6 +40,7 @@ import {
   nativeGraphConnect,
   nativeGraphAddPluginConnected,
   nativeGraphDisconnect,
+  nativeGraphDuplicateNodes,
   nativeGraphSpliceCable,
   nativeGraphInsertReroute,
   nativeGraphMoveNodes,
@@ -48,6 +49,11 @@ import {
   nativeMoleculeInsert,
   nativeGraphAddPlugin,
 } from "../../bridge/nativeGraph";
+import {
+  computeOptionDragPlan,
+  computeDragDelta,
+  type OriginalPositionMap,
+} from "./optionDragDuplicate";
 import {
   nativeOpenSandboxedEditor,
   nativePluginEditorClose,
@@ -476,6 +482,32 @@ export function GraphCanvas() {
   // node the user is moving) and the near-edge auto-fit pan (never pan under a
   // live drag). Set on drag-start, cleared on drag-stop.
   const draggingRef = useRef(false);
+
+  // ── Option-drag duplicate state ──
+  // When a drag begins with altKey held we record the original positions of all
+  // dragged nodes and the ids being dragged. On drag-stop we:
+  //   1. Restore originals (RF + engine) so the source blocks stay put.
+  //   2. Call nativeGraphDuplicateNodes → new nodes arrive in the next snapshot.
+  //   3. Register a one-shot pending-move so those new ids land at (orig + delta).
+  // Null when no option-drag is in flight.
+  const optionDragRef = useRef<{
+    draggedIds: string[];
+    originals: OriginalPositionMap;
+  } | null>(null);
+
+  // One-shot pending option-drag move: set after the duplicate call so the
+  // snapshot reconciliation effect can detect new node ids and reposition them.
+  // Cleared (and timer cancelled) immediately after the move is applied or times out.
+  // `knownIds` is the set of block ids that existed BEFORE the duplicate call;
+  // any id in the store not in this set after the duplicate is a new duplicate.
+  const pendingOptionMoveRef = useRef<{
+    draggedIds: string[];
+    originals: OriginalPositionMap;
+    delta: { dx: number; dy: number };
+    expectedCount: number;
+    knownIds: Set<string>;
+    timer: ReturnType<typeof setTimeout>;
+  } | null>(null);
 
   // ── Live "intersecting" glow set (Task 2.3, painter-safe) ──
   // The ids of nodes the dragged Block currently overlaps (React Flow
@@ -1026,14 +1058,37 @@ export function GraphCanvas() {
   // Drag-start: mark a drag in flight + cancel any pending auto-tidy pass. This
   // is constraint (d) — "a manual drag DURING the debounce window cancels that
   // relayout pass" — so a deliberately-moved Block is never yanked back (Q3).
-  const onNodeDragStart = useCallback((_event: MouseEvent, node: Node) => {
-    if (node.type === "comment") return;
-    draggingRef.current = true;
-    if (autoTidyTimerRef.current !== undefined) {
-      clearTimeout(autoTidyTimerRef.current);
-      autoTidyTimerRef.current = undefined;
-    }
-  }, []);
+  // Also: if altKey is held at drag start, snapshot original positions for all
+  // dragged (selected) block nodes — macOS Option-drag semantics.
+  const onNodeDragStart = useCallback(
+    (event: MouseEvent, node: Node) => {
+      if (node.type === "comment") return;
+      draggingRef.current = true;
+      if (autoTidyTimerRef.current !== undefined) {
+        clearTimeout(autoTidyTimerRef.current);
+        autoTidyTimerRef.current = undefined;
+      }
+      // Option-drag: capture originals at drag-start moment.
+      if ((event as MouseEvent).altKey) {
+        const rfNodes = reactFlow.getNodes();
+        const originals: OriginalPositionMap = {};
+        // The dragged node itself is always included; include co-selected blocks too.
+        for (const n of rfNodes) {
+          if (n.type !== "block") continue;
+          if (n.selected || n.id === node.id) {
+            originals[n.id] = { x: n.position.x, y: n.position.y };
+          }
+        }
+        optionDragRef.current = {
+          draggedIds: Object.keys(originals),
+          originals,
+        };
+      } else {
+        optionDragRef.current = null;
+      }
+    },
+    [reactFlow],
+  );
 
   // While a Block is dragged, (throttled) recompute the ghost suggestions from
   // the LIVE drag position. React Flow mutates `nodes` in place during the
@@ -1217,6 +1272,102 @@ export function GraphCanvas() {
         updateNodePositions([{ id: node.id, x: p.x, y: p.y }]);
         void nativeGraphMoveNodes([{ id: node.id, x: p.x, y: p.y }]);
         return;
+      }
+
+      // ── Option-drag duplicate (macOS alt-drag semantics) ──
+      // If a drag was started with altKey held, the user expects to COPY the
+      // dragged block(s) to the drop position while the originals stay put.
+      // Implementation:
+      //   1. Restore originals in RF + engine (move back to pre-drag positions).
+      //   2. Call nativeGraphDuplicateNodes for the dragged ids.
+      //   3. Register a one-shot pending-move: when the next snapshot adds
+      //      the expected number of new node ids, move them to orig+delta.
+      const optionDrag = optionDragRef.current;
+      optionDragRef.current = null;
+      if (optionDrag && node.type !== "comment") {
+        clearSuggestions();
+        applyIntersectingClass(new Set());
+
+        // Compute delta from the first dragged node (primary node's displacement).
+        const all2 =
+          draggedNodes && draggedNodes.length > 0 ? draggedNodes : [node];
+        const finalPos: { [id: string]: { x: number; y: number } } = {};
+        for (const n of all2) {
+          if (n.type === "block") finalPos[n.id] = n.position;
+        }
+        const delta = computeDragDelta(
+          optionDrag.originals,
+          optionDrag.draggedIds,
+          finalPos,
+        );
+
+        // 1. Restore originals in RF (optimistic) and engine (authoritative).
+        const restoreMoves = optionDrag.draggedIds
+          .map((id) => {
+            const orig = optionDrag.originals[id];
+            return orig ? { id, x: orig.x, y: orig.y } : null;
+          })
+          .filter((m): m is { id: string; x: number; y: number } => m !== null);
+
+        if (restoreMoves.length > 0) {
+          updateNodePositions(restoreMoves);
+          void nativeGraphMoveNodes(restoreMoves);
+        }
+
+        // 2. Snapshot known ids BEFORE the duplicate so the reconciliation
+        //    effect can detect the new ids when they arrive in the snapshot.
+        const knownIds = new Set(
+          useGraphStore.getState().nodes.map((n) => n.id),
+        );
+
+        // Cancel any previous pending option-move (stale from a fast double-drag).
+        if (pendingOptionMoveRef.current) {
+          clearTimeout(pendingOptionMoveRef.current.timer);
+          pendingOptionMoveRef.current = null;
+        }
+
+        // 3. Duplicate — new nodes arrive on the next snapshot push.
+        //    We set up a 3s safety-net timer: if the snapshot never arrives
+        //    (bridge no-op / slow engine), we try once with whatever new ids
+        //    exist at that point and then give up.
+        const capturedDelta = delta;
+        const capturedOriginals = optionDrag.originals;
+        const capturedDraggedIds = optionDrag.draggedIds;
+        const capturedExpected = optionDrag.draggedIds.length;
+
+        const timer = setTimeout(() => {
+          const cur = pendingOptionMoveRef.current;
+          if (!cur) return;
+          pendingOptionMoveRef.current = null;
+          const nowIds = useGraphStore
+            .getState()
+            .nodes.map((n) => n.id)
+            .filter((id) => !cur.knownIds.has(id));
+          if (nowIds.length === 0) return;
+          const moves = computeOptionDragPlan(
+            cur.originals,
+            cur.delta,
+            nowIds.slice(0, cur.expectedCount),
+            cur.draggedIds,
+          );
+          if (moves.length > 0) {
+            updateNodePositions(moves);
+            void nativeGraphMoveNodes(moves);
+          }
+        }, 3000);
+
+        void nativeGraphDuplicateNodes(capturedDraggedIds);
+
+        pendingOptionMoveRef.current = {
+          draggedIds: capturedDraggedIds,
+          originals: capturedOriginals,
+          delta: capturedDelta,
+          expectedCount: capturedExpected,
+          knownIds,
+          timer,
+        };
+
+        return; // Skip the normal move-persist path.
       }
 
       // Accept-on-drop — mirrors the JUCE BlockComponent::mouseUp contract:
@@ -1826,6 +1977,38 @@ export function GraphCanvas() {
     }, 120);
   }, [blocks.length, reactFlow, updateNodePositions]);
 
+  // ── One-shot pending option-drag move ──
+  // After nativeGraphDuplicateNodes fires, new nodes arrive in a subsequent
+  // snapshot (blocks array changes). `knownIds` was captured just before the
+  // duplicate call; any id in blocks not in that set is a new duplicate. We
+  // wait until we have >= expectedCount new ids (tolerates slow snapshots).
+  // A 3s safety-net timer in onNodeDragStop fires if the snapshot never comes.
+  useEffect(() => {
+    const pending = pendingOptionMoveRef.current;
+    if (!pending) return;
+
+    const newIds = blocks
+      .map((b) => b.id)
+      .filter((id) => !pending.knownIds.has(id));
+
+    if (newIds.length < pending.expectedCount) return; // not all arrived yet
+
+    // All expected duplicates present — cancel safety-net and move them.
+    clearTimeout(pending.timer);
+    pendingOptionMoveRef.current = null;
+
+    const moves = computeOptionDragPlan(
+      pending.originals,
+      pending.delta,
+      newIds.slice(0, pending.expectedCount),
+      pending.draggedIds,
+    );
+    if (moves.length > 0) {
+      updateNodePositions(moves);
+      void nativeGraphMoveNodes(moves);
+    }
+  }, [blocks, updateNodePositions]);
+
   // ── Swap-aware resolve: re-arm when a placeholder transitions loading→ready ──
   // Runs on every `blocks` change (same dep as the spawn pass). Diffs the live
   // block list against `loadingIdsRef` to detect loading→ready transitions. For
@@ -2026,6 +2209,10 @@ export function GraphCanvas() {
       }
       if (loadOverlapTimerRef.current !== undefined) {
         clearTimeout(loadOverlapTimerRef.current);
+      }
+      if (pendingOptionMoveRef.current !== null) {
+        clearTimeout(pendingOptionMoveRef.current.timer);
+        pendingOptionMoveRef.current = null;
       }
     },
     [],

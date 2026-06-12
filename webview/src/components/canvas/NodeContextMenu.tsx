@@ -188,9 +188,15 @@ export function NodeContextMenu({
   };
 
   const handleDuplicate = useCallback(() => {
-    void nativeGraphDuplicateNodes([nodeId]);
+    // Duplicate ALL selected blocks when the right-clicked node is part of the
+    // multi-selection; fall back to just the right-clicked node otherwise.
+    const ids =
+      selectedBlockIds.length >= 2 && selectedBlockIds.includes(nodeId)
+        ? selectedBlockIds
+        : [nodeId];
+    void nativeGraphDuplicateNodes(ids);
     onClose();
-  }, [nodeId, onClose]);
+  }, [nodeId, selectedBlockIds, onClose]);
 
   // T10 — group the multi-selection into a Container; refusals surface in the
   // status bar via the shared canvasHint channel (engine-driven refresh).
