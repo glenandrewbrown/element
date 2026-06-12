@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   computeOptionDragPlan,
   computeDragDelta,
+  computeGhostRects,
   type OriginalPositionMap,
 } from "../optionDragDuplicate";
 
@@ -104,5 +105,49 @@ describe("computeOptionDragPlan", () => {
     const moves = computeOptionDragPlan(originals, { dx: 5, dy: 5 }, ["dup-a"], ["a", "b"]);
     expect(moves).toHaveLength(1);
     expect(moves[0].id).toBe("dup-a");
+  });
+});
+
+describe("computeGhostRects", () => {
+  it("returns one rect per dragged id using measured size", () => {
+    const originals: OriginalPositionMap = { "a": { x: 100, y: 200 } };
+    const measured = { "a": { width: 220, height: 140 } };
+    const rects = computeGhostRects(originals, ["a"], measured);
+    expect(rects).toEqual([{ id: "a", x: 100, y: 200, width: 220, height: 140 }]);
+  });
+
+  it("falls back to default size (200×100) when node is not yet measured", () => {
+    const originals: OriginalPositionMap = { "a": { x: 50, y: 60 } };
+    const rects = computeGhostRects(originals, ["a"], {});
+    expect(rects).toEqual([{ id: "a", x: 50, y: 60, width: 200, height: 100 }]);
+  });
+
+  it("returns multiple rects for a multi-node option-drag", () => {
+    const originals: OriginalPositionMap = {
+      "a": { x: 0, y: 0 },
+      "b": { x: 300, y: 100 },
+    };
+    const measured = {
+      "a": { width: 200, height: 120 },
+      "b": { width: 180, height: 90 },
+    };
+    const rects = computeGhostRects(originals, ["a", "b"], measured);
+    expect(rects).toHaveLength(2);
+    expect(rects[0]).toEqual({ id: "a", x: 0, y: 0, width: 200, height: 120 });
+    expect(rects[1]).toEqual({ id: "b", x: 300, y: 100, width: 180, height: 90 });
+  });
+
+  it("skips dragged ids that have no entry in originals", () => {
+    const originals: OriginalPositionMap = { "a": { x: 10, y: 20 } };
+    const measured = { "a": { width: 200, height: 100 } };
+    // "b" is in draggedIds but not in originals → skipped
+    const rects = computeGhostRects(originals, ["a", "b"], measured);
+    expect(rects).toHaveLength(1);
+    expect(rects[0].id).toBe("a");
+  });
+
+  it("returns empty array for empty inputs", () => {
+    const rects = computeGhostRects({}, [], {});
+    expect(rects).toEqual([]);
   });
 });

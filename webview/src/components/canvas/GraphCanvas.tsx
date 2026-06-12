@@ -49,10 +49,13 @@ import {
   nativeMoleculeInsert,
   nativeGraphAddPlugin,
 } from "../../bridge/nativeGraph";
+import { OptionDragGhostLayer } from "./OptionDragGhostLayer";
 import {
   computeOptionDragPlan,
   computeDragDelta,
+  computeGhostRects,
   type OriginalPositionMap,
+  type GhostRect,
 } from "./optionDragDuplicate";
 import {
   nativeOpenSandboxedEditor,
@@ -494,6 +497,17 @@ export function GraphCanvas() {
     draggedIds: string[];
     originals: OriginalPositionMap;
   } | null>(null);
+
+  // ── Option-drag copy affordance ──
+  // Ref to the canvas wrapper div so we can toggle `.option-drag-active`
+  // directly on the DOM (same pattern as applyIntersectingClass — a class flip,
+  // never a React re-render per drag frame; painter guards stay green).
+  const canvasWrapperRef = useRef<HTMLDivElement>(null);
+
+  // Ghost rects rendered at the original positions during an option-drag so the
+  // user sees "the originals will stay here; a copy lands at the drop point".
+  // Stored as React state (one set/clear per drag start/stop, NOT per frame).
+  const [optionDragGhosts, setOptionDragGhosts] = useState<GhostRect[]>([]);
 
   // One-shot pending option-drag move: set after the duplicate call so the
   // snapshot reconciliation effect can detect new node ids and reposition them.
@@ -1058,8 +1072,58 @@ export function GraphCanvas() {
   // Drag-start: mark a drag in flight + cancel any pending auto-tidy pass. This
   // is constraint (d) — "a manual drag DURING the debounce window cancels that
   // relayout pass" — so a deliberately-moved Block is never yanked back (Q3).
-  // Also: if altKey is held at drag start, snapshot original positions for all
-  // dragged (selected) block nodes — macOS Option-drag semantics.
+  // macOS Option-drag semantics (Finder model — UI/UX audit MAJOR, 2026-06-12):
+  // the Option state can change MID-DRAG; the state at DROP decides copy vs
+  // move. Pre-drag positions must be captured at drag START regardless (they
+  // are gone once the drag moves the nodes), so every block drag snapshots a
+  // pending capture, and Alt keydown/keyup during the drag arms/disarms the
+  // copy semantic + affordance live.
+  const pendingOptionCaptureRef = useRef<{
+    draggedIds: string[];
+    originals: OriginalPositionMap;
+    measuredMap: { [id: string]: { width: number; height: number } };
+  } | null>(null);
+
+  const armOptionDrag = useCallback(() => {
+    const pending = pendingOptionCaptureRef.current;
+    if (!pending || optionDragRef.current) return;
+    optionDragRef.current = {
+      draggedIds: pending.draggedIds,
+      originals: pending.originals,
+    };
+    // ── Copy affordance: cursor + ghost originals ──
+    // Toggle .option-drag-active directly on the wrapper DOM — no React
+    // re-render, same painter-safe pattern as .node-intersecting class flips.
+    canvasWrapperRef.current?.classList.add("option-drag-active");
+    setOptionDragGhosts(
+      computeGhostRects(pending.originals, pending.draggedIds, pending.measuredMap),
+    );
+  }, []);
+
+  const disarmOptionDrag = useCallback(() => {
+    if (!optionDragRef.current) return;
+    optionDragRef.current = null;
+    canvasWrapperRef.current?.classList.remove("option-drag-active");
+    setOptionDragGhosts((prev) => (prev.length === 0 ? prev : []));
+  }, []);
+
+  // Window-level Alt tracking, active only while a block drag is in flight.
+  // Mounted once; reads refs so there is no per-keystroke React re-render.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Alt" && draggingRef.current) armOptionDrag();
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === "Alt" && draggingRef.current) disarmOptionDrag();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+    };
+  }, [armOptionDrag, disarmOptionDrag]);
+
   const onNodeDragStart = useCallback(
     (event: MouseEvent, node: Node) => {
       if (node.type === "comment") return;
@@ -1068,26 +1132,34 @@ export function GraphCanvas() {
         clearTimeout(autoTidyTimerRef.current);
         autoTidyTimerRef.current = undefined;
       }
-      // Option-drag: capture originals at drag-start moment.
-      if ((event as MouseEvent).altKey) {
-        const rfNodes = reactFlow.getNodes();
-        const originals: OriginalPositionMap = {};
-        // The dragged node itself is always included; include co-selected blocks too.
-        for (const n of rfNodes) {
-          if (n.type !== "block") continue;
-          if (n.selected || n.id === node.id) {
-            originals[n.id] = { x: n.position.x, y: n.position.y };
+      // Capture pre-drag positions for the dragged selection (always — Alt may
+      // arrive mid-drag). Loading placeholders are EXCLUDED: duplicating a
+      // node whose plugin is still instantiating has unspecified engine
+      // behaviour (UI/UX audit MINOR, 2026-06-12).
+      const rfNodes = reactFlow.getNodes();
+      const originals: OriginalPositionMap = {};
+      const measuredMap: { [id: string]: { width: number; height: number } } = {};
+      for (const n of rfNodes) {
+        if (n.type !== "block") continue;
+        if ((n.data as { loading?: boolean } | undefined)?.loading === true) continue;
+        if (n.selected || n.id === node.id) {
+          originals[n.id] = { x: n.position.x, y: n.position.y };
+          if (n.measured?.width != null && n.measured?.height != null) {
+            measuredMap[n.id] = { width: n.measured.width, height: n.measured.height };
           }
         }
-        optionDragRef.current = {
-          draggedIds: Object.keys(originals),
-          originals,
-        };
+      }
+      const draggedIds = Object.keys(originals);
+      pendingOptionCaptureRef.current =
+        draggedIds.length > 0 ? { draggedIds, originals, measuredMap } : null;
+
+      if ((event as MouseEvent).altKey) {
+        armOptionDrag();
       } else {
-        optionDragRef.current = null;
+        disarmOptionDrag();
       }
     },
-    [reactFlow],
+    [reactFlow, armOptionDrag, disarmOptionDrag],
   );
 
   // While a Block is dragged, (throttled) recompute the ghost suggestions from
@@ -1284,9 +1356,13 @@ export function GraphCanvas() {
       //      the expected number of new node ids, move them to orig+delta.
       const optionDrag = optionDragRef.current;
       optionDragRef.current = null;
+      pendingOptionCaptureRef.current = null; // drag over — capture is stale
       if (optionDrag && node.type !== "comment") {
         clearSuggestions();
         applyIntersectingClass(new Set());
+        // Clear the copy affordance (cursor class + ghost rects).
+        canvasWrapperRef.current?.classList.remove("option-drag-active");
+        setOptionDragGhosts([]);
 
         // Compute delta from the first dragged node (primary node's displacement).
         const all2 =
@@ -1343,7 +1419,7 @@ export function GraphCanvas() {
             .getState()
             .nodes.map((n) => n.id)
             .filter((id) => !cur.knownIds.has(id));
-          if (nowIds.length === 0) return;
+          if (nowIds.length === 0 || nowIds.length > cur.expectedCount) return; // ambiguous — see effect guard
           const moves = computeOptionDragPlan(
             cur.originals,
             cur.delta,
@@ -1997,6 +2073,12 @@ export function GraphCanvas() {
     clearTimeout(pending.timer);
     pendingOptionMoveRef.current = null;
 
+    // Ambiguity guard (UI/UX audit MINOR, 2026-06-12): MORE new ids than
+    // expected means an unrelated async node landed in the same window — a
+    // blind slice could yank that stranger to the drop position. Skip the
+    // reposition; the duplicates still exist at their engine-offset spots.
+    if (newIds.length > pending.expectedCount) return;
+
     const moves = computeOptionDragPlan(
       pending.originals,
       pending.delta,
@@ -2288,6 +2370,7 @@ export function GraphCanvas() {
 
   return (
     <div
+      ref={canvasWrapperRef}
       className="w-full h-full relative"
       onDragOver={onSnippetDragOver}
       onDrop={onSnippetDrop}
@@ -2303,7 +2386,7 @@ export function GraphCanvas() {
         onNodeDoubleClick={onNodeDoubleClick}
         onNodeDragStart={isEdit ? onNodeDragStart : undefined}
         onNodeDrag={isEdit ? onNodeDrag : undefined}
-        onNodeDragStop={onNodeDragStop}
+        onNodeDragStop={isEdit ? onNodeDragStop : undefined}
         onEdgeClick={onEdgeClick}
         onEdgeDoubleClick={isEdit ? onEdgeDoubleClick : undefined}
         onEdgeContextMenu={onEdgeContextMenu}
@@ -2580,6 +2663,17 @@ export function GraphCanvas() {
             className="min-h-11 min-w-[180px] bg-surface text-text-primary text-[12px] font-bold rounded-md px-2 py-1 outline-none ring-2 ring-accent-blue shadow-[0_0_0_4px_rgba(74,144,217,0.25)]"
           />
         </div>
+      )}
+
+      {/* Option-drag ghost originals — dashed neumorphic placeholders at the
+          pre-drag positions, rendered while an alt-drag copy is in flight.
+          The viewport transform lives INSIDE OptionDragGhostLayer (its own
+          useViewport call), so GraphCanvas itself never re-renders on pan/zoom
+          and the hook only runs while the layer is mounted — which also keeps
+          the canvas test suites' @xyflow/react mocks free of a useViewport
+          requirement (regression caught by vitest, 2026-06-12). */}
+      {optionDragGhosts.length > 0 && (
+        <OptionDragGhostLayer ghosts={optionDragGhosts} />
       )}
 
       {/* Nested-Board chrome — inset frame + depth ribbon + depth banner.

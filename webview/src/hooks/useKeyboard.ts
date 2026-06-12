@@ -321,15 +321,20 @@ export function useKeyboard({
             // ⌘D presses silently no-op. RF's getNodes() preserves `.selected`
             // across snapshot hydrations because it is driven by useNodesState,
             // not the store's single-id tracker.
-            const rfSelectedBlock = reactFlow
-              .getNodes()
-              .find((n) => n.selected && n.type === "block");
-            if (!rfSelectedBlock) return;
-            const targetId = rfSelectedBlock.id;
+            // ⌘D applies to the WHOLE multi-selection (Logic/Ableton model) —
+            // mirrors the context-menu Duplicate fix; previously only the
+            // first selected block was duplicated (UI/UX audit MAJOR-4,
+            // 2026-06-12).
             const { commentBoxes } = useGraphStore.getState();
-            if (commentBoxes.some((c) => c.id === targetId)) return;
-            void nativeGraphDuplicateNodes([targetId]).then((n) => {
-              if (n === 0) void nativeGraphDuplicateNode(targetId);
+            const targetIds = reactFlow
+              .getNodes()
+              .filter((n) => n.selected && n.type === "block")
+              .map((n) => n.id)
+              .filter((id) => !commentBoxes.some((c) => c.id === id));
+            if (targetIds.length === 0) return;
+            void nativeGraphDuplicateNodes(targetIds).then((n) => {
+              if (n === 0 && targetIds.length === 1)
+                void nativeGraphDuplicateNode(targetIds[0]);
             });
             return;
           }

@@ -179,7 +179,10 @@ export function NodeContextMenu({
   // ~176px scroll well) when open; budget for it so the menu isn't clamped
   // above the viewport top with the list cut off.
   const estimatedHeight =
-    (multiSelect ? 730 : 530) + (configuring ? 260 : 0) + (presetOpen ? 200 : 0);
+    (multiSelect ? 730 : 530) +
+    (configuring ? 260 : 0) +
+    (presetOpen ? 200 : 0) +
+    (replacing ? 160 : 0);
   // The estimate is only a positioning HINT — the hard guarantee against
   // off-screen items is maxHeight + the scrollable body below. (Shipped bug:
   // the estimate understated the real menu, the bottom clamp silently failed,
@@ -255,7 +258,7 @@ export function NodeContextMenu({
     <div
       ref={ref}
       style={menuStyle}
-      className="w-56 bg-panel border border-white/10 rounded-lg shadow-[-4px_-4px_8px_rgba(255,255,255,0.04),8px_8px_24px_rgba(0,0,0,0.5)] overflow-hidden"
+      className="w-56 bg-panel border border-white/10 rounded-lg shadow-[-4px_-4px_8px_rgba(255,255,255,0.04),8px_8px_24px_rgba(0,0,0,0.5)] overflow-clip"
       role="menu"
       aria-label={`Block menu for ${node.name}`}
     >

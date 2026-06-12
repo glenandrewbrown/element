@@ -591,6 +591,41 @@ body {
   filter: drop-shadow(0 0 7px rgba(229, 80, 80, 0.55));
 }
 
+/* Option-drag copy affordance (macOS alt-drag). Applied as a class on the
+   canvas wrapper by GraphCanvas via a direct DOM classToggle — NO React
+   re-render per frame, same painter-safe pattern as .node-intersecting.
+   The `copy` cursor is the standard browser/OS affordance for "this gesture
+   will COPY, not MOVE". Applied to the pane + dragged nodes so the cursor
+   change is visible both on empty canvas and while hovering a block. */
+.option-drag-active .react-flow__pane,
+.option-drag-active .react-flow__node {
+  cursor: copy !important;
+}
+
+@keyframes optionDragGhostIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Ghost-original placeholder (option-drag). Absolutely-positioned dashed
+   outlines rendered in flow-space at each dragged block's original position.
+   They signal "the originals will remain here; a copy is going to the drop
+   point". Neumorphic pressed-surface style: dark fill from the Canvas token,
+   dashed border using the standard highlight rgba, matching the locked
+   one-dark-material design law. No glassmorphism, no backdrop-blur. */
+.option-drag-ghost {
+  position: absolute;
+  pointer-events: none;
+  border: 1.5px dashed rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  background: rgba(30, 30, 34, 0.55); /* Canvas token #1E1E22 at 55% */
+  box-shadow:
+    inset 1px 1px 3px rgba(0, 0, 0, 0.6),
+    inset -0.5px -0.5px 1px rgba(255, 255, 255, 0.03);
+  /* Fade in quickly so it reads on alt-press without jank */
+  animation: optionDragGhostIn 80ms ease-out forwards;
+}
+
 /* ============================================================
    WAVE-2 A — SIGNAL ACTIVITY BAR (SignalActivityBar in Block.tsx)
    Painter-law compliant: ALL per-segment styling lives here.

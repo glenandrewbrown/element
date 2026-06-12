@@ -34,13 +34,16 @@ export function computeOptionDragPlan(
   draggedIds: string[],
 ): Array<{ id: string; x: number; y: number }> {
   const moves: Array<{ id: string; x: number; y: number }> = [];
-  for (let i = 0; i < newIds.length; i++) {
-    const srcId = draggedIds[i];
-    if (!srcId) break;
-    const orig = originals[srcId];
+  // Walk source ids and new ids with INDEPENDENT cursors: each new id pairs
+  // with the next source id that has a recorded original. A shared index
+  // mis-aligned the mapping when an original was missing (duplicate N took
+  // original N+1's position — UI/UX audit MINOR, 2026-06-12).
+  let newIdx = 0;
+  for (let i = 0; i < draggedIds.length && newIdx < newIds.length; i++) {
+    const orig = originals[draggedIds[i]];
     if (!orig) continue;
     moves.push({
-      id: newIds[i],
+      id: newIds[newIdx++],
       x: Math.round(orig.x + delta.dx),
       y: Math.round(orig.y + delta.dy),
     });
@@ -65,4 +68,39 @@ export function computeDragDelta(
     }
   }
   return { dx: 0, dy: 0 };
+}
+
+/** Flow-space ghost rect for one dragged block's original position. */
+export interface GhostRect {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * Build the set of ghost rects to render at the original positions during an
+ * option-drag. Each rect mirrors the dragged block's size at its pre-drag
+ * position so the user can see "the originals will remain here".
+ *
+ * @param originals   Map of id → pre-drag {x,y} captured at drag start.
+ * @param draggedIds  Ordered list of ids being dragged.
+ * @param measured    Per-id measured {width, height} from React Flow (use the
+ *                    estimator fallback when the node has not yet been measured).
+ * @returns           Array of {id, x, y, width, height} in flow coordinates.
+ */
+export function computeGhostRects(
+  originals: OriginalPositionMap,
+  draggedIds: string[],
+  measured: { [id: string]: { width: number; height: number } },
+): GhostRect[] {
+  const rects: GhostRect[] = [];
+  for (const id of draggedIds) {
+    const orig = originals[id];
+    if (!orig) continue;
+    const size = measured[id] ?? { width: 200, height: 100 };
+    rects.push({ id, x: orig.x, y: orig.y, width: size.width, height: size.height });
+  }
+  return rects;
 }
