@@ -414,6 +414,19 @@ private:
         return start != 0 ? juce::Time::getMillisecondCounter() - start : 0;
     }
 
+    // Duration of the worker's most recent plugin instantiation (LoadInProgress
+    // → PluginLoaded). Drives the pool's speculative pre-instantiation gate: a
+    // plugin that took seconds to construct is worth keeping a parked spare of.
+    std::atomic<uint32_t> lastInstantiationMs { 0 };
+
+public:
+    /** Milliseconds the worker spent instantiating the current plugin (0 when
+        unknown — e.g. an adopted parked instance whose load predates this
+        host... it carries the value from its own original load). */
+    uint32_t getLastInstantiationMs() const noexcept { return lastInstantiationMs.load(); }
+
+private:
+
     juce::WaitableEvent shutdownAcked;
     static constexpr int shutdownAckTimeoutMs { 2000 };
 
@@ -1326,6 +1339,7 @@ inline void SandboxHost::handleWorkerMessage (const SandboxMessageHeader& header
                     const uint32_t instStart = loadInProgressSinceMs.load();
                     const uint32_t instMs = instStart != 0
                         ? juce::Time::getMillisecondCounter() - instStart : 0;
+                    lastInstantiationMs.store (instMs);
                     juce::Logger::writeToLog ("[sandbox-load 0x" + juce::String::toHexString ((juce::pointer_sized_int) this)
                                               + "] plugin loaded +" + juce::String (msSinceLaunchStart())
                                               + "ms (instantiation " + juce::String (instMs) + "ms)");

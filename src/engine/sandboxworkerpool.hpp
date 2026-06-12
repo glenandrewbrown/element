@@ -187,6 +187,44 @@ public:
         }
     }
 
+    /** Speculatively pre-instantiate a parked SPARE of `desc` in a background
+        worker, so the NEXT add of the same plugin adopts it instantly. Called
+        after a plugin finishes loading (live add, session load, or a parked
+        adoption — adopting empties the shelf, and this refills it). Gated:
+        parking enabled, the load was EXPENSIVE (instantiationMs ≥ threshold —
+        Kontakt-class instruments qualify, 100 ms utility plugins never), no
+        parked spare of this plugin already shelved, no preload already in
+        flight. Message thread only. */
+    void maybePreinstantiate (const juce::PluginDescription& desc, juce::uint32 instantiationMs)
+    {
+        jassert (juce::MessageManager::getInstance()->isThisTheMessageThread());
+
+        const int maxParked = parkedMaxOverride >= 0
+            ? parkedMaxOverride
+            : Settings().getMaxParkedSandboxInstances();
+        if (maxParked <= 0)
+            return;
+
+        const juce::uint32 minMs = preinstantiateMinMsOverride >= 0
+            ? (juce::uint32) preinstantiateMinMsOverride
+            : kPreinstantiateMinMs;
+        if (instantiationMs < minMs)
+            return;
+
+        for (const auto& p : parked)
+            if (sameIdentity (p.desc, desc))
+                return; // a spare is already shelved
+
+        expireStalePreloads();
+        for (const auto& e : preloads)
+            if (sameIdentity (e->desc, desc))
+                return; // already pre-instantiating this plugin
+        if (! preloads.empty())
+            return; // one speculative spawn at a time — bounds RAM + CPU
+
+        startPreload (desc);
+    }
+
     /** Shut down every shelved worker (session end / app exit). */
     void clear()
     {
@@ -198,15 +236,26 @@ public:
             if (p.host != nullptr)
                 p.host->shutdown();
         parked.clear();
+        for (auto& e : preloads)
+        {
+            if (e->host != nullptr)
+            {
+                e->host->removeListener (e.get());
+                e->host->shutdown();
+            }
+        }
+        preloads.clear();
     }
 
     int numBlank() const noexcept { return (int) blanks.size(); }
     int numParked() const noexcept { return (int) parked.size(); }
+    int numPreloading() const noexcept { return (int) preloads.size(); }
 
     // TEST SEAMS: override the Settings-driven sizes (-1 = use Settings).
     // Unit tests must not read or mutate the user's real preferences file.
     int warmTargetOverride { -1 };
     int parkedMaxOverride { -1 };
+    int preinstantiateMinMsOverride { -1 }; // -1 = kPreinstantiateMinMs
 
 private:
     struct ParkedInstance
@@ -215,6 +264,145 @@ private:
         juce::PluginDescription desc;
         juce::uint32 parkedAtMs { 0 };
     };
+
+    /** Only loads slower than this earn a speculative spare. Kontakt-class
+        instruments measure 7-15 s; utility plugins are ~100 ms. */
+    static constexpr juce::uint32 kPreinstantiateMinMs = 2000;
+    /** A preload whose worker never reports loaded is abandoned after this. */
+    static constexpr juce::uint32 kPreloadStaleMs = 180'000;
+
+    /** One in-flight speculative pre-instantiation. The adapter listens to the
+        spare host's load outcome; callbacks arrive on the host's IPC thread, so
+        they only bounce a WeakReference'd completion to the message thread —
+        the pool's shelves stay message-thread-only. */
+    struct Preload : public SandboxHost::Listener
+    {
+        Preload (SandboxWorkerPool& p, const juce::PluginDescription& d)
+            : pool (p), desc (d), startedMs (juce::Time::getMillisecondCounter()) {}
+
+        void sandboxPluginLoaded (SandboxHost*) override { finish (true); }
+        void sandboxPluginLoadFailed (SandboxHost*, const juce::String&) override { finish (false); }
+        void sandboxCrashed (SandboxHost*) override { finish (false); }
+
+        void finish (bool ok)
+        {
+            // IPC THREAD. completePreload validates `self` is still a live
+            // entry BEFORE any dereference (the entry may have been expired /
+            // cleared between this callback and the async landing).
+            juce::WeakReference<SandboxWorkerPool> weakPool (&pool);
+            auto* self = this;
+            juce::MessageManager::callAsync ([weakPool, self, ok] {
+                if (auto* p = weakPool.get())
+                    p->completePreload (self, ok);
+            });
+        }
+
+        SandboxWorkerPool& pool;
+        juce::PluginDescription desc;
+        std::unique_ptr<SandboxHost> host;
+        juce::uint32 startedMs { 0 };
+    };
+
+    bool isPreloadActive (const Preload* e) const noexcept
+    {
+        for (const auto& p : preloads)
+            if (p.get() == e)
+                return true;
+        return false;
+    }
+
+    void erasePreload (const Preload* e)
+    {
+        for (int i = (int) preloads.size(); --i >= 0;)
+            if (preloads[(size_t) i].get() == e)
+                preloads.erase (preloads.begin() + i);
+    }
+
+    void expireStalePreloads()
+    {
+        const auto now = juce::Time::getMillisecondCounter();
+        for (int i = (int) preloads.size(); --i >= 0;)
+        {
+            auto& e = preloads[(size_t) i];
+            if (now - e->startedMs < kPreloadStaleMs)
+                continue;
+            juce::Logger::writeToLog ("[sandbox-pool] pre-instantiation of \""
+                                      + e->desc.name + "\" stalled — abandoning");
+            if (e->host != nullptr)
+            {
+                e->host->removeListener (e.get());
+                e->host->shutdown();
+            }
+            preloads.erase (preloads.begin() + i);
+        }
+    }
+
+    void startPreload (const juce::PluginDescription& desc)
+    {
+        auto entry = std::make_unique<Preload> (*this, desc);
+        auto* e = entry.get();
+        preloads.push_back (std::move (entry));
+        juce::Logger::writeToLog ("[sandbox-pool] pre-instantiating spare \"" + desc.name + "\"");
+
+        // Same 3-phase split as replenishAsync: blocking handshake on the pool
+        // thread, ownership + Timer arm + loadPlugin land on the message thread.
+        juce::WeakReference<SandboxWorkerPool> weakThis (this);
+        auto* pm = &plugins;
+        replenishThreads.addJob ([weakThis, pm, e]
+        {
+            // POOL THREAD.
+            auto* host = new SandboxHost (*pm);
+            const bool armed = host->beginDeferredLaunch();
+            const bool ok = armed && host->runWorkerHandshake();
+
+            juce::MessageManager::callAsync ([weakThis, host, e, ok]
+            {
+                std::unique_ptr<SandboxHost> owned (host);
+                auto* self = weakThis.get();
+                if (self == nullptr || ! self->isPreloadActive (e))
+                {
+                    // Pool died or the entry was expired/cleared meanwhile.
+                    owned->finishDeferredLaunch (false);
+                    return;
+                }
+                if (! ok)
+                {
+                    owned->finishDeferredLaunch (false);
+                    self->erasePreload (e);
+                    return;
+                }
+                owned->finishDeferredLaunch (true); // Timer arms (msg thread)
+                e->host = std::move (owned);
+                e->host->addListener (e);
+                e->host->loadPlugin (e->desc); // non-atomic write — msg thread only
+            });
+        });
+    }
+
+    void completePreload (Preload* e, bool ok)
+    {
+        jassert (juce::MessageManager::getInstance()->isThisTheMessageThread());
+        if (! isPreloadActive (e)) // expired / cleared / double callback
+            return;
+
+        if (e->host != nullptr)
+            e->host->removeListener (e);
+
+        if (ok && e->host != nullptr)
+        {
+            auto desc = e->desc;
+            auto host = std::move (e->host);
+            erasePreload (e); // e dangles past this line
+            // park() logs; on refusal the unique_ptr's destructor shuts the
+            // spare down — never reaches the shelf in a half state.
+            park (std::move (host), desc);
+            return;
+        }
+
+        if (e->host != nullptr)
+            e->host->shutdown();
+        erasePreload (e);
+    }
 
     /** Blank-shelf target — override-aware (RT-verdict MINOR-1: every sizing
         decision, including the replenish-landing re-check, must honour the
@@ -307,6 +495,7 @@ private:
     PluginManager& plugins;
     std::vector<std::unique_ptr<SandboxHost>> blanks;
     std::vector<ParkedInstance> parked;
+    std::vector<std::unique_ptr<Preload>> preloads; // message thread only
     int inFlight { 0 }; // replenish jobs not yet landed (message-thread only)
     juce::ThreadPool replenishThreads { 1 };
 

@@ -83,4 +83,32 @@ BOOST_AUTO_TEST_CASE (ReplenishHonoursZeroTarget)
     BOOST_CHECK_EQUAL (pool.numBlank(), 0);
 }
 
+// Speculative pre-instantiation gates (2026-06-12). Only the REFUSAL gates are
+// unit-testable headless — the accept path spawns a real worker process and is
+// covered live. Each case must leave numPreloading() == 0 (no job queued).
+BOOST_AUTO_TEST_CASE (PreinstantiateRefusedWhenParkingDisabled)
+{
+    PluginManager plugins;
+    SandboxWorkerPool pool (plugins);
+    pool.warmTargetOverride = 0;
+    pool.parkedMaxOverride = 0; // parking off ⇒ a spare could never be shelved
+    pool.preinstantiateMinMsOverride = 0;
+
+    pool.maybePreinstantiate (makeDesc ("Kontakt 8"), 15000);
+    BOOST_CHECK_EQUAL (pool.numPreloading(), 0);
+}
+
+BOOST_AUTO_TEST_CASE (PreinstantiateRefusedForCheapLoads)
+{
+    PluginManager plugins;
+    SandboxWorkerPool pool (plugins);
+    pool.warmTargetOverride = 0;
+    pool.parkedMaxOverride = 3;
+    pool.preinstantiateMinMsOverride = 2000;
+
+    // A 100 ms utility load must never earn a speculative worker spawn.
+    pool.maybePreinstantiate (makeDesc ("midiDuplicateBlocker"), 100);
+    BOOST_CHECK_EQUAL (pool.numPreloading(), 0);
+}
+
 BOOST_AUTO_TEST_SUITE_END()

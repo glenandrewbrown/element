@@ -310,6 +310,13 @@ inline SandboxedProcessorNode::SandboxedProcessorNode (
         sandbox->resetToPristineState();
         juce::Logger::writeToLog ("[sandbox-load] adopted PARKED instance for \""
                                   + description.name + "\" — skipping load");
+
+        // Adopting just emptied the shelf for this plugin — refill it in the
+        // background so the user's NEXT add is instant too. Already on the
+        // message thread here; the host carries its original instantiation
+        // duration, so the expensive-load gate still applies.
+        pluginManager.workerPool().maybePreinstantiate (description,
+                                                        sandbox->getLastInstantiationMs());
     }
     else
     {
@@ -648,12 +655,27 @@ inline ParameterPtr SandboxedProcessorNode::getParameter (const PortDescription&
 //==============================================================================
 // SandboxHost::Listener callbacks
 
-inline void SandboxedProcessorNode::sandboxPluginLoaded (SandboxHost*)
+inline void SandboxedProcessorNode::sandboxPluginLoaded (SandboxHost* host)
 {
     juce::Logger::writeToLog ("[SandboxedProcessor] Plugin loaded: " + description.name);
     pluginLoaded.store (true);
     hasError.store (false);
     lastError.clear();
+
+    // Speculative spare (2026-06-12): an expensive load (Kontakt-class) earns a
+    // background pre-instantiated spare in the pool, so the user's NEXT add of
+    // the same plugin adopts a parked instance instantly instead of paying the
+    // full instantiation again. This callback fires on the host's IPC thread —
+    // the pool is message-thread-only state, so bounce. PluginManager owns the
+    // pool and outlives every node; the description is copied by value.
+    {
+        const auto instMs = host != nullptr ? host->getLastInstantiationMs() : 0;
+        auto* pm = &pluginManager;
+        const auto descCopy = description;
+        juce::MessageManager::callAsync ([pm, descCopy, instMs] {
+            pm->workerPool().maybePreinstantiate (descCopy, instMs);
+        });
+    }
 
     // Ports are built later in sandboxPluginInfo() when the worker delivers
     // the parameter list + I/O config. PluginInfo always follows PluginLoaded
