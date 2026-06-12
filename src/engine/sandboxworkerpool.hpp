@@ -215,6 +215,13 @@ public:
             if (sameIdentity (p.desc, desc))
                 return; // a spare is already shelved
 
+        // RT-audit LOW-2 (2026-06-12): a FULL shelf of other plugins means the
+        // spare we'd spawn could only land by evicting an existing entry —
+        // possibly a user favourite — after a wasted multi-second background
+        // load. Refuse instead; the shelf is doing its job for other plugins.
+        if ((int) parked.size() >= maxParked)
+            return;
+
         expireStalePreloads();
         for (const auto& e : preloads)
             if (sameIdentity (e->desc, desc))

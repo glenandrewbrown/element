@@ -5894,6 +5894,13 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
 
 ElementWebViewHost::~ElementWebViewHost()
 {
+    // ORDERING IS LOAD-BEARING: stopTimer() MUST precede the two erase()
+    // calls below. timerCallback holds live references into both file-static
+    // maps; erasing while a tick could still run is the exact
+    // heap-use-after-free family fixed 2026-06-12 (ASan report
+    // element-asan.46545 — pushGraphSnapshot's old erase-mid-tick). These are
+    // the ONLY erase() calls allowed on these maps; everywhere else resets
+    // entries IN PLACE (see pushGraphSnapshot).
     stopTimer();
     meterlanegate::snapshots.erase (this); // C4/P3 idle-gate cache (file-static, instance-keyed)
     sentinelcache::replies.erase (this);   // §2.3 change-sentinel reply cache (same lifetime)

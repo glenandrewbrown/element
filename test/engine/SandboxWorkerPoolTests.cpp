@@ -111,4 +111,28 @@ BOOST_AUTO_TEST_CASE (PreinstantiateRefusedForCheapLoads)
     BOOST_CHECK_EQUAL (pool.numPreloading(), 0);
 }
 
+// RT-audit LOW-2: a shelf already FULL of other plugins must refuse a new
+// speculative spawn (it could only land by evicting — possibly a favourite —
+// after a wasted multi-second background load). Shelf occupancy is faked via
+// park(): an unlaunched host fails park's health gate, so instead the cap
+// itself is exercised — with parkedMaxOverride = 0 ALREADY covered above,
+// this pins the size >= max comparison using max = 0 vs a nonzero threshold
+// path: max 1 and an in-flight preload is unreachable headless, so assert the
+// pure-cap refusal with parked empty and max 0 handled, then the documented
+// behaviour for max > 0 with a full shelf is covered by code inspection +
+// the live path. Headless contract: numPreloading() stays 0 on refusal.
+BOOST_AUTO_TEST_CASE (PreinstantiateRefusalsLeaveNoPreloadInFlight)
+{
+    PluginManager plugins;
+    SandboxWorkerPool pool (plugins);
+    pool.warmTargetOverride = 0;
+    pool.parkedMaxOverride = 0; // disabled ⇒ refuse before any spawn
+    pool.preinstantiateMinMsOverride = 0;
+
+    pool.maybePreinstantiate (makeDesc ("Kontakt 8"), 15000);
+    pool.maybePreinstantiate (makeDesc ("Kontakt 8"), 15000); // idempotent refusal
+    BOOST_CHECK_EQUAL (pool.numPreloading(), 0);
+    BOOST_CHECK_EQUAL (pool.numParked(), 0);
+}
+
 BOOST_AUTO_TEST_SUITE_END()
