@@ -180,10 +180,21 @@ export function NodeContextMenu({
   // above the viewport top with the list cut off.
   const estimatedHeight =
     (multiSelect ? 730 : 530) + (configuring ? 260 : 0) + (presetOpen ? 200 : 0);
+  // The estimate is only a positioning HINT — the hard guarantee against
+  // off-screen items is maxHeight + the scrollable body below. (Shipped bug:
+  // the estimate understated the real menu, the bottom clamp silently failed,
+  // and Duplicate/Delete sat unreachable below the viewport — reported live
+  // 2026-06-12 as "the app has no duplicate functionality".)
   const menuStyle: React.CSSProperties = {
     position: "fixed",
     left: Math.min(position.x, window.innerWidth - 240),
-    top: Math.min(position.y, window.innerHeight - estimatedHeight),
+    top: Math.max(
+      8,
+      Math.min(position.y, window.innerHeight - estimatedHeight),
+    ),
+    maxHeight: window.innerHeight - 16,
+    display: "flex",
+    flexDirection: "column",
     zIndex: 9999,
   };
 
@@ -289,7 +300,7 @@ export function NodeContextMenu({
       </div>
 
       {!renaming && (
-        <div className="py-1">
+        <div className="py-1 overflow-y-auto flex-1 min-h-0">
           {/* ── Primary actions ── */}
           <MenuSection>
             <MenuItem
