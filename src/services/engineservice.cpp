@@ -11,6 +11,7 @@
 
 #include "engine/graphmanager.hpp"
 #include "engine/portprovisioning.hpp"
+#include "ui/pluginusagetracker.hpp"
 #include "nodes/mididevice.hpp"
 #include "engine/rootgraph.hpp"
 #include "services/presetservice.hpp"
@@ -1039,6 +1040,10 @@ Node EngineService::addPlugin (const PluginDescription& desc, const bool verifie
             // Wave-1 Item 1: first-Block-into-empty-Board IO defaults + auto-cable.
             if (node.isValid())
                 provisionFirstBlockIO (node.getParentGraph(), node);
+            // RECENT rail: record this fresh, user-initiated add (QuickAdd-at-cursor,
+            // OSC/scripting addNode). Message thread. Session loads never reach here.
+            if (node.isValid())
+                recordPluginUsage (*plugs.getFirst());
             if (! dontShowUI && context().settings().showPluginWindowsWhenAdded())
                 if (auto* gui = sibling<GuiService>())
                     gui->presentPluginWindow (node);
@@ -1380,6 +1385,15 @@ void EngineService::sessionReloaded()
 #endif
 }
 
+void EngineService::recordPluginUsage (const PluginDescription& desc)
+{
+    jassert (MessageManager::existsAndIsCurrentThread());
+    // Skip empty/placeholder descriptions — nothing to resolve in the RECENT rail.
+    if (desc.fileOrIdentifier.isEmpty() && desc.name.isEmpty())
+        return;
+    context().plugins().getUsageTracker().recordUsage (desc);
+}
+
 Node EngineService::addPlugin (GraphManager& c, const PluginDescription& desc)
 {
     auto& plugins (context().plugins());
@@ -1390,6 +1404,11 @@ Node EngineService::addPlugin (GraphManager& c, const PluginDescription& desc)
         plugins.addToKnownPlugins (desc);
 
         const Node node (c.getNodeModelForId (nodeId));
+        // RECENT rail: record this fresh, user-initiated add. This is the funnel
+        // for AddPluginMessage (QuickAdd / drag-drop / command palette) and the
+        // graph+desc addPlugin overloads. Message thread. Session loads restore
+        // their own state and never pass through addPlugin.
+        recordPluginUsage (desc);
         if (context().settings().showPluginWindowsWhenAdded())
             if (auto* gui = sibling<GuiService>())
                 gui->presentPluginWindow (node);
@@ -1534,6 +1553,8 @@ void EngineService::replace (const Node& node, const PluginDescription& desc)
         const auto nodeId = ctl->addNode (&desc, x, y);
         if (nodeId != EL_INVALID_NODE)
         {
+            // RECENT rail: a user-initiated replace is also "using" the new plugin.
+            recordPluginUsage (desc);
             ProcessorPtr newptr = ctl->getNodeForId (nodeId);
             const ProcessorPtr oldptr = node.getObject();
             jassert (newptr && oldptr);

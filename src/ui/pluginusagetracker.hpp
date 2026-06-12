@@ -19,9 +19,16 @@ class PluginUsageTracker : public juce::ChangeBroadcaster,
 {
 public:
     /** Create a tracker with access to the known plugin list.
+        Persists to the app's canonical data dir (beside plugins.xml).
         @param knownPlugins  The KnownPluginList used to resolve identifiers to descriptions.
     */
     explicit PluginUsageTracker (juce::KnownPluginList& knownPlugins);
+
+    /** Create a tracker persisting to an explicit file. Test seam — lets unit
+        tests round-trip into a temp dir without touching the user's real
+        plugin_usage.xml. Production code uses the single-arg constructor. */
+    PluginUsageTracker (juce::KnownPluginList& knownPlugins, const juce::File& settingsFileToUse);
+
     ~PluginUsageTracker() override;
 
     /** Mark a plugin as used (updates recently used list).
@@ -86,6 +93,7 @@ private:
     bool savePending { false };
 
     int findEntry (const juce::String& identifier) const;
+    void migrateLegacyFile();
     void scheduleSave();
     void timerCallback() override;
 

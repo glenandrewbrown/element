@@ -3,11 +3,14 @@
 
 #include "ui/pluginusagetracker.hpp"
 
+#include <element/datapath.hpp>
+
 namespace element {
 using namespace juce;
 
 static constexpr int maxRecentEntries = 50;
 static constexpr int coalescedSaveMs = 2000;
+static constexpr const char* usageFileName = "plugin_usage.xml";
 
 //=============================================================================
 // PluginUsageTracker Implementation
@@ -16,10 +19,21 @@ static constexpr int coalescedSaveMs = 2000;
 PluginUsageTracker::PluginUsageTracker (KnownPluginList& knownPluginsRef)
     : knownPlugins (knownPluginsRef)
 {
-    settingsFile = File::getSpecialLocation (File::userApplicationDataDirectory)
-                       .getChildFile ("Element")
-                       .getChildFile ("plugin_usage.xml");
+    // Persist beside the rest of the app data (Element.conf, plugins.xml) under
+    // the canonical Kushview/Element data dir. The old location
+    // (~/Library/Application Support/Element/plugin_usage.xml) never matched
+    // anything else and the dir was never even created, so RECENT/FAVOURITE
+    // state silently failed to persist. One-shot migrate any legacy file.
+    settingsFile = DataPath::applicationDataDir().getChildFile (usageFileName);
 
+    migrateLegacyFile();
+    load();
+}
+
+PluginUsageTracker::PluginUsageTracker (KnownPluginList& knownPluginsRef, const File& settingsFileToUse)
+    : knownPlugins (knownPluginsRef)
+{
+    settingsFile = settingsFileToUse;
     load();
 }
 
@@ -202,6 +216,26 @@ void PluginUsageTracker::load()
             favoriteIdentifiers.add (favEntry.getProperty ("identifier").toString());
         }
     }
+}
+
+void PluginUsageTracker::migrateLegacyFile()
+{
+    // If the new canonical file already exists, nothing to migrate.
+    if (settingsFile.existsAsFile())
+        return;
+
+    const File legacy = File::getSpecialLocation (File::userApplicationDataDirectory)
+                            .getChildFile ("Element")
+                            .getChildFile (usageFileName);
+
+    if (legacy == settingsFile || ! legacy.existsAsFile())
+        return;
+
+    settingsFile.getParentDirectory().createDirectory();
+    if (legacy.moveFileTo (settingsFile))
+        Logger::writeToLog ("[element] migrated legacy plugin_usage.xml to canonical data dir");
+    else
+        Logger::writeToLog ("[element] failed migrating legacy plugin_usage.xml");
 }
 
 void PluginUsageTracker::clearRecentlyUsed()

@@ -171,6 +171,10 @@ private:
 
     friend class ChangeBroadcaster;
     Node addPlugin (GraphManager& controller, const juce::PluginDescription& desc);
+
+    /** Record a fresh, user-initiated plugin add in the PluginUsageTracker so it
+        surfaces in the RECENT rail. Message thread only. */
+    void recordPluginUsage (const juce::PluginDescription& desc);
 };
 
 } // namespace element
