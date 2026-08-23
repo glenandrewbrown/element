@@ -70,6 +70,13 @@ export type InlineFaceEntry =
       kind: "midiActivity";
       /** Caption shown beside the activity indicator. */
       label: string;
+    }
+  | {
+      kind: "atomicKnob";
+      /** InlineParamControl key; matches a row in the node's snapshot inlineParams. */
+      key: string;
+      label?: string;
+      color?: "blue" | "orange" | "teal" | "purple";
     };
 
 /**
@@ -87,6 +94,13 @@ export type InlineFaceDensity = "compact" | "medium" | "large";
 export interface InlineFaceSpec {
   /** Ordered controls (registry enforces ≤6 by convention; not load-bearing). */
   entries: InlineFaceEntry[];
+  /**
+   * Bespoke designed face. When set, InlineFace renders the mapped component
+   * (resolved via FACE_COMPONENTS in InlineFace.tsx) and ignores `entries`. Used by
+   * expert-designed archetype faces (Review-wizard ACCEPTed). A string key — not a
+   * component — keeps this module render-free. `entries` should be [] when set.
+   */
+  componentKey?: string;
   /**
    * D2 density-variant schema (Wave-2 addition, Wave-3 consumer — no-op until
    * the density-aware renderer lands). Maps each density tier to the subset of
@@ -151,6 +165,33 @@ export const INLINE_FACE_REGISTRY: Record<string, InlineFaceSpec> = {
   },
   "element.logic": {
     entries: [{ kind: "opChooser", title: "Mode", options: LOGIC_MODES }],
+  },
+  // Wave-3 P0 — pizmidi-native MIDI-FX nodes. `atomicKnob` entries read the node's
+  // snapshot `inlineParams` (engine truth) and write via nativeNodeSetParam. These
+  // nodes expose NO AudioProcessor params, so the knob/toggle (AudioProcessor) path
+  // does not apply: atomicKnob is structurally valid (skipped by validateInlineFace's
+  // knob/toggle param check) and InlineFace honestly skips any key the engine omits.
+  // Transform archetype — bespoke designed face (Review-wizard ACCEPT: Dials/Console).
+  // The component reads d.inlineParams (semitones / scale+power) itself.
+  "element.midiTranspose": {
+    componentKey: "transform",
+    entries: [],
+  },
+  "element.midiVelocityAmp": {
+    componentKey: "transform",
+    entries: [],
+  },
+  "element.packMidi": {
+    entries: [
+      { kind: "atomicKnob", key: "cc", color: "purple" },
+      { kind: "atomicKnob", key: "channel", color: "purple" },
+    ],
+  },
+  "element.unpackMidi": {
+    entries: [
+      { kind: "atomicKnob", key: "cc", color: "purple" },
+      { kind: "atomicKnob", key: "channel", color: "purple" },
+    ],
   },
 };
 

@@ -9,6 +9,7 @@
 
 #include <element/node.h>
 #include <element/processor.hpp>
+#include <element/inlineparamcontrol.hpp>
 
 namespace element {
 
@@ -18,7 +19,7 @@ namespace element {
              1.0 = linear, < 1.0 compresses dynamics, > 1.0 expands dynamics.
     Note-off events are passed through unchanged.
     All other messages pass through unchanged. */
-class MidiVelocityAmpNode : public Processor
+class MidiVelocityAmpNode : public Processor, public InlineParamControl
 {
 public:
     MidiVelocityAmpNode() : Processor (0)
@@ -135,6 +136,19 @@ public:
     float getPower() const noexcept
     {
         return power.load (std::memory_order_relaxed);
+    }
+
+    // InlineParamControl
+    bool setInlineParam (const juce::String& key, double value) override
+    {
+        if (key == "scale") { setScale ((float) value); return true; }
+        if (key == "power") { setPower ((float) value); return true; }
+        return false;
+    }
+    void getInlineParams (juce::Array<InlineParamInfo>& out) const override
+    {
+        out.add ({ "scale", "Scale", (double) getScale(), 0.0, 2.0, 0.01 });
+        out.add ({ "power", "Power", (double) getPower(), 0.25, 4.0, 0.01 });
     }
 
 private:

@@ -24,12 +24,16 @@ import type { NodeParameterRow } from "../../../bridge/nativeGraph";
 import {
   nativeSetNodeParameter,
   nativeNodeSetIntMode,
+  nativeNodeSetParam,
 } from "../../../bridge/nativeGraph";
 import { useParameterStore } from "../../../stores/useParameterStore";
 import type { InlineFaceSpec, InlineFaceEntry } from "../inlineParams";
 import { InlineChooserRow } from "./InlineChooserRow";
 import { InlineMicroKnob } from "./InlineMicroKnob";
 import { InlineToggle } from "./InlineToggle";
+import { InlineAtomicKnob } from "./InlineAtomicKnob";
+import { TransformFace } from "./faces/TransformFace";
+import type { FC } from "react";
 
 interface InlineFaceProps {
   d: BlockData;
@@ -37,6 +41,15 @@ interface InlineFaceProps {
   /** Validated metadata (already passed validateInlineFace). */
   meta: NodeParameterRow[];
 }
+
+/**
+ * Bespoke archetype faces resolved by `componentKey` (keeps inlineParams.ts
+ * render-free). When a spec sets componentKey, InlineFace renders the mapped
+ * component (which reads d.inlineParams itself) instead of the generic entries.
+ */
+const FACE_COMPONENTS: Record<string, FC<{ d: BlockData }>> = {
+  transform: TransformFace,
+};
 
 /** Param-port chip shown when a curated knob's port is wired (Blender rule). */
 function ParamPortChip({ label }: { label: string }) {
@@ -75,6 +88,13 @@ function ParamPortChip({ label }: { label: string }) {
 }
 
 export function InlineFace({ d, spec, meta }: InlineFaceProps) {
+  // Bespoke designed archetype face: render the mapped component (it reads
+  // d.inlineParams itself) and ignore the generic entries path.
+  if (spec.componentKey) {
+    const FaceComp = FACE_COMPONENTS[spec.componentKey];
+    if (FaceComp) return <FaceComp d={d} />;
+  }
+
   const byIndex = new Map<number, NodeParameterRow>();
   for (const p of meta) byIndex.set(p.index, p);
 
@@ -129,6 +149,23 @@ export function InlineFace({ d, spec, meta }: InlineFaceProps) {
           // Honest skip: no real per-node MIDI activity feed exists. Render
           // nothing rather than a fake indicator.
           return null;
+        }
+
+        if (entry.kind === "atomicKnob") {
+          // pizmidi-native MIDI-FX param: read engine truth from the snapshot
+          // inlineParams row, write the raw value via nativeNodeSetParam.
+          const prow = d.inlineParams?.find((r) => r.key === entry.key);
+          if (!prow) return null; // honest skip: engine reports no such param
+          return (
+            <InlineAtomicKnob
+              key={i}
+              nodeId={d.id}
+              row={prow}
+              label={entry.label}
+              color={entry.color ?? "teal"}
+              onWrite={(k, v) => void nativeNodeSetParam(d.id, k, v)}
+            />
+          );
         }
 
         // knob / toggle — bound to a real validated param.

@@ -5,13 +5,16 @@
 
 #include <element/node.h>
 #include <element/processor.hpp>
+#include <element/inlineparamcontrol.hpp>
+#include <atomic>
+#include <cmath>
 
 namespace element {
 
 /** Shifts all note-on and note-off MIDI messages by N semitones (-48 to +48).
     Notes that would fall outside 0–127 after transposition are dropped.
     All other MIDI messages pass through unchanged. */
-class MidiTransposeNode : public Processor
+class MidiTransposeNode : public Processor, public InlineParamControl
 {
 public:
     MidiTransposeNode() : Processor (0)
@@ -38,7 +41,7 @@ public:
         if (buf == nullptr)
             return;
 
-        const int shift = semitones;
+        const int shift = semitones.load (std::memory_order_relaxed);
         if (shift == 0)
             return;
 
@@ -72,7 +75,7 @@ public:
 
     void getState (juce::MemoryBlock& block) override
     {
-        const int val = semitones;
+        const int val = semitones.load (std::memory_order_relaxed);
         block.append (&val, sizeof (val));
     }
 
@@ -82,7 +85,7 @@ public:
         {
             int val = 0;
             std::memcpy (&val, data, sizeof (val));
-            semitones = juce::jlimit (-48, 48, val);
+            semitones.store (juce::jlimit (-48, 48, val), std::memory_order_relaxed);
         }
     }
 
@@ -113,11 +116,22 @@ public:
     }
 
     /** Set transpose amount in semitones, clamped to [-48, 48]. */
-    void setSemitones (int n) noexcept { semitones = juce::jlimit (-48, 48, n); }
-    int  getSemitones() const noexcept { return semitones; }
+    void setSemitones (int n) noexcept { semitones.store (juce::jlimit (-48, 48, n), std::memory_order_relaxed); }
+    int  getSemitones() const noexcept { return semitones.load (std::memory_order_relaxed); }
+
+    // InlineParamControl
+    bool setInlineParam (const juce::String& key, double value) override
+    {
+        if (key == "semitones") { setSemitones ((int) std::lround (value)); return true; }
+        return false;
+    }
+    void getInlineParams (juce::Array<InlineParamInfo>& out) const override
+    {
+        out.add ({ "semitones", "Semitones", (double) getSemitones(), -48.0, 48.0, 1.0 });
+    }
 
 private:
-    int semitones { 0 };
+    std::atomic<int> semitones { 0 };
     juce::MidiBuffer scratch;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MidiTransposeNode)

@@ -699,6 +699,25 @@ export async function nativeNodeSetIntMode(
   return r === true;
 }
 
+/**
+ * Set a named inline parameter on a built-in MIDI-FX node implementing
+ * InlineParamControl (pizmidi-native family). `value` is the RAW engine value
+ * (not normalised) — the engine clamps to its own range. Returns true when the
+ * host found the node, applied it, and pushed a fresh snapshot.
+ */
+export async function nativeNodeSetParam(
+  nodeId: string,
+  key: string,
+  value: number,
+): Promise<boolean> {
+  const r = await invokeElementNative("elementNodeSetParam", [
+    nodeId,
+    key,
+    value,
+  ]);
+  return r === true;
+}
+
 /** One entry in the session graph tree returned by nativeSessionGetGraphTree. */
 export type SessionGraphTreeNode = {
   id: string;

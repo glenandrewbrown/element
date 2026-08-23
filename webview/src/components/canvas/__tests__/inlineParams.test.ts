@@ -70,10 +70,16 @@ describe("inlineParams registry", () => {
     expect(getInlineFaceSpec(undefined)).toBeUndefined();
   });
 
-  it("only first-wave honest faces are registered (no fabricated param faces)", () => {
+  it("registers the honest first-wave + pizmidi-native MIDI-FX faces", () => {
+    // compare/logic = opChooser; the midi* nodes = atomicKnob faces bound to real
+    // engine InlineParamControl params (NOT fabricated — values come from the snapshot).
     expect(Object.keys(INLINE_FACE_REGISTRY).sort()).toEqual([
       "element.compare",
       "element.logic",
+      "element.midiTranspose",
+      "element.midiVelocityAmp",
+      "element.packMidi",
+      "element.unpackMidi",
     ]);
   });
 });
@@ -185,5 +191,54 @@ describe("InlineFaceSpec density schema (D2)", () => {
       densities: { medium: [-1] },
     };
     expect(validateInlineFace(spec, [])).toBe(false);
+  });
+});
+
+// ── Wave-3 P0 — pizmidi-native MIDI-FX faces ────────────────────────────────
+describe("pizmidi-native MIDI-FX faces", () => {
+  const ALL = [
+    "element.midiTranspose",
+    "element.midiVelocityAmp",
+    "element.packMidi",
+    "element.unpackMidi",
+  ];
+  // pack/unpack use the generic atomicKnob deck; transpose/velocityAmp use the
+  // bespoke Transform archetype component (Review-wizard ACCEPT: Dials/Console).
+  const ATOMIC_KNOB = ["element.packMidi", "element.unpackMidi"];
+  const COMPONENT = ["element.midiTranspose", "element.midiVelocityAmp"];
+
+  it("registers all 4 P0 MIDI-FX nodes", () => {
+    for (const id of ALL) expect(getInlineFaceSpec(id)).toBeDefined();
+  });
+
+  it("pack/unpack use atomicKnob entries bound to a key (no AudioProcessor paramIndex)", () => {
+    for (const id of ATOMIC_KNOB) {
+      const spec = getInlineFaceSpec(id)!;
+      expect(spec.componentKey).toBeUndefined();
+      expect(spec.entries.length).toBeGreaterThan(0);
+      for (const e of spec.entries) {
+        expect(e.kind).toBe("atomicKnob");
+        if (e.kind === "atomicKnob") expect(typeof e.key).toBe("string");
+      }
+    }
+  });
+
+  it("transpose/velocityAmp use the bespoke Transform componentKey face", () => {
+    for (const id of COMPONENT) {
+      const spec = getInlineFaceSpec(id)!;
+      expect(spec.componentKey).toBe("transform");
+      expect(spec.entries).toEqual([]);
+    }
+  });
+
+  it("all validate WITHOUT AudioProcessor metadata and need no metadata round-trip", () => {
+    // atomicKnob reads the snapshot inlineParams (not the AudioProcessor param store)
+    // and componentKey faces carry no entries — so empty params must NOT reject the
+    // face and no metadata fetch is triggered, for either kind.
+    for (const id of ALL) {
+      const spec = getInlineFaceSpec(id)!;
+      expect(validateInlineFace(spec, [])).toBe(true);
+      expect(faceNeedsParamMeta(spec)).toBe(false);
+    }
   });
 });

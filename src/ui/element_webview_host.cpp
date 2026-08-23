@@ -10,6 +10,7 @@
 #include <element/plugins.hpp>
 #include <element/porttype.hpp>
 #include <element/processor.hpp>
+#include <element/inlineparamcontrol.hpp>
 #include <element/session.hpp>
 #include <element/tags.hpp>
 #include <element/ui/element_webview_host.hpp>
@@ -1419,6 +1420,26 @@ ElementWebViewHost::ElementWebViewHost (Context& ctx, bool skipBrowser) : contex
                 const String uuid (args[0].toString());
                 const int mode = (int) args[1];
                 ok = setNodeIntMode (uuid, mode);
+                if (ok)
+                    scheduleGraphPush (40);
+            }
+            postCompletion (completion, ok);
+        });
+
+    // P0-pizmidi — set a named inline parameter on a MIDI-FX node (InlineParamControl).
+    //   Input:  args[0]=nodeUuid:String, args[1]=key:String, args[2]=value:number (raw)
+    //   Output: bool — true when the node implements InlineParamControl and applied it.
+    // On success, schedule a snapshot push so the UI re-reads engine truth.
+    registerFn (
+        Identifier ("elementNodeSetParam"),
+        [this, postCompletion] (const Array<var>& args, auto completion) {
+            bool ok = false;
+            if (args.size() >= 3)
+            {
+                const String uuid (args[0].toString());
+                const String key (args[1].toString());
+                const double value = (double) args[2];
+                ok = setInlineNodeParam (uuid, key, value);
                 if (ok)
                     scheduleGraphPush (40);
             }
@@ -7077,6 +7098,30 @@ String ElementWebViewHost::buildActiveGraphJson() const
                     b->setProperty ("intMode", (int) lg->getMode());
         }
 
+        // P0-pizmidi — emit inline parameters for any built-in node implementing
+        // InlineParamControl (the MIDI-FX family). Generic: ONE loop serves every
+        // such node, so adding nodes never re-touches this file. Engine is the
+        // source of truth for value + range (nothing-fake). Cast-miss → key omitted.
+        if (auto* proc = n.getObject())
+            if (auto* ip = dynamic_cast<InlineParamControl*> (proc))
+            {
+                juce::Array<InlineParamInfo> infos;
+                ip->getInlineParams (infos);
+                Array<var> inlineArr;
+                for (const auto& pi : infos)
+                {
+                    DynamicObject::Ptr o (new DynamicObject());
+                    o->setProperty ("key",   pi.key);
+                    o->setProperty ("label", pi.label);
+                    o->setProperty ("value", pi.value);
+                    o->setProperty ("min",   pi.min);
+                    o->setProperty ("max",   pi.max);
+                    o->setProperty ("step",  pi.step);
+                    inlineArr.add (var (o.get()));
+                }
+                b->setProperty ("inlineParams", inlineArr);
+            }
+
         // Block plugin format + category for the React badge / colour-coding.
         // Additive: `mapBlock` reads these when present and only falls back to
         // its JS infer* heuristics when absent. Emit structured values (no
@@ -7998,6 +8043,27 @@ bool ElementWebViewHost::setNodeIntMode (const String& nodeUuid, int mode)
             return true;
         }
     }
+
+    return false;
+}
+
+bool ElementWebViewHost::setInlineNodeParam (const String& nodeUuid, const String& key, double value)
+{
+    auto sess = context.session();
+    if (sess == nullptr || nodeUuid.isEmpty())
+        return false;
+
+    const Graph G (currentBoard());
+    if (! G.isGraph())
+        return false;
+
+    const Node n = findNodeByUuidInGraph (G, nodeUuid);
+    if (! n.isValid())
+        return false;
+
+    if (auto* proc = n.getObject())
+        if (auto* ip = dynamic_cast<InlineParamControl*> (proc))
+            return ip->setInlineParam (key, value);
 
     return false;
 }
