@@ -1,6 +1,0 @@
-[  2%] Built target element-luamods
-[  5%] Built target element-binarydata
-[  9%] Built target element-luascripts
-[ 92%] Built target element
-[100%] Built target element_app
-APP_EXIT=0

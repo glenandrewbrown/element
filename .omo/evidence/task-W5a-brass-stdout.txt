@@ -1,4 +1,0 @@
-lilv_world_add_plugin(): warning: Reloading plugin <https://kushview.net/plugins/element-fx>
-lilv_world_add_plugin(): warning: Reloading plugin <https://kushview.net/plugins/element>
-[2026-05-29 22:08:01.320] [error] PresetSlotManager::selectSlot: slot not found for 3c61c74b-f41a-4017-a946-c1818d4e9559
-[2026-05-29 22:08:06.663] [error] PresetSlotManager::selectSlot: slot not found for 3c61c74b-f41a-4017-a946-c1818d4e9559
