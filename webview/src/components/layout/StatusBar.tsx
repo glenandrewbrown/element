@@ -92,15 +92,15 @@ export function StatusBar() {
       <div className="flex items-center gap-6">
         <div className="flex items-center gap-1.5 text-text-secondary">
           <span className="opacity-60">SAMPLE</span>
-          <span className="text-text-primary font-bold">{sampleRate}</span>
+          <span className="text-text-primary font-bold tabular">{sampleRate}</span>
         </div>
         <div className="flex items-center gap-1.5 text-text-secondary">
           <span className="opacity-60">BUFFER</span>
-          <span className="text-text-primary font-bold">{buffer}</span>
+          <span className="text-text-primary font-bold tabular">{buffer}</span>
         </div>
         <div className="flex items-center gap-1.5 text-text-secondary">
           <span className="opacity-60">LATENCY</span>
-          <span className="text-accent-teal font-bold">{latency}</span>
+          <span className="text-accent-teal font-bold tabular">{latency}</span>
         </div>
       </div>
 
@@ -111,7 +111,7 @@ export function StatusBar() {
             <span className="text-text-secondary opacity-60">CPU</span>
             <span
               className={[
-                "font-bold",
+                "font-bold tabular",
                 cpuPercent > 80
                   ? "text-error"
                   : cpuPercent > 50

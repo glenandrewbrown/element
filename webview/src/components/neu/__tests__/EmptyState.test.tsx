@@ -1,3 +1,4 @@
+/* impeccable-disable broken-image -- description tag text */
 /**
  * Snapshot + behaviour tests for <EmptyState /> (Phase F.0.10).
  *

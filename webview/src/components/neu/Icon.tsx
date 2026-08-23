@@ -27,6 +27,7 @@
 import {
   Activity,
   AudioWaveform,
+  BookmarkPlus,
   BoxSelect,
   Cable,
   Camera,
@@ -71,6 +72,7 @@ import {
   RefreshCw,
   Search,
   Settings,
+  Settings2,
   SkipBack,
   SlidersHorizontal,
   Sparkles,
@@ -108,6 +110,7 @@ export type IconTone = keyof typeof TONE_COLORS;
 const ICON_MAP: Record<string, ComponentType<LucideProps>> = {
   Activity,
   AudioWaveform,
+  BookmarkPlus,
   BoxSelect,     // select-all marquee (canvas context menu)
   Cable,
   Camera,
@@ -152,6 +155,7 @@ const ICON_MAP: Record<string, ComponentType<LucideProps>> = {
   RefreshCw,
   Search,
   Settings,
+  Settings2,
   SkipBack,
   SlidersHorizontal, // audiofx: horizontal faders = EQ/processing
   Sparkles,      // performance FX (MacroDashboard)

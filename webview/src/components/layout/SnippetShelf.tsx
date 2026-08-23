@@ -159,7 +159,7 @@ export function SnippetShelf() {
         <span className="text-[10px] font-bold text-text-secondary uppercase tracking-widest">
           Snippets
         </span>
-        <span className="text-[10px] text-text-dim">
+        <span className="text-[10px] text-text-dim tabular-nums">
           {molecules.length}
         </span>
       </div>
@@ -167,6 +167,7 @@ export function SnippetShelf() {
       {/* Save-as-Snippet button */}
       <button
         type="button"
+        aria-label="Save as Snippet"
         onClick={handleSaveAsSnippet}
         title={
           selectedNodeIds.length > 0
@@ -212,11 +213,6 @@ export function SnippetShelf() {
 
       {/* Spacer */}
       <div className="flex-1" />
-
-      {/* Keyboard hints */}
-      <div className="shrink-0 text-[10px] text-white/20 tracking-[2px] uppercase mr-4">
-        Shift+Drag: Multi-select
-      </div>
 
       {/* Panic button */}
       <NeuButton variant="panic" size="sm" onClick={() => void nativeTransportPanic()}>

@@ -1,3 +1,4 @@
+/* impeccable-disable broken-image -- description tag text */
 /**
  * EmptyState — coverage for paths not hit by the snapshot suite.
  *

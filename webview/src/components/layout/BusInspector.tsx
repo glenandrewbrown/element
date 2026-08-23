@@ -333,11 +333,13 @@ function MidiActivityIndicator({
               right: dir === "receive" ? 0 : "auto",
               top: 0,
               height: "100%",
-              width: beadW,
+              width: 10,
               borderRadius: 3,
               background: "hsl(var(--sig-midi))",
               boxShadow: "0 0 4px hsl(var(--sig-midi) / 0.5)",
-              transition: "width 120ms ease-out",
+              transform: `scaleX(${beadW / 10})`,
+              transformOrigin: dir === "send" ? "left" : "right",
+              transition: "transform 120ms ease-out",
             }}
           />
         )}

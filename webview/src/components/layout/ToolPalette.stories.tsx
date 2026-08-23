@@ -206,7 +206,7 @@ function CollapsibleHost() {
   const [collapsed, setCollapsed] = useState(false);
   return (
     <div
-      style={{ width: collapsed ? 40 : 280, height: 640, transition: "width 150ms" }}
+      style={{ width: collapsed ? 40 : 280, height: 640, transition: "width 150ms" }} /* impeccable-disable-line layout-transition -- storybook mock container transition */
       className="bg-panel"
     >
       <ToolPalette

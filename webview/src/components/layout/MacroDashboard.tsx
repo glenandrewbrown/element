@@ -18,13 +18,6 @@ type DashTab = "macros" | "scenes" | "fx";
 
 // ── Category colour helpers ──
 
-const CATEGORY_BORDER: Record<BlockCategory, string> = {
-  instrument: "border-l-instrument",
-  audiofx: "border-l-audiofx",
-  midifx: "border-l-midifx",
-  modulator: "border-l-modulator",
-};
-
 const CATEGORY_DOT: Record<BlockCategory, string> = {
   instrument: "bg-instrument",
   audiofx: "bg-audiofx",
@@ -227,8 +220,7 @@ export function MacroDashboard() {
                   <div
                     key={block.id}
                     className={[
-                      "bg-surface rounded-lg p-3 border border-white/5 border-l-2 transition-opacity",
-                      CATEGORY_BORDER[block.category],
+                      "bg-surface rounded-lg p-3 border border-white/5 transition-opacity",
                       block.bypassed ? "opacity-50" : "opacity-100",
                     ].join(" ")}
                   >

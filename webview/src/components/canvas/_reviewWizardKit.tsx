@@ -855,10 +855,12 @@ export function S8ActivityDemo() {
                 key={k}
                 style={{
                   width: 3,
-                  height: animating ? h : 3,
+                  height: h,
                   borderRadius: 1,
                   background: k < 2 ? "#34D399" : k < 3 ? "#F5C542" : "#E74C3C",
-                  transition: animating ? "none" : "height 0.3s",
+                  transform: animating ? "none" : `scaleY(${3 / h})`,
+                  transformOrigin: "bottom",
+                  transition: animating ? "none" : "transform 0.3s",
                   animation: animating
                     ? `rw-led-pulse ${0.8 + k * 0.15}s ease-in-out infinite alternate`
                     : "none",

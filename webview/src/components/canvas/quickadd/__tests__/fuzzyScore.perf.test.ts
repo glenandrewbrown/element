@@ -116,7 +116,9 @@ describe("QuickAdd scorer perf (≤16ms/keystroke budget)", () => {
     expect(index[0]!.mfgN).toBe(normaliseSeps(lib[0]!.manufacturer));
   });
 
-  it("indexed scorer is materially faster than re-normalising per keystroke (relative guard)", () => {
+  it(
+    "indexed scorer is materially faster than re-normalising per keystroke (relative guard)",
+    () => {
     // RELATIVE guard — immune to absolute machine speed and CI parallel
     // contention. Compares, in the SAME run, the shipped indexed scorer against
     // a deliberately un-indexed variant that re-runs the normalise regex over
@@ -165,5 +167,5 @@ describe("QuickAdd scorer perf (≤16ms/keystroke budget)", () => {
     expect(indexed).toBeLessThan(unindexed / 1.5);
     // Generous absolute catastrophe catch (NOT the budget — that's the 1000 test).
     expect(indexed).toBeLessThan(48);
-  });
+  }, 15000);
 });

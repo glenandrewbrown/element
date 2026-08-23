@@ -203,7 +203,7 @@ body {
 
 /* ── Canvas Grid ── */
 
-.canvas-grid {
+.canvas-grid { /* impeccable-disable-line codex-grid-background -- actual board grid */
   background-image: radial-gradient(var(--color-elevated) 1px, transparent 1px);
   background-size: 20px 20px;
 }
