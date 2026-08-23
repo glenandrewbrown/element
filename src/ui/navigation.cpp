@@ -2,360 +2,388 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include <element/context.hpp>
+#include <element/node.hpp>
 #include <element/ui/style.hpp>
 #include <element/ui/commands.hpp>
 #include <element/ui/navigation.hpp>
 
-#include "ui/datapathbrowser.hpp"
+#include "ui/browsepanel.hpp"
+#include "ui/inspectorpanel.hpp"
 #include "ui/nodeeditorview.hpp"
 #include "ui/graphsettingsview.hpp"
 #include "ui/nodepropertiesview.hpp"
 #include "ui/pluginspanelview.hpp"
-#include "ui/audioiopanelview.hpp"
 #include "ui/sessiontreepanel.hpp"
+#include "ui/sessionbrowserpanel.hpp"
 #include "ui/viewhelpers.hpp"
 
 namespace element {
 
-class NavigationConcertinaPanel::Header : public Component
+namespace {
+
+constexpr int iconStripWidth = 36;
+constexpr int iconCellSize = 36;
+constexpr int iconDrawSize = 20;
+constexpr int numPanels = 4;
+
+const juce::Colour iconDefault (0xff8e8e93);
+const juce::Colour iconHover (0xffe5e5ea);
+const juce::Colour iconActive (0xff2bc4c4);
+const juce::Colour hoverBg (0xff2a2a2e);
+const juce::Colour stripBg (0xff1e1e22);
+
+// All navigation icons use a 24x24 viewbox (lucide-react convention) so
+// they scale cleanly into any cell size. Each icon is a single fillable
+// JUCE::Path — no separate stroke pass is required by the IconButton paint
+// code (g.fillPath at line ~131). For shapes that are visually "stroked"
+// (search lens, slider tracks), we pre-stroke into the same path here.
+
+juce::Path createTreeIcon()
 {
-public:
-    Header (NavigationConcertinaPanel& _parent, Component& _panel)
-        : parent (_parent), panel (_panel)
-    {
-        setInterceptsMouseClicks (false, true);
-    }
-
-    virtual ~Header() {}
-
-    virtual void resized() override {}
-    virtual void paint (Graphics& g) override
-    {
-        getLookAndFeel().drawConcertinaPanelHeader (
-            g, getLocalBounds(), false, false, parent, panel);
-    }
-
-protected:
-    NavigationConcertinaPanel& parent;
-    Component& panel;
-};
-
-class NavigationConcertinaPanel::ElementsHeader : public Header,
-                                                  public Button::Listener
-{
-public:
-    ElementsHeader (NavigationConcertinaPanel& _parent, Component& _panel)
-        : Header (_parent, _panel)
-    {
-        addAndMakeVisible (addButton);
-        addButton.setIcon (Icon (getIcons().falBars, Colours::white));
-        addButton.setTriggeredOnMouseDown (true);
-        addButton.addListener (this);
-        setInterceptsMouseClicks (false, true);
-    }
-
-    void resized() override
-    {
-        const int padding = 2;
-        const int buttonSize = getHeight() - (padding * 2);
-        addButton.setBounds (getWidth() - padding - buttonSize,
-                             padding,
-                             buttonSize,
-                             buttonSize);
-    }
-
-    static void menuInvocationCallback (int chosenItemID, ElementsHeader* header)
-    {
-        if (chosenItemID > 0 && header)
-            header->menuCallback (chosenItemID);
-    }
-
-    void menuCallback (int menuId)
-    {
-        if (1 == menuId)
-        {
-            ViewHelpers::invokeDirectly (this, Commands::showSessionConfig, true);
-        }
-        else if (2 == menuId)
-        {
-            ViewHelpers::invokeDirectly (this, Commands::sessionAddGraph, true);
-        }
-    }
-
-    void buttonClicked (Button*) override
-    {
-        PopupMenu menu;
-        menu.addItem (1, "Session Settings...");
-        menu.addSeparator();
-        menu.addItem (2, "Add Graph");
-        menu.showMenuAsync (PopupMenu::Options().withTargetComponent (&addButton),
-                            ModalCallbackFunction::forComponent (menuInvocationCallback, this));
-    }
-
-private:
-    IconButton addButton;
-};
-
-//====
-class NavigationConcertinaPanel::UserDataPathHeader : public Header,
-                                                      public Button::Listener
-{
-public:
-    UserDataPathHeader (NavigationConcertinaPanel& _parent, DataPathTreeComponent& _panel)
-        : Header (_parent, _panel), tree (_panel)
-    {
-        addAndMakeVisible (addButton);
-        addButton.setButtonText ("+");
-        addButton.addListener (this);
-        addButton.setTriggeredOnMouseDown (true);
-        setInterceptsMouseClicks (false, true);
-    }
-
-    void resized() override
-    {
-        const int padding = 4;
-        const int buttonSize = getHeight() - (padding * 2);
-        addButton.setBounds (getWidth() - padding - buttonSize,
-                             padding,
-                             buttonSize,
-                             buttonSize);
-    }
-
-    void buttonClicked (Button*) override
-    {
-        PopupMenu menu;
-        menu.addItem (1, "Refresh...");
-        menu.addSeparator();
-#if JUCE_MAC
-        String name = "Show in Finder";
-#else
-        String name = "Show in Explorer";
-#endif
-        menu.addItem (2, name);
-        const int res = menu.show();
-        if (res == 1)
-        {
-            tree.refresh();
-        }
-        else if (res == 2)
-        {
-            File file = tree.getSelectedFile();
-            if (! file.exists())
-                file = file.getParentDirectory();
-            if (! file.exists())
-                file = tree.getDirectory();
-            if (file.exists())
-                file.revealToUser();
-        }
-    }
-
-private:
-    DataPathTreeComponent& tree;
-    TextButton addButton;
-};
-
-//====
-NavigationConcertinaPanel::NavigationConcertinaPanel (Context& g)
-    : globals (g), headerHeight (22), defaultPanelHeight (80)
-{
+    // Folder: tab + body. Reads as "Sessions" / file-like grouping.
+    juce::Path p;
+    p.startNewSubPath (3.0f,  7.0f);
+    p.lineTo          (3.0f,  5.0f);
+    p.lineTo          (9.0f,  5.0f);
+    p.lineTo          (11.0f, 7.0f);
+    p.lineTo          (21.0f, 7.0f);
+    p.lineTo          (21.0f, 19.0f);
+    p.lineTo          (3.0f,  19.0f);
+    p.closeSubPath();
+    return p;
 }
 
-NavigationConcertinaPanel::~NavigationConcertinaPanel()
+juce::Path createSearchIcon()
 {
-    clearPanels();
-    setLookAndFeel (nullptr);
+    // Magnifier lens + handle, both pre-stroked into a single fillable path.
+    juce::Path raw;
+    raw.addEllipse        (4.0f, 4.0f, 12.0f, 12.0f);
+    raw.startNewSubPath   (14.5f, 14.5f);
+    raw.lineTo            (20.5f, 20.5f);
+
+    juce::Path stroked;
+    juce::PathStrokeType (2.2f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded)
+        .createStrokedPath (stroked, raw);
+    return stroked;
 }
 
-Component* NavigationConcertinaPanel::findPanelByName (const String& name)
+juce::Path createSlidersIcon()
 {
-    for (int i = 0; i < getNumPanels(); ++i)
-        if (getPanel (i)->getName() == name)
-            return getPanel (i);
-    return 0;
+    // Three horizontal sliders with offset knobs — reads as "Inspector".
+    juce::Path tracks;
+    tracks.startNewSubPath (3.0f,  6.0f);  tracks.lineTo (21.0f, 6.0f);
+    tracks.startNewSubPath (3.0f, 12.0f);  tracks.lineTo (21.0f, 12.0f);
+    tracks.startNewSubPath (3.0f, 18.0f);  tracks.lineTo (21.0f, 18.0f);
+
+    juce::Path p;
+    juce::PathStrokeType (1.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded)
+        .createStrokedPath (p, tracks);
+
+    // Knobs at varied positions — visually conveys "settings/levels".
+    p.addEllipse (14.0f,  3.0f, 6.0f, 6.0f);
+    p.addEllipse ( 4.0f,  9.0f, 6.0f, 6.0f);
+    p.addEllipse (12.0f, 15.0f, 6.0f, 6.0f);
+    return p;
 }
 
-void NavigationConcertinaPanel::saveState (PropertiesFile* props)
+juce::Path createPencilIcon()
 {
-    ValueTree state (tags::state);
+    // Pencil body (parallelogram) + tip + eraser band — reads as "Edit".
+    juce::Path p;
+    p.startNewSubPath (16.0f,  3.5f);
+    p.lineTo          (20.5f,  8.0f);
+    p.lineTo          ( 8.5f, 20.0f);
+    p.lineTo          ( 3.5f, 20.5f);
+    p.lineTo          ( 4.0f, 15.5f);
+    p.closeSubPath();
 
-    for (int i = 0; i < getNumPanels(); ++i)
+    juce::Path band;
+    band.startNewSubPath (12.5f,  7.0f);
+    band.lineTo          (17.0f, 11.5f);
+    juce::PathStrokeType (1.0f).createStrokedPath (band, band);
+    p.addPath (band);
+    return p;
+}
+
+} // namespace
+
+// =============================================================================
+struct NavigationPanel::IconButton : public juce::Component,
+                                     public juce::TooltipClient
+{
+    int index = 0;
+    juce::Path iconPath;
+    bool isActive = false;
+    bool isHovered = false;
+    std::function<void (int)> onClick;
+    juce::String tooltip;
+
+    IconButton (int idx, juce::Path path, const juce::String& tip = {})
+        : index (idx), iconPath (std::move (path)), tooltip (tip)
     {
-        ValueTree item ("item");
-        auto* const panel = getPanel (i);
-        item.setProperty ("index", i, 0)
-            .setProperty ("name", panel->getName(), 0)
-            .setProperty ("h", panel->getHeight(), 0);
-
-        if (auto* ned = dynamic_cast<NodeEditorView*> (panel))
-            item.setProperty ("sticky", ned->isSticky(), nullptr);
-
-        state.addChild (item, -1, 0);
     }
 
-    if (auto xml = state.createXml())
-        props->setValue ("ccNavPanel", xml.get());
-}
+    juce::String getTooltip() override { return tooltip; }
 
-void NavigationConcertinaPanel::restoreState (PropertiesFile* props)
-{
-    if (auto xml = props->getXmlValue ("ccNavPanel"))
+    void paint (juce::Graphics& g) override
     {
-        ValueTree state = ValueTree::fromXml (*xml);
-        std::vector<ValueTree> withSize;
-        for (int i = 0; i < state.getNumChildren(); ++i)
+        if (isActive)
         {
-            auto item (state.getChild (i));
-            const auto h = std::max (0, (int) item["h"]);
-            if (auto* c = findPanelByName (item["name"].toString().trim()))
-            {
-                if (auto* ned = dynamic_cast<NodeEditorView*> (c))
-                    ned->setSticky ((bool) item.getProperty ("sticky", ned->isSticky()));
-
-                if (h > 0)
-                {
-                    withSize.push_back (item);
-                    continue;
-                }
-
-                setPanelSize (c, 0, false);
-            }
+            g.setColour (iconActive);
+            g.fillRect (0, 0, 2, getHeight());
         }
 
-        for (const auto& item : withSize)
-            if (auto* c = findPanelByName (item["name"].toString().trim()))
-                setPanelSize (c, (int) item["h"], false);
+        if (isHovered && ! isActive)
+            g.fillAll (hoverBg);
+
+        g.setColour (isActive ? iconActive
+                     : isHovered ? iconHover
+                                 : iconDefault);
+
+        auto iconArea = getLocalBounds().toFloat().reduced (5.0f);
+        g.fillPath (iconPath, iconPath.getTransformToScaleToFit (iconArea, true));
     }
-}
 
-int NavigationConcertinaPanel::getIndexOfPanel (Component* panel)
-{
-    if (nullptr == panel)
-        return -1;
-    for (int i = 0; i < getNumPanels(); ++i)
-        if (auto* p = getPanel (i))
-            if (p == panel)
-                return i;
-    return -1;
-}
-
-//====
-void NavigationConcertinaPanel::showPanel (const juce::String& name)
-{
-    namesHidden.removeString (name);
-    updateContent();
-}
-
-void NavigationConcertinaPanel::hidePanel (const juce::String& name)
-{
-    namesHidden.addIfNotAlreadyThere (name);
-    updateContent();
-}
-
-void NavigationConcertinaPanel::setPanelName (const String& panel, const String& newName)
-{
-    if (auto ptr = findPanelByName (panel))
+    void mouseEnter (const juce::MouseEvent&) override
     {
-        ptr->setName (newName);
+        isHovered = true;
         repaint();
     }
+
+    void mouseExit (const juce::MouseEvent&) override
+    {
+        isHovered = false;
+        repaint();
+    }
+
+    void mouseDown (const juce::MouseEvent&) override
+    {
+        if (onClick)
+            onClick (index);
+    }
+};
+
+// =============================================================================
+NavigationPanel::NavigationPanel (Context& g)
+    : globals (g)
+{
+    // Create 4 icon buttons
+    auto addIcon = [this] (int idx, juce::Path path, const juce::String& tip) {
+        auto* btn = new IconButton (idx, std::move (path), tip);
+        btn->onClick = [this] (int i) { showPanel (i); };
+        addAndMakeVisible (btn);
+        icons.add (btn);
+    };
+
+    addIcon (0, createTreeIcon(), "Session Tree");
+    addIcon (1, createSearchIcon(), "Browse Plugins & Sessions");
+    addIcon (2, createSlidersIcon(), "Inspector");
+    addIcon (3, createPencilIcon(), "Node Editor");
+
+    // Create panels
+    sessionPanel = std::make_unique<SessionTreePanel>();
+    browsePanel = std::make_unique<BrowsePanel> (g.plugins());
+    inspectorPanel = std::make_unique<InspectorPanel>();
+    editorPanel = std::make_unique<NodeEditorView>();
+
+    addChildComponent (*sessionPanel);
+    addChildComponent (*browsePanel);
+    addChildComponent (*inspectorPanel);
+    addChildComponent (*editorPanel);
+
+    showPanel (activeIndex);
 }
 
-void NavigationConcertinaPanel::clearPanels()
+NavigationPanel::~NavigationPanel()
 {
-    for (int i = 0; i < comps.size(); ++i)
-        removePanel (comps.getUnchecked (i));
-    comps.clearQuick (true);
+    // Clear icon callbacks first to prevent use-after-free during destruction
+    for (auto* icon : icons)
+        icon->onClick = nullptr;
+
+    editorPanel.reset();
+    inspectorPanel.reset();
+    browsePanel.reset();
+    sessionPanel.reset();
+    icons.clear();
 }
 
-void NavigationConcertinaPanel::updateContent()
+// =============================================================================
+void NavigationPanel::showPanel (int index)
 {
-    clearPanels();
+    activeIndex = juce::jlimit (0, numPanels - 1, index);
 
-    if (! namesHidden.contains ("Session"))
+    if (sessionPanel)   sessionPanel->setVisible (activeIndex == 0);
+    if (browsePanel)    browsePanel->setVisible (activeIndex == 1);
+    if (inspectorPanel) inspectorPanel->setVisible (activeIndex == 2);
+    if (editorPanel)    editorPanel->setVisible (activeIndex == 3);
+
+    for (auto* icon : icons)
     {
-        auto* sess = new SessionTreePanel();
-        sess->setName ("Session");
-        sess->setComponentID ("Session");
-        addPanelInternal (-1, sess, "Session", new ElementsHeader (*this, *sess));
+        icon->isActive = (icon->index == activeIndex);
+        icon->repaint();
     }
 
-    if (! namesHidden.contains ("Graph"))
-    {
-        auto* gv = new GraphSettingsView();
-        gv->setName ("Graph");
-        gv->setComponentID ("Graph");
-        gv->setGraphButtonVisible (false);
-        gv->setUpdateOnActiveGraphChange (true);
-        gv->setPropertyPanelHeaderVisible (false);
-        addPanelInternal (-1, gv, "Graph", nullptr);
-    }
-
-    if (! namesHidden.contains ("Node"))
-    {
-        auto* mv = new NodePropertiesView();
-        mv->setName ("Node");
-        mv->setComponentID ("Node");
-        addPanelInternal (-1, mv, "Node", nullptr);
-    }
-
-    if (! namesHidden.contains ("Editor"))
-    {
-        auto* nv = new NodeEditorView();
-        nv->setName ("Editor");
-        nv->setComponentID ("Editor");
-        addPanelInternal (-1, nv, "Editor", nullptr);
-    }
-
-    if (! namesHidden.contains ("Plugins"))
-    {
-        auto* pv = new PluginsPanelView (ViewHelpers::getGlobals (this)->plugins());
-        pv->setName ("Plugins");
-        pv->setComponentID ("Plugins");
-        addPanelInternal (-1, pv, "Plugins", 0);
-    }
-
-    if (! namesHidden.contains ("Data Path"))
-    {
-        auto* dp = new DataPathTreeComponent();
-        dp->setName ("UserDataPath");
-        dp->setComponentID ("UserDataPath");
-        dp->getFileTree().setDragAndDropDescription ("ccNavConcertinaPanel");
-        addPanelInternal (-1, dp, "Data Path", new UserDataPathHeader (*this, *dp));
-    }
+    resized();
 }
 
-const StringArray& NavigationConcertinaPanel::getNames() const { return names; }
-const int NavigationConcertinaPanel::getHeaderHeight() const { return headerHeight; }
-
-void NavigationConcertinaPanel::setHeaderHeight (const int newHeight)
+void NavigationPanel::activatePanel (int index)
 {
-    if (newHeight == headerHeight)
+    showPanel (index);
+}
+
+int NavigationPanel::getActivePanel() const
+{
+    return activeIndex;
+}
+
+// =============================================================================
+void NavigationPanel::paint (juce::Graphics& g)
+{
+    // Icon strip background
+    g.setColour (stripBg);
+    g.fillRect (0, 0, iconStripWidth, getHeight());
+
+    // Content area background
+    g.setColour (element::Colors::backgroundColor);
+    g.fillRect (iconStripWidth, 0, getWidth() - iconStripWidth, getHeight());
+}
+
+void NavigationPanel::resized()
+{
+    // Icon strip
+    for (int i = 0; i < icons.size(); ++i)
+    {
+        icons[i]->setBounds (0, i * iconCellSize, iconStripWidth, iconCellSize);
+    }
+
+    // Content area
+    auto contentArea = getLocalBounds().withTrimmedLeft (iconStripWidth);
+
+    if (sessionPanel)   sessionPanel->setBounds (contentArea);
+    if (browsePanel)    browsePanel->setBounds (contentArea);
+    if (inspectorPanel) inspectorPanel->setBounds (contentArea);
+    if (editorPanel)    editorPanel->setBounds (contentArea);
+}
+
+// =============================================================================
+SessionTreePanel* NavigationPanel::getSessionTreePanel()
+{
+    return sessionPanel.get();
+}
+
+NodePropertiesView* NavigationPanel::getNodePropertiesView()
+{
+    if (inspectorPanel)
+        return inspectorPanel->getNodePropertiesView();
+    return nullptr;
+}
+
+NodeEditorView* NavigationPanel::getNodeEditorView()
+{
+    return editorPanel.get();
+}
+
+GraphSettingsView* NavigationPanel::getGraphSettingsView()
+{
+    if (inspectorPanel)
+        return inspectorPanel->getGraphSettingsView();
+    return nullptr;
+}
+
+PluginsPanelView* NavigationPanel::getPluginsPanel()
+{
+    if (browsePanel)
+        return browsePanel->getPluginsPanel();
+    return nullptr;
+}
+
+SessionBrowserPanel* NavigationPanel::getSessionsPanel()
+{
+    if (browsePanel)
+        return browsePanel->getSessionsPanel();
+    return nullptr;
+}
+
+// =============================================================================
+void NavigationPanel::stabilizeAll()
+{
+    if (auto* ss = getSessionTreePanel())
+    {
+        auto session = globals.session();
+        ss->setSession (session);
+    }
+
+    if (auto* npv = getNodePropertiesView())
+        npv->stabilizeContent();
+
+    if (auto* nev = getNodeEditorView())
+        nev->stabilizeContent();
+
+    if (auto* gsv = getGraphSettingsView())
+        gsv->stabilizeContent();
+}
+
+void NavigationPanel::notifyNodeSelected (const Node&)
+{
+    if (inspectorPanel)
+        inspectorPanel->notifyNodeSelected();
+}
+
+void NavigationPanel::notifyNodeDeselected()
+{
+    if (inspectorPanel)
+        inspectorPanel->notifyNodeDeselected();
+}
+
+// =============================================================================
+void NavigationPanel::saveState (juce::PropertiesFile* props)
+{
+    if (props == nullptr)
         return;
-    jassert (newHeight > 0);
-    headerHeight = newHeight;
-    for (auto* c : comps)
-        setPanelHeaderSize (c, headerHeight);
+
+    props->setValue ("navIconPanel_activeIndex", activeIndex);
+
+    if (browsePanel)
+        props->setValue ("navIconPanel_browseTab", browsePanel->getActiveTab());
+
+    if (inspectorPanel)
+        props->setValue ("navIconPanel_inspectorTab", inspectorPanel->getActiveTab());
+
+    // Save NodeEditorView sticky state
+    if (auto* ned = getNodeEditorView())
+        props->setValue ("navIconPanel_editorSticky", ned->isSticky());
 }
 
-void NavigationConcertinaPanel::addPanelInternal (const int index,
-                                                  Component* comp,
-                                                  const String& name,
-                                                  Component* header)
+void NavigationPanel::restoreState (juce::PropertiesFile* props)
 {
-    jassert (comp);
-    if (name.isNotEmpty())
-        comp->setName (name);
-    addPanel (index, comps.insert (index, comp), false);
-    setPanelHeaderSize (comp, headerHeight);
+    if (props == nullptr)
+        return;
 
-    if (nullptr == header)
-        header = new Header (*this, *comp);
-    setCustomPanelHeader (comp, header, true);
-}
+    // Migrate from old ConcertinaPanel format
+    if (props->containsKey ("ccNavPanel"))
+    {
+        props->removeValue ("ccNavPanel");
+        activeIndex = 1; // default to Browse after migration
+        props->setValue ("navIconPanel_activeIndex", activeIndex);
+    }
 
-void NavigationConcertinaPanel::paint (juce::Graphics& g)
-{
-    g.fillAll (element::Colors::backgroundColor);
+    activeIndex = props->getIntValue ("navIconPanel_activeIndex", 1);
+    showPanel (activeIndex);
+
+    if (browsePanel)
+    {
+        int browseTab = props->getIntValue ("navIconPanel_browseTab", 0);
+        browsePanel->showTab (browseTab);
+    }
+
+    if (inspectorPanel)
+    {
+        int inspTab = props->getIntValue ("navIconPanel_inspectorTab", 0);
+        inspectorPanel->showTab (inspTab);
+    }
+
+    if (auto* ned = getNodeEditorView())
+        ned->setSticky (props->getBoolValue ("navIconPanel_editorSticky", ned->isSticky()));
 }
 
 } // namespace element

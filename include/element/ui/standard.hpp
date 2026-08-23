@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <element/graph.hpp>
 #include <element/juce/core.hpp>
 #include <element/juce/gui_basics.hpp>
 #include <element/ui/content.hpp>
@@ -15,7 +16,7 @@ class Context;
 class MeterBridgeView;
 class GuiService;
 class ContentContainer;
-class NavigationConcertinaPanel;
+class NavigationPanel;
 class NodeChannelStripView;
 class VirtualKeyboardView;
 
@@ -30,7 +31,8 @@ public:
 
     void resizeContent (const juce::Rectangle<int>& area) override;
 
-    NavigationConcertinaPanel* getNavigationConcertinaPanel() const { return nav.get(); }
+    NavigationPanel* getNavigationPanel() const { return nav.get(); }
+    NavigationPanel* getNavigationConcertinaPanel() const { return nav.get(); }
 
     void setMainView (const juce::String& name);
     void setSecondaryView (const juce::String& name);
@@ -81,17 +83,19 @@ public:
     void setMainView (ContentView* v);
 
     //==========================================================================
-    void setExtraView (juce::Component*);
-    Component* extraView() { return _extra.get(); }
+    void setExtraView (juce::Component*) override;
+    juce::Component* extraView() override { return _extra.get(); }
+
+    void setupPluginEditorWithGraph (Graph&) override;
 
 protected:
     virtual ContentView* createContentView (const juce::String&) { return nullptr; }
 
 private:
-    std::unique_ptr<NavigationConcertinaPanel> nav;
+    std::unique_ptr<NavigationPanel> nav;
     friend class ContentContainer;
     std::unique_ptr<ContentContainer> container;
-    StretchableLayoutManager layout;
+    juce::StretchableLayoutManager layout;
     class Resizer;
     friend class Resizer;
     std::unique_ptr<Resizer> bar1;

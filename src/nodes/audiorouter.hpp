@@ -11,48 +11,54 @@
 namespace element {
 
 class AudioRouterNode : public Processor,
-                        public ChangeBroadcaster
+                        public juce::ChangeBroadcaster
 {
 public:
     explicit AudioRouterNode (int ins = 4, int outs = 4);
     ~AudioRouterNode();
 
-    void prepareToRender (double sampleRate, int maxBufferSize) override { ignoreUnused (sampleRate, maxBufferSize); }
+    void prepareToRender (double sampleRate, int maxBufferSize) override
+    {
+        juce::ignoreUnused (sampleRate);
+        // Pre-allocate tempAudio to max expected size so render() never mallocs
+        tempAudio.setSize (juce::jmax (numSources, numDestinations),
+                           maxBufferSize, false, true /* clearExtraSpace */, false);
+    }
     void releaseResources() override {}
 
     inline bool wantsContext() const noexcept override { return true; }
     void render (RenderContext&) override;
 
-    void getState (MemoryBlock&) override;
+    void getState (juce::MemoryBlock&) override;
     void setState (const void*, int sizeInBytes) override;
 
     void setSize (int newIns, int newOuts, bool async = true);
-    String getSizeString() const;
+    juce::String getSizeString() const;
     void setMatrixState (const MatrixState&);
     MatrixState getMatrixState() const;
     void setWithoutLocking (int src, int dst, bool set);
-    CriticalSection& getLock() { return lock; }
+    juce::CriticalSection& getLock() { return lock; }
 
-    int getNumPrograms() const override { return jmax (1, programs.size()); }
+    int getNumPrograms() const override { return juce::jmax (1, programs.size()); }
     int getCurrentProgram() const override { return currentProgram; }
     void setCurrentProgram (int index) override;
-    const String getProgramName (int index) const override
+    const juce::String getProgramName (int index) const override
     {
         if (auto* prog = programs[index])
             return prog->name;
-        return "Audio Router " + String (index + 1);
+        return "Audio Router " + juce::String (index + 1);
     }
 
     void setFadeLength (double seconds)
     {
-        seconds = jlimit (0.001, 5.0, seconds);
-        ScopedLock sl (lock);
+        seconds = juce::jlimit (0.001, 5.0, seconds);
+        juce::ScopedLock sl (lock);
         fadeLengthSeconds = seconds;
         fadeIn.setLength (static_cast<float> (fadeLengthSeconds));
         fadeOut.setLength (static_cast<float> (fadeLengthSeconds));
     }
 
-    void getPluginDescription (PluginDescription& desc) const override
+    void getPluginDescription (juce::PluginDescription& desc) const override
     {
         desc.fileOrIdentifier = EL_NODE_ID_AUDIO_ROUTER;
         desc.name = "Audio Router";
@@ -77,13 +83,13 @@ public:
         int channel = 0;
         for (int i = 0; i < numSources; ++i)
         {
-            newPorts.add (PortType::Audio, index++, channel++, String ("audio_in_XX").replace ("XX", String (i)), String ("Input XX").replace ("XX", String (i + 1)), true);
+            newPorts.add (PortType::Audio, index++, channel++, juce::String ("audio_in_XX").replace ("XX", juce::String (i)), juce::String ("Input XX").replace ("XX", juce::String (i + 1)), true);
         }
 
         channel = 0;
         for (int i = 0; i < numDestinations; ++i)
         {
-            newPorts.add (PortType::Audio, index++, channel++, String ("audio_out_XX").replace ("XX", String (i)), String ("Output XX").replace ("XX", String (i + 1)), false);
+            newPorts.add (PortType::Audio, index++, channel++, juce::String ("audio_out_XX").replace ("XX", juce::String (i)), juce::String ("Output XX").replace ("XX", juce::String (i + 1)), false);
         }
 
         newPorts.add (PortType::Midi, index++, 0, "midi_in", "MIDI In", true);
@@ -92,24 +98,24 @@ public:
     }
 
 private:
-    CriticalSection lock;
+    juce::CriticalSection lock;
     [[maybe_unused]] int numSources;
     [[maybe_unused]] int nextNumSources;
     [[maybe_unused]] int numDestinations;
     [[maybe_unused]] int nextNumDestinations;
-    AudioSampleBuffer tempAudio { 1, 1 };
+    juce::AudioSampleBuffer tempAudio { 1, 1 };
     bool rebuildPorts = true;
 
     struct Program
     {
-        Program (const String& programName, int midiProgramNumber = -1)
+        Program (const juce::String& programName, int midiProgramNumber = -1)
             : name (programName), midiProgram (midiProgramNumber) {}
-        String name { "1 to 1" };
+        juce::String name { "1 to 1" };
         int midiProgram { -1 };
         MatrixState matrix;
     };
 
-    OwnedArray<Program> programs;
+    juce::OwnedArray<Program> programs;
     int currentProgram = -1;
 
     void set (int src, int dst, bool patched);

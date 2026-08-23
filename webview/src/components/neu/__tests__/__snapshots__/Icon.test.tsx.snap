@@ -1,0 +1,120 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`<Icon /> > applies the audio tone (#4A90D9) 1`] = `
+<svg
+  aria-label="Audio waveform"
+  class="lucide lucide-audio-waveform"
+  fill="none"
+  height="16"
+  role="img"
+  stroke="#4A90D9"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+  stroke-width="1.5"
+  viewBox="0 0 24 24"
+  width="16"
+  xmlns="http://www.w3.org/2000/svg"
+>
+  <path
+    d="M2 13a2 2 0 0 0 2-2V7a2 2 0 0 1 4 0v13a2 2 0 0 0 4 0V4a2 2 0 0 1 4 0v13a2 2 0 0 0 4 0v-4a2 2 0 0 1 2-2"
+  />
+</svg>
+`;
+
+exports[`<Icon /> > applies the cv tone (#E8A838) 1`] = `
+<svg
+  aria-label="CV signal"
+  class="lucide lucide-activity"
+  fill="none"
+  height="16"
+  role="img"
+  stroke="#E8A838"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+  stroke-width="1.5"
+  viewBox="0 0 24 24"
+  width="16"
+  xmlns="http://www.w3.org/2000/svg"
+>
+  <path
+    d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"
+  />
+</svg>
+`;
+
+exports[`<Icon /> > applies the midi tone (#2BC4C4) 1`] = `
+<svg
+  aria-label="MIDI signal"
+  class="lucide lucide-music"
+  fill="none"
+  height="16"
+  role="img"
+  stroke="#2BC4C4"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+  stroke-width="1.5"
+  viewBox="0 0 24 24"
+  width="16"
+  xmlns="http://www.w3.org/2000/svg"
+>
+  <path
+    d="M9 18V5l12-2v13"
+  />
+  <circle
+    cx="6"
+    cy="18"
+    r="3"
+  />
+  <circle
+    cx="18"
+    cy="16"
+    r="3"
+  />
+</svg>
+`;
+
+exports[`<Icon /> > applies the primary tone (#E5E5EA) and accepts custom size 1`] = `
+<svg
+  aria-label="Settings"
+  class="lucide lucide-settings"
+  fill="none"
+  height="24"
+  role="img"
+  stroke="#E5E5EA"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+  stroke-width="1.5"
+  viewBox="0 0 24 24"
+  width="24"
+  xmlns="http://www.w3.org/2000/svg"
+>
+  <path
+    d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"
+  />
+  <circle
+    cx="12"
+    cy="12"
+    r="3"
+  />
+</svg>
+`;
+
+exports[`<Icon /> > renders default size 16 with stroke 1.5 and aria-hidden 1`] = `
+<svg
+  aria-hidden="true"
+  class="lucide lucide-audio-waveform"
+  fill="none"
+  height="16"
+  stroke="currentColor"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+  stroke-width="1.5"
+  viewBox="0 0 24 24"
+  width="16"
+  xmlns="http://www.w3.org/2000/svg"
+>
+  <path
+    d="M2 13a2 2 0 0 0 2-2V7a2 2 0 0 1 4 0v13a2 2 0 0 0 4 0V4a2 2 0 0 1 4 0v13a2 2 0 0 0 4 0v-4a2 2 0 0 1 2-2"
+  />
+</svg>
+`;

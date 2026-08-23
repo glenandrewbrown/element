@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <atomic>
+
 #include "nodes/baseprocessor.hpp"
 #include <element/processor.hpp>
 #include "sol/sol.hpp"
@@ -54,13 +56,25 @@ protected:
     inline bool wantsContext() const noexcept override { return true; }
     ParameterPtr getParameter (const PortDescription& port) override;
 
+public:
+    /** Returns the message-thread Lua state for inspection (e.g. variable snapshot).
+        NOTE: This is the message-thread state only. The audio-thread DSPScript has
+        its own environment that is NOT surfaced here — out of scope for this MVP. */
+    sol::state& getLuaState() noexcept { return lua; }
+
 private:
-    CriticalSection lock;
     sol::state lua;
     CodeDocument dspCode, edCode;
-    std::unique_ptr<DSPScript> script;
+
+    // Lock-free script swap: activeScript is read atomically on the audio thread.
+    // scriptOwner holds ownership for lifetime management (message thread only).
+    std::unique_ptr<DSPScript> scriptOwner;
+    std::atomic<DSPScript*> activeScript { nullptr };
+
+    // Retired scripts awaiting deletion on the message thread.
+    std::unique_ptr<DSPScript> retiredScript;
+
     ParameterArray inParams, outParams;
-    StringArray printMessages;
 
     int _program = 0;
 

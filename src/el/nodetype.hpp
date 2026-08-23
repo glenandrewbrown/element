@@ -8,6 +8,8 @@
 
 #pragma once
 
+#include <element/datapath.hpp>
+
 #include "sol_helpers.hpp"
 
 namespace element {
@@ -118,10 +120,48 @@ inline static sol::table new_nodetype (lua_State* L, const char* name, Args&&...
         "bypassed",    &Node::isBypassed,
         "muted",       &Node::isMuted,
 
+        // Phase E-3: Restrict Node:writeFile() to paths strictly inside the
+        // Element data directory. Without this clamp, a malicious Lua
+        // script can overwrite arbitrary files reachable by the host
+        // process (e.g. ~/.ssh/, ~/.bashrc, the user's Documents folder).
+        //
+        // Containment uses juce::File::isAChildOf(), which correctly handles
+        // sibling-prefix bypasses (`/Users/x/ElementHACK/...` does NOT
+        // satisfy isAChildOf(`/Users/x/Element`)) — a naive startsWith()
+        // would let that through.
+        //
+        // `..` segments are rejected explicitly because juce normalizes
+        // them silently inside getFullPathName() on some platforms; the
+        // raw string check forecloses any platform-quirk leak.
+        //
+        // The check accepts:
+        //   * absolute paths whose normalized form is a descendant of
+        //     DataPath::applicationDataDir()
+        //
+        // It rejects (returns false):
+        //   * relative paths
+        //   * paths containing any `..` traversal segment
+        //   * paths outside the data directory (incl. sibling-prefix dirs)
         "writeFile", [] (const Node& node, const char* filepath) -> bool {
-            if (! File::isAbsolutePath (filepath))
+            if (filepath == nullptr || *filepath == '\0')
                 return false;
-            return node.writeToFile (File (String::fromUTF8 (filepath)));
+            const auto raw = String::fromUTF8 (filepath);
+            if (! File::isAbsolutePath (raw))
+                return false;
+            // Refuse any '..' segment to prevent traversal escapes.
+            for (auto& seg : StringArray::fromTokens (raw, "/\\", {}))
+                if (seg == "..")
+                    return false;
+            const auto target = File (raw);
+            const auto root   = DataPath::applicationDataDir();
+            if (! root.exists() && ! root.createDirectory().wasOk())
+                return false;
+            // isAChildOf is the canonical juce containment check — it does
+            // NOT match sibling prefixes (so `/x/ElementHACK` is not a
+            // child of `/x/Element`).
+            if (! target.isAChildOf (root))
+                return false;
+            return node.writeToFile (target);
         },
 
         "resetPorts",   &Node::resetPorts,

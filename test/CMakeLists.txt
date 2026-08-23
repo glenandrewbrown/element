@@ -13,7 +13,8 @@ target_include_directories(test_element
         ${Boost_INCLUDE_DIRS})
 target_compile_definitions(test_element
     PRIVATE
-        EL_TEST_SOURCE_ROOT="${CMAKE_SOURCE_DIR}")
+        EL_TEST_SOURCE_ROOT="${CMAKE_SOURCE_DIR}"
+        EL_SANDBOX_INCLUDE_TEST_FORMATS=1)
 
 # Register all test suites with CTest
 add_test(NAME "AtomicValueTests" COMMAND test_element --run_test=AtomicValueTests)
@@ -49,3 +50,62 @@ add_test(NAME "ShuttleTests" COMMAND test_element --run_test=ShuttleTests)
 add_test(NAME "ToggleGridTest" COMMAND test_element --run_test=ToggleGridTest)
 add_test(NAME "UpdateTests" COMMAND test_element --run_test=UpdateTests)
 add_test(NAME "VelocityCurveTest" COMMAND test_element --run_test=VelocityCurveTest)
+add_test(NAME "SandboxSemaphoreTests" COMMAND test_element --run_test=SandboxSemaphoreTests)
+add_test(NAME "SharedAudioBufferTests" COMMAND test_element --run_test=SharedAudioBufferTests)
+add_test(NAME "SandboxProtocolTests" COMMAND test_element --run_test=SandboxProtocolTests)
+add_test(NAME "SettingsCredentialTests" COMMAND test_element --run_test=SettingsCredentialTests)
+add_test(NAME "AtomicRenderSwapTests" COMMAND test_element --run_test=AtomicRenderSwapTests)
+add_test(NAME "LuaSandboxTests" COMMAND test_element --run_test=LuaSandboxTests)
+add_test(NAME "SandboxParameterRoundTripTests" COMMAND test_element --run_test=SandboxParameterRoundTripTests)
+add_test(NAME "PresetServiceTests" COMMAND test_element --run_test=PresetServiceTests)
+add_test(NAME "DeviceServiceTests" COMMAND test_element --run_test=DeviceServiceTests)
+add_test(NAME "EngineServiceTests" COMMAND test_element --run_test=EngineServiceTests)
+add_test(NAME "GuiServiceTests" COMMAND test_element --run_test=GuiServiceTests)
+add_test(NAME "MappingServiceTests" COMMAND test_element --run_test=MappingServiceTests)
+add_test(NAME "OSCServiceTests" COMMAND test_element --run_test=OSCServiceTests)
+add_test(NAME "SessionServiceTests" COMMAND test_element --run_test=SessionServiceTests)
+add_test(NAME "BridgeContractTests" COMMAND test_element --run_test=BridgeContractTests)
+add_test(NAME "RootGraphMissingNodeTests" COMMAND test_element --run_test=RootGraphMissingNodeTests)
+add_test(NAME "SandboxIsolationTests" COMMAND test_element --run_test=SandboxIsolationTests)
+add_test(NAME "LuaBoundsTests" COMMAND test_element --run_test=LuaBoundsTests)
+add_test(NAME "NodeWriteFileTests" COMMAND test_element --run_test=NodeWriteFileTests)
+add_test(NAME "AudioThreadAllocationTests" COMMAND test_element --run_test=AudioThreadAllocationTests)
+add_test(NAME "SandboxAtomicRefDataIntegrityTests" COMMAND test_element --run_test=SandboxAtomicRefDataIntegrityTests)
+set_tests_properties(SandboxAtomicRefDataIntegrityTests PROPERTIES RUN_SERIAL TRUE)
+add_test(NAME "SandboxSemaphoreCrossProcessTests" COMMAND test_element --run_test=SandboxSemaphoreCrossProcessTests)
+set_tests_properties(SandboxSemaphoreCrossProcessTests PROPERTIES RUN_SERIAL TRUE)
+add_test(NAME "SandboxRealProcessTests" COMMAND test_element --run_test=SandboxRealProcessTests)
+set_tests_properties(SandboxRealProcessTests PROPERTIES RUN_SERIAL TRUE TIMEOUT 30)
+add_test(NAME "SandboxOrderedShutdownTests" COMMAND test_element --run_test=SandboxOrderedShutdownTests)
+set_tests_properties(SandboxOrderedShutdownTests PROPERTIES RUN_SERIAL TRUE TIMEOUT 60)
+add_test(NAME "SandboxWaitForResponseTests" COMMAND test_element --run_test=SandboxWaitForResponseTests)
+set_tests_properties(SandboxWaitForResponseTests PROPERTIES RUN_SERIAL TRUE TIMEOUT 30)
+add_test(NAME "SandboxStressTests" COMMAND test_element --run_test=SandboxStressTests)
+set_tests_properties(SandboxStressTests PROPERTIES RUN_SERIAL TRUE TIMEOUT 180)
+
+# Phase H — service-layer test coverage extension (Team H batch 3).
+# Each <Service>Service<...>Tests sub-suite is registered as its own ctest
+# entry so coverage shows up at the suite-count level.
+add_test(NAME "DeviceServiceObserverTests" COMMAND test_element --run_test=DeviceServiceObserverTests)
+add_test(NAME "DeviceServiceControllerTests" COMMAND test_element --run_test=DeviceServiceControllerTests)
+add_test(NAME "EngineServiceObserverTests" COMMAND test_element --run_test=EngineServiceObserverTests)
+add_test(NAME "EngineServiceErrorTests" COMMAND test_element --run_test=EngineServiceErrorTests)
+add_test(NAME "GuiServiceObserverTests" COMMAND test_element --run_test=GuiServiceObserverTests)
+add_test(NAME "GuiServiceAccessorTests" COMMAND test_element --run_test=GuiServiceAccessorTests)
+add_test(NAME "MappingServiceLearnModeTests" COMMAND test_element --run_test=MappingServiceLearnModeTests)
+add_test(NAME "MappingServiceRemovalTests" COMMAND test_element --run_test=MappingServiceRemovalTests)
+add_test(NAME "OSCServiceSenderLifecycleTests" COMMAND test_element --run_test=OSCServiceSenderLifecycleTests)
+add_test(NAME "OSCServiceInputValidationTests" COMMAND test_element --run_test=OSCServiceInputValidationTests)
+add_test(NAME "PresetServiceRefreshTests" COMMAND test_element --run_test=PresetServiceRefreshTests)
+add_test(NAME "PresetServiceAddTests" COMMAND test_element --run_test=PresetServiceAddTests)
+add_test(NAME "SessionServiceObserverTests" COMMAND test_element --run_test=SessionServiceObserverTests)
+add_test(NAME "SessionServiceFileOpsTests" COMMAND test_element --run_test=SessionServiceFileOpsTests)
+
+# Phase C opt-in stress harness: 100 nodes, 60 s wall-clock — not in default
+# ctest because it is wall-clock-bound and adds no extra coverage. Enable
+# manually with:  cmake -B build-merged -DELEMENT_RT_STRESS_TEST=ON
+option(ELEMENT_RT_STRESS_TEST "Build and register the audio-thread stress test" OFF)
+if (ELEMENT_RT_STRESS_TEST)
+    target_compile_definitions(test_element PRIVATE ELEMENT_RT_STRESS_TEST=1)
+    add_test(NAME "AudioThreadAllocationStressTests" COMMAND test_element --run_test=AudioThreadAllocationStressTests)
+endif()

@@ -1,0 +1,176 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`<AboutModal /> > matches the checking snapshot 1`] = `
+<div
+  aria-label="About Element"
+  aria-modal="true"
+  class="fixed inset-0 z-[210] flex items-center justify-center bg-black/55"
+  role="dialog"
+>
+  <div
+    class="w-[min(420px,92vw)] rounded-lg bg-surface shadow-[8px_8px_24px_rgba(0,0,0,0.5),-2px_-2px_8px_rgba(255,255,255,0.04)] border border-white/5 p-6 space-y-4"
+  >
+    <div
+      class="text-center space-y-1"
+    >
+      <div
+        class="text-lg font-black tracking-tighter text-text-primary"
+      >
+        Element
+      </div>
+      <div
+        class="text-[11px] text-text-secondary tabular"
+        data-testid="about-version"
+      >
+        Version 
+        2.2.0.16
+      </div>
+    </div>
+    <p
+      class="text-[10px] text-text-dim text-center leading-relaxed"
+    >
+      Copyright 2026 Glen Andrew Brown
+    </p>
+    <div
+      aria-live="polite"
+      class="text-[10px] px-3 py-2 rounded border leading-relaxed text-text-secondary border-white/10 bg-pressed"
+      data-status="checking"
+      data-testid="about-status-banner"
+      role="status"
+    >
+      Checking for updates…
+    </div>
+    <div
+      class="flex flex-col gap-2 pt-2"
+    >
+      <button
+        class="w-full py-2 rounded bg-elevated shadow-[-2px_-2px_8px_rgba(255,255,255,0.04),2px_2px_8px_rgba(0,0,0,0.35)] text-text-primary text-[11px] font-bold uppercase tracking-wide hover:bg-pressed transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        data-testid="about-check-button"
+        disabled=""
+        type="button"
+      >
+        Checking…
+      </button>
+      <button
+        class="w-full py-2 rounded bg-pressed text-text-secondary text-[11px] uppercase tracking-wide hover:text-text-primary transition-colors"
+        type="button"
+      >
+        Close
+      </button>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`<AboutModal /> > matches the idle snapshot 1`] = `
+<div
+  aria-label="About Element"
+  aria-modal="true"
+  class="fixed inset-0 z-[210] flex items-center justify-center bg-black/55"
+  role="dialog"
+>
+  <div
+    class="w-[min(420px,92vw)] rounded-lg bg-surface shadow-[8px_8px_24px_rgba(0,0,0,0.5),-2px_-2px_8px_rgba(255,255,255,0.04)] border border-white/5 p-6 space-y-4"
+  >
+    <div
+      class="text-center space-y-1"
+    >
+      <div
+        class="text-lg font-black tracking-tighter text-text-primary"
+      >
+        Element
+      </div>
+      <div
+        class="text-[11px] text-text-secondary tabular"
+        data-testid="about-version"
+      >
+        Version 
+        2.2.0.16
+      </div>
+    </div>
+    <p
+      class="text-[10px] text-text-dim text-center leading-relaxed"
+    >
+      Copyright 2026 Glen Andrew Brown
+    </p>
+    <div
+      class="flex flex-col gap-2 pt-2"
+    >
+      <button
+        class="w-full py-2 rounded bg-elevated shadow-[-2px_-2px_8px_rgba(255,255,255,0.04),2px_2px_8px_rgba(0,0,0,0.35)] text-text-primary text-[11px] font-bold uppercase tracking-wide hover:bg-pressed transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        data-testid="about-check-button"
+        type="button"
+      >
+        Check for updates
+      </button>
+      <button
+        class="w-full py-2 rounded bg-pressed text-text-secondary text-[11px] uppercase tracking-wide hover:text-text-primary transition-colors"
+        type="button"
+      >
+        Close
+      </button>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`<AboutModal /> > matches the requested snapshot 1`] = `
+<div
+  aria-label="About Element"
+  aria-modal="true"
+  class="fixed inset-0 z-[210] flex items-center justify-center bg-black/55"
+  role="dialog"
+>
+  <div
+    class="w-[min(420px,92vw)] rounded-lg bg-surface shadow-[8px_8px_24px_rgba(0,0,0,0.5),-2px_-2px_8px_rgba(255,255,255,0.04)] border border-white/5 p-6 space-y-4"
+  >
+    <div
+      class="text-center space-y-1"
+    >
+      <div
+        class="text-lg font-black tracking-tighter text-text-primary"
+      >
+        Element
+      </div>
+      <div
+        class="text-[11px] text-text-secondary tabular"
+        data-testid="about-version"
+      >
+        Version 
+        2.2.0.16
+      </div>
+    </div>
+    <p
+      class="text-[10px] text-text-dim text-center leading-relaxed"
+    >
+      Copyright 2026 Glen Andrew Brown
+    </p>
+    <div
+      aria-live="polite"
+      class="text-[10px] px-3 py-2 rounded border leading-relaxed text-logic border-logic/30 bg-logic/10"
+      data-status="requested"
+      data-testid="about-status-banner"
+      role="status"
+    >
+      Update check requested. Element will surface the result in a separate window.
+    </div>
+    <div
+      class="flex flex-col gap-2 pt-2"
+    >
+      <button
+        class="w-full py-2 rounded bg-elevated shadow-[-2px_-2px_8px_rgba(255,255,255,0.04),2px_2px_8px_rgba(0,0,0,0.35)] text-text-primary text-[11px] font-bold uppercase tracking-wide hover:bg-pressed transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        data-testid="about-check-button"
+        type="button"
+      >
+        Check for updates
+      </button>
+      <button
+        class="w-full py-2 rounded bg-pressed text-text-secondary text-[11px] uppercase tracking-wide hover:text-text-primary transition-colors"
+        type="button"
+      >
+        Close
+      </button>
+    </div>
+  </div>
+</div>
+`;

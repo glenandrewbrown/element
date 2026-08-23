@@ -7,6 +7,8 @@
 #include <element/juce/data_structures.hpp>
 #include <element/juce/gui_basics.hpp>
 
+namespace juce { class PluginDescription; }
+
 namespace element {
 
 class Context;
@@ -50,6 +52,7 @@ public:
     static const char* updateKeyKey;
     static const char* updateKeyUserKey;
     static const char* transportStartStopContinue;
+    static const char* pluginSandboxModeKey;
 
     bool getBool (std::string_view key, bool fallback = false) const noexcept;
 
@@ -161,6 +164,24 @@ public:
 
     void setTransportRespondToStartStopContinue (bool shouldRespond);
     bool transportRespondToStartStopContinue() const;
+
+    /** Get plugin sandbox mode.
+     *  0 = disabled (default)
+     *  1 = all external plugins sandboxed
+     *  2 = only problematic plugins sandboxed
+     */
+    int getPluginSandboxMode() const;
+    void setPluginSandboxMode (int mode);
+
+    /** Check if a specific plugin should be sandboxed based on current mode. */
+    bool shouldSandboxPlugin (const juce::PluginDescription& desc) const;
+
+    /** Obfuscate a string for storage (XOR + base64). Not cryptographic —
+        prevents casual plaintext exposure in preference files. */
+    static juce::String obfuscate (const juce::String& plaintext);
+
+    /** Reverse obfuscation. */
+    static juce::String deobfuscate (const juce::String& obfuscated);
 
 private:
     juce::PropertiesFile* getProps() const;

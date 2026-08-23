@@ -1,4 +1,4 @@
 *.o
 *.a
-/src/lua
-/src/luac
+/src/lua/lua
+/src/lua/luac

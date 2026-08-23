@@ -1,0 +1,23 @@
+---
+description: Real-time and audio-path safety for Element engine and nodes
+globs: src/engine/**,src/nodes/**
+alwaysApply: false
+---
+
+# Engine / nodes — realtime safety
+
+These paths participate in or sit adjacent to the audio graph. Match the intent of Claude Code’s PostToolUse hook in [`.claude/settings.local.json`](.claude/settings.local.json).
+
+## Avoid on the realtime / audio callback path
+
+Unless explicitly outside the audio thread (e.g. `prepareToRender`, `releaseResources`, `getState` / `setState`, or clearly commented message-thread-only code):
+
+- Heap allocation: `new`, `delete`, `malloc`, `free`, containers that allocate
+- Mutexes, lock guards, `CriticalSection`, `SpinLock`, `unique_lock`
+- Blocking I/O or unbounded waiting
+
+Prefer patterns documented in [CLAUDE.md](CLAUDE.md) (Real-time Safety): pre-allocation in `prepareToRender`, atomics, lock-free handoff, `juce::AbstractFifo`, etc.
+
+## Escape hatch (aligns with existing hook convention)
+
+If a deliberate exception is required in a hot path, add an explicit comment such as `// no-rt-check` and a short justification so reviewers (and future grep) can tell it apart from accidental regressions.

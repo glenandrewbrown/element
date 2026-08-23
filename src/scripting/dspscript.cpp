@@ -8,6 +8,7 @@
 #include "scripting/bindings.hpp"
 #include <element/processor.hpp>
 
+using namespace juce;
 using namespace element;
 namespace element {
 
@@ -429,19 +430,35 @@ DSPScript::~DSPScript()
     deref();
 }
 
+// Phase E-6: re-enable a safe form of DSPScript::validate.
+//
+// History: the full validate() was disabled with `#if 0` because it ran the
+// user's `node_render` against synthetic buffers, which required engine
+// state that isn't reliably available at validation time. Disabling it
+// meant any malformed script silently made it past the gate.
+//
+// New behaviour: parse the script through ScriptLoader inside a fresh
+// sandboxed Lua state and report compile / syntax errors. The full
+// render-side dry run is still gated behind `#if 0` until a separate task
+// rebuilds the engine harness; the lighter check is enough to catch the
+// common failure mode (broken or hostile session injecting arbitrary
+// non-compiling Lua text).
 Result DSPScript::validate (const String& script)
 {
     if (script.isEmpty())
         return Result::fail ("script contains no code");
-    return Result::ok();
-#if 0
+
     sol::state state;
     element::Lua::initializeState (state);
     ScriptLoader loader (state.lua_state(), script);
 
+    if (! loader.isLoaded())
+        return Result::fail ("could not load script");
     if (loader.hasError())
         return Result::fail (loader.getErrorMessage());
-    
+
+    return Result::ok();
+#if 0
     auto ctx = std::make_unique<DSPScript> (loader.call());
     if (! ctx->isValid())
         return Result::fail ("could not parse script");

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 cmake_minimum_required(VERSION 3.26.0)
-project(element VERSION 1.1.0)
+project(element VERSION 2.2.0)
 set(PROJECT_VERSION_SUFFIX "")
 set(PROJECT_VERSION_FULL "${PROJECT_VERSION}${PROJECT_VERSION_SUFFIX}")
 
@@ -73,6 +73,9 @@ juce_add_gui_app(element_app
     MICROPHONE_PERMISSION_ENABLED TRUE
 
     PLIST_TO_MERGE          "${ELEMENT_APP_PLIST_TO_MERGE}"
+
+    NEEDS_WEB_BROWSER       TRUE
+    NEEDS_WEBVIEW2          TRUE
 )
 
 target_sources(element_app PRIVATE src/main.cc)
@@ -107,6 +110,20 @@ if(APPLE)
             INSTALL_RPATH "@executable_path/../Frameworks"
         )
     endif()
+    # Bundle the WebView production assets into the .app's Resources directory
+    # so the host can find them when installed (e.g. via the .pkg installer)
+    # without depending on the source tree path baked in at configure time.
+    add_custom_command(TARGET element_app POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E rm -rf
+                "$<TARGET_BUNDLE_CONTENT_DIR:element_app>/Resources/webview"
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+                "$<TARGET_BUNDLE_CONTENT_DIR:element_app>/Resources/webview"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+                "${CMAKE_SOURCE_DIR}/webview/dist"
+                "$<TARGET_BUNDLE_CONTENT_DIR:element_app>/Resources/webview"
+        COMMENT "Bundling WebView production assets into Element.app/Contents/Resources/webview"
+        VERBATIM)
+
     install(TARGETS element_app
         BUNDLE DESTINATION "Applications"
         COMPONENT "Standalone")
@@ -156,6 +173,9 @@ if(ELEMENT_BUILD_PLUGINS)
         NEEDS_MIDI_OUTPUT       OFF
         EDITOR_WANTS_KEYBOARD_FOCUS ON
         FORMATS                 ${ELEMENT_PLUGIN_FORMATS}
+
+        NEEDS_WEB_BROWSER       TRUE
+        NEEDS_WEBVIEW2          TRUE
     )
     clap_juce_extensions_plugin(TARGET element_instrument
         CLAP_ID "net.kushview.plugins.Element"
@@ -183,6 +203,9 @@ if(ELEMENT_BUILD_PLUGINS)
         NEEDS_MIDI_OUTPUT           OFF
         EDITOR_WANTS_KEYBOARD_FOCUS ON
         FORMATS                     ${ELEMENT_PLUGIN_FORMATS}
+
+        NEEDS_WEB_BROWSER           TRUE
+        NEEDS_WEBVIEW2              TRUE
     )
     clap_juce_extensions_plugin(TARGET element_effect
         CLAP_ID "net.kushview.ElementFX"
@@ -210,6 +233,9 @@ if(ELEMENT_BUILD_PLUGINS)
             NEEDS_MIDI_OUTPUT           ON
             EDITOR_WANTS_KEYBOARD_FOCUS ON
             FORMATS                     AU
+
+            NEEDS_WEB_BROWSER           TRUE
+            NEEDS_WEBVIEW2              TRUE
         )
 
         target_sources(element_midi_effect PRIVATE src/plugins/midieffect.cc)
@@ -262,6 +288,43 @@ endif()
 set(ELEMENT_GENERATOR ${CPACK_GENERATOR})
 set(CPACK_PACKAGE_FILE_NAME "${PROJECT_NAME}-${CPACK_PACKAGE_VERSION}-${ELEMENT_SYSTEM_NAME}-${ELEMENT_PROCESSOR}")
 include(CPack)
+
+# Sanitizer support
+# Usage: cmake -DELEMENT_ENABLE_SANITIZER=address|undefined|thread|none
+set(ELEMENT_ENABLE_SANITIZER "none" CACHE STRING "Enable sanitizer: address, undefined, thread, or none")
+set_property(CACHE ELEMENT_ENABLE_SANITIZER PROPERTY STRINGS "none" "address" "undefined" "thread")
+
+if (NOT ELEMENT_ENABLE_SANITIZER STREQUAL "none")
+    if (MSVC)
+        message(WARNING "ELEMENT_ENABLE_SANITIZER is not supported on MSVC; ignoring.")
+    else()
+        if (ELEMENT_ENABLE_SANITIZER STREQUAL "thread")
+            # TSan requires Debug; warn if building Release
+            if (CMAKE_BUILD_TYPE STREQUAL "Release")
+                message(WARNING "ThreadSanitizer is intended for Debug builds. Consider -DCMAKE_BUILD_TYPE=Debug.")
+            endif()
+        endif()
+        set(_san_flags -fsanitize=${ELEMENT_ENABLE_SANITIZER} -fno-omit-frame-pointer -g)
+        add_compile_options(${_san_flags})
+        add_link_options(${_san_flags})
+        message(STATUS "Sanitizer enabled: ${ELEMENT_ENABLE_SANITIZER}")
+    endif()
+endif()
+
+# Coverage instrumentation support
+# Usage: cmake -DELEMENT_ENABLE_COVERAGE=ON -DCMAKE_BUILD_TYPE=Debug
+option(ELEMENT_ENABLE_COVERAGE "Enable gcov/llvm-cov coverage instrumentation" OFF)
+
+if (ELEMENT_ENABLE_COVERAGE)
+    if (MSVC)
+        message(WARNING "ELEMENT_ENABLE_COVERAGE is not supported on MSVC; ignoring.")
+    else()
+        set(_cov_flags --coverage -O0 -g)
+        add_compile_options(${_cov_flags})
+        add_link_options(--coverage)
+        message(STATUS "Coverage instrumentation enabled")
+    endif()
+endif()
 
 # Clean CPack staging directory before and after packaging to prevent macOS relocation issues
 add_custom_target(installer

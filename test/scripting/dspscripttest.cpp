@@ -8,6 +8,7 @@
 #include "scripting/scriptloader.hpp"
 #include "testutil.hpp"
 
+using namespace juce;
 using namespace element;
 
 BOOST_AUTO_TEST_SUITE (DSPScriptTest)
@@ -78,6 +79,108 @@ BOOST_AUTO_TEST_CASE (Basics)
     expect (Amp.get_or ("released", true) == false);
     dsp.release();
     expect (Amp.get_or ("released", false) == true);
+}
+
+BOOST_AUTO_TEST_CASE (LuaSandboxDangerousGlobalsBlocked)
+{
+    LuaFixture fix;
+    sol::state_view lua (fix.luaState());
+
+    // load() must be nil — prevents loading arbitrary code from strings
+    {
+        auto result = lua.script ("return type(load)", "sandbox_test");
+        BOOST_REQUIRE_MESSAGE (result.valid(), "script failed");
+        std::string t = result;
+        BOOST_REQUIRE_MESSAGE (t == "nil", "load should be nil, got: " + t);
+    }
+
+    // loadfile() must be nil — prevents loading code from files
+    {
+        auto result = lua.script ("return type(loadfile)", "sandbox_test");
+        BOOST_REQUIRE_MESSAGE (result.valid(), "script failed");
+        std::string t = result;
+        BOOST_REQUIRE_MESSAGE (t == "nil", "loadfile should be nil, got: " + t);
+    }
+
+    // dofile() must be nil — prevents executing files
+    {
+        auto result = lua.script ("return type(dofile)", "sandbox_test");
+        BOOST_REQUIRE_MESSAGE (result.valid(), "script failed");
+        std::string t = result;
+        BOOST_REQUIRE_MESSAGE (t == "nil", "dofile should be nil, got: " + t);
+    }
+
+    // io must be nil — prevents file I/O
+    {
+        auto result = lua.script ("return type(io)", "sandbox_test");
+        BOOST_REQUIRE_MESSAGE (result.valid(), "script failed");
+        std::string t = result;
+        BOOST_REQUIRE_MESSAGE (t == "nil", "io should be nil, got: " + t);
+    }
+
+    // os must be nil — prevents OS command execution
+    {
+        auto result = lua.script ("return type(os)", "sandbox_test");
+        BOOST_REQUIRE_MESSAGE (result.valid(), "script failed");
+        std::string t = result;
+        BOOST_REQUIRE_MESSAGE (t == "nil", "os should be nil, got: " + t);
+    }
+
+    // package.cpath must be empty — prevents loading native .so/.dylib
+    {
+        auto result = lua.script ("return package.cpath", "sandbox_test");
+        BOOST_REQUIRE_MESSAGE (result.valid(), "script failed");
+        std::string cpath = result;
+        BOOST_REQUIRE_MESSAGE (cpath.empty(), "package.cpath should be empty, got: " + cpath);
+    }
+
+    // package.loadlib must be nil — prevents native library loading
+    {
+        auto result = lua.script ("return type(package.loadlib)", "sandbox_test");
+        BOOST_REQUIRE_MESSAGE (result.valid(), "script failed");
+        std::string t = result;
+        BOOST_REQUIRE_MESSAGE (t == "nil", "package.loadlib should be nil, got: " + t);
+    }
+
+    // package.path must not contain system paths like /usr
+    {
+        auto result = lua.script ("return package.path", "sandbox_test");
+        BOOST_REQUIRE_MESSAGE (result.valid(), "script failed");
+        std::string path = result;
+        BOOST_REQUIRE_MESSAGE (path.find ("/usr") == std::string::npos,
+                               "package.path should not contain /usr, got: " + path);
+    }
+}
+
+// Phase E-6: DSPScript::validate() must reject empty + malformed scripts
+// at the gate so the host never tries to wire a half-broken DSP node into
+// the audio graph. The previous implementation always returned ok() because
+// the full render-side dry run was disabled; the lightweight version now
+// runs the script through ScriptLoader inside a sandboxed Lua state and
+// surfaces compile errors.
+BOOST_AUTO_TEST_CASE (ValidateRejectsEmptyScript)
+{
+    auto r = DSPScript::validate (String());
+    BOOST_REQUIRE (! r.wasOk());
+}
+
+BOOST_AUTO_TEST_CASE (ValidateRejectsSyntaxError)
+{
+    // Unbalanced 'function' keyword — syntactically invalid Lua. ScriptLoader
+    // should report this through hasError() and validate() should bubble it
+    // up as a failure.
+    const String bad = "function broken(";
+    auto r = DSPScript::validate (bad);
+    BOOST_CHECK (! r.wasOk());
+}
+
+BOOST_AUTO_TEST_CASE (ValidateAcceptsTrivialReturnTable)
+{
+    // Minimal valid script that compiles cleanly. validate() should not
+    // execute node_render against synthetic buffers; it just needs to load.
+    const String ok = "return { layout = function() return {}, {} end }";
+    auto r = DSPScript::validate (ok);
+    BOOST_CHECK (r.wasOk());
 }
 
 BOOST_AUTO_TEST_SUITE_END()

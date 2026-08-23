@@ -19,7 +19,6 @@
 #include "ui/audioiopanelview.hpp"
 #include "ui/connectiongrid.hpp"
 #include "ui/controllersview.hpp"
-#include "ui/datapathbrowser.hpp"
 #include "ui/emptyview.hpp"
 #include "ui/grapheditorview.hpp"
 #include "ui/graphmixerview.hpp"
@@ -105,7 +104,7 @@ public:
         bar->mouseReleased.connect (
             std::bind (&ContentContainer::lockLayout, this));
         secondary.reset (new ContentView());
-        addAndMakeVisible (primary.get());
+        addAndMakeVisible (secondary.get());
 
         bottom.reset (new Bottom (cc));
         addAndMakeVisible (bottom.get());
@@ -469,9 +468,8 @@ StandardContent::StandardContent (Context& ctl_)
     addAndMakeVisible (container.get());
     bar1 = std::make_unique<Resizer> (*this, &layout, 1, true);
     addAndMakeVisible (bar1.get());
-    nav = std::make_unique<NavigationConcertinaPanel> (ctl_);
+    nav = std::make_unique<NavigationPanel> (ctl_);
     addAndMakeVisible (nav.get());
-    nav->updateContent();
 
     toolBarVisible = true;
     toolBarSize = 32;
@@ -484,10 +482,6 @@ StandardContent::StandardContent (Context& ctl_)
 
     nav->setSize (304, getHeight());
     resizerMouseUp();
-    if (auto gp = nav->findPanel<GraphSettingsView>())
-        nav->expandPanelFully (gp, false);
-    if (auto stp = nav->findPanel<SessionTreePanel>())
-        nav->setPanelSize (stp, 200, false);
 
     resized();
 
@@ -495,10 +489,13 @@ StandardContent::StandardContent (Context& ctl_)
     setNodeChannelStripVisible (false);
     setMeterBridgeVisible (false);
 
-    auto& srv = *ctl_.services().find<SessionService>();
-    sessionLoadedConn = srv.sigSessionLoaded.connect ([this]() {
-        setCurrentNode (session()->getActiveGraph());
-    });
+    if (auto* srv = ctl_.services().find<SessionService>())
+    {
+        sessionLoadedConn = srv->sigSessionLoaded.connect ([this]() {
+            if (auto s = session())
+                setCurrentNode (s->getActiveGraph());
+        });
+    }
 }
 
 StandardContent::~StandardContent() noexcept
@@ -667,20 +664,13 @@ void StandardContent::resizeContent (const Rectangle<int>& area)
 bool StandardContent::isInterestedInDragSource (const SourceDetails& dragSourceDetails)
 {
     const auto& desc (dragSourceDetails.description);
-    return desc.toString() == "ccNavConcertinaPanel" || (desc.isArray() && desc.size() >= 2 && desc[0] == "plugin");
+    return desc.isArray() && desc.size() >= 2 && desc[0] == "plugin";
 }
 
 void StandardContent::itemDropped (const SourceDetails& dragSourceDetails)
 {
     const auto& desc (dragSourceDetails.description);
-    if (desc.toString() == "ccNavConcertinaPanel")
-    {
-        if (auto* panel = nav->findPanel<DataPathTreeComponent>())
-            filesDropped (StringArray ({ panel->getSelectedFile().getFullPathName() }),
-                          dragSourceDetails.localPosition.getX(),
-                          dragSourceDetails.localPosition.getY());
-    }
-    else if (desc.isArray() && desc.size() >= 2 && desc[0] == "plugin")
+    if (desc.isArray() && desc.size() >= 2 && desc[0] == "plugin")
     {
         auto& list (context().plugins().getKnownPlugins());
         if (auto plugin = list.getTypeForIdentifierString (desc[1].toString()))
@@ -770,23 +760,12 @@ void StandardContent::stabilize (const bool refreshDataPathTrees)
     if (session->getNumGraphs() <= 0)
         setContentView (new EmptyContentView());
 
-    if (auto* ss = nav->findPanel<SessionTreePanel>())
-        ss->setSession (session);
-    if (auto* mcv = nav->findPanel<NodePropertiesView>())
-        mcv->stabilizeContent();
-    if (auto* ncv = nav->findPanel<NodeEditorView>())
-        ncv->stabilizeContent();
-    if (auto* gcv = nav->findPanel<GraphSettingsView>())
-        gcv->stabilizeContent();
+    nav->stabilizeAll();
 
     stabilizeViews();
 
     if (auto* main = findParentComponentOfClass<MainWindow>())
         main->refreshMenu();
-
-    if (refreshDataPathTrees)
-        if (auto* data = nav->findPanel<DataPathTreeComponent>())
-            data->refresh();
 
     refreshToolbar();
     refreshStatusBar();
@@ -935,7 +914,7 @@ bool StandardContent::isVirtualKeyboardVisible() const
 void StandardContent::setVirtualKeyboardVisible (const bool vis)
 {
     auto keyboard = getVirtualKeyboardView();
-    if (keyboard->isVisible() == vis)
+    if (keyboard == nullptr || keyboard->isVisible() == vis)
         return;
 
     keyboard->setVisible (vis);
@@ -986,7 +965,14 @@ void StandardContent::getAllCommands (Array<CommandID>& commands)
         Commands::toggleChannelStrip,
         Commands::showLastContentView,
         Commands::rotateContentView,
-        Commands::selectAll
+        Commands::selectAll,
+        Commands::showPanelSession,
+        Commands::showPanelBrowse,
+        Commands::showPanelInspector,
+        Commands::showPanelEditor,
+        Commands::graphZoomIn,
+        Commands::graphZoomOut,
+        Commands::graphFitToView
     });
     // clang-format on
 }
@@ -1025,6 +1011,7 @@ void StandardContent::getCommandInfo (CommandID commandID, ApplicationCommandInf
             if (getMainViewName() == EL_VIEW_SESSION_SETTINGS)
                 flags |= Info::isTicked;
             result.setInfo ("Session Settings", "Session Settings", "Session", flags);
+            break;
         }
         //=====
         case Commands::showGraphConfig: {
@@ -1106,6 +1093,57 @@ void StandardContent::getCommandInfo (CommandID commandID, ApplicationCommandInf
             result.addDefaultKeypress ('a', ModifierKeys::commandModifier);
             break;
         }
+
+        // Panel switching shortcuts
+        case Commands::showPanelSession: {
+            int flags = 0;
+            if (nav && nav->getActivePanel() == 0)
+                flags |= Info::isTicked;
+            result.setInfo ("Show Session Panel", "Switch sidebar to Session panel", "UI", flags);
+            result.addDefaultKeypress ('1', ModifierKeys::commandModifier);
+            break;
+        }
+        case Commands::showPanelBrowse: {
+            int flags = 0;
+            if (nav && nav->getActivePanel() == 1)
+                flags |= Info::isTicked;
+            result.setInfo ("Show Browse Panel", "Switch sidebar to Browse panel", "UI", flags);
+            result.addDefaultKeypress ('2', ModifierKeys::commandModifier);
+            break;
+        }
+        case Commands::showPanelInspector: {
+            int flags = 0;
+            if (nav && nav->getActivePanel() == 2)
+                flags |= Info::isTicked;
+            result.setInfo ("Show Inspector Panel", "Switch sidebar to Inspector panel", "UI", flags);
+            result.addDefaultKeypress ('3', ModifierKeys::commandModifier);
+            break;
+        }
+        case Commands::showPanelEditor: {
+            int flags = 0;
+            if (nav && nav->getActivePanel() == 3)
+                flags |= Info::isTicked;
+            result.setInfo ("Show Node Editor Panel", "Switch sidebar to Node Editor panel", "UI", flags);
+            result.addDefaultKeypress ('4', ModifierKeys::commandModifier);
+            break;
+        }
+
+        // Graph zoom shortcuts
+        case Commands::graphZoomIn: {
+            result.setInfo ("Zoom In", "Zoom into the graph editor", "Graph", 0);
+            result.addDefaultKeypress ('=', ModifierKeys::commandModifier);
+            break;
+        }
+        case Commands::graphZoomOut: {
+            result.setInfo ("Zoom Out", "Zoom out of the graph editor", "Graph", 0);
+            result.addDefaultKeypress ('-', ModifierKeys::commandModifier);
+            break;
+        }
+        case Commands::graphFitToView: {
+            result.setInfo ("Fit to View", "Fit the graph to the visible area", "Graph", 0);
+            result.addDefaultKeypress ('0', ModifierKeys::commandModifier);
+            break;
+        }
     }
 }
 
@@ -1183,6 +1221,50 @@ bool StandardContent::perform (const InvocationInfo& info)
                 view->selectAllNodes();
             break;
         }
+
+        // Panel switching
+        case Commands::showPanelSession:
+            if (nav) nav->activatePanel (0);
+            break;
+        case Commands::showPanelBrowse:
+            if (nav) nav->activatePanel (1);
+            break;
+        case Commands::showPanelInspector:
+            if (nav) nav->activatePanel (2);
+            break;
+        case Commands::showPanelEditor:
+            if (nav) nav->activatePanel (3);
+            break;
+
+        // Graph zoom
+        case Commands::graphZoomIn: {
+            if (auto* view = dynamic_cast<GraphEditorView*> (container->primary.get()))
+            {
+                auto& ed = view->editor().graphEditorComponent();
+                ed.setZoomScale (jmin (2.0f, ed.getZoomScale() + 0.25f));
+                view->getToolbar().updateZoomLabel();
+            }
+            break;
+        }
+        case Commands::graphZoomOut: {
+            if (auto* view = dynamic_cast<GraphEditorView*> (container->primary.get()))
+            {
+                auto& ed = view->editor().graphEditorComponent();
+                ed.setZoomScale (jmax (0.25f, ed.getZoomScale() - 0.25f));
+                view->getToolbar().updateZoomLabel();
+            }
+            break;
+        }
+        case Commands::graphFitToView: {
+            if (auto* view = dynamic_cast<GraphEditorView*> (container->primary.get()))
+            {
+                auto& ed = view->editor().graphEditorComponent();
+                ed.setZoomScale (1.0f);
+                view->getToolbar().updateZoomLabel();
+            }
+            break;
+        }
+
         default:
             result = false;
             break;
@@ -1190,7 +1272,8 @@ bool StandardContent::perform (const InvocationInfo& info)
 
     if (result)
     {
-        services().find<UI>()->refreshMainMenu();
+        if (auto* ui = services().find<UI>())
+            ui->refreshMainMenu();
     }
     return result;
 }
@@ -1210,7 +1293,7 @@ void StandardContent::getSessionState (String& state)
 {
     ValueTree data ("state");
 
-    if (auto* const ned = nav->findPanel<NodeEditorView>())
+    if (auto* const ned = nav->getNodeEditorView())
     {
         String nedState;
         ned->getState (nedState);
@@ -1220,7 +1303,7 @@ void StandardContent::getSessionState (String& state)
         }
     }
 
-    if (auto* const npv = nav->findPanel<NodePropertiesView>())
+    if (auto* const npv = nav->getNodePropertiesView())
     {
         String npvState;
         npv->getState (npvState);
@@ -1249,13 +1332,13 @@ void StandardContent::applySessionState (const String& state)
     if (! data.isValid())
         return;
 
-    if (auto* const ned = nav->findPanel<NodeEditorView>())
+    if (auto* const ned = nav->getNodeEditorView())
     {
         String nedState = data.getProperty ("NodeEditorView").toString();
         ned->setState (nedState);
     }
 
-    if (auto* const npv = nav->findPanel<NodePropertiesView>())
+    if (auto* const npv = nav->getNodePropertiesView())
     {
         String npvState = data.getProperty ("NodePropertiesView").toString();
         npv->setState (npvState);
@@ -1333,6 +1416,12 @@ void StandardContent::setExtraView (Component* extra)
         addAndMakeVisible (_extra.get());
     }
     resized();
+}
+
+void StandardContent::setupPluginEditorWithGraph (Graph& g)
+{
+    auto view = std::make_unique<GraphEditorView> (static_cast<const Node&> (g));
+    setMainView (view.release());
 }
 
 void StandardContent::setMeterBridgeVisible (bool vis)

@@ -8,6 +8,7 @@
 #include <element/node.hpp>
 #include <element/plugins.hpp>
 #include <element/ui/commands.hpp>
+#include <element/graph.hpp>
 #include <element/ui/content.hpp>
 #include <element/ui/style.hpp>
 
@@ -377,13 +378,13 @@ Content::Content (Context& ctx)
     statusBar = std::make_unique<StatusBar> (context());
     addAndMakeVisible (statusBar.get());
     statusBarVisible = true;
-    statusBarSize = 22;
+    statusBarSize = 28;
 
     toolBar = std::make_unique<Toolbar> (*this);
     addAndMakeVisible (toolBar.get());
     toolBar->setSession (context().session());
     toolBarVisible = true;
-    toolBarSize = 32;
+    toolBarSize = 40;
 
     const Node node (context().session()->getCurrentGraph());
     setCurrentNode (node);
@@ -454,5 +455,11 @@ void Content::stabilizeViews() {}
 void Content::saveState (PropertiesFile*) {}
 void Content::restoreState (PropertiesFile*) {}
 void Content::setCurrentNode (const Node& node) { ignoreUnused (node); }
+
+void Content::setExtraView (Component*) {}
+
+Component* Content::extraView() { return nullptr; }
+
+void Content::setupPluginEditorWithGraph (Graph&) {}
 
 } // namespace element

@@ -424,7 +424,8 @@ void AudioMixerProcessor::prepareToPlay (const double sampleRate, const int buff
     setRateAndBufferSizeDetails (sampleRate, bufferSize);
     jassert (tracks.size() == getBusCount (true));
     jassert (1 == getBusCount (false));
-    tempBuffer.setSize (getMainBusNumOutputChannels(), bufferSize, false, true, true);
+    tempBuffer.setSize (getTotalNumInputChannels(), bufferSize,
+                        false, true /* clearExtraSpace */, false);
 }
 
 void AudioMixerProcessor::processBlock (AudioSampleBuffer& audio, MidiBuffer& midi)
@@ -490,7 +491,7 @@ void AudioMixerProcessor::processBlock (AudioSampleBuffer& audio, MidiBuffer& mi
     masterMonitor->muted.set (*masterMute);
     masterMonitor->gain.set (gain);
 
-    for (int i = 0; i < 2; ++i)
+    for (int i = 0; i < jmin (2, output.getNumChannels()); ++i)
         masterMonitor->rms.getReference (i).set (
             output.getRMSLevel (i, 0, numSamples));
 

@@ -101,7 +101,8 @@ public:
 
     void processMidiBuffer (const MidiBuffer& buffer, int nframes, double sampleRate);
 
-    CriticalSection& getMidiOutputLock() { return midiOutputLock; }
+    /** Get the current MIDI output device pointer (lock-free, audio-thread safe). */
+    juce::MidiOutput* getAtomicMidiOutput() const { return atomicMidiOutput.load (std::memory_order_acquire); }
 
 private:
     struct MidiCallbackInfo
@@ -137,7 +138,8 @@ private:
 
     String defaultMidiOutputName, defaultMidiOutputID;
     std::unique_ptr<MidiOutput> defaultMidiOutput;
-    CriticalSection audioCallbackLock, midiCallbackLock, midiOutputLock;
+    CriticalSection audioCallbackLock, midiCallbackLock;
+    std::atomic<MidiOutput*> atomicMidiOutput { nullptr };
 
     class CallbackHandler;
     std::unique_ptr<CallbackHandler> callbackHandler;

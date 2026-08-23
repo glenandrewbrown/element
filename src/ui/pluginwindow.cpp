@@ -7,6 +7,7 @@
 #include "ui/guicommon.hpp"
 #include "ui/pluginwindow.hpp"
 #include "ui/contextmenus.hpp"
+#include "ui/nodeeditorfactory.hpp"
 #include <element/ui/grapheditor.hpp>
 #include "nodes/volumeeditor.hpp"
 #include "presetmanager.hpp"
@@ -388,6 +389,26 @@ void PluginWindow::moved()
 void PluginWindow::closeButtonPressed()
 {
     gui.closePluginWindow (this);
+}
+
+std::unique_ptr<Component> createPluginEditorPanel (GuiService& gui, const Node& node)
+{
+    if (! node.isValid() || node.isIONode())
+        return nullptr;
+
+    NodeEditorFactory factory (gui);
+    std::unique_ptr<Component> ed;
+    if (auto e = factory.instantiate (node, NodeEditorPlacement::PluginWindow))
+        ed.reset (e.release());
+    else if (auto ape = NodeEditorFactory::createAudioProcessorEditor (node))
+        ed.reset (ape.release());
+    else if (auto comp = NodeEditorFactory::createEditor (node))
+        ed.reset (comp.release());
+
+    if (ed == nullptr)
+        return nullptr;
+
+    return std::make_unique<PluginWindowContent> (ed.release(), node);
 }
 
 } // namespace element

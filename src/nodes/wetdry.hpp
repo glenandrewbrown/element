@@ -95,7 +95,11 @@ public:
         }
         else
         {
-            DBG ("CHans: " << buffer.getNumChannels());
+            // C-8: do not call DBG() on the audio thread — DBG allocates a
+            // juce::String. The <4-channel path here is a misconfiguration
+            // (this processor advertises 4-in/2-out) and is silently no-op
+            // rather than logging from RT context.
+            jassertfalse;
         }
 
         lastWetLevel = *wetLevel;

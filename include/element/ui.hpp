@@ -85,6 +85,10 @@ public:
     void getCommandInfo (juce::CommandID commandID, juce::ApplicationCommandInfo& result) override;
     bool perform (const InvocationInfo& info) override;
 
+    /** Undo / redo used by the WebView bridge (same transaction stack as the graph editor). */
+    void performUndo();
+    void performRedo();
+
     /** Returns the content component for this instance */
     Content* content();
 
@@ -145,7 +149,6 @@ private:
 
     Services& controller;
     Context& world;
-    SessionRef sessionRef;
     juce::OwnedArray<PluginWindow> pluginWindows;
 
     std::unique_ptr<WindowManager> windowManager;
@@ -156,6 +159,9 @@ private:
     std::unique_ptr<Designer> designer;
 
     Node selectedNode; // TODO: content manager
+
+    /** P1-11: connection to EngineService::sigEngineStateChanged. */
+    SignalConnection engineStateChangedConnection;
 
     struct KeyPressManager;
     std::unique_ptr<KeyPressManager> keys;

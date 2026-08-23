@@ -9,16 +9,16 @@ namespace element {
 
 class Services;
 
-class SessionImportWizard final : public Component
+class SessionImportWizard final : public juce::Component
 {
 public:
     SessionImportWizard();
     ~SessionImportWizard();
 
-    void loadSession (const File& file);
+    void loadSession (const juce::File& file);
     SessionPtr session();
 
-    void paint (Graphics& g) override;
+    void paint (juce::Graphics& g) override;
     void resized() override;
 
 private:
@@ -27,10 +27,10 @@ private:
     SessionPtr _session;
 };
 
-class SessionImportWizardDialog : public DialogWindow
+class SessionImportWizardDialog : public juce::DialogWindow
 {
 public:
-    SessionImportWizardDialog (std::unique_ptr<Component>& h, const File& file);
+    SessionImportWizardDialog (std::unique_ptr<juce::Component>& h, const juce::File& file);
     ~SessionImportWizardDialog();
 
     bool escapeKeyPressed() override;
@@ -39,7 +39,7 @@ public:
     std::function<void (const Node&)> onGraphChosen;
 
 private:
-    std::unique_ptr<Component>& holder;
+    std::unique_ptr<juce::Component>& holder;
 };
 
 } // namespace element

@@ -5,6 +5,7 @@
 #include "nodes/nodetypes.hpp"
 #include <element/nodefactory.hpp>
 
+using namespace juce;
 using namespace element;
 
 BOOST_AUTO_TEST_SUITE (NodeFactoryTests)

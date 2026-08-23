@@ -10,8 +10,11 @@
 #include <element/settings.hpp>
 
 #include "engine/clapprovider.hpp"
+#include "engine/sandboxhost.hpp"
 #include "engine/ionode.hpp"
 #include "nodes/nodetypes.hpp"
+#include "nodes/sandboxedprocessor.hpp"
+#include "ui/pluginusagetracker.hpp"
 #include "utils.hpp"
 
 #define EL_DEAD_AUDIO_PLUGINS_FILENAME "scanner/crashed.txt"
@@ -23,10 +26,15 @@
 #define EL_PLUGIN_SCANNER_START_ID "start"
 #define EL_PLUGIN_SCANNER_FINISHED_ID "finished"
 
-#define EL_PLUGIN_SCANNER_DEFAULT_TIMEOUT 24000 // 24 Seconds
+#define EL_PLUGIN_SCANNER_DEFAULT_TIMEOUT 60000 // 60 Seconds (increased for heavy plugins)
 
 #include <errno.h>
-extern char* program_invocation_name;
+
+#if JUCE_MAC
+// AU metadata reading is in pluginmanager_au.mm to avoid namespace
+// conflicts between juce:: and macOS AudioToolbox types.
+extern bool readAUMetadata (const juce::String& identifier, juce::PluginDescription& desc);
+#endif
 
 namespace element {
 using namespace juce;
@@ -320,7 +328,10 @@ public:
 
     void handleConnectionLost() override
     {
-        logger->logMessage ("[scanner] connection lost");
+        cancelPendingUpdate();
+        if (logger)
+            logger->logMessage ("[scanner] connection lost");
+        Logger::setCurrentLogger (nullptr);
         logger.reset();
         settings = nullptr;
         plugins = nullptr;
@@ -379,7 +390,12 @@ bool PluginScanner::retrieveDescriptions (const String& formatName,
         const auto response = superprocess->getResponse();
 
         if (response.state == State::timeout)
+        {
+            // Pump the message loop so the UI stays responsive during scanning
+            if (MessageManager::getInstance()->isThisTheMessageThread())
+                MessageManager::getInstance()->runDispatchLoopUntil (4);
             continue;
+        }
 
         if (response.xml != nullptr)
         {
@@ -392,11 +408,32 @@ bool PluginScanner::retrieveDescriptions (const String& formatName,
             }
         }
 
+        if (response.state == State::connectionLost)
+        {
+            // Scanner subprocess crashed on this plugin.  Reset it so
+            // a fresh subprocess is spawned for the next plugin.
+            superprocess.reset();
+        }
+
         return (response.state == State::gotResult);
     }
 }
 
 File PluginScanner::scannerExeFile() const noexcept { return _scannerExe; }
+
+// Helper to check if a plugin identifier should be skipped during scanning
+static bool shouldSkipPluginScan (const String& ID)
+{
+    // Skip Element's own plugins to prevent recursive loading issues
+    if (ID.containsIgnoreCase ("KshV") || ID.containsIgnoreCase ("Kushview"))
+        return true;
+    if (ID.containsIgnoreCase ("KV-Element") || ID.containsIgnoreCase ("Element.component"))
+        return true;
+    if (ID.containsIgnoreCase ("Element.vst3") || ID.containsIgnoreCase ("Element.clap"))
+        return true;
+
+    return false;
+}
 
 void PluginScanner::scanAudioFormat (const String& formatName)
 {
@@ -414,7 +451,7 @@ void PluginScanner::scanAudioFormat (const String& formatName)
         identifiers = format->searchPathsForPlugins (
             detail::readSearchPath (*_manager.props, formatName),
             true,
-            false);
+            true);
     }
     else if (auto* provider = _manager.getProvider (formatName))
     {
@@ -431,6 +468,13 @@ void PluginScanner::scanAudioFormat (const String& formatName)
     {
         if (cancelFlag.get() != 0)
             return;
+
+        // Skip Element's own plugins
+        if (shouldSkipPluginScan (ID))
+        {
+            step += 1.f;
+            continue;
+        }
 
         listeners.call (&Listener::audioPluginScanStarted, pluginName (ID));
 
@@ -499,6 +543,201 @@ void PluginScanner::scanForAudioPlugins (const StringArray& formats)
     // prevents the UI from showing to
     // many errors about known-crashed
     // plugins
+    listeners.call (&Listener::audioPluginScanFinished);
+}
+
+// --- Lightweight metadata helpers (no plugin instantiation) ---
+
+/** Read VST3 metadata from moduleinfo.json without loading the plugin. */
+static bool readVST3ModuleInfo (const String& identifier, OwnedArray<PluginDescription>& results)
+{
+    File vst3File (identifier);
+    if (! vst3File.isDirectory())
+        return false;
+
+    auto moduleInfo = vst3File.getChildFile ("Contents/Resources/moduleinfo.json");
+    if (! moduleInfo.existsAsFile())
+        return false;
+
+    auto json = JSON::parse (moduleInfo.loadFileAsString());
+    if (json.isVoid())
+        return false;
+
+    auto factoryInfo = json.getProperty ("Factory Info", var());
+    String vendor = factoryInfo.getProperty ("Vendor", "Unknown").toString();
+    String moduleVersion = json.getProperty ("Version", "").toString();
+
+    auto classes = json.getProperty ("Classes", var());
+    if (! classes.isArray())
+        return false;
+
+    for (int i = 0; i < classes.getArray()->size(); ++i)
+    {
+        auto cls = classes.getArray()->getReference (i);
+        String category = cls.getProperty ("Category", "").toString();
+
+        // Only add "Audio Module Class" entries (skip controller classes)
+        if (category != "Audio Module Class")
+            continue;
+
+        auto* desc = results.add (new PluginDescription());
+        desc->name = cls.getProperty ("Name", "Unknown").toString();
+        desc->manufacturerName = cls.getProperty ("Vendor", vendor).toString();
+        desc->version = cls.getProperty ("Version", moduleVersion).toString();
+        desc->pluginFormatName = "VST3";
+        desc->fileOrIdentifier = identifier;
+        desc->descriptiveName = desc->name;
+        desc->numInputChannels = 2;
+        desc->numOutputChannels = 2;
+
+        // Parse sub-categories
+        auto subCats = cls.getProperty ("Sub Categories", var());
+        StringArray catStrings;
+        if (subCats.isArray())
+        {
+            for (int j = 0; j < subCats.getArray()->size(); ++j)
+                catStrings.add (subCats.getArray()->getReference (j).toString());
+        }
+
+        if (catStrings.contains ("Instrument") || catStrings.contains ("Synth"))
+        {
+            desc->category = "Instrument";
+            desc->isInstrument = true;
+        }
+        else if (catStrings.contains ("Fx") || catStrings.contains ("Effect"))
+        {
+            desc->category = catStrings.joinIntoString ("|");
+            desc->isInstrument = false;
+        }
+        else
+        {
+            desc->category = catStrings.joinIntoString ("|");
+            desc->isInstrument = false;
+        }
+    }
+
+    return results.size() > 0;
+}
+
+void PluginScanner::quickScanForPlugins (const StringArray& formats)
+{
+    cancelFlag = 0;
+    int totalAdded = 0;
+
+    for (const auto& formatName : formats)
+    {
+        if (cancelFlag.get() != 0)
+            break;
+
+        if (auto* format = _manager.getAudioPluginFormat (formatName))
+        {
+            auto identifiers = format->searchPathsForPlugins (
+                detail::readSearchPath (*_manager.props, formatName),
+                true,
+                true);
+
+            float step = 0.f;
+            for (const auto& ID : identifiers)
+            {
+                if (cancelFlag.get() != 0)
+                    break;
+
+                if (shouldSkipPluginScan (ID))
+                {
+                    step += 1.f;
+                    continue;
+                }
+
+                if (list.getTypeForFile (ID) || list.getBlacklistedFiles().contains (ID))
+                {
+                    step += 1.f;
+                    continue;
+                }
+
+                listeners.call (&Listener::audioPluginScanStarted,
+                                format->getNameOfPluginFromIdentifier (ID));
+
+                bool added = false;
+
+#if JUCE_MAC
+                // AU: read from AudioComponent registry (instant, no loading)
+                if (formatName == "AudioUnit")
+                {
+                    PluginDescription desc;
+                    if (readAUMetadata (ID, desc))
+                    {
+                        list.removeFromBlacklist (ID);
+                        list.addType (desc);
+                        ++totalAdded;
+                        added = true;
+                    }
+                }
+#endif
+
+                // VST3: read from moduleinfo.json (fast file read, no loading)
+                if (! added && formatName == "VST3")
+                {
+                    OwnedArray<PluginDescription> descriptions;
+                    if (readVST3ModuleInfo (ID, descriptions))
+                    {
+                        for (auto* d : descriptions)
+                        {
+                            list.removeFromBlacklist (d->fileOrIdentifier);
+                            list.addType (*d);
+                            ++totalAdded;
+                        }
+                        added = true;
+                    }
+                }
+
+                // Fallback: create minimal description from filename
+                if (! added)
+                {
+                    PluginDescription desc;
+                    desc.pluginFormatName = formatName;
+                    desc.fileOrIdentifier = ID;
+                    desc.name = format->getNameOfPluginFromIdentifier (ID);
+                    desc.descriptiveName = desc.name;
+                    desc.manufacturerName = "Unknown";
+                    desc.category = "Unknown";
+                    desc.numInputChannels = 2;
+                    desc.numOutputChannels = 2;
+                    desc.isInstrument = false;
+                    list.removeFromBlacklist (ID);
+                    list.addType (desc);
+                    ++totalAdded;
+                }
+
+                listeners.call (&Listener::audioPluginScanProgress,
+                                ++step / static_cast<float> (identifiers.size()));
+            }
+        }
+        else if (auto* provider = _manager.getProvider (formatName))
+        {
+            auto providerIds = provider->findTypes (
+                detail::readSearchPath (*_manager.props, formatName),
+                true,
+                false);
+
+            for (const auto& ID : providerIds)
+            {
+                if (list.getTypeForFile (ID))
+                    continue;
+
+                OwnedArray<PluginDescription> descriptions;
+                provider->scan (ID, descriptions);
+
+                for (auto* d : descriptions)
+                {
+                    list.addType (*d);
+                    ++totalAdded;
+                }
+            }
+        }
+    }
+
+    cancelFlag = 0;
+    Logger::writeToLog ("Quick scan complete: " + String (totalAdded) + " plugins added");
     listeners.call (&Listener::audioPluginScanFinished);
 }
 
@@ -588,7 +827,7 @@ private:
             auto* const format = manager.getFormat (i);
             FileSearchPath path = paths[format->getName()];
             path.addPath (format->getDefaultLocationsToSearch());
-            const auto found = format->searchPathsForPlugins (path, true, false);
+            const auto found = format->searchPathsForPlugins (path, true, true);
 
             ScopedLock sl (lock);
             plugins.set (format->getName(), found);
@@ -613,6 +852,7 @@ public:
         : owner (o)
     {
         deadAudioPlugins = DataPath::applicationDataDir().getChildFile (EL_DEAD_AUDIO_PLUGINS_FILENAME);
+        usageTracker = std::make_unique<PluginUsageTracker> (allPlugins);
     }
 
     ~Private() {}
@@ -655,6 +895,7 @@ private:
     int blockSize = 512;
     std::unique_ptr<PluginScanner> scanner;
     bool hasAddedFormats = false;
+    std::unique_ptr<PluginUsageTracker> usageTracker;
 
     void scanAudioPlugins (const StringArray& names)
     {
@@ -886,6 +1127,47 @@ Processor* PluginManager::createGraphNode (const PluginDescription& desc, String
     return nullptr;
 }
 
+Processor* PluginManager::createSandboxedGraphNode (const PluginDescription& desc, String& errorMsg)
+{
+    // Phase D Gate 1.5 (2026-05-08): cross-process sandbox IPC is now stable.
+    // D-1 atomics, D-2 named POSIX semaphores, D-3 magic-sentinel placement-
+    // new, D-4 ordered shutdown, D-5 waitForResponse timeout, D-6 restart-
+    // then-state-restore, D-8 real-process round-trip test, D-9 SIGKILL stress
+    // harness (696/1000 cycles recover, 0 host crashes). The earlier disable
+    // guard has been removed; gating is now done upstream by
+    // Settings::shouldSandboxPlugin().
+    errorMsg.clear();
+
+    // Only create sandboxed nodes for external plugins (not internal nodes)
+    if (desc.pluginFormatName == "Internal")
+    {
+        errorMsg = "Internal nodes cannot be sandboxed";
+        return nullptr;
+    }
+
+    // Check if the plugin format is supported
+    if (! isAudioPluginFormatSupported (desc.pluginFormatName))
+    {
+        errorMsg = desc.name;
+        errorMsg << ": invalid format: " << desc.pluginFormatName;
+        return nullptr;
+    }
+
+    // Create the sandboxed processor node
+    auto* node = new SandboxedProcessorNode (desc, *this);
+
+    // Check if sandbox launched successfully
+    if (node->getSandboxState() == SandboxHost::State::Error ||
+        node->getSandboxState() == SandboxHost::State::Idle)
+    {
+        errorMsg = "Failed to create sandboxed node for: " + desc.name;
+        delete node;
+        return nullptr;
+    }
+
+    return node;
+}
+
 AudioPluginFormatManager& PluginManager::getAudioPluginFormats()
 {
     return priv->formats;
@@ -920,12 +1202,20 @@ AudioPluginFormat* PluginManager::getAudioPluginFormat (const String& name) cons
 KnownPluginList& PluginManager::getKnownPlugins() { return priv->allPlugins; }
 const KnownPluginList& PluginManager::getKnownPlugins() const { return priv->allPlugins; }
 const File& PluginManager::getDeadAudioPluginsFile() const { return priv->deadAudioPlugins; }
+PluginUsageTracker& PluginManager::getUsageTracker() { return *priv->usageTracker; }
 
 void PluginManager::saveUserPlugins (ApplicationProperties& settings)
 {
     setPropertiesFile (settings.getUserSettings());
     if (auto elm = priv->allPlugins.createXml())
-        elm->writeTo (detail::pluginsXmlFile());
+    {
+        const auto file = detail::pluginsXmlFile();
+        elm->writeTo (file);
+
+        // Keep a backup so plugin data survives crashes or failed updates
+        const auto backup = file.withFileExtension ("xml.backup");
+        file.copyFileTo (backup);
+    }
 }
 
 void PluginManager::restoreUserPlugins (ApplicationProperties& settings)
@@ -941,7 +1231,26 @@ void PluginManager::restoreUserPlugins (ApplicationProperties& settings)
         props->removeValue (detail::pluginListKey());
     }
 
-    if (auto xml = XmlDocument::parse (detail::pluginsXmlFile()))
+    const auto file = detail::pluginsXmlFile();
+    auto xml = XmlDocument::parse (file);
+
+    // Fall back to backup if primary is missing or corrupt
+    if (! xml)
+    {
+        const auto backup = file.withFileExtension ("xml.backup");
+        if (backup.existsAsFile())
+        {
+            xml = XmlDocument::parse (backup);
+            if (xml)
+            {
+                // Restore the primary from backup
+                backup.copyFileTo (file);
+                std::clog << "[element] restored plugin list from backup" << std::endl;
+            }
+        }
+    }
+
+    if (xml)
         restoreUserPlugins (*xml);
     settings.saveIfNeeded();
 }

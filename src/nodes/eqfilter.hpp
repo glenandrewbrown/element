@@ -56,37 +56,13 @@ public:
 
         eqShape = newShape;
 
-        switch (eqShape) // Set calcCoefs lambda to correct function for this shape
-        {
-            case Bell:
-                calcCoefs = [this] (float fc, float Q, float gain) { calcCoefsBell (fc, Q, gain); };
-                break;
-
-            case Notch:
-                calcCoefs = [this] (float fc, float Q, float gain) { calcCoefsNotch (fc, Q, gain); };
-                break;
-
-            case LowShelf:
-                calcCoefs = [this] (float fc, float Q, float gain) { calcCoefsLowShelf (fc, Q, gain); };
-                break;
-
-            case HighShelf:
-                calcCoefs = [this] (float fc, float Q, float gain) { calcCoefsHighShelf (fc, Q, gain); };
-                break;
-
-            case LowPass:
-                calcCoefs = [this] (float fc, float Q, float gain) { calcCoefsLowPass (fc, Q, gain); };
-                break;
-
-            case HighPass:
-                calcCoefs = [this] (float fc, float Q, float gain) { calcCoefsHighPass (fc, Q, gain); };
-                break;
-
-            default:
-                return;
-        }
-
-        calcCoefs (freq.skip (smoothSteps), Q.skip (smoothSteps), gain.skip (smoothSteps));
+        // C-7: dispatch directly on the shape enum rather than reseating an
+        // owning std::function with `this`-capture every time the shape changes.
+        // The std::function form leaked a self-reference into a member that
+        // outlived nothing in practice (EQFilter is non-copy/move) but the
+        // pattern is fragile, allocates lambda storage, and adds an indirect
+        // call on the audio thread. Direct dispatch is faster and safer.
+        dispatchCalcCoefs (freq.skip (smoothSteps), Q.skip (smoothSteps), gain.skip (smoothSteps));
     }
 
     /* Calculate filter coefficients for an EQ band (see "Audio EQ Cookbook") */
@@ -212,7 +188,7 @@ public:
         for (int n = 0; n < numSamples; n++)
         {
             if (freq.isSmoothing() || Q.isSmoothing() || gain.isSmoothing())
-                calcCoefs (freq.getNextValue(), Q.getNextValue(), gain.getNextValue());
+                dispatchCalcCoefs (freq.getNextValue(), Q.getNextValue(), gain.getNextValue());
             buffer[n] = process (buffer[n]);
         }
     }
@@ -224,7 +200,7 @@ public:
             z[n] = 0.0f;
 
         fs = (float) sampleRate;
-        calcCoefs (freq.skip (smoothSteps), Q.skip (smoothSteps), gain.skip (smoothSteps));
+        dispatchCalcCoefs (freq.skip (smoothSteps), Q.skip (smoothSteps), gain.skip (smoothSteps));
     }
 
     /** Get the magnitude of the filter at this frequency, in units of linear gain */
@@ -301,14 +277,29 @@ public:
     }
 
 private:
+    // C-7: direct dispatch table. No `this`-capture, no heap allocation, no
+    // virtual call. Same generated code as the previous std::function-of-
+    // lambda approach in the hot loop, but without the dangling-after-move
+    // hazard the plan flagged.
+    void dispatchCalcCoefs (float fc, float qVal, float gainVal) noexcept
+    {
+        switch (eqShape)
+        {
+            case Bell:      calcCoefsBell      (fc, qVal, gainVal); return;
+            case Notch:     calcCoefsNotch     (fc, qVal, gainVal); return;
+            case LowShelf:  calcCoefsLowShelf  (fc, qVal, gainVal); return;
+            case HighShelf: calcCoefsHighShelf (fc, qVal, gainVal); return;
+            case LowPass:   calcCoefsLowPass   (fc, qVal, gainVal); return;
+            case HighPass:  calcCoefsHighPass  (fc, qVal, gainVal); return;
+        }
+    }
+
     SmoothedValue<float, ValueSmoothingTypes::Linear> freq;
     SmoothedValue<float, ValueSmoothingTypes::Linear> Q;
     SmoothedValue<float, ValueSmoothingTypes::Linear> gain;
     const int smoothSteps = 500;
 
     Shape eqShape = Bell;
-    typedef std::function<void (float, float, float)> CalcCoefsLambda;
-    CalcCoefsLambda calcCoefs = [this] (float fc, float Q, float gain) { calcCoefsBell (fc, Q, gain); }; // lambda function to calculate coefficients for any shape
 
     float b[3] = { 1.0f, 0.0f, 0.0f };
     float a[3] = { 1.0f, 0.0f, 0.0f };

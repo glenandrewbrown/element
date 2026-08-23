@@ -13,6 +13,7 @@
 namespace element {
 
 class Context;
+class SandboxWorker;
 class Startup;
 
 /** The main application class for Element.
@@ -128,6 +129,7 @@ private:
     std::unique_ptr<Context> world;                     ///< The application context and services
     std::unique_ptr<Startup> startup;                   ///< Handles startup initialization
     juce::OwnedArray<juce::ChildProcessWorker> workers; ///< Worker processes (e.g., plugin scanner)
+    std::unique_ptr<SandboxWorker> sandboxWorker;       ///< Sandbox worker for isolated plugin processing
 #if JUCE_LINUX
     class MidiSettingsApply {
     public:
@@ -152,11 +154,18 @@ private:
     void printCopyNotice();
 
     /** Attempts to launch a plugin scanner worker process.
-        
+
         @param commandLine The command line to check for scanner process ID
         @return true if a scanner worker was launched
     */
     bool maybeLaunchScannerWorker (const juce::String& commandLine);
+
+    /** Attempts to launch as a sandbox host worker process.
+
+        @param commandLine The command line to check for sandbox mode
+        @return true if this instance is a sandbox worker
+    */
+    bool maybeLaunchSandboxWorker (const juce::String& commandLine);
 
     /** Initiates the application launch sequence. */
     void launchApplication();

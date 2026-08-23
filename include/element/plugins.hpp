@@ -16,6 +16,8 @@ class NodeFactory;
 class NodeProvider;
 class PluginScannerCoordinator;
 class PluginScanner;
+class SandboxedProcessorNode;
+class PluginUsageTracker;
 
 class PluginManager : public juce::ChangeBroadcaster {
 public:
@@ -34,6 +36,9 @@ public:
     /** Access to the main known plugins list */
     juce::KnownPluginList& getKnownPlugins();
     const juce::KnownPluginList& getKnownPlugins() const;
+
+    /** Access the plugin usage tracker (favorites, recently used) */
+    PluginUsageTracker& getUsageTracker();
 
     /** Scan/Add a description to the known plugins */
     void addToKnownPlugins (const juce::PluginDescription& desc);
@@ -100,6 +105,12 @@ public:
     juce::AudioPluginInstance* createAudioPlugin (const juce::PluginDescription& desc, juce::String& errorMsg);
     Processor* createGraphNode (const juce::PluginDescription& desc, juce::String& errorMsg);
 
+    /** Create a sandboxed graph node that runs the plugin in an isolated process.
+     *  This provides crash isolation - if the plugin crashes, only the sandbox
+     *  process is affected, not the main host application.
+     */
+    Processor* createSandboxedGraphNode (const juce::PluginDescription& desc, juce::String& errorMsg);
+
     /** Set the play config used when instantiating plugins */
     void setPlayConfig (double sampleRate, int blockSize);
 
@@ -161,6 +172,11 @@ public:
 
     /** Scan for plugins of multiple types */
     void scanForAudioPlugins (const juce::StringArray& formats);
+
+    /** Quick scan: discover plugin files and add to list WITHOUT loading/validating.
+        This is much faster and won't crash, but plugin metadata (name, manufacturer,
+        I/O config) won't be populated until the plugin is first loaded. */
+    void quickScanForPlugins (const juce::StringArray& formats);
 
     /** Cancels the current scan operation if possible. */
     void cancel();

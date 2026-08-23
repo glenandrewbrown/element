@@ -1,0 +1,11 @@
+{
+  "active": true,
+  "started_at": "2026-05-29T17:07:32.651Z",
+  "original_prompt": "/oh-my-claudecode:ultrawork build storybook so it has a comprehensive coverage of all aspects of the element ui for debugging and working. install all add ons / components etc are done and that storybook is 100% setup optimally",
+  "session_id": "a3cc2cf6-8dfb-48cd-8d12-bea674bd292c",
+  "project_path": "/Volumes/Projects/Development_Projects/Github_Repos/element/webview",
+  "reinforcement_count": 0,
+  "awaiting_confirmation": true,
+  "awaiting_confirmation_set_at": "2026-05-29T17:07:32.651Z",
+  "last_checked_at": "2026-05-29T17:07:32.651Z"
+}

@@ -5,6 +5,9 @@
 #include <element/transport.hpp>
 #include <element/context.hpp>
 #include <element/settings.hpp>
+#if JUCE_WEB_BROWSER
+#include <element/web_metering_fifo.hpp>
+#endif
 
 #include "engine/internalformat.hpp"
 #include "engine/midiclock.hpp"
@@ -430,8 +433,7 @@ public:
         processCurrentGraph (buffer, tempMidi);
 
         {
-            ScopedLock lockMidiOut (engine.world.midi().getMidiOutputLock());
-            if (auto* const midiOut = engine.world.midi().getDefaultMidiOutput())
+            if (auto* const midiOut = engine.world.midi().getAtomicMidiOutput())
             {
                 const double delayMs = midiOutLatency.get();
                 if (! tempMidi.isEmpty())
@@ -448,6 +450,21 @@ public:
 
         for (int c = 0; c < numOutputChannels; ++c)
             outMeters.getObjectPointerUnchecked (c)->updateLevel (outputChannelData, c, numSamples);
+
+#if JUCE_WEB_BROWSER
+        if (auto* fifo = webPeakFifo.load (std::memory_order_acquire))
+        {
+            float pk = 0.f;
+            for (int c = 0; c < numOutputChannels; ++c)
+                if (outputChannelData[c] != nullptr)
+                {
+                    const float* d = outputChannelData[c];
+                    for (int i = 0; i < numSamples; ++i)
+                        pk = jmax (pk, std::abs (d[i]));
+                }
+            fifo->pushPacket (pk);
+        }
+#endif
     }
 
     void processCurrentGraph (AudioBuffer<float>& buffer, MidiBuffer& midi)
@@ -773,6 +790,10 @@ private:
 
     ReferenceCountedArray<AudioEngine::LevelMeter> inMeters, outMeters;
 
+#if JUCE_WEB_BROWSER
+    std::atomic<WebMeteringFifo*> webPeakFifo { nullptr };
+#endif
+
     void prepareGraph (RootGraph* graph, double sampleRate, int estimatedBlockSize)
     {
         graph->setRenderDetails (sampleRate, blockSize);
@@ -1052,6 +1073,14 @@ AudioEngine::LevelMeterPtr AudioEngine::getLevelMeter (int channel, bool input)
     auto& larr = input ? priv->inMeters : priv->outMeters;
     return larr[channel];
 }
+
+#if JUCE_WEB_BROWSER
+void AudioEngine::setWebPeakMeterFifo (WebMeteringFifo* fifo) noexcept
+{
+    if (priv != nullptr)
+        priv->webPeakFifo.store (fifo, std::memory_order_release);
+}
+#endif
 
 void AudioEngine::LevelMeter::updateLevel (const float* const* channelData, int numChannels, int numSamples) noexcept
 {

@@ -410,9 +410,66 @@ void clearGlobals (sol::state_view& view)
 }
 
 //==============================================================================
+// Phase E-7: instruction-count watchdog hook.
+//
+// Without an instruction limit, a malicious or buggy script can hang the host
+// indefinitely (e.g. `while true do end`). This hook is installed by
+// initializeState() with LUA_MASKCOUNT. Lua calls it every kInstructionBudget
+// VM instructions; the hook unconditionally raises a Lua error that is
+// cleanly caught by sol's protected_function path (no host-side longjmp
+// escape). In practice this means kInstructionBudget IS the per-pcall
+// instruction cap.
+//
+// Budget sizing: 1e7 (10 million) instructions. A non-trivial DSP block
+// (e.g. a 2-channel biquad on 4096 samples) is on the order of 1e4 - 1e5
+// VM ops, so realistic per-block scripts have ~100x headroom. A tight
+// infinite loop trips this in well under 100ms even on slow CI.
+static constexpr int kInstructionBudget = 10'000'000;
+
+static void instructionCountHook (lua_State* L, lua_Debug*)
+{
+    luaL_error (L, "Lua sandbox instruction-count budget exceeded — script aborted");
+}
+
+//==============================================================================
+// Phase E-1 / E-2: Lua sandbox initialization.
+//
+// Allow-listed standard libraries (loaded via sol::lib):
+//   base       — needs filtering: load/loadfile/dofile are nil-ed below
+//   string     — pure string ops, safe
+//   table      — pure table ops, safe
+//   math       — pure math, safe
+//   coroutine  — cooperative scheduling, safe
+//   utf8       — pure string ops, safe
+//   package    — needs filtering: cpath cleared, loadlib nil-ed, searchers
+//                replaced with a closed allow-list (searchInternalModules)
+//
+// Banned (never opened):
+//   io, os, debug, ffi
+//
+// If any of the banned globals or APIs becomes reachable from a Lua script,
+// the host is vulnerable to RCE through a malicious session/script file.
+// LuaSandboxTests / SandboxIsolationTests cover the boundary.
 void initializeState (sol::state_view& view)
 {
-    view.open_libraries();
+    view.open_libraries (
+        sol::lib::base,
+        sol::lib::string,
+        sol::lib::table,
+        sol::lib::math,
+        sol::lib::coroutine,
+        sol::lib::utf8,
+        sol::lib::package
+    );
+
+    // Remove dangerous functions from base library to close the Lua sandbox.
+    // These globals enable Remote Code Execution if a malicious session file
+    // injects Lua code. See: CRITICAL security issue — Lua RCE closure.
+    view["dofile"]   = sol::lua_nil;
+    view["loadfile"] = sol::lua_nil;
+    view["load"]     = sol::lua_nil;
+    view["io"]       = sol::lua_nil;
+    view["os"]       = sol::lua_nil;
 
     auto package = view["package"];
     auto newSearchers = view.create_table();
@@ -424,8 +481,15 @@ void initializeState (sol::state_view& view)
     package["searchers"] = newSearchers;
 
     package["path"] = getLuaPath().toStdString();
-    package["cpath"] = getLuaCPath().toStdString();
+    package["cpath"] = "";           // No native library loading (.so/.dylib)
     package["spath"] = getScriptSearchPath().toStdString();
+    package["loadlib"] = sol::lua_nil; // Prevent package.loadlib() native loading
+
+    // Phase E-7: install instruction-count watchdog.
+    lua_sethook (view.lua_state(),
+                 instructionCountHook,
+                 LUA_MASKCOUNT,
+                 kInstructionBudget);
 }
 
 void initializeState (sol::state_view& view, Context& g)

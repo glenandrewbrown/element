@@ -5,65 +5,69 @@
 
 #include <element/juce/gui_basics.hpp>
 
-class AudioIOPanelView; // FIXME: this class isn't in element namespace.
-
 namespace element {
 
+class BrowsePanel;
 class Context;
+class GraphSettingsView;
+class InspectorPanel;
+class Node;
+class NodeEditorView;
+class NodePropertiesView;
 class PluginsPanelView;
-class DataPathTreeComponent;
+class SessionBrowserPanel;
 class SessionTreePanel;
 
-class NavigationConcertinaPanel : public juce::ConcertinaPanel {
+/** Icon-sidebar navigation replacing the old ConcertinaPanel.
+    4 panels: Session (0), Browse (1), Inspector (2), Editor (3).
+    A 24px icon strip on the left switches between panels. */
+class NavigationPanel : public juce::Component
+{
 public:
-    NavigationConcertinaPanel (Context& g);
-    ~NavigationConcertinaPanel();
+    NavigationPanel (Context& g);
+    ~NavigationPanel();
 
     void saveState (juce::PropertiesFile* props);
     void restoreState (juce::PropertiesFile* props);
 
-    int getIndexOfPanel (juce::Component* panel);
-    Component* findPanelByName (const juce::String& name);
-    void showPanel (const juce::String& name);
-    void hidePanel (const juce::String& name);
-    void setPanelName (const juce::String& panel, const juce::String& newName);
+    // Typed accessors
+    SessionTreePanel* getSessionTreePanel();
+    NodePropertiesView* getNodePropertiesView();
+    NodeEditorView* getNodeEditorView();
+    GraphSettingsView* getGraphSettingsView();
+    PluginsPanelView* getPluginsPanel();
+    SessionBrowserPanel* getSessionsPanel();
 
-    template <class T>
-    inline T* findPanel()
-    {
-        for (int i = getNumPanels(); --i >= 0;)
-            if (T* panel = dynamic_cast<T*> (getPanel (i)))
-                return panel;
-        return nullptr;
-    }
+    void activatePanel (int index);
+    int getActivePanel() const;
 
-    void clearPanels();
+    void stabilizeAll();
+    void notifyNodeSelected (const Node& node);
+    void notifyNodeDeselected();
 
-    void updateContent();
-
-    const juce::StringArray& getNames() const;
-    const int getHeaderHeight() const;
-
-    void setHeaderHeight (const int newHeight);
-
-    void paint (juce::Graphics& g) override;
+    void resized() override;
+    void paint (juce::Graphics&) override;
 
 private:
     Context& globals;
-    int headerHeight;
-    int defaultPanelHeight;
 
-    juce::StringArray names, namesHidden;
-    juce::OwnedArray<juce::Component> comps;
-    void addPanelInternal (const int index,
-                           juce::Component* comp,
-                           const juce::String& name = juce::String(),
-                           juce::Component* header = nullptr);
+    // Icon strip
+    struct IconButton;
+    juce::OwnedArray<IconButton> icons;
+    int activeIndex = 1; // default to Browse
 
-    class Header;
-    class ElementsHeader;
-    class UserDataPathHeader;
-    class LookAndFeel;
+    // Panels
+    std::unique_ptr<SessionTreePanel> sessionPanel;
+    std::unique_ptr<BrowsePanel> browsePanel;
+    std::unique_ptr<InspectorPanel> inspectorPanel;
+    std::unique_ptr<NodeEditorView> editorPanel;
+
+    void showPanel (int index);
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (NavigationPanel)
 };
+
+// Backward compatibility alias
+using NavigationConcertinaPanel = NavigationPanel;
 
 } // namespace element

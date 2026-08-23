@@ -41,6 +41,7 @@ const char* Settings::updateKeyTypeKey = "updateKeyType";
 const char* Settings::updateKeyKey = "updateKey";
 const char* Settings::updateKeyUserKey = "updateKeyUserKey";
 const char* Settings::transportStartStopContinue = "transportStartStopContinueKey";
+const char* Settings::pluginSandboxModeKey = "pluginSandboxMode";
 
 //=============================================================================
 enum OptionsMenuItemId
@@ -393,8 +394,8 @@ void Settings::setMidiOutLatency (double latencyMs)
 double Settings::getDesktopScale() const
 {
     if (auto* p = getProps())
-        return p->getDoubleValue (desktopScaleKey, 1.0);
-    return 1.0;
+        return p->getDoubleValue (desktopScaleKey, 1.15);
+    return 1.15;
 }
 
 void Settings::setDesktopScale (double scale)
@@ -409,12 +410,15 @@ void Settings::setDesktopScale (double scale)
 //=============================================================================
 String Settings::getMainContentType() const
 {
-    return "standard";
+    if (auto* p = getProps())
+        return p->getValue (mainContentTypeKey, "webview");
+    return "webview";
 }
 
 void Settings::setMainContentType (const String& tp)
 {
-    ignoreUnused (tp);
+    if (auto* p = getProps())
+        p->setValue (mainContentTypeKey, tp);
 }
 
 //=============================================================================
@@ -435,6 +439,47 @@ void Settings::setClockSource (const juce::String& src)
 
     if (auto p = getProps())
         p->setValue (clockSourceKey, src);
+}
+
+static constexpr uint8_t obfuscationKey[] = {
+    0x4b, 0x75, 0x73, 0x68, 0x76, 0x69, 0x65, 0x77,  // "Kushview"
+    0x45, 0x6c, 0x65, 0x6d, 0x65, 0x6e, 0x74, 0x21   // "Element!"
+};
+
+juce::String Settings::obfuscate (const juce::String& plaintext)
+{
+    if (plaintext.isEmpty())
+        return {};
+
+    auto utf8 = plaintext.toUTF8();
+    const int len = static_cast<int> (utf8.sizeInBytes() - 1); // exclude null
+    juce::MemoryBlock block (static_cast<size_t> (len));
+
+    for (int i = 0; i < len; ++i)
+        static_cast<uint8_t*> (block.getData())[i] =
+            static_cast<uint8_t> (utf8.getAddress()[i]) ^ obfuscationKey[i % 16];
+
+    return block.toBase64Encoding();
+}
+
+juce::String Settings::deobfuscate (const juce::String& encoded)
+{
+    if (encoded.isEmpty())
+        return {};
+
+    juce::MemoryBlock block;
+    if (! block.fromBase64Encoding (encoded))
+        return encoded; // Not base64 — return as-is (legacy plaintext)
+
+    const int len = static_cast<int> (block.getSize());
+    juce::MemoryBlock decoded (static_cast<size_t> (len) + 1, true);
+
+    for (int i = 0; i < len; ++i)
+        static_cast<uint8_t*> (decoded.getData())[i] =
+            static_cast<uint8_t*> (block.getData())[i] ^ obfuscationKey[i % 16];
+
+    return juce::String::fromUTF8 (
+        static_cast<const char*> (decoded.getData()), len);
 }
 
 juce::String Settings::getUpdateKeyType() const
@@ -459,27 +504,27 @@ void Settings::setUpdateKeyType (const String& slug)
 juce::String Settings::getUpdateKeyUser() const
 {
     if (auto* p = getProps())
-        return p->getValue (updateKeyUserKey, "");
+        return deobfuscate (p->getValue (updateKeyUserKey, ""));
     return "";
 }
 
 void Settings::setUpdateKeyUser (const String& user)
 {
     if (auto p = getProps())
-        p->setValue (updateKeyUserKey, user.trim());
+        p->setValue (updateKeyUserKey, obfuscate (user.trim()));
 }
 
 juce::String Settings::getUpdateKey() const
 {
     if (auto* p = getProps())
-        return p->getValue (updateKeyKey, "");
+        return deobfuscate (p->getValue (updateKeyKey, ""));
     return "";
 }
 
 void Settings::setUpdateKey (const String& slug)
 {
     if (auto p = getProps())
-        p->setValue (updateKeyKey, slug.trim());
+        p->setValue (updateKeyKey, obfuscate (slug.trim()));
 }
 
 juce::String Settings::getUpdateChannel() const
@@ -528,6 +573,64 @@ bool Settings::transportRespondToStartStopContinue() const
     if (auto* p = getProps())
         return p->getBoolValue (transportStartStopContinue, false);
     return false;
+}
+
+//=============================================================================
+int Settings::getPluginSandboxMode() const
+{
+    // Default 0 (Disabled). Phase D Gate 1.5 stress-tested with the in-tree
+    // TestEchoPluginInstance only; real-world AU plugins through the sandbox
+    // at initial-load time hung the JUCE message thread on Glen's machine
+    // (2026-05-08, BRASS_4Horns session). Until the sandbox is verified
+    // against real third-party AUs end-to-end, sandbox stays opt-in via
+    // Preferences → Plugins → Sandbox Mode.
+    if (auto* p = getProps())
+        return p->getIntValue (pluginSandboxModeKey, 0);
+    return 0;
+}
+
+void Settings::setPluginSandboxMode (int mode)
+{
+    mode = jlimit (0, 2, mode);
+    if (mode == getPluginSandboxMode())
+        return;
+    if (auto* p = getProps())
+        p->setValue (pluginSandboxModeKey, mode);
+}
+
+bool Settings::shouldSandboxPlugin (const juce::PluginDescription& desc) const
+{
+    // Phase D restored sandbox IPC: cross-process atomics (D-1), named POSIX
+    // semaphores (D-2), magic-sentinel placement-new (D-3), ordered shutdown
+    // (D-4), waitForResponse timeout on connection loss (D-5), restart-then-
+    // state-restore ordering (D-6), real-process round-trip test (D-8), and
+    // SIGKILL-stress harness (D-9, 696/1000 recovery, 0 host crashes).
+    // Gate 1.5 ratified 2026-05-08.
+    //
+    // Internal nodes are tightly coupled to host process state and never
+    // sandboxable.
+    if (desc.pluginFormatName == "Internal")
+        return false;
+
+    switch (getPluginSandboxMode())
+    {
+        case 1: // SandboxAllPlugins (preferences UI ID 2): every external plugin
+            return true;
+
+        case 2: // SandboxProblematicOnly (UI ID 3): formats most prone to
+                // constructor-time crashes. AudioUnits on macOS are the
+                // historical worst offender (sample-rate-set-during-validation,
+                // OSStatus errors, malformed Info.plist, unsigned components).
+                // Glen's crashed.txt at 2026-05-08 had 18 AU plugins blacklisted
+                // (Antares, UAD, iZotope, PSP, Eventide, Dawesome) — every one
+                // an AU. Default mode protects against these without sandbox
+                // overhead for stable VST3/CLAP/LV2 plugins.
+            return desc.pluginFormatName == "AudioUnit";
+
+        case 0: // SandboxDisabled (UI ID 1): never sandbox. User opt-out.
+        default:
+            return false;
+    }
 }
 
 //=============================================================================

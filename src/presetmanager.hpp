@@ -35,7 +35,7 @@ public:
         presets.clear();
     }
 
-    inline void getPresetsFor (const Node& node, OwnedArray<PresetInfo>& results) const
+    inline void getPresetsFor (const Node& node, juce::OwnedArray<PresetInfo>& results) const
     {
         SortByName sorter;
         for (const auto* const preset : presets)
@@ -43,7 +43,7 @@ public:
                 results.addSorted (sorter, new PresetInfo (*preset));
     }
 
-    inline void addPresetFor (const Node& node, const String& name)
+    inline void addPresetFor (const Node& node, const juce::String& name)
     {
         jassertfalse;
     }
@@ -52,12 +52,12 @@ public:
     {
         clear();
 
-        StringArray files;
+        juce::StringArray files;
         path.findPresetFiles (files);
 
         for (const auto& filename : files)
         {
-            const File file (filename);
+            const juce::File file (filename);
             const Node node (Node::parse (file), false);
             if (node.isValid())
             {
@@ -81,7 +81,7 @@ public:
 
 private:
     DataPath path;
-    OwnedArray<PresetInfo> presets;
+    juce::OwnedArray<PresetInfo> presets;
 };
 
 } // namespace element

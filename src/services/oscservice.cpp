@@ -14,6 +14,8 @@
 #define EL_OSC_ADDRESS_COMMAND "/element/command"
 #define EL_OSC_ADDRESS_ENGINE "/element/engine"
 
+using namespace juce;
+
 namespace element {
 
 struct CommandOSCListener final : juce::OSCReceiver::ListenerWithOSCAddress<>
@@ -91,18 +93,24 @@ private:
 };
 
 //=============================================================================
-class OSCService::Impl
+class OSCService::Impl : private juce::Timer
 {
 public:
     Impl (OSCService& o)
         : owner (o) {}
-    ~Impl() {}
+
+    ~Impl()
+    {
+        stopTimer();
+    }
 
     bool startServer()
     {
         if (isServing())
             return true;
         serving = receiver.connect (serverPort);
+        if (! serving)
+            DBG ("OSCService: failed to bind receiver on port " << serverPort);
         return serving;
     }
 
@@ -129,6 +137,74 @@ public:
             startServer();
     }
 
+    //=========================================================================
+    // Sender API
+
+    bool connectSender (const juce::String& host, int port)
+    {
+        disconnectSender();
+        senderConnected = sender.connect (host, port);
+        if (senderConnected)
+        {
+            senderHost = host;
+            senderPort = port;
+            consecutiveFailures = 0;
+            firstFailureTime = 0;
+        }
+        else
+        {
+            DBG ("OSCService: sender failed to connect to " << host << ":" << port);
+        }
+        return senderConnected;
+    }
+
+    void disconnectSender()
+    {
+        stopTimer();
+        if (senderConnected)
+        {
+            sender.disconnect();
+            senderConnected = false;
+        }
+        consecutiveFailures = 0;
+        firstFailureTime = 0;
+    }
+
+    bool isSenderConnected() const noexcept { return senderConnected; }
+
+    bool sendMessage (const juce::OSCMessage& msg)
+    {
+        if (! senderConnected)
+            return false;
+
+        if (sender.send (msg))
+        {
+            consecutiveFailures = 0;
+            firstFailureTime = 0;
+            return true;
+        }
+
+        const auto now = juce::Time::currentTimeMillis();
+        if (consecutiveFailures == 0)
+            firstFailureTime = now;
+
+        ++consecutiveFailures;
+        DBG ("OSCService: send failure #" << consecutiveFailures);
+
+        constexpr int kMaxConsecutiveFailures = 3;
+        constexpr int kFailureWindowMs = 5000;
+        if (consecutiveFailures >= kMaxConsecutiveFailures
+            && (now - firstFailureTime) <= kFailureWindowMs
+            && ! isTimerRunning())
+        {
+            DBG ("OSCService: scheduling sender reconnect in 2s");
+            startTimer (2000);
+        }
+
+        return false;
+    }
+
+    //=========================================================================
     void initialize()
     {
         if (listenersReady == true)
@@ -159,13 +235,28 @@ public:
     int getHostPort() const { return serverPort; }
 
 private:
+    void timerCallback() override
+    {
+        stopTimer();
+        if (senderConnected || senderHost.isEmpty())
+            return;
+        DBG ("OSCService: attempting sender reconnect to " << senderHost << ":" << senderPort);
+        connectSender (senderHost, senderPort);
+    }
+
     OSCService& owner;
-    OSCSender sender;
-    OSCReceiver receiver { "elosc" };
+    juce::OSCSender sender;
+    juce::OSCReceiver receiver { "elosc" };
 
     bool listenersReady = false;
     bool serving { false };
     int serverPort { 9000 };
+
+    bool senderConnected { false };
+    juce::String senderHost;
+    int senderPort { 0 };
+    int consecutiveFailures { 0 };
+    juce::int64 firstFailureTime { 0 };
 
     std::unique_ptr<CommandOSCListener> application;
     std::unique_ptr<EngineOSCListener> engine;
@@ -202,6 +293,26 @@ void OSCService::refreshWithSettings (bool alertOnFail)
     }
 }
 
+bool OSCService::connectSender (const juce::String& host, int port)
+{
+    return impl->connectSender (host, port);
+}
+
+void OSCService::disconnectSender()
+{
+    impl->disconnectSender();
+}
+
+bool OSCService::isSenderConnected() const noexcept
+{
+    return impl->isSenderConnected();
+}
+
+bool OSCService::sendMessage (const juce::OSCMessage& msg)
+{
+    return impl->sendMessage (msg);
+}
+
 void OSCService::activate()
 {
     impl->initialize();
@@ -212,6 +323,7 @@ void OSCService::deactivate()
 {
     impl->stopServer();
     impl->shutdown();
+    impl->disconnectSender();
 }
 
 } // namespace element

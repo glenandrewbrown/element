@@ -7,6 +7,8 @@
 #include "nodes/midisetlisteditor.hpp"
 #include "ui/viewhelpers.hpp"
 
+using namespace juce;
+
 namespace element {
 
 typedef MidiSetListEditor MSLE;

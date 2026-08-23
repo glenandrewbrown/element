@@ -6,6 +6,9 @@
 #include "ElementApp.h"
 #include "ui/viewhelpers.hpp"
 #include "ui/block.hpp"
+#include "ui/commentboxcomponent.hpp"
+#include "ui/moleculemanager.hpp"
+#include "ui/quickaddcomponent.hpp"
 #include "scopedcallback.hpp"
 
 namespace element {
@@ -13,6 +16,8 @@ namespace element {
 class BlockComponent;
 class BlockFactory;
 class ConnectorComponent;
+class GhostConnectorComponent;
+class CommentBoxComponent;
 class PortComponent;
 class PluginWindow;
 
@@ -22,6 +27,7 @@ class GraphEditorComponent : public Component,
                              public DragAndDropTarget,
                              public FileDragAndDropTarget,
                              private ValueTree::Listener,
+                             private juce::Timer,
                              public ViewHelperMixin,
                              public LassoSource<uint32>
 {
@@ -45,6 +51,75 @@ public:
 
     /** Removes the selected nodes */
     void deleteSelectedNodes();
+
+    /** Duplicates the selected nodes */
+    void duplicateSelectedNodes();
+
+    /** Opens rename dialog for selected nodes */
+    void renameSelectedNodes();
+
+    //=========================================================================
+    /** Create a comment box around selected nodes */
+    void createCommentBox();
+
+    /** Create a comment box at specified position with given bounds */
+    CommentBoxComponent* createCommentBoxAt (int x, int y, int width = 200, int height = 150);
+
+    /** Delete a comment box */
+    void deleteCommentBox (CommentBoxComponent* box);
+
+    /** Delete selected comment boxes */
+    void deleteSelectedCommentBoxes();
+
+    /** Get all comment boxes */
+    const OwnedArray<CommentBoxComponent>& getCommentBoxes() const { return commentBoxes; }
+
+    //=========================================================================
+    /** Molecule support */
+
+    /** Save selected nodes as a molecule */
+    void saveSelectionAsMolecule();
+
+    /** Insert a molecule at the last drop position */
+    void insertMolecule (const Molecule& mol);
+
+    /** Get the molecule library */
+    MoleculeLibrary& getMoleculeLibrary() { return moleculeLibrary; }
+
+    //=========================================================================
+    /** Enable/disable snap-to-grid */
+    void setSnapToGridEnabled (bool enabled) { snapToGrid = enabled; }
+    bool isSnapToGridEnabled() const { return snapToGrid; }
+
+    /** Set grid size in pixels */
+    void setGridSize (int size) { gridSize = jmax (8, size); }
+    int getGridSize() const { return gridSize; }
+
+    /** Snap a position to the grid */
+    Point<int> snapPosition (Point<int> pos) const;
+
+    /** Get snap guides for a moving block (returns alignment lines to draw) */
+    struct SnapGuide {
+        bool horizontal { false };
+        int position { 0 };
+        int start { 0 };
+        int end { 0 };
+    };
+    Array<SnapGuide> getSnapGuides (BlockComponent* movingBlock, Point<int>& snappedDelta) const;
+
+    /** Threshold in pixels for snap-to-align */
+    void setSnapThreshold (int threshold) { snapThreshold = threshold; }
+    int getSnapThreshold() const { return snapThreshold; }
+
+    /** Align selected nodes */
+    void alignSelectedNodesLeft();
+    void alignSelectedNodesRight();
+    void alignSelectedNodesTop();
+    void alignSelectedNodesBottom();
+    void alignSelectedNodesCenterHorizontal();
+    void alignSelectedNodesCenterVertical();
+    void distributeSelectedNodesHorizontally();
+    void distributeSelectedNodesVertically();
 
     //=========================================================================
     void setZoomScale (float scale);
@@ -70,6 +145,7 @@ public:
     void changeListenerCallback (ChangeBroadcaster*) override;
 
     void paint (Graphics& g) override;
+    void paintOverChildren (Graphics& g) override;
     void resized() override;
     void mouseDown (const MouseEvent& e) override;
     void mouseUp (const MouseEvent& e) override;
@@ -78,6 +154,12 @@ public:
     bool isInterestedInDragSource (const SourceDetails&) override;
     void itemDropped (const SourceDetails& details) override;
     bool shouldDrawDragImageWhenOver() override { return true; }
+
+    /** Insert a plugin into an existing connection (drop on wire) */
+    void insertPluginIntoConnection (const SourceDetails& details,
+                                     uint32 srcNodeId, int srcPort,
+                                     uint32 dstNodeId, int dstPort,
+                                     PortType connectionType);
 
     bool isInterestedInFileDrag (const StringArray& files) override;
     void filesDropped (const StringArray& files, int x, int y) override;
@@ -93,11 +175,19 @@ protected:
 
 private:
     friend class ConnectorComponent;
+    friend class GhostConnectorComponent;
+    friend class CommentBoxComponent;
     friend class BlockComponent;
     friend class PortComponent;
 
     Node graph;
     ValueTree data;
+
+    // Comment boxes for organizing nodes
+    OwnedArray<CommentBoxComponent> commentBoxes;
+    void updateCommentBoxes();
+    void saveCommentBoxes();
+    void loadCommentBoxes();
 
     float lastDropX = 0.5f;
     float lastDropY = 0.5f;
@@ -105,7 +195,34 @@ private:
     std::unique_ptr<ConnectorComponent> draggingConnector;
     std::unique_ptr<BlockFactory> factory;
 
-    bool verticalLayout = true;
+    // Ghost connectors for auto-connect suggestions
+    juce::OwnedArray<GhostConnectorComponent> ghostConnectors;
+    BlockComponent* lastMovedBlock { nullptr };
+
+    /** Find and show auto-connect suggestions for a block */
+    void updateAutoConnectSuggestions (BlockComponent* block);
+
+    /** Clear all ghost connector suggestions */
+    void clearGhostConnectors();
+
+    /** Apply ghost connections (called on CMD+release) */
+    void applyGhostConnections();
+
+    bool verticalLayout = false; // Default to horizontal layout for left-to-right signal flow
+
+    // Snap-to-grid settings
+    bool snapToGrid { false };
+    int gridSize { 20 };
+    int snapThreshold { 8 }; // Pixels threshold for snap-to-align
+
+    // Current snap guides for visualization during drag
+    Array<SnapGuide> currentSnapGuides;
+
+    // Molecule library for saving/loading plugin groups
+    MoleculeLibrary moleculeLibrary;
+
+    // Quick-add popup for right-click → search → insert workflow
+    std::unique_ptr<QuickAddComponent> quickAdd;
 
     LassoComponent<uint32> lasso;
     friend class SelectedNodes;
@@ -145,6 +262,8 @@ private:
 
     void updateSelection();
     void ensureSize();
+
+    void timerCallback() override;
 
     void valueTreePropertyChanged (ValueTree& treeWhosePropertyHasChanged, const Identifier& property) override {}
     void valueTreeChildAdded (ValueTree& parentTree, ValueTree& childWhichHasBeenAdded) override;
@@ -240,6 +359,8 @@ public:
 
     void setNode (const Node& node) { _editor.setNode (node); }
     void deleteSelectedNodes() { _editor.deleteSelectedNodes(); }
+    void createCommentBox() { _editor.createCommentBox(); }
+    void deleteSelectedCommentBoxes() { _editor.deleteSelectedCommentBoxes(); }
 
     void paint (juce::Graphics& g) override
     {
@@ -255,6 +376,7 @@ public:
     }
 
     juce::Viewport& viewport() { return _viewport; }
+    GraphEditorComponent& graphEditorComponent() { return _editor; }
 
     // FIXME: api: need some TLC to make api friendly in the future.
     void stabilizeNodes() { _editor.stabilizeNodes(); }

@@ -17,6 +17,7 @@
 
 #include "engine/internalformat.hpp"
 #include "engine/midiengine.hpp"
+#include "engine/sandboxworker.hpp"
 #include "scripting.hpp"
 #include <element/datapath.hpp>
 #include "services/sessionservice.hpp"
@@ -205,10 +206,13 @@ const String Application::getApplicationName() { return "Element"; }
 
 const String Application::getApplicationVersion() { return ELEMENT_VERSION_STRING; }
 
-bool Application::moreThanOneInstanceAllowed() { return true; }
+bool Application::moreThanOneInstanceAllowed() { return false; }
 
 void Application::initialise (const String& commandLine)
 {
+    if (maybeLaunchSandboxWorker (commandLine))
+        return;
+
     world = std::make_unique<Context> (RunMode::Standalone, commandLine);
     if (maybeLaunchScannerWorker (commandLine))
         return;
@@ -249,6 +253,9 @@ bool Application::canShutdown()
 
 void Application::shutdown()
 {
+    // Clean up sandbox worker if running
+    sandboxWorker.reset();
+
     if (! world)
         return;
 #if JUCE_LINUX
@@ -330,16 +337,28 @@ void Application::maybeOpenCommandLineFile (const String& commandLine)
     if (auto* sc = world->services().find<SessionService>())
     {
         const auto path = commandLine.unquoted().trim();
+        if (path.isEmpty())
+            return;
+
         const File sessionFile = File::isAbsolutePath (path)
                                      ? File (path)
                                      : File::getCurrentWorkingDirectory().getChildFile (path);
         if (sessionFile.existsAsFile())
         {
-            const File file (path);
-            if (file.hasFileExtension ("els"))
-                sc->openFile (file);
-            else if (file.hasFileExtension ("elg"))
-                sc->importGraph (file);
+            // Defer session loading to the message thread to avoid
+            // crashes during early startup when UI is not yet stable.
+            auto fileCopy = sessionFile;
+            juce::MessageManager::callAsync ([this, fileCopy]() {
+                if (! world)
+                    return;
+                if (auto* svc = world->services().find<SessionService>())
+                {
+                    if (fileCopy.hasFileExtension ("els"))
+                        svc->openFile (fileCopy);
+                    else if (fileCopy.hasFileExtension ("elg"))
+                        svc->importGraph (fileCopy);
+                }
+            });
         }
     }
 }
@@ -350,6 +369,11 @@ void Application::anotherInstanceStarted (const String& commandLine)
         return;
 
     maybeOpenCommandLineFile (commandLine);
+
+    // Bring existing instance to front when another instance tries to launch
+    if (auto* gui = world->services().find<GuiService>())
+        if (auto* mw = gui->getMainWindow())
+            mw->toFront (true);
 }
 
 void Application::suspended() {}
@@ -411,6 +435,19 @@ bool Application::maybeLaunchScannerWorker (const String& commandLine)
         }
     }
 
+    return false;
+}
+
+bool Application::maybeLaunchSandboxWorker (const String& commandLine)
+{
+    sandboxWorker = std::make_unique<SandboxWorker>();
+    if (sandboxWorker->initialise (commandLine))
+    {
+        Logger::writeToLog ("[element] Running as sandbox worker process");
+        return true;
+    }
+
+    sandboxWorker.reset();
     return false;
 }
 

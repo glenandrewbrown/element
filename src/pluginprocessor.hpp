@@ -466,6 +466,38 @@ private:
 
     std::unique_ptr<AsyncPrepare> asyncPrepare;
 
+    /** AU hosts (Logic Pro) may call setStateInformation from a timer or
+        audio-engine idle thread while restoring kAudioUnitProperty_ClassInfo.
+        Our Context can only be constructed on the message thread, so when
+        the call arrives off-thread we cache the state and replay it on the
+        message thread through this AsyncUpdater. */
+    class AsyncStateRestore : public AsyncUpdater
+    {
+        PluginProcessor& processor;
+        juce::MemoryBlock state;
+
+    public:
+        AsyncStateRestore (PluginProcessor& p)
+            : processor (p) {}
+        ~AsyncStateRestore() override { cancelPendingUpdate(); }
+
+        void restore (const void* data, int sizeInBytes)
+        {
+            cancelPendingUpdate();
+            state.reset();
+            if (data != nullptr && sizeInBytes > 0)
+                state.append (data, (size_t) sizeInBytes);
+            triggerAsyncUpdate();
+        }
+
+        void handleAsyncUpdate() override
+        {
+            processor.setStateInformation (state.getData(), (int) state.getSize());
+        }
+    };
+
+    std::unique_ptr<AsyncStateRestore> asyncStateRestore;
+
     struct Latency;
     std::unique_ptr<Latency> _latency;
 

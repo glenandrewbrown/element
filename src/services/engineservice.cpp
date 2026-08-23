@@ -441,8 +441,11 @@ void EngineService::removeGraph (int index)
 
     if (toRemove.isValid())
         sigNodeRemoved (toRemove);
+    // P1-11: parallel signal path — stabilizeContent kept for now until all consumers migrate
+    sigEngineStateChanged();
     // FIXME: dont notify the UI top-down
-    sibling<UI>()->stabilizeContent();
+    if (auto* ui = sibling<UI>())
+        ui->stabilizeContent();
 }
 
 void EngineService::connectChannels (const Node& graph, const Node& src, const int sc, const Node& dst, const int dc)
@@ -575,7 +578,8 @@ void EngineService::addNode (const Node& _node)
     {
         const Node actual (root->getNodeModelForId (nodeId));
         if (context().settings().showPluginWindowsWhenAdded())
-            sibling<GuiService>()->presentPluginWindow (actual);
+            if (auto* gui = sibling<GuiService>())
+                gui->presentPluginWindow (actual);
     }
     else
     {
@@ -598,6 +602,9 @@ Node EngineService::addPlugin (const PluginDescription& desc, const bool verifie
     {
         auto* format = context().plugins().getAudioPluginFormat (desc.pluginFormatName);
         jassert (format != nullptr);
+        if (format == nullptr)
+            return Node();
+
         auto& list (context().plugins().getKnownPlugins());
         list.removeFromBlacklist (desc.fileOrIdentifier);
         list.removeType (desc);
@@ -619,7 +626,8 @@ Node EngineService::addPlugin (const PluginDescription& desc, const bool verifie
         {
             node = root->getNodeModelForId (nodeId);
             if (! dontShowUI && context().settings().showPluginWindowsWhenAdded())
-                sibling<GuiService>()->presentPluginWindow (node);
+                if (auto* gui = sibling<GuiService>())
+                    gui->presentPluginWindow (node);
         }
     }
     else
@@ -635,13 +643,15 @@ void EngineService::removeNode (const Node& node)
     if (! graph.isGraph())
         return;
 
-    auto* const gui = sibling<GuiService>();
     if (auto* manager = graphs->findGraphManagerFor (graph))
     {
         jassert (manager->contains (node.getNodeId()));
-        gui->closePluginWindowsFor (node, true);
-        if (gui->getSelectedNode() == node)
-            gui->selectNode (Node());
+        if (auto* const gui = sibling<GuiService>())
+        {
+            gui->closePluginWindowsFor (node, true);
+            if (gui->getSelectedNode() == node)
+                gui->selectNode (Node());
+        }
         manager->removeNode (node.getNodeId());
         sigNodeRemoved (node);
     }
@@ -877,6 +887,8 @@ Node EngineService::addPlugin (const Node& graph, const PluginDescription& desc,
         {
             auto* format = context().plugins().getAudioPluginFormat (desc.pluginFormatName);
             jassert (format != nullptr);
+            if (format == nullptr)
+                return Node();
 
             list.removeFromBlacklist (desc.fileOrIdentifier);
 
@@ -963,7 +975,8 @@ Node EngineService::addPlugin (GraphManager& c, const PluginDescription& desc)
 
         const Node node (c.getNodeModelForId (nodeId));
         if (context().settings().showPluginWindowsWhenAdded())
-            sibling<GuiService>()->presentPluginWindow (node);
+            if (auto* gui = sibling<GuiService>())
+                gui->presentPluginWindow (node);
         if (! node.isValid())
         {
             jassertfalse; // fatal, but continue
@@ -1040,8 +1053,13 @@ void EngineService::changeBusesLayout (const Node& n, const AudioProcessor::Buse
         {
             if (proc->checkBusesLayoutSupported (layout))
             {
-                while (! gp->isSuspended())
-                    gp->suspendProcessing (true);
+                gp->suspendProcessing (true);
+                for (int attempts = 0; ! gp->isSuspended() && attempts < 500; ++attempts)
+                    juce::Thread::sleep (1);
+
+                if (! gp->isSuspended())
+                    return; // abort rather than hang forever
+
                 gp->releaseResources();
 
                 const bool wasNotSuspended = ! proc->isSuspended();
@@ -1054,13 +1072,15 @@ void EngineService::changeBusesLayout (const Node& n, const AudioProcessor::Buse
 
                 gp->prepareToRender (gp->getSampleRate(), gp->getBlockSize());
 
-                while (gp->isSuspended())
-                    gp->suspendProcessing (false);
+                gp->suspendProcessing (false);
+                for (int attempts = 0; gp->isSuspended() && attempts < 500; ++attempts)
+                    juce::Thread::sleep (1);
 
                 controller->removeIllegalConnections();
                 controller->syncArcsModel();
 
-                sibling<GuiService>()->stabilizeViews();
+                if (auto* gui = sibling<GuiService>())
+                    gui->stabilizeViews();
             }
         }
     }
@@ -1119,11 +1139,13 @@ void EngineService::replace (const Node& node, const PluginDescription& desc)
 
             removeNode (node);
             if (wasWindowOpen)
-                sibling<GuiService>()->presentPluginWindow (newNode);
+                if (auto* gui = sibling<GuiService>())
+                    gui->presentPluginWindow (newNode);
         }
     }
 
-    sibling<GuiService>()->stabilizeViews();
+    if (auto* gui = sibling<GuiService>())
+        gui->stabilizeViews();
 }
 
 } // namespace element

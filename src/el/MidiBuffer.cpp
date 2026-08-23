@@ -171,8 +171,15 @@ static int midibuffer_clear (lua_State* L)
         }
 
         case 3: {
-            (*impl).buffer.clear (static_cast<int> (lua_tointeger (L, 2)) - 1,
-                                  static_cast<int> (lua_tointeger (L, 3)));
+            // Phase E-5: bounds check the (start, count) range before clearing.
+            // start is 1-indexed in Lua, count is the number of samples to clear.
+            // A negative start or negative count is rejected — silently allowing
+            // them lets a script feed nonsensical ranges into juce::MidiBuffer.
+            const auto start = static_cast<int> (lua_tointeger (L, 2)) - 1;
+            const auto count = static_cast<int> (lua_tointeger (L, 3));
+            luaL_argcheck (L, start >= 0, 2, "start index out of range");
+            luaL_argcheck (L, count >= 0, 3, "count must be non-negative");
+            (*impl).buffer.clear (start, count);
             break;
         }
     }

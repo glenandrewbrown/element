@@ -13,6 +13,8 @@
 #include "el/midi_buffer.hpp"
 #include "el/factories.hpp"
 
+using namespace juce;
+
 namespace element {
 
 MidiPipe::MidiPipe()

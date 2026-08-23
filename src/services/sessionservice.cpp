@@ -42,10 +42,13 @@ void SessionService::activate()
     document.reset (new SessionDocument (currentSession));
     changeResetter.reset (new ChangeResetter (*this));
     document->setFile (DataPath::defaultSessionDir());
+    startAutosave();
 }
 
 void SessionService::deactivate()
 {
+    stopAutosave();
+
     auto& world = context();
     auto& settings (world.settings());
     auto* props = settings.getUserSettings();
@@ -57,7 +60,8 @@ void SessionService::deactivate()
         document = nullptr;
     }
 
-    changeResetter->cancelPendingUpdate();
+    if (changeResetter)
+        changeResetter->cancelPendingUpdate();
     changeResetter.reset (nullptr);
 
     currentSession->clear();
@@ -71,7 +75,8 @@ void SessionService::openDefaultSession()
 
     loadNewSessionData();
     refreshOtherControllers();
-    sibling<GuiService>()->stabilizeContent();
+    if (auto* gui = sibling<GuiService>())
+        gui->stabilizeContent();
     resetChanges (true);
 }
 
@@ -117,23 +122,38 @@ void SessionService::openFile (const File& file)
     }
     else if (file.hasFileExtension ("els"))
     {
+        // Check whether a newer autosave exists and log it for the user.
+        {
+            const File autosaveFile = file.getSiblingFile (
+                file.getFileNameWithoutExtension() + ".autosave.elg");
+            if (autosaveFile.existsAsFile() && autosaveFile.getLastModificationTime() > file.getLastModificationTime())
+                DBG ("[SessionService] autosave available: " + autosaveFile.getFullPathName());
+        }
+
         document->saveIfNeededAndUserAgrees();
         Session::ScopedFrozenLock freeze (*currentSession);
         Result result = document->loadFrom (file, true);
 
         if (result.wasOk())
         {
-            auto& gui = *sibling<GuiService>();
-            gui.closeAllPluginWindows();
-            refreshOtherControllers();
-
-            if (auto* cc = gui.content())
+            if (auto* gui = sibling<GuiService>())
             {
-                auto ui = currentSession->data().getOrCreateChildWithName (tags::ui, nullptr);
-                cc->applySessionState (ui.getProperty ("content").toString());
+                gui->closeAllPluginWindows();
+                refreshOtherControllers();
+
+                if (auto* cc = gui->content())
+                {
+                    auto ui = currentSession->data().getOrCreateChildWithName (tags::ui, nullptr);
+                    cc->applySessionState (ui.getProperty ("content").toString());
+                }
+
+                gui->stabilizeContent();
+            }
+            else
+            {
+                refreshOtherControllers();
             }
 
-            sibling<GuiService>()->stabilizeContent();
             resetChanges();
         }
 
@@ -198,9 +218,11 @@ void SessionService::saveSession (const bool saveAs, const bool askForFile, cons
     jassert (document && currentSession);
     auto result = FileBasedDocument::userCancelledSave;
 
-    auto& gui = *sibling<GuiService>();
+    auto* gui = sibling<GuiService>();
+    if (! gui)
+        return;
 
-    if (auto* cc = gui.content())
+    if (auto* cc = gui->content())
     {
         String state;
         cc->getSessionState (state);
@@ -233,7 +255,8 @@ void SessionService::saveSession (const bool saveAs, const bool askForFile, cons
 
         if (saveAs)
         {
-            sibling<UI>()->recentFiles().addFile (document->getFile());
+            if (auto* ui = sibling<UI>())
+                ui->recentFiles().addFile (document->getFile());
             currentSession->data().setProperty (tags::name,
                                                 document->getFile().getFileNameWithoutExtension(),
                                                 nullptr);
@@ -260,10 +283,12 @@ void SessionService::newSession()
 
     if (res == 1 || res == 2)
     {
-        sibling<GuiService>()->closeAllPluginWindows();
+        if (auto* gc = sibling<GuiService>())
+            gc->closeAllPluginWindows();
         loadNewSessionData();
         refreshOtherControllers();
-        sibling<GuiService>()->stabilizeContent();
+        if (auto* gc = sibling<GuiService>())
+            gc->stabilizeContent();
         resetChanges (true);
     }
 }
@@ -298,11 +323,52 @@ void SessionService::loadNewSessionData()
 
 void SessionService::refreshOtherControllers()
 {
-    sibling<EngineService>()->sessionReloaded();
-    sibling<DeviceService>()->refresh();
-    sibling<MappingService>()->learn (false);
-    sibling<PresetService>()->refresh();
+    if (auto* es = sibling<EngineService>())
+        es->sessionReloaded();
+    if (auto* ds = sibling<DeviceService>())
+        ds->refresh();
+    if (auto* ms = sibling<MappingService>())
+        ms->learn (false);
+    if (auto* ps = sibling<PresetService>())
+        ps->refresh();
     sigSessionLoaded();
+}
+
+void SessionService::startAutosave (int intervalSeconds)
+{
+    const int ms = jmax (1, intervalSeconds) * 1000;
+    startTimer (ms);
+}
+
+void SessionService::stopAutosave()
+{
+    stopTimer();
+}
+
+File SessionService::getAutosaveFile() const
+{
+    const File sessionFile = getSessionFile();
+    if (sessionFile.existsAsFile())
+        return sessionFile.getSiblingFile (
+            sessionFile.getFileNameWithoutExtension() + ".autosave.elg");
+
+    // No file set yet — use a timestamped name in the default session dir.
+    const String timestamp = Time::getCurrentTime().formatted ("%Y%m%d_%H%M%S");
+    return DataPath::defaultSessionDir().getChildFile ("autosave_" + timestamp + ".elg");
+}
+
+void SessionService::timerCallback()
+{
+    if (! hasSessionChanged())
+        return;
+
+    const File sessionFile = getSessionFile();
+    if (! sessionFile.existsAsFile())
+        return;
+
+    const File autosaveFile = getAutosaveFile();
+    if (! sessionFile.copyFileTo (autosaveFile))
+        DBG ("[SessionService] autosave write failed: " + autosaveFile.getFullPathName());
 }
 
 } // namespace element

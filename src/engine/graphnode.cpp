@@ -240,7 +240,7 @@ bool GraphNode::connectChannels (PortType type, uint32 sourceNode, int32 sourceC
 {
     Processor* src = getNodeForId (sourceNode);
     Processor* dst = getNodeForId (destNode);
-    if (! src && ! dst)
+    if (! src || ! dst)
         return false;
     return addConnection (src->nodeId, src->getPortForChannel (type, sourceChannel, false), dst->nodeId, dst->getPortForChannel (type, destChannel, true));
 }
@@ -363,14 +363,13 @@ static void deleteRenderOpArray (Array<void*>& ops)
 
 void GraphNode::clearRenderingSequence()
 {
-    Array<void*> oldOps;
+    auto* oldOps = activeRenderingOps.exchange (nullptr, std::memory_order_acq_rel);
 
+    if (oldOps != nullptr)
     {
-        const ScopedLock sl (seqLock);
-        renderingOps.swapWith (oldOps);
+        deleteRenderOpArray (*oldOps);
+        delete oldOps;
     }
-
-    deleteRenderOpArray (oldOps);
 }
 
 bool GraphNode::isAnInputTo (const uint32 possibleInputId,
@@ -440,11 +439,18 @@ void GraphNode::buildRenderingSequence()
                 midiBuffers.add (new MidiBuffer());
         }
 
-        ScopedLock sl (seqLock);
-        renderingOps.swapWith (newRenderingOps);
+        auto* published = new juce::Array<void*>();
+        published->swapWith (newRenderingOps);
+        auto* oldOps = activeRenderingOps.exchange (published, std::memory_order_acq_rel);
+
+        if (oldOps != nullptr)
+        {
+            deleteRenderOpArray (*oldOps);
+            delete oldOps;
+        }
     }
 
-    // delete the old ones..
+    // newRenderingOps is now empty after swapWith, but clear for safety
     deleteRenderOpArray (newRenderingOps);
 
     renderingSequenceChanged();
@@ -484,7 +490,9 @@ void GraphNode::prepareToRender (double sampleRate, int estimatedSamplesPerBlock
     }
 
     currentAudioInputBuffer = nullptr;
-    currentAudioOutputBuffer.setSize (jmax (1, getNumAudioOutputs()), estimatedSamplesPerBlock);
+    currentAudioOutputBuffer.setSize (
+        jmax (1, getNumAudioOutputs()), estimatedSamplesPerBlock,
+        false, true /* clearExtraSpace */, false);
     currentMidiInputBuffer = nullptr;
     currentMidiOutputBuffer.clear();
     clearRenderingSequence();
@@ -530,10 +538,13 @@ void GraphNode::reset()
 
 void GraphNode::render (RenderContext& rc)
 {
+    juce::ScopedNoDenormals noDenormals;
     const int32 numSamples = rc.audio.getNumSamples();
     auto& midiMessages = *rc.midi.getWriteBuffer (0);
     currentAudioInputBuffer = &rc.audio;
-    currentAudioOutputBuffer.setSize (jmax (1, rc.audio.getNumChannels()), numSamples);
+    currentAudioOutputBuffer.setSize (
+        jmax (1, rc.audio.getNumChannels()), numSamples,
+        false, false, true /* avoidReallocating */);
     currentAudioOutputBuffer.clear();
 
     if (midiChannels.isOmni() && velocityCurve.getMode() == VelocityCurve::Linear)
@@ -566,11 +577,14 @@ void GraphNode::render (RenderContext& rc)
     currentMidiOutputBuffer.clear();
 
     {
-        ScopedLock sl (seqLock);
-        for (auto ptr : renderingOps)
+        auto* ops = activeRenderingOps.load (std::memory_order_acquire);
+        if (ops != nullptr)
         {
-            GraphOp* const op = static_cast<GraphOp*> (ptr);
-            op->perform (renderingBuffers, midiBuffers, numSamples);
+            for (auto ptr : *ops)
+            {
+                GraphOp* const op = static_cast<GraphOp*> (ptr);
+                op->perform (renderingBuffers, midiBuffers, numSamples);
+            }
         }
     }
 

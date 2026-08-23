@@ -201,9 +201,17 @@ private:
 
 //==============================================================================
 class PluginSettingsComponent : public SettingsPage,
-                                public Button::Listener
+                                public Button::Listener,
+                                public ComboBox::Listener
 {
 public:
+    enum SandboxModeIDs
+    {
+        SandboxDisabled = 1,
+        SandboxAllPlugins = 2,
+        SandboxProblematicOnly = 3
+    };
+
     PluginSettingsComponent (Context& w)
         : plugins (w.plugins()),
           settings (w.settings())
@@ -230,6 +238,26 @@ public:
             toggle->addListener (this);
         }
 
+        // Sandbox mode settings
+        addAndMakeVisible (sandboxLabel);
+        sandboxLabel.setText ("Plugin Sandbox Mode", dontSendNotification);
+        sandboxLabel.setFont (Font (FontOptions (18.0, Font::bold)));
+
+        addAndMakeVisible (sandboxNotice);
+        sandboxNotice.setText ("Sandboxing runs plugins in isolated processes for crash protection", dontSendNotification);
+        sandboxNotice.setFont (Font (FontOptions (12.0, Font::italic)));
+
+        addAndMakeVisible (sandboxModeLabel);
+        sandboxModeLabel.setText ("Sandbox mode", dontSendNotification);
+        sandboxModeLabel.setFont (Font (FontOptions (12.0, Font::bold)));
+
+        addAndMakeVisible (sandboxMode);
+        sandboxMode.addItem ("Disabled", SandboxDisabled);
+        sandboxMode.addItem ("All External Plugins", SandboxAllPlugins);
+        sandboxMode.addItem ("Problematic Plugins Only", SandboxProblematicOnly);
+        sandboxMode.setSelectedId (settings.getPluginSandboxMode() + 1, dontSendNotification);
+        sandboxMode.addListener (this);
+
         updateToggleStates();
     }
 
@@ -251,6 +279,17 @@ public:
             c->setBounds (r2.removeFromRight (getWidth() - toggleInset));
             r.removeFromTop (4);
         }
+
+        // Sandbox mode section
+        r.removeFromTop (spacingBetweenSections * 2);
+        sandboxLabel.setFont (Font (FontOptions (15.0f).withStyle ("Bold")));
+        sandboxLabel.setBounds (r.removeFromTop (18));
+        sandboxNotice.setBounds (r.removeFromTop (14));
+
+        r.removeFromTop (spacingBetweenSections);
+        auto r2 = r.removeFromTop (22);
+        sandboxModeLabel.setBounds (r2.removeFromLeft (getWidth() / 2));
+        sandboxMode.setBounds (r2.withSizeKeepingCentre (r2.getWidth(), 22));
     }
 
     void paint (Graphics&) override {}
@@ -259,6 +298,16 @@ public:
     {
         writeSetting();
         restoreSetting();
+    }
+
+    void comboBoxChanged (ComboBox* box) override
+    {
+        if (box == &sandboxMode)
+        {
+            // Convert combo ID (1-3) to mode value (0-2)
+            settings.setPluginSandboxMode (sandboxMode.getSelectedId() - 1);
+            settings.saveIfNeeded();
+        }
     }
 
 private:
@@ -271,6 +320,12 @@ private:
     StringArray availableFormats;
 
     Label formatNotice;
+
+    // Sandbox mode UI
+    Label sandboxLabel;
+    Label sandboxNotice;
+    Label sandboxModeLabel;
+    ComboBox sandboxMode;
 
     const String key = Settings::pluginFormatsKey;
     [[maybe_unused]] bool hasChanged = false;
@@ -470,13 +525,12 @@ public:
         mainContentLabel.setFont (Font (FontOptions (12.0, Font::bold)));
         addAndMakeVisible (mainContentBox);
         mainContentBox.addItem ("Standard", 1);
-        // mainContentBox.addItem ("Workspace", 2);
-        if (settings.getMainContentType() == "standard")
+        mainContentBox.addItem ("Web (React)", 2);
+        const auto mct = settings.getMainContentType();
+        if (mct == "standard")
             mainContentBox.setSelectedId (1, dontSendNotification);
         else
-        {
-            jassertfalse;
-        } // invalid content type
+            mainContentBox.setSelectedId (2, dontSendNotification);
         mainContentBox.getSelectedIdAsValue().addListener (this);
     }
 
@@ -613,8 +667,8 @@ public:
         }
         else if (value.refersToSameSourceAs (mainContentBox.getSelectedIdAsValue()))
         {
-            auto uitype = settings.getMainContentType();
-            if (1 == mainContentBox.getSelectedId())
+            String uitype ("webview");
+            if (mainContentBox.getSelectedId() == 1)
                 uitype = "standard";
 
             if (uitype != settings.getMainContentType())

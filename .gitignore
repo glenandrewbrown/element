@@ -63,3 +63,53 @@ docs/_build/
 Cardinal
 .meson-subproject*.txt
 .cache/
+.claude/settings.local.json
+
+# Stale dependency directories (now handled by CMake FetchContent)
+deps/juce/
+deps/lvtk/
+deps/sol2/
+
+# Build directories
+build-*/
+!build_number.txt
+
+# Installer artifacts
+installer/*.pkg
+installer/*.dmg
+
+# Logs
+logs/
+firebase-debug.log
+
+# Automation caches
+tools/automation/*_cache.json
+
+# Session memory (local hook data)
+.remember/
+
+# Installer build intermediates
+installer/packages/
+installer/pkg-build/
+installer/pkg_root/
+installer/resources/
+installer/staging/
+
+# Repomix packed output (large; regenerate with: npx repomix@latest)
+repomix-output.md
+repomix-output.xml
+repomix-output.*.md
+repomix-output_*.md
+/command-palette-before.md
+
+# Tooling state (oh-my-claudecode autopilot artifacts, playwright, sisyphus, etc.)
+/.omc/
+!/.omc/specs/
+!/.omc/specs/**
+/.playwright-mcp/
+/.sisyphus/
+/.claude/scheduled_tasks.lock
+/.scheduled_tasks/
+
+# Installer build output (regenerated each run by installer/build_pkg.sh)
+/installer/output/

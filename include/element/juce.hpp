@@ -21,6 +21,6 @@
 #include <juce_gui_extra/juce_gui_extra.h>
 #include <juce_osc/juce_osc.h>
 
-using namespace juce; // FIXME: namespace juce
-namespace element {
-}
+// Public header — never `using namespace juce;` here. Translation units that
+// want unqualified juce names must add `using namespace juce;` at .cpp file
+// scope themselves (allowed per project convention).

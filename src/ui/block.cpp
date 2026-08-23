@@ -38,6 +38,106 @@ static bool canResize (BlockComponent& block)
 } // namespace detail
 
 //=============================================================================
+// Helper for lambda-based change listeners
+class LambdaChangeListener : public ChangeListener
+{
+public:
+    LambdaChangeListener (std::function<void (ChangeBroadcaster*)> fn) : callback (fn) {}
+    void changeListenerCallback (ChangeBroadcaster* source) override
+    {
+        if (callback)
+            callback (source);
+    }
+private:
+    std::function<void (ChangeBroadcaster*)> callback;
+};
+
+//=============================================================================
+// Default color coding for different plugin types
+static Colour getDefaultColorForNode (const Node& node)
+{
+    // Internal nodes (I/O)
+    if (node.isAudioInputNode())
+        return Colour (0xff4a90d9); // Blue - audio input
+    if (node.isAudioOutputNode())
+        return Colour (0xff4ad99a); // Green - audio output
+    if (node.isMidiInputNode())
+        return Colour (0xffd9944a); // Orange - MIDI input
+    if (node.isMidiOutputNode())
+        return Colour (0xffd9d44a); // Yellow-orange - MIDI output
+    if (node.isIONode())
+        return Colour (0xff7a7a7a); // Gray - generic I/O
+
+    // Graphs/subgraphs
+    if (node.isGraph())
+        return Colour (0xff9a9a4a); // Olive - subgraphs
+
+    // Check if it's an instrument (has MIDI input, produces audio, minimal audio inputs)
+    // vs an effect (processes audio)
+    bool isInstrument = false;
+    bool isEffect = false;
+
+    if (const ProcessorPtr proc = node.getObject())
+    {
+        int midiInputs = proc->getNumPorts (PortType::Midi, true);
+        int audioInputs = proc->getNumAudioInputs();
+        int audioOutputs = proc->getNumAudioOutputs();
+
+        // Instrument: accepts MIDI, produces audio, has few/no audio inputs
+        if (midiInputs > 0 && audioOutputs > 0 && audioInputs <= 2)
+            isInstrument = true;
+        // Effect: processes audio (has audio inputs and outputs)
+        else if (audioInputs > 0 && audioOutputs > 0)
+            isEffect = true;
+    }
+
+    // Check plugin format
+    String format = node.getFormat().toString();
+
+    if (format == "Internal")
+        return Colour (0xff6a6a8a); // Purple-gray - internal processors
+
+    // Color instruments differently from effects within each format
+    if (format == "AudioUnit" || format == "AU")
+    {
+        if (isInstrument)
+            return Colour (0xff6a5ad9); // Purple-blue - AU Instrument
+        return Colour (0xff5a8ad9); // Blue - AU Effect
+    }
+
+    if (format == "VST3")
+    {
+        if (isInstrument)
+            return Colour (0xffd95aa0); // Deep pink - VST3 Instrument
+        return Colour (0xffd95a8a); // Pink/magenta - VST3 Effect
+    }
+
+    if (format == "VST")
+    {
+        if (isInstrument)
+            return Colour (0xffa05ad9); // Bright purple - VST2 Instrument
+        return Colour (0xff8a5ad9); // Purple - VST2 Effect
+    }
+
+    if (format == "LV2")
+    {
+        if (isInstrument)
+            return Colour (0xff5ad9c0); // Aqua - LV2 Instrument
+        return Colour (0xff5ad98a); // Teal/green - LV2 Effect
+    }
+
+    if (format == "CLAP")
+    {
+        if (isInstrument)
+            return Colour (0xffd9a05a); // Gold - CLAP Instrument
+        return Colour (0xffd98a5a); // Orange - CLAP Effect
+    }
+
+    // Default - no color (transparent)
+    return Colour (0x00000000);
+}
+
+//=============================================================================
 PortComponent::PortComponent (const Node& g, const Node& n, const uint32 nid, const uint32 i, const bool dir, const PortType t, const bool v)
     : graph (g), node (n), nodeID (nid), port (i), type (t), input (dir), vertical (v)
 {
@@ -186,6 +286,8 @@ BlockComponent::BlockComponent (const Node& graph_, const Node& node_, const boo
     nodeEnabled.addListener (this);
     nodeName = node.getPropertyAsValue (tags::name);
     nodeName.addListener (this);
+    nodeBypassed = node.getPropertyAsValue (tags::bypass);
+    nodeBypassed.addListener (this);
 
     shadow.setShadowProperties (DropShadow (Colours::black.withAlpha (0.5f), 3, Point<int> (0, 1)));
     setComponentEffect (&shadow);
@@ -208,6 +310,20 @@ BlockComponent::BlockComponent (const Node& graph_, const Node& node_, const boo
     muteButton.getToggleStateValue().referTo (node.getPropertyAsValue (tags::mute));
     muteButton.setClickingTogglesState (true);
     muteButton.addListener (this);
+
+    // Color picker button
+    addAndMakeVisible (colorButton);
+    colorButton.setButtonText ("");
+    colorButton.setTooltip ("Click to change block color");
+    colorButton.addListener (this);
+    // Use the node's color or default
+    auto blockColor = Colour::fromString (node.getBlockValueTree().getProperty ("blockColor", "00000000").toString());
+    if (blockColor.getAlpha() > 0)
+        color = blockColor;
+    else
+        color = getDefaultColorForNode (node);
+    colorButton.setColour (SettingButton::backgroundColourId, color);
+    colorButton.setColour (SettingButton::backgroundOnColourId, color.brighter (0.2f));
 
     hiddenPorts = node.getBlockValueTree()
                       .getPropertyAsValue (tags::hiddenPorts, nullptr);
@@ -250,10 +366,14 @@ BlockComponent::BlockComponent (const Node& graph_, const Node& node_, const boo
             valueChanged (nodeObject);
         });
     }
+
+    // Start timer for performance indicator updates
+    startTimerHz (5);
 }
 
 BlockComponent::~BlockComponent() noexcept
 {
+    stopTimer();
     nodeObject.removeListener (this);
     willRemoveConn.disconnect();
     clearEmbedded();
@@ -261,6 +381,7 @@ BlockComponent::~BlockComponent() noexcept
 
     nodeEnabled.removeListener (this);
     nodeName.removeListener (this);
+    nodeBypassed.removeListener (this);
     hiddenPorts.removeListener (this);
     displayModeValue.removeListener (this);
     deleteAllPins();
@@ -324,14 +445,26 @@ void BlockComponent::setDisplayModeInternal (DisplayMode mode, bool force)
     {
         if (detail::supportsEmbed (this->node))
         {
-            struct EmbedBockAsync : MessageManager::MessageBase
+            // W-12: hold the BlockComponent via SafePointer so a destruction race
+            // between post() and messageCallback() can't dereference dangling refs.
+            // The PtrType reference into `block.embedded` is only valid while the
+            // BlockComponent is alive, and UI (GuiService) outlives BlockComponent
+            // (Services owns it), so once we have verified block is alive we can
+            // safely use the captured reference and the UI ref. The struct is
+            // friended below so we can mutate the private `embedded` member from
+            // within the message-thread callback.
+            struct EmbedBockAsync : juce::MessageManager::MessageBase
             {
                 using PtrType = std::unique_ptr<juce::Component>;
                 EmbedBockAsync (BlockComponent& b, const Node& n, UI& u, PtrType& p, DisplayMode om)
-                    : block (b), node (n), ui (u), embedded (p), oldMode (om) {}
+                    : block (&b), node (n), ui (u), embedded (p), oldMode (om) {}
 
                 void messageCallback() override
                 {
+                    auto* bp = block.getComponent();
+                    if (bp == nullptr)
+                        return; // BlockComponent destroyed before this message ran — discard.
+
                     ui.closePluginWindowsFor (node, false);
 
                     if (embedded == nullptr)
@@ -347,19 +480,19 @@ void BlockComponent::setDisplayModeInternal (DisplayMode mode, bool force)
 
                     if (embedded != nullptr)
                     {
-                        block.addAndMakeVisible (embedded.get());
-                        block.updateSize();
-                        block.resized();
-                        embedded->addComponentListener (&block);
+                        bp->addAndMakeVisible (embedded.get());
+                        bp->updateSize();
+                        bp->resized();
+                        embedded->addComponentListener (bp);
                     }
                     else
                     {
                         if (oldMode != Embed)
-                            block.setDisplayModeInternal (oldMode, true);
+                            bp->setDisplayModeInternal (oldMode, true);
                     }
                 }
 
-                BlockComponent& block;
+                juce::Component::SafePointer<BlockComponent> block;
                 Node node;
                 UI& ui;
                 PtrType& embedded;
@@ -410,6 +543,10 @@ void BlockComponent::setMuteButtonVisible (bool visible) { setButtonVisible (mut
 void BlockComponent::valueChanged (Value& value)
 {
     if (nodeEnabled.refersToSameSourceAs (value))
+    {
+        repaint();
+    }
+    else if (nodeBypassed.refersToSameSourceAs (value))
     {
         repaint();
     }
@@ -478,6 +615,49 @@ void BlockComponent::buttonClicked (Button* b)
     {
         node.setMuted (muteButton.getToggleState());
     }
+    else if (b == &colorButton)
+    {
+        // Create a new color selector for the callout
+        auto* selector = new BlockColorSelector();
+        selector->setCurrentColour (color);
+        selector->setSize (200, 150);
+
+        // Use a weak reference pattern to safely update the block
+        auto weakThis = juce::Component::SafePointer<BlockComponent> (this);
+
+        colorChangeListener = std::make_unique<LambdaChangeListener> ([weakThis] (ChangeBroadcaster* src) {
+            if (auto* block = weakThis.getComponent())
+            {
+                auto* sel = dynamic_cast<ColourSelector*> (src);
+                if (sel == nullptr)
+                    return;
+
+                block->color = sel->getCurrentColour().withAlpha (1.0f);
+                block->node.getBlockValueTree().setProperty ("blockColor", block->color.toString(), nullptr);
+                block->colorButton.setColour (SettingButton::backgroundColourId, block->color);
+                block->colorButton.setColour (SettingButton::backgroundOnColourId, block->color.brighter (0.2f));
+
+                // Also update selected siblings
+                block->forEachSibling ([block] (BlockComponent& sibling) {
+                    if (! sibling.isSelected())
+                        return;
+                    sibling.color = block->color;
+                    sibling.node.getBlockValueTree().setProperty ("blockColor", block->color.toString(), nullptr);
+                    sibling.colorButton.setColour (SettingButton::backgroundColourId, block->color);
+                    sibling.colorButton.setColour (SettingButton::backgroundOnColourId, block->color.brighter (0.2f));
+                    sibling.repaint();
+                });
+
+                block->repaint();
+            }
+        });
+        selector->addChangeListener (colorChangeListener.get());
+
+        CallOutBox::launchAsynchronously (
+            std::unique_ptr<Component> (selector),
+            colorButton.getScreenBounds(),
+            nullptr);
+    }
 }
 
 void BlockComponent::deleteAllPins()
@@ -509,10 +689,62 @@ void BlockComponent::changeListenerCallback (ChangeBroadcaster* broadcaster)
     }
 }
 
+void BlockComponent::timerCallback()
+{
+    if (! showPerformanceIndicators)
+        return;
+
+    // Update cached performance data
+    if (obj != nullptr)
+    {
+        int newLatency = obj->getLatencySamples();
+        if (newLatency != cachedLatencySamples)
+        {
+            cachedLatencySamples = newLatency;
+            repaint();
+        }
+
+        // Calculate signal activity level based on output RMS
+        // Note: This shows signal level/activity, NOT CPU usage
+        float maxRms = 0.0f;
+        int numChannels = obj->getNumAudioOutputs();
+        for (int i = 0; i < numChannels; ++i)
+        {
+            maxRms = std::max (maxRms, obj->getOutputRMS (i));
+        }
+
+        // Smooth the value for visual display
+        cachedActivityLevel = cachedActivityLevel * 0.9f + maxRms * 0.1f;
+    }
+}
+
+void BlockComponent::setPerformanceIndicatorsVisible (bool visible)
+{
+    if (showPerformanceIndicators != visible)
+    {
+        showPerformanceIndicators = visible;
+        repaint();
+    }
+}
+
 void BlockComponent::mouseDown (const MouseEvent& e)
 {
     if (! isEnabled())
         return;
+
+    // Check if click is on the bypass icon area
+    if (displayMode != Compact
+        && e.mods.isLeftButtonDown()
+        && ! e.mods.isPopupMenu()
+        && getBypassIconArea().toFloat().contains (e.position))
+    {
+        const bool newBypassed = ! node.isBypassed();
+        node.getPropertyAsValue (tags::bypass).setValue (newBypassed);
+        if (obj != nullptr && obj->isSuspended() != newBypassed)
+            obj->suspendProcessing (newBypassed);
+        repaint();
+        return;
+    }
 
     originalPos = localPointToGlobal (Point<int>());
     originalBounds = getBounds();
@@ -672,6 +904,20 @@ void BlockComponent::mouseDrag (const MouseEvent& e)
 
     if (panel != nullptr)
     {
+        // Apply snap-to-align (default behavior - can snap to nearby blocks)
+        Point<int> snapDelta;
+        auto guides = panel->getSnapGuides (this, snapDelta);
+
+        if (snapDelta.x != 0 || snapDelta.y != 0)
+        {
+            // Apply snap adjustment
+            moveBlockTo (pos.getX() + snapDelta.x, pos.getY() + snapDelta.y);
+        }
+
+        // Store guides for visualization
+        panel->currentSnapGuides = guides;
+        panel->repaint();
+
         if (panel->onBlockMoved)
             panel->onBlockMoved (*this);
 
@@ -681,6 +927,10 @@ void BlockComponent::mouseDrag (const MouseEvent& e)
 
         int dx = deltaX - lastDragDeltaX;
         int dy = deltaY - lastDragDeltaY;
+
+        // Add snap delta to movement for selected blocks too
+        dx += snapDelta.x;
+        dy += snapDelta.y;
 
         if (hasMoved)
         {
@@ -701,6 +951,9 @@ void BlockComponent::mouseDrag (const MouseEvent& e)
         }
 
         panel->updateConnectorComponents();
+
+        // Update auto-connect suggestions while dragging
+        panel->updateAutoConnectSuggestions (this);
     }
 
     lastDragDeltaX = deltaX;
@@ -716,7 +969,24 @@ void BlockComponent::mouseUp (const MouseEvent& e)
     auto* panel = getGraphPanel();
 
     if (panel)
+    {
+        // Clear snap guides
+        panel->currentSnapGuides.clear();
+        panel->repaint();
+
         panel->selectedNodes.addToSelectionOnMouseUp (node.getNodeId(), e.mods, dragging, selectionMouseDownResult);
+
+        // Handle auto-connect suggestions
+        // Apply ghost connections if CMD key is held, otherwise clear them
+        if (e.mods.isCommandDown())
+        {
+            panel->applyGhostConnections();
+        }
+        else
+        {
+            panel->clearGhostConnectors();
+        }
+    }
 
     if (e.mouseWasClicked() && e.getNumberOfClicks() == 2)
         makeEditorActive();
@@ -775,6 +1045,17 @@ Rectangle<int> BlockComponent::getCornerResizeBox() const
 {
     auto r = getBoxRectangle();
     return { r.getRight() - 14, r.getBottom() - 14, 12, 12 };
+}
+
+Rectangle<int> BlockComponent::getBypassIconArea() const
+{
+    auto box = getBoxRectangle();
+    const int iconSize = 12;
+    const int margin = 4;
+    return { box.getRight() - iconSize - margin,
+             box.getY() + margin,
+             iconSize,
+             iconSize };
 }
 
 void BlockComponent::paintOverChildren (Graphics& g)
@@ -917,11 +1198,101 @@ void BlockComponent::paint (Graphics& g)
         }
     }
 
+    // Draw bypass icon (power symbol) in top-right of header
+    if (displayMode != Compact)
+    {
+        const auto bypassArea = getBypassIconArea();
+        const bool bypassed = node.isBypassed();
+        const float cx = bypassArea.getCentreX();
+        const float cy = bypassArea.getCentreY();
+        const float radius = 4.0f;
+
+        // Circle part of power icon (open at top)
+        Path powerPath;
+        const float gapAngle = MathConstants<float>::pi * 0.25f;
+        powerPath.addArc (cx - radius, cy - radius + 1.0f,
+                          radius * 2.0f, radius * 2.0f,
+                          -MathConstants<float>::halfPi + gapAngle,
+                          MathConstants<float>::twoPi - MathConstants<float>::halfPi - gapAngle,
+                          true);
+
+        auto iconColor = bypassed ? Colour (0xFFE07020) : Colours::grey;
+        g.setColour (iconColor);
+        g.strokePath (powerPath, PathStrokeType (1.4f));
+
+        // Vertical line at top (the "I" part)
+        g.drawLine (cx, cy - radius - 0.5f, cx, cy - 0.5f, 1.4f);
+    }
+
+    // Draw dimming overlay when bypassed
+    if (node.isBypassed())
+    {
+        g.setColour (Colours::black.withAlpha (0.35f));
+        g.fillRoundedRectangle (box.toFloat(), cornerSize);
+    }
+
     if (mouseInCornerResize)
     {
         auto cbox = getCornerResizeBox();
         g.setOrigin (cbox.getPosition());
         getLookAndFeel().drawCornerResizer (g, 12, 12, true, false);
+        g.setOrigin (0, 0); // Reset origin
+    }
+
+    // Draw performance indicators (latency and activity)
+    if (showPerformanceIndicators && displayMode != Compact)
+    {
+        g.setFont (Font (FontOptions (9.f)));
+
+        // Draw latency indicator (bottom left of box)
+        if (cachedLatencySamples > 0)
+        {
+            String latencyText = String (cachedLatencySamples) + " smp";
+            // Calculate latency in ms if we have sample rate
+            if (obj != nullptr)
+            {
+                double sr = obj->getSampleRate();
+                if (sr > 0)
+                {
+                    double latencyMs = (cachedLatencySamples / sr) * 1000.0;
+                    latencyText = String (latencyMs, 1) + "ms";
+                }
+            }
+
+            auto latencyBounds = box.withHeight (12).translated (4, box.getHeight() - 14);
+            latencyBounds = latencyBounds.withWidth (50);
+
+            // Semi-transparent background
+            g.setColour (Colours::black.withAlpha (0.4f));
+            g.fillRoundedRectangle (latencyBounds.toFloat(), 2.0f);
+
+            // Text
+            g.setColour (Colours::lightblue);
+            g.drawText (latencyText, latencyBounds.reduced (2, 0), Justification::centredLeft, true);
+        }
+
+        // Draw signal activity indicator (small bar on the right side)
+        if (cachedActivityLevel > 0.001f)
+        {
+            const int barWidth = 4;
+            const int barMaxHeight = jmin (30, box.getHeight() - 26);
+            const int barHeight = static_cast<int> (barMaxHeight * jmin (1.0f, cachedActivityLevel * 10.0f));
+
+            auto barBounds = Rectangle<int> (
+                box.getRight() - barWidth - 6,
+                box.getBottom() - 16 - barHeight,
+                barWidth,
+                barHeight
+            );
+
+            // Color based on signal level (green=low, yellow=medium, red=high/clipping)
+            Colour barColor = cachedActivityLevel < 0.5f ? Colours::green
+                            : cachedActivityLevel < 0.8f ? Colours::yellow
+                            : Colours::red;
+
+            g.setColour (barColor.withAlpha (0.7f));
+            g.fillRoundedRectangle (barBounds.toFloat(), 1.0f);
+        }
     }
 }
 
@@ -938,6 +1309,11 @@ void BlockComponent::resized()
         for (int i = 0; i < 3; ++i)
             if (buttons[i]->isVisible())
                 buttons[i]->setBounds (r.removeFromLeft (16));
+
+        // Color button on the right side of the header area
+        auto headerR = box.reduced (4, 2).removeFromTop (18);
+        headerR.removeFromTop (2);
+        colorButton.setBounds (headerR.removeFromRight (14).reduced (0, 1));
     }
 
     if (displayMode == Embed && embedded)
@@ -1093,7 +1469,8 @@ void BlockComponent::update (const bool doPosition, const bool forcePins)
     }
     else
     {
-        color = Colour (0x00000000);
+        // Set default color based on plugin type/format for visual organization
+        color = getDefaultColorForNode (node);
     }
 
     repaint();

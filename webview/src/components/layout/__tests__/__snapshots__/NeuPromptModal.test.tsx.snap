@@ -1,0 +1,55 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`<NeuPromptModal /> > matches the default snapshot 1`] = `
+<div
+  aria-describedby="_r_f_"
+  aria-labelledby="_r_e_"
+  aria-modal="true"
+  class="fixed inset-0 z-[210] flex items-center justify-center bg-black/55"
+  role="dialog"
+>
+  <div
+    class="w-[min(420px,92vw)] rounded-lg bg-surface shadow-[8px_8px_24px_rgba(0,0,0,0.5),-2px_-2px_8px_rgba(255,255,255,0.04)] border border-white/5 p-6 space-y-4"
+  >
+    <div
+      class="space-y-1"
+    >
+      <h2
+        class="text-[12px] font-bold uppercase tracking-widest text-text-primary"
+        id="_r_e_"
+      >
+        Save preset
+      </h2>
+      <p
+        class="text-[10px] text-text-secondary leading-relaxed"
+        id="_r_f_"
+      >
+        Saves the current parameter values.
+      </p>
+    </div>
+    <input
+      class="w-full text-[12px] bg-pressed text-text-primary rounded-md px-3 py-2 outline-none border border-white/5 focus:border-generator/40 placeholder-text-secondary/60 shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)]"
+      placeholder="Preset name"
+      type="text"
+      value=""
+    />
+    <div
+      class="flex justify-end gap-2 pt-1"
+    >
+      <button
+        class="px-3 py-1.5 rounded text-[11px] uppercase tracking-wide text-text-secondary bg-surface hover:bg-elevated transition-colors shadow-[-1px_-1px_4px_rgba(255,255,255,0.04),1px_1px_4px_rgba(0,0,0,0.3)]"
+        type="button"
+      >
+        Cancel
+      </button>
+      <button
+        class="px-3 py-1.5 rounded text-[11px] uppercase tracking-wide font-bold text-text-primary bg-generator/20 border border-generator/30 hover:bg-generator/30 transition-colors shadow-[-1px_-1px_4px_rgba(255,255,255,0.04),1px_1px_4px_rgba(0,0,0,0.3)] disabled:opacity-40 disabled:cursor-not-allowed"
+        disabled=""
+        type="button"
+      >
+        Save
+      </button>
+    </div>
+  </div>
+</div>
+`;

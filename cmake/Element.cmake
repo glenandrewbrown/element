@@ -45,6 +45,30 @@ endif()
 include(GNUInstallDirs)
 include(FetchContent)
 
+# Build number: read from build_number.txt (single source of truth for all versioning)
+set(ELEMENT_BUILD_NUMBER_FILE "${CMAKE_SOURCE_DIR}/build_number.txt")
+if(EXISTS "${ELEMENT_BUILD_NUMBER_FILE}")
+    file(READ "${ELEMENT_BUILD_NUMBER_FILE}" ELEMENT_BUILD_NUMBER)
+    string(STRIP "${ELEMENT_BUILD_NUMBER}" ELEMENT_BUILD_NUMBER)
+else()
+    set(ELEMENT_BUILD_NUMBER "1")
+endif()
+
+# Git short hash for version identification
+execute_process(
+    COMMAND git rev-parse --short=8 HEAD
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+    OUTPUT_VARIABLE ELEMENT_GIT_SHORT_HASH
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+)
+if(NOT ELEMENT_GIT_SHORT_HASH)
+    set(ELEMENT_GIT_SHORT_HASH "unknown")
+endif()
+
+set(ELEMENT_VERSION_STRING "${PROJECT_VERSION}.${ELEMENT_BUILD_NUMBER}")
+message(STATUS "Element version: ${ELEMENT_VERSION_STRING} (${ELEMENT_GIT_SHORT_HASH})")
+
 # Fetch ASIO
 if(WIN32 AND ELEMENT_ENABLE_ASIO)
     FetchContent_Declare(ASIOSDK
@@ -93,6 +117,26 @@ function(element_setup_plugin tgt)
         if(TARGET ${tgt}_VST)
             target_link_options(${tgt}_VST PRIVATE "LINKER:-exported_symbol,_VSTPluginMain")
         endif()
+
+        # Bundle the WebView production assets into each plugin format's
+        # Resources directory so the host can find them when the .pkg is
+        # installed (or the plugin is moved). dladdr() at runtime resolves
+        # the bundle path from inside the plugin binary.
+        # LV2 omitted: not a real macOS bundle; needs separate handling.
+        foreach(fmt AU CLAP VST3)
+            if(TARGET ${tgt}_${fmt})
+                add_custom_command(TARGET ${tgt}_${fmt} POST_BUILD
+                    COMMAND ${CMAKE_COMMAND} -E rm -rf
+                            "$<TARGET_BUNDLE_CONTENT_DIR:${tgt}_${fmt}>/Resources/webview"
+                    COMMAND ${CMAKE_COMMAND} -E make_directory
+                            "$<TARGET_BUNDLE_CONTENT_DIR:${tgt}_${fmt}>/Resources/webview"
+                    COMMAND ${CMAKE_COMMAND} -E copy_directory
+                            "${CMAKE_SOURCE_DIR}/webview/dist"
+                            "$<TARGET_BUNDLE_CONTENT_DIR:${tgt}_${fmt}>/Resources/webview"
+                    COMMENT "Bundling WebView assets into ${tgt}_${fmt}"
+                    VERBATIM)
+            endif()
+        endforeach()
     endif()
 endfunction()
 

@@ -15,17 +15,16 @@ using namespace juce;
 
 namespace element {
 
-const Colour Colors::elemental = Colour (0xff4765a0);
-const Colour Colors::toggleBlue = Colour (0xff33aaf9);
-const Colour Colors::toggleGreen = Colour (0xff92e75e);
-const Colour Colors::toggleOrange = Colour (0xfffaa63a);
-const Colour Colors::toggleRed = Colour (0xffff0000);
+const Colour Colors::elemental = Colour (0xff2bc4c4);
+const Colour Colors::toggleBlue = Colour (0xff4a90d9);
+const Colour Colors::toggleGreen = Colour (0xff34d399);
+const Colour Colors::toggleOrange = Colour (0xffe8a838);
+const Colour Colors::toggleRed = Colour (0xffef4444);
 
 const Colour Colors::elementBlue = Colors::elemental;
 const Colour Colors::backgroundColor = Colour ((uint32) LookAndFeel_E1::defaultBackgroundColor);
-const Colour Colors::widgetBackgroundColor = Colour (0xff3b3b3b);
-const Colour Colors::contentBackgroundColor = Colors::widgetBackgroundColor.darker().darker();
-// const Colour Colors::contentBackgroundColor = Colour (0xff212125);
+const Colour Colors::widgetBackgroundColor = Colour (0xff222226);
+const Colour Colors::contentBackgroundColor = Colour (0xff1a1a1e);
 
 const Colour Colors::textColor = Colour ((uint32) LookAndFeel_E1::defaultTextColor);
 const Colour Colors::textActiveColor = Colour ((uint32) LookAndFeel_E1::defaultTextActiveColor);
@@ -247,25 +246,27 @@ void Style::drawFader (Graphics& g, int x, int y, int width, int height,
 //==============================================================================
 LookAndFeel_E1::LookAndFeel_E1()
 {
-    setColour (ResizableWindow::backgroundColourId, Colors::widgetBackgroundColor.darker (0.3f));
+    setColour (ResizableWindow::backgroundColourId, Colors::backgroundColor);
 
-    // Text Buttons
-    setColour (TextButton::buttonColourId, Colour (0xff525252));
-    setColour (TextButton::buttonOnColourId, Colour (0xff525252));
-    setColour (TextButton::textColourOffId, Colours::white);
-    setColour (TextButton::textColourOnId, Colours::white);
+    // Text Buttons — V3 surface tones, raised state via lighter "On" colour.
+    setColour (TextButton::buttonColourId, Colour (0xff252529));
+    setColour (TextButton::buttonOnColourId, Colour (0xff2a2a2e));
+    setColour (TextButton::textColourOffId, Colors::textColor);
+    setColour (TextButton::textColourOnId, Colors::textActiveColor);
 
-    // PopupMenu Styling
-    setColour (PopupMenu::backgroundColourId, Colour (0xfff0f0f0));
-    setColour (PopupMenu::textColourId, Colour (0xff1d1d1e));
-    setColour (PopupMenu::headerTextColourId, Colour (0xff1d1d1e));
+    // PopupMenu Styling — V3 dark theme. Previous values rendered light-grey
+    // popup menus on a dark host (0xfff0f0f0 background + 0xff1d1d1e text)
+    // which was the most jarring visual mismatch in the classic UI.
+    setColour (PopupMenu::backgroundColourId, Colour (0xff222226));
+    setColour (PopupMenu::textColourId, Colors::textColor);
+    setColour (PopupMenu::headerTextColourId, Colour (0xff8e8e93));
     setColour (PopupMenu::highlightedBackgroundColourId, Colors::elemental);
-    setColour (PopupMenu::highlightedTextColourId, Colour (0xfff0f0f0));
+    setColour (PopupMenu::highlightedTextColourId, Colour (0xff1e1e22));
 
-    // ComboBox Styling
-    setColour (ComboBox::backgroundColourId, Colours::black);
-    setColour (ComboBox::outlineColourId, Colours::black.brighter (0.2f));
-    setColour (ComboBox::buttonColourId, Colours::black.brighter (0.2f));
+    // ComboBox Styling — V3 surface, no harsh black.
+    setColour (ComboBox::backgroundColourId, Colour (0xff252529));
+    setColour (ComboBox::outlineColourId, Colour (0xff3a3a3e));
+    setColour (ComboBox::buttonColourId, Colour (0xff2a2a2e));
     setColour (ComboBox::textColourId, Colour ((uint32) defaultTextActiveColor));
     setColour (ComboBox::arrowColourId, Colour ((uint32) defaultTextColor));
 
@@ -282,17 +283,16 @@ LookAndFeel_E1::LookAndFeel_E1()
     setColour (ListBox::backgroundColourId, Colour (0x00000000));
     setColour (ListBox::textColourId, Colors::textColor);
 
-    // Text Editor
-    setColour (TextEditor::backgroundColourId, Colors::backgroundColor);
-    setColour (TextEditor::highlightColourId, Colors::backgroundColor.brighter());
-    setColour (TextEditor::highlightColourId, Colors::highlightBackgroundColor);
-    setColour (TextEditor::highlightedTextColourId, Colors::textColor.contrasting());
+    // Text Editor — V3 inset/pressed shadow tone for the field background.
+    setColour (TextEditor::backgroundColourId, Colour (0xff1a1a1e));
+    setColour (TextEditor::highlightColourId, Colors::elemental.withAlpha (0.35f));
+    setColour (TextEditor::highlightedTextColourId, Colors::textColor);
     setColour (TextEditor::textColourId, Colors::textColor);
 
-    // Toolbar Styling
-    setColour (Toolbar::backgroundColourId, Colors::backgroundColor.brighter (0.05f));
-    setColour (Toolbar::buttonMouseDownBackgroundColourId, Colors::backgroundColor.brighter (0.1f));
-    setColour (Toolbar::buttonMouseOverBackgroundColourId, Colors::backgroundColor.darker (0.046f));
+    // Toolbar Styling — V3 panel surface; subtle hover/down differentiation.
+    setColour (Toolbar::backgroundColourId, Colour (0xff222226));
+    setColour (Toolbar::buttonMouseDownBackgroundColourId, Colour (0xff2a2a2e));
+    setColour (Toolbar::buttonMouseOverBackgroundColourId, Colour (0xff333338));
 
     // Alert Window
     setColour (AlertWindow::backgroundColourId, Colors::backgroundColor);
@@ -803,12 +803,11 @@ void LookAndFeel_E1::drawProgressBar (Graphics& g, ProgressBar& progressBar, int
 //==============================================================================
 void LookAndFeel_E1::drawButtonBackground (Graphics& g, Button& button, const Colour& backgroundColour, bool isMouseOverButton, bool isButtonDown)
 {
-    Colour baseColour (backgroundColour.withMultipliedSaturation (button.hasKeyboardFocus (true) ? 1.3f : 0.9f)
-                           .withMultipliedAlpha (button.isEnabled() ? 0.9f : 0.5f));
-
-    if (isButtonDown || isMouseOverButton)
-        baseColour = baseColour.contrasting (isButtonDown ? 0.2f : 0.1f);
-
+    // V3 polish: larger 4px corners (Tailwind rounded-md) + neumorphic-ish
+    // 1px raised highlight on top-left and 1px shadow on bottom-right when
+    // raised; on press, the inner colour darkens to mimic the V3 inset look.
+    // No expensive blur — just two single-pixel strokes around the outline,
+    // which preserves cheap paint cost (Element renders many buttons).
     const bool flatOnLeft = button.isConnectedOnLeft();
     const bool flatOnRight = button.isConnectedOnRight();
     const bool flatOnTop = button.isConnectedOnTop();
@@ -816,12 +815,37 @@ void LookAndFeel_E1::drawButtonBackground (Graphics& g, Button& button, const Co
 
     const float width = button.getWidth() - 1.0f;
     const float height = button.getHeight() - 1.0f;
-    const float cornerSize = 2.0f;
+    const float cornerSize = 4.0f;
+
+    Colour baseColour (backgroundColour.withMultipliedSaturation (button.hasKeyboardFocus (true) ? 1.2f : 1.0f)
+                           .withMultipliedAlpha (button.isEnabled() ? 1.0f : 0.5f));
+
+    if (isButtonDown)
+        baseColour = baseColour.darker (0.18f);
+    else if (isMouseOverButton)
+        baseColour = baseColour.brighter (0.07f);
 
     Path outline;
     outline.addRoundedRectangle (0.5f, 0.5f, width, height, cornerSize, cornerSize, ! (flatOnLeft || flatOnTop), ! (flatOnRight || flatOnTop), ! (flatOnLeft || flatOnBottom), ! (flatOnRight || flatOnBottom));
 
     Style::drawButtonShape (g, outline, baseColour, height);
+
+    if (button.isEnabled())
+    {
+        if (isButtonDown)
+        {
+            g.setColour (Colours::black.withAlpha (0.18f));
+            g.strokePath (outline, PathStrokeType (1.0f), AffineTransform::translation (0.0f, 0.5f));
+        }
+        else
+        {
+            g.setColour (Colours::white.withAlpha (0.05f));
+            g.strokePath (outline, PathStrokeType (1.0f), AffineTransform::translation (0.0f, -0.5f));
+
+            g.setColour (Colours::black.withAlpha (0.22f));
+            g.strokePath (outline, PathStrokeType (1.0f), AffineTransform::translation (0.0f, 0.5f));
+        }
+    }
 }
 
 void LookAndFeel_E1::drawTableHeaderBackground (Graphics& g, TableHeaderComponent& header)

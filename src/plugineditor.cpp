@@ -1,16 +1,19 @@
 // Copyright 2023 Kushview, LLC <info@kushview.net>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#include <element/ui/content.hpp>
 #include <element/ui/standard.hpp>
+#include <element/graph.hpp>
 #include <element/ui/style.hpp>
 #include <element/ui/commands.hpp>
+#include <element/ui.hpp>
 
 #include "ui/guicommon.hpp"
+#include "ui/windowmanager.hpp"
 #include "ui/pluginwindow.hpp"
-#include "ui/grapheditorview.hpp"
-
 #include "plugineditor.hpp"
 #include "pluginprocessor.hpp"
+#include "verbose_log.hpp"
 
 #define EL_PLUGIN_MIN_WIDTH 546
 #define EL_PLUGIN_MIN_HEIGHT 266
@@ -304,6 +307,10 @@ protected:
 PluginEditor::PluginEditor (PluginProcessor& plugin)
     : AudioProcessorEditor (&plugin), processor (plugin)
 {
+    EL_LOG_THREAD ("AU", "PluginEditor ctor"
+                          << " this=" << juce::String::toHexString ((juce::pointer_sized_int) this)
+                          << " proc=" << juce::String::toHexString ((juce::pointer_sized_int) &plugin));
+
     setOpaque (true);
     paramTable.reset (new ParamTable());
     addAndMakeVisible (paramTable.get());
@@ -343,21 +350,33 @@ PluginEditor::PluginEditor (PluginProcessor& plugin)
 
 PluginEditor::~PluginEditor()
 {
-    auto* const app = processor.getServices();
-    auto* const gui = app->find<UI>();
+    EL_LOG_THREAD ("AU", "PluginEditor dtor begin"
+                          << " this=" << juce::String::toHexString ((juce::pointer_sized_int) this));
 
-    if (app != nullptr && gui != nullptr)
+    auto* const app = processor.getServices();
+    auto* const gui = app != nullptr ? app->find<UI>() : nullptr;
+
+    if (gui != nullptr)
         gui->saveSettings();
 
     perfParamChangedConnection.disconnect();
+
+    // Close plugin windows before teardown to avoid dangling references
+    if (gui != nullptr)
+        gui->closeAllPluginWindows();
+
+    // Clear the content component BEFORE removing it from our hierarchy.
+    // This ensures StandardContent's destructor properly notifies views
+    // (willBeRemoved -> GraphEditorComponent::setNode) while the JUCE
+    // Component parent chain is still intact.  Doing it after removal
+    // (or during the VST3 wrapper's own teardown) causes heap corruption.
+    if (gui != nullptr)
+        gui->clearContentComponent();
+
     removeChildComponent (content.getComponent());
     content = nullptr;
 
-    if (gui != nullptr)
-    {
-        gui->closeAllPluginWindows();
-        gui->clearContentComponent();
-    }
+    EL_LOG ("AU", "PluginEditor dtor done");
 }
 
 //==============================================================================
@@ -416,6 +435,28 @@ void PluginEditor::resized()
         content->setBounds (bounds);
 }
 
+void PluginEditor::visibilityChanged()
+{
+    // When the plugin editor visibility changes (e.g., when the host hides the plugin),
+    // update all child plugin windows accordingly
+    if (auto* app = processor.getServices())
+    {
+        if (auto* gui = app->find<GuiService>())
+        {
+            const bool visible = isVisible() && isShowing();
+
+            // Show or hide all plugin windows based on the editor visibility
+            for (int i = 0; i < gui->getNumPluginWindows(); ++i)
+            {
+                if (auto* win = gui->getPluginWindow (i))
+                {
+                    win->setVisible (visible);
+                }
+            }
+        }
+    }
+}
+
 bool PluginEditor::keyPressed (const KeyPress& key)
 {
     auto* app = processor.getServices();
@@ -435,7 +476,7 @@ bool PluginEditor::keyPressed (const KeyPress& key)
 //==============================================================================
 void PluginEditor::updatePerformanceParamEnablements()
 {
-    if (auto* cc = dynamic_cast<StandardContent*> (content.getComponent()))
+    if (auto* cc = dynamic_cast<Content*> (content.getComponent()))
     {
         if (auto* ps = dynamic_cast<PerfSliders*> (cc->extraView()))
             ps->update();
@@ -455,7 +496,7 @@ void PluginEditor::handleAsyncUpdate()
     content = gui->content();
     jassert (content);
 
-    if (auto* cc = dynamic_cast<StandardContent*> (content.getComponent()))
+    if (auto* cc = dynamic_cast<Content*> (content.getComponent()))
         cc->setExtraView (new PerfSliders (processor));
 
     setResizable (true, true);
@@ -487,10 +528,11 @@ void PluginEditor::handleAsyncUpdate()
             for (int w = 0; w < gui->getNumPluginWindows(); ++w)
                 if (auto* window = gui->getPluginWindow (w))
                     window->toFront (false);
-            // if (auto standard = dynamic_cast<StandardContent*> (content.getComponent()))
-            //     standard->setCurrentNode (graph);
-            if (auto* cc = dynamic_cast<StandardContent*> (content.getComponent()))
-                cc->setMainView (new GraphEditorView (graph));
+            if (auto* cc = dynamic_cast<Content*> (content.getComponent()))
+            {
+                Graph G (graph);
+                cc->setupPluginEditorWithGraph (G);
+            }
         }
     }
 

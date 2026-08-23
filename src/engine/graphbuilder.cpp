@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include <element/processor.hpp>
+#include <element/midichannels.hpp>
 #include "engine/miditranspose.hpp"
 #include "engine/graphnode.hpp"
 #include "engine/graphbuilder.hpp"
@@ -225,6 +226,9 @@ public:
 
         lastMute = node->isMuted();
 
+        // Cache midiChannels at construction (message thread) — safe full read.
+        cachedMidiChannels = node->getMidiChannels();
+
         osChanSize = totalChans;
         osChans.reset (new float*[osChanSize]);
         tempMidi.ensureSize (128);
@@ -281,14 +285,44 @@ public:
         for (int i = numAudioIns; --i >= 0;)
             node->setInputRMS (i, buffer.getRMSLevel (i, 0, numSamples));
 
+        // Decay MIDI activity counters - allows UI thread time to detect activity
+        // before it fully decays (frame counter persists for ~3 audio buffers)
+        node->decayMidiActivity();
+
+        // Track MIDI input activity
+        bool hasMidiInput = false;
+        for (int i = 0; i < midiPipe.getNumBuffers(); ++i)
+        {
+            if (midiPipe.getWriteBuffer (i)->getNumEvents() > 0)
+            {
+                hasMidiInput = true;
+                break;
+            }
+        }
+        if (hasMidiInput)
+            node->setMidiInputActivity (true);
+
         // Begin MIDI filters
         {
             jassert (tempMidi.getNumEvents() == 0);
-            ScopedLock spl (node->getPropertyLock());
+
+            // Lock-free reads: these properties are all juce::Atomic<int> — safe
+            // to read without a lock. For midiChannels (non-atomic BigInteger),
+            // use tryLock to update a cached copy; skip the update if the lock
+            // is contended (stale cache is acceptable for one audio buffer).
             transpose.setNoteOffset (node->getTransposeOffset());
             const auto keyRange (node->getKeyRange());
-            const auto midiChans (node->getMidiChannels());
             const auto useMidiProgram (node->areMidiProgramsEnabled());
+
+            {
+                const auto& propLock = node->getPropertyLock();
+                if (propLock.tryEnter())
+                {
+                    cachedMidiChannels = node->getMidiChannels();
+                    propLock.exit();
+                }
+            }
+            const auto& midiChans = cachedMidiChannels;
 
             if (keyRange.getLength() > 0 || ! midiChans.isOmni() || useMidiProgram)
             {
@@ -417,6 +451,19 @@ public:
             pluginProcessBlock (buffer, midiPipe, node->isSuspended());
         }
 
+        // Track MIDI output activity
+        bool hasMidiOutput = false;
+        for (int i = 0; i < midiPipe.getNumBuffers(); ++i)
+        {
+            if (midiPipe.getWriteBuffer (i)->getNumEvents() > 0)
+            {
+                hasMidiOutput = true;
+                break;
+            }
+        }
+        if (hasMidiOutput)
+            node->setMidiOutputActivity (true);
+
         if (muted && ! muteInput)
         {
             if (lastMute != muted)
@@ -463,6 +510,7 @@ private:
     bool lastMute = false;
     MidiTranspose transpose;
     MidiBuffer tempMidi;
+    MidiChannels cachedMidiChannels;
 
     AudioSampleBuffer dummyCV;
 

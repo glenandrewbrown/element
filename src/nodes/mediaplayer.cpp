@@ -227,6 +227,7 @@ void MediaPlayerProcessor::prepareToPlay (double sampleRate, int maximumExpected
 
 void MediaPlayerProcessor::releaseResources()
 {
+    player.setSource (nullptr);
     player.stop();
     player.releaseResources();
     formats.clearFormats();

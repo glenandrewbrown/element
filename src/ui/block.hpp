@@ -8,6 +8,7 @@
 
 namespace element {
 
+class LambdaChangeListener;
 class Services;
 class GraphEditorComponent;
 
@@ -57,7 +58,8 @@ class BlockComponent : public Component,
                        private AsyncUpdater,
                        private Value::Listener,
                        private ChangeListener,
-                       public DragAndDropTarget
+                       public DragAndDropTarget,
+                       private Timer
 {
 public:
     BlockComponent() = delete;
@@ -193,6 +195,10 @@ public:
     Node getNode() const noexcept { return node; }
 
     //=========================================================================
+    /** Returns the color of this block */
+    Colour getColor() const noexcept { return color; }
+
+    //=========================================================================
     void moveBlockTo (double x, double y);
 
     //=========================================================================
@@ -218,6 +224,11 @@ public:
 
     /** Returns the config button */
     SettingButton& getMuteButton() { return muteButton; }
+
+    //=========================================================================
+    /** Enable or disable performance indicators (latency/CPU) */
+    void setPerformanceIndicatorsVisible (bool visible);
+    bool arePerformanceIndicatorsVisible() const { return showPerformanceIndicators; }
 
     //=========================================================================
     /** Gets the coordinate of the port index 
@@ -273,6 +284,7 @@ private:
 
     Value nodeEnabled,
         nodeName,
+        nodeBypassed,
         hiddenPorts,
         displayModeValue;
 
@@ -301,11 +313,13 @@ private:
     SettingButton configButton;
     PowerButton powerButton;
     SettingButton muteButton;
+    SettingButton colorButton;
 
     juce::OptionalScopedPointer<CallOutBox> ioBox;
 
     DropShadowEffect shadow;
     std::unique_ptr<Component> embedded;
+    std::unique_ptr<LambdaChangeListener> colorChangeListener;
 
     Value nodeObject;
 
@@ -366,14 +380,18 @@ private:
     DisplayMode displayMode { Normal };
     PortAlignment _portAlign { PortsMiddle };
     bool selected { false };
-
+    bool showPerformanceIndicators { true };
+    int cachedLatencySamples { 0 };
+    float cachedActivityLevel { 0.0f }; // Signal activity level (RMS-based, not CPU)
     void changeListenerCallback (ChangeBroadcaster*) override;
+    void timerCallback() override;
 
     void deleteAllPins();
 
     bool mouseInCornerResize = false;
     Rectangle<int> getBoxRectangle() const;
     Rectangle<int> getCornerResizeBox() const;
+    Rectangle<int> getBypassIconArea() const;
 
     GraphEditorComponent* getGraphPanel() const noexcept;
     void setButtonVisible (Button&, bool);

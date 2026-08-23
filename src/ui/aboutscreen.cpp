@@ -8,6 +8,8 @@
 
 #include "binarydata.hpp"
 
+using namespace juce;
+
 #define EL_LICENSE_TEXT                                                        \
     "Copyright (C) 2014-@0@  Kushview, LLC.  All rights reserved.\r\n\r\n"     \
                                                                                \
