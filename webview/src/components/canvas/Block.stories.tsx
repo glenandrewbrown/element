@@ -959,15 +959,14 @@ export const PortCapExpands: Story = {
   },
 };
 
-export const PortCapLongTitle: Story = {
+export const PortCapLongName: Story = {
   parameters: {
     docs: {
       description: {
         story:
-          "Adaptive chassis width (Glen 2026-06-10, bug 2). A long plugin title widens the " +
-          "block toward BLOCK_MAX_WIDTH (280px) instead of truncating to \"Kontak…\" at the " +
-          "old fixed 208px; short names keep the historical floor. Beyond the max the title " +
-          "ellipsizes — the ceiling guards block proportions.",
+          "Width ceiling guard. A block with a 25-character name ('Kontakt 8 Factory Library') " +
+          "is capped at the fixed compact chassis width (168px); the title is middle-truncated " +
+          "in the header and the full name is accessible via title tooltip.",
       },
     },
   },
@@ -984,10 +983,13 @@ export const PortCapLongTitle: Story = {
   ),
   play: async ({ canvasElement }) => {
     const body = within(canvasElement.ownerDocument.body);
-    const title = await body.findByText("Kontakt 8 Factory Library");
+    const title = await body.findByTestId("block-title");
     const chassis = title.closest(".nodeblock-v3") as HTMLElement;
-    // 25 chars × 6.4px + 160px chrome = 320 → clamped to the 280px ceiling.
-    await expect(chassis.style.width).toBe("280px");
+    await expect(chassis.style.width).toBe("168px");
+    await expect(title).toHaveAttribute(
+      "title",
+      expect.stringContaining("Kontakt 8 Factory Library"),
+    );
   },
 };
 

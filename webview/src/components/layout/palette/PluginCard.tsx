@@ -179,19 +179,19 @@ export function PluginCard({
         onKeyDown={(e) => {
           if (e.key === "Enter") onAdd();
         }}
-        className={`${base} ${surface} pl-2 pr-2 py-1.5 flex items-center gap-2`}
+        className={`${base} ${surface} pl-2 pr-2 py-1 flex items-center gap-2`}
       >
         <CategoryShape category={plugin.category} />
         <span
-          className={`text-[11px] font-medium truncate flex-1 ${selected ? "" : "text-text-secondary group-hover:text-text-primary"}`}
+          className={`text-[11px] font-medium truncate flex-1 min-w-0 ${selected ? "" : "text-text-secondary group-hover:text-text-primary"}`}
           style={selected ? { color: accent } : undefined}
           title={plugin.description ? `${plugin.name} — ${plugin.description}` : plugin.name}
         >
           {plugin.name}
         </span>
-        {showVendor && plugin.manufacturer ? (
+        {showVendor && plugin.manufacturer && plugin.manufacturer.toUpperCase() !== "ELEMENT" ? (
           <span
-            className="text-[9px] text-text-dim tabular truncate max-w-[72px] shrink-0"
+            className="text-[9px] text-text-dim tabular truncate max-w-[60px] shrink-0"
             title={plugin.manufacturer}
           >
             {plugin.manufacturer}

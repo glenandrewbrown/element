@@ -255,6 +255,8 @@ function toFlowEdges(
 // Ghosts render UNDER the real Cables (they're concatenated FIRST in the edge
 // array, so they paint below). The closest suggestion is marked `top` — it is
 // drawn brighter, labelled, and is the one Tab/Enter accepts.
+// Each ghost also gets a 1-based `index` (1..9) for the numbered quick-pick
+// badges; suggestions beyond slot 9 receive index=0 (no badge shown).
 
 function toGhostEdges(
   suggestions: RouteSuggestion[],
@@ -278,6 +280,8 @@ function toGhostEdges(
     data: {
       signalType: s.signalType,
       top: i === 0,
+      // 1-based badge digit (1..9). Suggestions beyond slot 9 get 0 (no badge).
+      index: i < 9 ? i + 1 : 0,
       onAccept,
     } satisfies GhostEdgeData,
   }));
@@ -621,6 +625,14 @@ export function GraphCanvas() {
   useEffect(() => {
     suggestionsRef.current = suggestions;
   }, [suggestions]);
+  // Post-drop linger timer: after a plain drop the ghosts stay visible for
+  // SUGGEST_LINGER_MS so the user can press a number key to accept one.
+  // Cleared on an explicit accept (number / Enter / ⌘-drop) or Escape.
+  const suggestLingerTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
+  // How long ghost suggestions linger after a plain drop (ms).
+  const SUGGEST_LINGER_MS = 4000;
 
   // Drop the canvas drag handle the instant the editor it belongs to is gone or
   // its owner changes — covers Esc/✕/host-push close and an editor re-opened
@@ -940,12 +952,19 @@ export function GraphCanvas() {
   // ── Auto-route suggestion lifecycle ──
 
   const clearSuggestions = useCallback(() => {
+    // Cancel any post-drop linger timer so it doesn't fire after an explicit
+    // accept (number key / Enter / ⌘-drop) or a user Escape.
+    if (suggestLingerTimerRef.current !== undefined) {
+      clearTimeout(suggestLingerTimerRef.current);
+      suggestLingerTimerRef.current = undefined;
+    }
     lastSuggestRef.current = 0;
     suggestCacheRef.current = null;
     setSuggestions((prev) => (prev.length === 0 ? prev : []));
     // Drop the T8 discoverability hint with the ghosts (only if it's ours).
     const app = useAppStore.getState();
-    if (app.canvasHint?.startsWith("⌘-drop")) app.setCanvasHint(null);
+    if (app.canvasHint?.startsWith("⌘-drop") || app.canvasHint?.startsWith("Press 1-9"))
+      app.setCanvasHint(null);
   }, []);
 
   // Promote a single ghost suggestion to a real Cable via the existing bridge.
@@ -1283,7 +1302,11 @@ export function GraphCanvas() {
       // footer while ghosts are live; clear when they vanish mid-drag.
       const app = useAppStore.getState();
       if (next.length > 0) {
-        app.setCanvasHint("⌘-drop to auto-connect · ↵ to connect · Esc dismiss");
+        app.setCanvasHint(
+          next.length > 1
+            ? "⌘-drop for all · 1-9 to pick · ↵ for top · Esc dismiss"
+            : "⌘-drop to connect · ↵ to connect · Esc dismiss",
+        );
       } else if (
         suggestionsRef.current.length > 0 &&
         app.canvasHint?.startsWith("⌘-drop")
@@ -1447,20 +1470,39 @@ export function GraphCanvas() {
       }
 
       // Accept-on-drop — mirrors the JUCE BlockComponent::mouseUp contract:
-      // dropping with the modifier key (Cmd / Ctrl) held APPLIES the ghost
-      // suggestions; a plain drop just discards them. This keeps the user in
-      // control — repositioning a Block never silently auto-wires it. JUCE
-      // applies ALL pending ghosts, so we do too.
-      const accept =
+      // dropping with the modifier key (Cmd / Ctrl) held APPLIES all ghost
+      // suggestions; a plain drop keeps them visible for SUGGEST_LINGER_MS so
+      // the user can press a number key (1-9) to pick one, then auto-clears.
+      // This keeps the user in control — repositioning a Block never silently
+      // auto-wires it. JUCE applies ALL pending ghosts; ⌘-drop does the same.
+      const metaHeld =
         node.type !== "comment" &&
         (Boolean((event as MouseEvent | globalThis.MouseEvent).metaKey) ||
           Boolean((event as MouseEvent | globalThis.MouseEvent).ctrlKey));
-      if (accept) {
+      if (metaHeld) {
         for (const s of suggestionsRef.current) {
           void nativeGraphConnect(s.source, s.sourcePort, s.target, s.targetPort);
         }
+        clearSuggestions();
+      } else if (suggestionsRef.current.length > 0) {
+        // Plain drop with suggestions: linger so the user can press 1-9.
+        // Cancel any previous linger timer first (defensive — shouldn't exist).
+        if (suggestLingerTimerRef.current !== undefined) {
+          clearTimeout(suggestLingerTimerRef.current);
+        }
+        // Update the hint to advertise the number-key affordance.
+        useAppStore
+          .getState()
+          .setCanvasHint(
+            `Press 1-9 to connect · ↵ for top · ⌘-drop for all · Esc dismiss`,
+          );
+        suggestLingerTimerRef.current = setTimeout(() => {
+          suggestLingerTimerRef.current = undefined;
+          clearSuggestions();
+        }, SUGGEST_LINGER_MS);
+      } else {
+        clearSuggestions();
       }
-      clearSuggestions();
       // Drop the live overlap glow the instant the drag ends (the resolve below
       // makes the overlap go away anyway, but clear the class immediately).
       applyIntersectingClass(new Set());
@@ -1590,6 +1632,7 @@ export function GraphCanvas() {
   // Keyboard accept/dismiss for ghost suggestions — only bound while at least
   // one suggestion is live (so it never shadows global shortcuts at rest).
   // ENTER accepts the TOP (closest) suggestion; Escape dismisses them all.
+  // 1-9 accepts the suggestion at that 1-based index (the numbered badge).
   // Tab is intentionally NOT bound here (#3b): Tab must always fall through to
   // the global block-cycle in useKeyboard.ts — this capture-phase listener used
   // to swallow Tab and auto-connect instead, which clobbered Tab-cycle whenever
@@ -1599,6 +1642,10 @@ export function GraphCanvas() {
   useEffect(() => {
     if (!hasSuggestions) return;
     const onKeyDown = (e: KeyboardEvent) => {
+      // Never steal digits from real text inputs (mirrors useKeyboard.ts guard).
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+
       if (e.key === "Enter") {
         const top = suggestionsRef.current[0];
         if (!top) return;
@@ -1607,6 +1654,18 @@ export function GraphCanvas() {
       } else if (e.key === "Escape") {
         e.preventDefault();
         clearSuggestions();
+      } else {
+        // Digit 1-9: accept the suggestion at that 1-based slot.
+        // Use e.code (physical key) so Shift+1 "!" doesn't trigger.
+        const match = /^Digit([1-9])$/.exec(e.code);
+        if (match) {
+          const slot = parseInt(match[1], 10) - 1; // 0-based index
+          const s = suggestionsRef.current[slot];
+          if (s) {
+            e.preventDefault();
+            acceptSuggestion(s.id);
+          }
+        }
       }
     };
     window.addEventListener("keydown", onKeyDown, true);
@@ -2295,6 +2354,9 @@ export function GraphCanvas() {
       if (pendingOptionMoveRef.current !== null) {
         clearTimeout(pendingOptionMoveRef.current.timer);
         pendingOptionMoveRef.current = null;
+      }
+      if (suggestLingerTimerRef.current !== undefined) {
+        clearTimeout(suggestLingerTimerRef.current);
       }
     },
     [],

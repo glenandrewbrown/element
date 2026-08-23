@@ -90,8 +90,8 @@ const PORT_LANE_H = 16;
 const PORT_LANE_PAD = 6;
 /** Block header band (title + chrome) — single title row ≈ 28px. */
 const HEADER_H = 28;
-/** Activity well (title/macro single bar) above the port lane ≈ 12px. */
-const ACTIVITY_H = 12;
+/** Activity indicator — 2px underline accent (was 12px meter-strip row). */
+const ACTIVITY_H = 2;
 /** Loading face body — prominent spinner + "Loading…" placeholder (Block.tsx). */
 const LOADING_BODY_H = 48;
 /** Load bar — thin status rail at the chassis foot (Block.tsx:1953 `height: 2`). */

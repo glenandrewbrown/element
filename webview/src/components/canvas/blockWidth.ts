@@ -1,40 +1,49 @@
 /**
- * blockWidth — pure helper that sizes a Block's chassis width to fit its title.
+ * blockWidth — pure helper that sizes a Block's chassis width.
  *
- * Bug 2 (Glen 2026-06-10): a long plugin name ("Kontakt 7", "RX 10 De-reverb")
- * truncated to "Kontak…" in the fixed `w-52` (208px) header. Per the
- * adaptive-layout rule (size to context, no overlap) the block GROWS to fit the
- * title up to a sane max, rather than truncating at a fixed width.
+ * Space-efficient redesign (Glen 2026-06-12): blocks must NOT grow to
+ * accommodate the full plugin name. Cap at 168px (was adaptive up to 280px).
+ * Long names are middle-truncated in the header; the full name is always
+ * accessible via the `title` tooltip attribute. Short names keep the same floor.
  *
- * The header lays out: icon (≈18px incl. gap) + title + LED/pills/B-M-chevron
- * cluster (≈92px reserved for chrome) + horizontal padding (≈16px). The title is
- * 11px bold; we approximate its width with a per-char advance and clamp the
- * resulting chassis width between BLOCK_MIN_WIDTH and BLOCK_MAX_WIDTH. Real
- * measurement still flows back via React Flow `node.measured`, so this only needs
- * to be a good upper-bound estimate that prevents truncation.
+ * The header lays out: icon (≈18px incl. gap) + truncated title + LED/pills/
+ * B-M-chevron cluster (≈92px) + horizontal padding (≈16px). The title is
+ * 11px bold; we keep a fixed chassis width so all blocks align on a consistent
+ * grid regardless of plugin name length.
  */
 
-/** Floor — the historical `w-52` (208px) so short-named blocks are unchanged. */
-export const BLOCK_MIN_WIDTH = 208;
-/** Ceiling — a sane max so a pathological name can't make a giant block. */
-export const BLOCK_MAX_WIDTH = 280;
-/** Approx advance (px) of one 11px bold character in the header font.
- *  Measured live (Inter bold 11px, Storybook chromium 2026-06-11): avg advance
- *  ≈ 5.7px — 6.4 keeps headroom for wide-glyph-heavy names. */
-const CHAR_ADVANCE_PX = 6.4;
-/** Fixed header chrome around the title: icon+gap + LED/CPU pill/format pill +
- *  B-M buttons + chevron + padding. Measured live at 151px ("22%" + "AU" pills);
- *  160 adds slack for wider pills ("100%", "VST3"). */
-const HEADER_CHROME_PX = 160;
+/** Fixed chassis width — all standard blocks use this width. Compact and dense
+ *  enough to avoid name-driven layout sprawl, wide enough for ≈10 char names
+ *  plus the header chrome (icon + B/M/chevron + pills + padding ≈ 128px). */
+export const BLOCK_MIN_WIDTH = 168;
+/** Same as min: we no longer grow to fit names. Kept for callers that reference
+ *  the max (e.g. the previous adaptive-width logic, now unified). */
+export const BLOCK_MAX_WIDTH = 168;
+
+/** Characters to show on each side of a middle-truncated name. At 168px there
+ *  is room for ≈ 6 chars of chrome + ≈ 5+5 title chars = e.g. "Konta…8 Fac". */
+const TRUNC_SIDE = 5;
 
 /**
- * The chassis width (px) for a Block with the given title, clamped to
- * [BLOCK_MIN_WIDTH, BLOCK_MAX_WIDTH]. Empty/short titles return the min; long
- * titles widen up to the max (beyond which the title ellipsizes — intentional,
- * the max guards proportions).
+ * Middle-truncate `name` to at most `maxChars` characters.
+ * "Kontakt 8 Factory Library" → "Konta…brary" (5 + … + 5)
+ * Names at or under maxChars are returned unchanged.
  */
-export function blockWidthForTitle(title: string): number {
-  const titlePx = Math.ceil((title?.length ?? 0) * CHAR_ADVANCE_PX);
-  const needed = HEADER_CHROME_PX + titlePx;
-  return Math.max(BLOCK_MIN_WIDTH, Math.min(BLOCK_MAX_WIDTH, needed));
+export function middleTruncate(
+  name: string,
+  maxChars = TRUNC_SIDE * 2 + 1,
+): string {
+  if (!name || name.length <= maxChars) return name;
+  const half = Math.floor((maxChars - 1) / 2);
+  const tail = maxChars - 1 - half;
+  return `${name.slice(0, half)}…${name.slice(name.length - tail)}`;
+}
+
+/**
+ * The chassis width (px) for a Block. All blocks use the fixed BLOCK_MIN_WIDTH;
+ * this function exists so callers don't embed the constant directly and can be
+ * updated centrally.
+ */
+export function blockWidthForTitle(_title: string): number {
+  return BLOCK_MIN_WIDTH;
 }

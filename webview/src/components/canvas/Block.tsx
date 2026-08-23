@@ -25,7 +25,7 @@ import {
   selectPortExpanded,
 } from "../../stores/usePortExpandStore";
 import { capPorts, hasCappedPorts, hiddenPortCount } from "./portCap";
-import { blockWidthForTitle } from "./blockWidth";
+import { blockWidthForTitle, middleTruncate } from "./blockWidth";
 import { nativeSetNodeParameter } from "../../bridge/nativeGraph";
 import { NeuKnob } from "../neu/NeuKnob";
 import { BlockEmbed } from "./BlockEmbed";
@@ -1886,11 +1886,11 @@ function BlockComponent({ data, selected }: NodeProps) {
             distinct. Pinned while loading. */}
         <span
           data-testid="block-title"
-          className="text-[11px] font-bold truncate flex-1 leading-none tracking-wide cursor-text hover:underline decoration-white/30 underline-offset-2"
-          title="Rename (⌘R) · double-click to change density"
+          className="text-[11px] font-bold flex-1 leading-none tracking-wide cursor-text hover:underline decoration-white/30 underline-offset-2 overflow-hidden whitespace-nowrap"
+          title={`${d.name} · Rename (⌘R) · double-click to change density`}
           onDoubleClick={cycleTier}
         >
-          {d.name}
+          {middleTruncate(d.name)}
         </span>
 
         {/* Signal LED — pulses green while passing signal, dark when off. */}
@@ -2029,17 +2029,12 @@ function BlockComponent({ data, selected }: NodeProps) {
           kills the wasted space. Transition is a SNAP (locked motion rule —
           width/height are never animated). */}
       {!isLoading && showActivityWell ? (
-        <div
-          className="block-body flex items-center px-2 relative z-[5]"
-          style={{ height: 22 }}
-        >
-          <SignalActivityBar
-            level={meterLevel}
-            signal={primarySignalOf(d.ports)}
-            active={active}
-            stale={meterState === "stale"}
-          />
-        </div>
+        <SignalActivityBar
+          level={meterLevel}
+          signal={primarySignalOf(d.ports)}
+          active={active}
+          stale={meterState === "stale"}
+        />
       ) : null}
 
       {/* ── Macro tier — lean default (Task 2.4) ──
@@ -2055,11 +2050,7 @@ function BlockComponent({ data, selected }: NodeProps) {
           fabricated value (live param values are Phase 4). */}
       {!isLoading && showCompactPortLane ? (
         <>
-          <div
-            data-testid="block-macro-well"
-            className="block-body flex items-center px-2 relative z-[5]"
-            style={{ height: 22 }}
-          >
+          <div data-testid="block-macro-well">
             <SignalActivityBar
               level={meterLevel}
               signal={primarySignalOf(d.ports)}

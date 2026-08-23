@@ -230,7 +230,14 @@ function GraphRow({ graph, outline, onActivate }: GraphRowProps) {
 
 // ── SessionTree (root) ──
 
-function SessionTreeComponent() {
+interface SessionTreeProps {
+  /** When true, hides the built-in "Project / filename / N boards" header row.
+   * Use this when the parent (App.tsx) renders its own collapse-toggle header
+   * so the information is not duplicated. */
+  hideHeader?: boolean;
+}
+
+function SessionTreeComponent({ hideHeader = false }: SessionTreeProps) {
   const graphs = useSessionStore((s) => s.graphs);
   const filePath = useSessionStore((s) => s.filePath);
   const dirty = useSessionStore((s) => s.dirty);
@@ -268,22 +275,24 @@ function SessionTreeComponent() {
       className="flex-1 flex flex-col overflow-hidden"
       aria-label="Project tree"
     >
-      {/* Header */}
-      <div
-        className="px-2 py-1 border-b border-white/5 flex items-center gap-2 bg-surface"
-        style={{ minHeight: 28 }}
-      >
-        <span className="text-[9px] uppercase tracking-widest text-text-dim font-semibold">
-          Project
-        </span>
-        <span className="text-[11px] flex-1 truncate text-text-primary tabular-nums">
-          {fileName}
-          {dirty ? <span className="text-accent-orange ml-1">•</span> : null}
-        </span>
-        <span className="text-[9px] tabular-nums text-text-dim">
-          {graphs.length} board{graphs.length === 1 ? "" : "s"}
-        </span>
-      </div>
+      {/* Header — hidden when the parent provides its own collapse-toggle header */}
+      {!hideHeader && (
+        <div
+          className="px-2 py-1 border-b border-white/5 flex items-center gap-2 bg-surface"
+          style={{ minHeight: 28 }}
+        >
+          <span className="text-[9px] uppercase tracking-widest text-text-dim font-semibold">
+            Project
+          </span>
+          <span className="text-[11px] flex-1 truncate text-text-primary tabular-nums">
+            {fileName}
+            {dirty ? <span className="text-accent-orange ml-1">•</span> : null}
+          </span>
+          <span className="text-[9px] tabular-nums text-text-dim">
+            {graphs.length} board{graphs.length === 1 ? "" : "s"}
+          </span>
+        </div>
+      )}
 
       {/* Body */}
       <div
@@ -315,5 +324,9 @@ function SessionTreeComponent() {
  * Use it to navigate between Boards (double-click or Open to activate) and to
  * see the nested structure of the live Board. The header shows the Project file
  * name with a modifier dot when there are unsaved changes.
+ *
+ * @param hideHeader - when true, suppresses the built-in "Project / filename /
+ * N boards" header row (use when the parent renders its own collapse-toggle
+ * header to avoid duplication).
  */
-export const SessionTree = memo(SessionTreeComponent);
+export const SessionTree = memo(SessionTreeComponent) as typeof SessionTreeComponent;

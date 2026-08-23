@@ -98,9 +98,9 @@ function nearbyPair() {
 // ── estimateBlockHeight (port-count based; mirrors Block.tsx) ──
 
 describe("estimateBlockHeight", () => {
-  // Constants baked from Block.tsx: HEADER 28 + ACTIVITY 12 + LOADBAR 2 = 42
+  // Constants baked from Block.tsx: HEADER 28 + ACTIVITY 2 + LOADBAR 2 = 32
   // chrome, plus a port lane = max(rows,1)*16 + 6.
-  const CHROME = 28 + 12 + 2;
+  const CHROME = 28 + 2 + 2;
   const lane = (rows: number) => Math.max(rows, 1) * 16 + 6;
 
   it("a port-less block is the minimum (1-row) height", () => {

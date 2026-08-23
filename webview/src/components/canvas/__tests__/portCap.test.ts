@@ -119,22 +119,19 @@ describe("blockWidthForTitle", () => {
     expect(blockWidthForTitle("EQ")).toBe(BLOCK_MIN_WIDTH);
   });
 
-  it("widens for a long title", () => {
+  it("returns fixed compact width for long titles", () => {
     const w = blockWidthForTitle("RX 10 De-reverb Advanced");
-    expect(w).toBeGreaterThan(BLOCK_MIN_WIDTH);
-    expect(w).toBeLessThanOrEqual(BLOCK_MAX_WIDTH);
+    expect(w).toBe(BLOCK_MIN_WIDTH);
   });
 
   it("clamps at the max for a pathological title", () => {
     expect(blockWidthForTitle("x".repeat(200))).toBe(BLOCK_MAX_WIDTH);
   });
 
-  it("is monotonic non-decreasing in title length", () => {
-    let prev = 0;
+  it("is consistent across title lengths", () => {
     for (const len of [0, 5, 10, 15, 20, 30, 50]) {
       const w = blockWidthForTitle("x".repeat(len));
-      expect(w).toBeGreaterThanOrEqual(prev);
-      prev = w;
+      expect(w).toBe(BLOCK_MIN_WIDTH);
     }
   });
 });
