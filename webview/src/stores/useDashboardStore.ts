@@ -70,8 +70,11 @@ function _scheduleSave(widgets: DashboardWidget[]): void {
 export async function loadDashboardLayoutFromHost(): Promise<void> {
   try {
     const raw = await invokeElementNative("elementDashboardGetLayout", []);
-    if (Array.isArray(raw)) {
-      const widgets = raw as DashboardWidget[];
+    // Host completes with a JSON *string* (JSON::toString on the C++ side) —
+    // parse it like usePluginBrowserStore does; tolerate a real array too.
+    const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+    if (Array.isArray(parsed)) {
+      const widgets = parsed as DashboardWidget[];
       _hydrating = true;
       try {
         useDashboardStore.setState({ widgets });

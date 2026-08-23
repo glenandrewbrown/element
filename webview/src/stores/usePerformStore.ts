@@ -337,8 +337,10 @@ export const selectIsParameterMapped =
  */
 export async function loadMappedParametersFromHost(): Promise<void> {
   const raw = await invokeElementNative("elementPerformGetMappedParameters", []);
-  if (!Array.isArray(raw)) return;
-  const entries = raw as Array<{ nodeId: string; paramIndex: number }>;
+  // Host completes with a JSON *string* — parse before the shape guard.
+  const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+  if (!Array.isArray(parsed)) return;
+  const entries = parsed as Array<{ nodeId: string; paramIndex: number }>;
   const next = new Set<string>(
     entries.map((e) => `${e.nodeId}:${e.paramIndex}`),
   );

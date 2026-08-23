@@ -97,6 +97,7 @@ type EngineCable = {
   signalType?: string;
   channelCount?: number;
   isSidechain?: boolean;
+  busName?: string;
 };
 
 type EngineComment = {
@@ -409,6 +410,9 @@ function mapCable(c: EngineCable): CableData {
     signalType,
     channelCount: ch,
     isSidechain: !!c.isSidechain,
+    // Wireless-bus membership — host emits Arc.busName; dropping it here made
+    // useGraphStore's busSeed permanently empty (bus config wiped every snapshot).
+    busName: typeof c.busName === "string" && c.busName.length > 0 ? c.busName : undefined,
   };
 }
 
