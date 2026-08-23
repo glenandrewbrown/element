@@ -122,3 +122,23 @@ webview/.tmp/
 # OMC harness state (never commit)
 webview/src/.omc/
 webview/.omc/
+
+# --- consolidation hygiene 2026-08-23 ---
+.wwebjs_auth/
+graphify-out/
+.swarm/
+.claude-flow/
+.stitch/
+.agents/
+agentdb.rvf*
+ruvector.db
+/Log.txt
+/Network.log
+*.log
+Testing/
+*.traineddata
+.claude/worktrees/
+docs/training_data/
+.codex/
+.opencode/
+.impeccable/
