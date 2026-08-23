@@ -1,4 +1,15 @@
-# Element — PROJECT STATE (canonical) — 2026-05-30
+# Element — PROJECT STATE — 2026-05-30 (STALE)
+
+> **STOP — STALE. DO NOT PLAN FROM THIS FILE.**
+> Superseded by `.omc/plans/ralplan-ship-finished-element-2026-08-23.md` (the current ship plan)
+> and `.omc/specs/deep-dive-evaluate-the-post-repo-merge.md` (the current spec).
+> Known-false claims below, verified 2026-08-23: **CF1 is FIXED** (`8c37eafd4`, 2026-06-02) — this
+> file says "NOT fixed"; out-of-process sandbox hosting **shipped default-on** (`pluginSandboxMode=1`);
+> the Stitch bake-off pipeline was **abandoned** after its Block pilot and replaced by the QA-wave
+> method. Several SHAs cited here are pre-history-rewrite and no longer resolve — see
+> `.omo/SHA-TRANSLATION-2026-08-23.md`. Planning from this file already caused one wasted
+> parallel re-implementation (the 2026-08-15 studio checkout).
+> Full rewrite scheduled in the ship plan's P6.
 
 > ⚠️ **2026-05-31 UPDATE — superseded by the RECOVERY PLAN.** Read **`.omo/plans/RECOVERY-PLAN-2026-05-31.md`** first (ralplan consensus: Planner→Architect SOUND→Critic APPROVE). It carries verified empirical ground truth + the sequenced path to a released MVP. Key drift corrections from R0 (2026-05-31):
 > - **App BUILDS** — C++ `build-merged` exit 0, webview `npm run build` exit 0, source `tsc` 0 non-test errors (fixed a `Toolbar.tsx` breadcrumb error; 51 stale `__tests__` fixtures remain). C++ suite = 131 tests (clean pass-count pending; an earlier "47/47" was corrupted output — retracted).

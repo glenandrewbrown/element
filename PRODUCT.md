@@ -1,3 +1,10 @@
+> **STOP — STALE / TEMPLATE OUTPUT. DO NOT PLAN FROM THIS FILE.**
+> This file is `impeccable` skill template output that arrived via the 2026-08-15 studio checkout.
+> Its "Platform: web" framing is wrong: Element is a JUCE 8 / C++20 desktop and plugin application
+> whose UI happens to be React inside a `WebBrowserComponent`.
+> Current authority: `.omc/plans/ralplan-ship-finished-element-2026-08-23.md`.
+> Scheduled for deletion or correction in that plan's P6 doc re-baseline.
+
 # Product
 
 <!-- impeccable:product-schema 1 -->
