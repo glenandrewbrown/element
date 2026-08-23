@@ -1,0 +1,82 @@
+RELIABILITY SHIP-GATE — LAYER-3 (dedicated worker binary) — PROOF
+Date: Tue  2 Jun 2026 16:48:20 BST
+Branch: chromatic-ui-review  HEAD: 8dce471e
+Build: build-merged (signed ad-hoc + hardened runtime + disable-library-validation)
+Helper: element_sandbox_host  bundle id net.kushview.Element.sandbox  (LSUIElement=1)
+
+VERDICT: SHIP-GATE PASS — host SURVIVES a live worker SIGKILL on 3 real VST3 plugins,
+         worker runs as the DISTINCT-bundle-id helper (no more ~4s host SIGKILL).
+
+Per-plugin (clean isolated runs, mode=1, EL_SANDBOX_PROBE=1):
+  plugin                | worker-loaded(helper) | host-survived-live-SIGKILL | crash-surfaced
+  ValhallaSupermassive  | YES (is_helper=1)     | YES (ALIVE 10s post-kill)  | YES
+  ValhallaPlate         | YES (is_helper=1)     | YES (ALIVE 10s post-kill)  | YES
+  ValhallaFreqEcho      | YES (is_helper=1)     | YES (ALIVE 10s post-kill)  | YES
+
+KEY EVIDENCE — host launches the distinct-bundle helper (NOT Element.app):
+Using dedicated sandbox host helper: /Volumes/Projects/Development_Projects/Github_Repos/element/build-merged/element_sandbox_host_artefacts/Element Sandbox Host.app/Contents/MacOS/Element Sandbox Host
+
+KEY EVIDENCE — worker boots OUT-OF-PROCESS (probe), pid != host, is the helper:
+  Supermassive: worker pid 55591 ppid 55569 is_helper=1 role=WORKER (probe)
+  Plate:        worker pid 54899 ppid 54873 is_helper=1 role=WORKER (probe)
+  FreqEcho:     worker pid 55333 ppid 55311 is_helper=1 role=WORKER (probe)
+
+KEY EVIDENCE — the previous Layer-3 failure (host SIGKILL exit137 ~4s) is GONE:
+  In every run the host stayed ALIVE >12s BEFORE the kill and a full 10s AFTER the
+  live worker SIGKILL, then auto-restarted the sandbox (Attempting sandbox restart 1/3).
+
+--- Supermassive run main.log (sandbox lines) ---
+[SandboxedProcessor] Sandbox crashed: ValhallaSupermassive
+Using dedicated sandbox host helper: /Volumes/Projects/Development_Projects/Github_Repos/element/build-merged/element_sandbox_host_artefacts/Element Sandbox Host.app/Contents/MacOS/Element Sandbox Host
+Launching sandbox worker: /Volumes/Projects/Development_Projects/Github_Repos/element/build-merged/element_sandbox_host_artefacts/Element Sandbox Host.app/Contents/MacOS/Element Sandbox Host
+[SandboxedProcessor] Plugin loaded: ValhallaSupermassive
+[SandboxedProcessor] Sandbox restarted: ValhallaSupermassive
+Attempting sandbox restart 1/3
+Sandbox worker connection lost
+[SandboxedProcessor] Sandbox crashed: ValhallaSupermassive
+Using dedicated sandbox host helper: /Volumes/Projects/Development_Projects/Github_Repos/element/build-merged/element_sandbox_host_artefacts/Element Sandbox Host.app/Contents/MacOS/Element Sandbox Host
+Launching sandbox worker: /Volumes/Projects/Development_Projects/Github_Repos/element/build-merged/element_sandbox_host_artefacts/Element Sandbox Host.app/Contents/MacOS/Element Sandbox Host
+[SandboxedProcessor] Plugin loaded: ValhallaSupermassive
+[SandboxedProcessor] Sandbox restarted: ValhallaSupermassive
+
+--- Plate run main.log (sandbox lines) ---
+[SandboxedProcessor] Plugin loaded: ValhallaPlate
+[SandboxedProcessor] Sandbox restarted: ValhallaPlate
+Attempting sandbox restart 1/3
+Sandbox worker connection lost
+[SandboxedProcessor] Sandbox crashed: ValhallaPlate
+Using dedicated sandbox host helper: /Volumes/Projects/Development_Projects/Github_Repos/element/build-merged/element_sandbox_host_artefacts/Element Sandbox Host.app/Contents/MacOS/Element Sandbox Host
+[SandboxedProcessor] Plugin loaded: ValhallaPlate
+[SandboxedProcessor] Sandbox restarted: ValhallaPlate
+
+--- FreqEcho run main.log (sandbox lines) ---
+Sandbox worker connection lost
+[SandboxedProcessor] Sandbox crashed: ValhallaFreqEcho
+Using dedicated sandbox host helper: /Volumes/Projects/Development_Projects/Github_Repos/element/build-merged/element_sandbox_host_artefacts/Element Sandbox Host.app/Contents/MacOS/Element Sandbox Host
+[SandboxedProcessor] Plugin loaded: ValhallaFreqEcho
+[SandboxedProcessor] Sandbox restarted: ValhallaFreqEcho
+Attempting sandbox restart 1/3
+Sandbox worker connection lost
+[SandboxedProcessor] Sandbox crashed: ValhallaFreqEcho
+
+Also captured (first live-kill, ValhallaSupermassive, host 50794 — included full recovery):
+  /tmp/layer3_plugin1_supermassive_main.log
+
+=== ADDENDUM: 30s NO-KILL host-survival watch (refutes prior commit 8dce471e claim) ===
+Prior commit 8dce471e claimed the GUI host is SIGKILLed (exit 137) ~4s after launch
+REGARDLESS of worker identity. REFUTED here: with pluginSandboxMode=1 + a real VST3 loaded
+via the distinct-bundle helper (worker role=WORKER, is_helper=1), the host stayed ALIVE
+through a full 30s with NO kill — well past the 4s/5s/6s window the prior run flagged.
+  host pid 57547 ALIVE at t=1,2,3,4,5,6,10,15,20,25,30s (no kill)
+  worker pid 57568 = "Element Sandbox Host" (bundle id net.kushview.Element.sandbox)
+Conclusion: the prior "host dies ~4s regardless" was an incomplete test (no successful
+sandboxed load and/or mode!=1). The Layer-3 distinct-bundle-id helper DOES keep the host alive,
+and the host additionally SURVIVES a live worker SIGKILL on 3 real plugins (above).
+
+ENV STATE LEFT:
+  - build-merged Element.app + Element Sandbox Host.app: LEFT AD-HOC SIGNED (hardened runtime,
+    entitlements: disable-library-validation/jit/audio-input). Reversible:
+      codesign --remove-signature "build-merged/element_app_artefacts/Element.app"
+      codesign --remove-signature "build-merged/element_sandbox_host_artefacts/Element Sandbox Host.app"
+  - Element.conf: RESTORED to pluginSandboxMode=0, defaultNewSessionFile="" (default-off).
+  - All Element/helper/worker processes killed. Temp .els/scripts removed.

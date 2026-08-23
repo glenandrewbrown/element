@@ -1,0 +1,2582 @@
+{
+  "summary": {
+    "totalStories": 260,
+    "storiesWithViolations": 161,
+    "byImpact": {
+      "critical": 16,
+      "serious": 157,
+      "moderate": 3,
+      "minor": 0,
+      "null": 0
+    },
+    "byRule": {
+      "color-contrast": {
+        "impact": "serious",
+        "count": 150,
+        "stories": 150,
+        "nodes": 819
+      },
+      "label": {
+        "impact": "critical",
+        "count": 1,
+        "stories": 1,
+        "nodes": 2
+      },
+      "button-name": {
+        "impact": "critical",
+        "count": 10,
+        "stories": 10,
+        "nodes": 17
+      },
+      "landmark-unique": {
+        "impact": "moderate",
+        "count": 3,
+        "stories": 3,
+        "nodes": 3
+      },
+      "aria-prohibited-attr": {
+        "impact": "serious",
+        "count": 3,
+        "stories": 3,
+        "nodes": 6
+      },
+      "nested-interactive": {
+        "impact": "serious",
+        "count": 2,
+        "stories": 2,
+        "nodes": 6
+      },
+      "scrollable-region-focusable": {
+        "impact": "serious",
+        "count": 2,
+        "stories": 2,
+        "nodes": 2
+      },
+      "select-name": {
+        "impact": "critical",
+        "count": 5,
+        "stories": 5,
+        "nodes": 5
+      }
+    }
+  },
+  "results": {
+    "neu-emptystate--no-midi": {
+      "title": "Neu/EmptyState",
+      "name": "No Midi",
+      "violations": []
+    },
+    "neu-emptystate--no-connections": {
+      "title": "Neu/EmptyState",
+      "name": "No Connections",
+      "violations": []
+    },
+    "neu-emptystate--no-plugins": {
+      "title": "Neu/EmptyState",
+      "name": "No Plugins",
+      "violations": []
+    },
+    "neu-icon--default": {
+      "title": "Neu/Icon",
+      "name": "Default",
+      "violations": []
+    },
+    "neu-icon--unknown-fallback": {
+      "title": "Neu/Icon",
+      "name": "Unknown Fallback",
+      "violations": []
+    },
+    "neu-icon--size-matrix": {
+      "title": "Neu/Icon",
+      "name": "Size Matrix",
+      "violations": []
+    },
+    "neu-icon--tone-matrix": {
+      "title": "Neu/Icon",
+      "name": "Tone Matrix",
+      "violations": []
+    },
+    "neu-icon--all-icons": {
+      "title": "Neu/Icon",
+      "name": "All Icons",
+      "violations": []
+    },
+    "neu-badge--default": {
+      "title": "Neu/Badge",
+      "name": "Default",
+      "violations": []
+    },
+    "neu-badge--orange": {
+      "title": "Neu/Badge",
+      "name": "Orange",
+      "violations": []
+    },
+    "neu-badge--teal": {
+      "title": "Neu/Badge",
+      "name": "Teal",
+      "violations": []
+    },
+    "neu-icon--unknown-fallback-grid": {
+      "title": "Neu/Icon",
+      "name": "Unknown Fallback Grid",
+      "violations": []
+    },
+    "neu-button--default": {
+      "title": "Neu/Button",
+      "name": "Default",
+      "violations": []
+    },
+    "neu-badge--color-matrix": {
+      "title": "Neu/Badge",
+      "name": "Color Matrix",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 4
+        }
+      ]
+    },
+    "neu-badge--grey": {
+      "title": "Neu/Badge",
+      "name": "Grey",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 1
+        }
+      ]
+    },
+    "neu-badge--purple": {
+      "title": "Neu/Badge",
+      "name": "Purple",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 1
+        }
+      ]
+    },
+    "neu-button--small": {
+      "title": "Neu/Button",
+      "name": "Small",
+      "violations": []
+    },
+    "neu-button--variant-matrix": {
+      "title": "Neu/Button",
+      "name": "Variant Matrix",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 2
+        }
+      ]
+    },
+    "neu-button--active": {
+      "title": "Neu/Button",
+      "name": "Active",
+      "violations": []
+    },
+    "neu-button--panic": {
+      "title": "Neu/Button",
+      "name": "Panic",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 1
+        }
+      ]
+    },
+    "neu-display--default": {
+      "title": "Neu/Display",
+      "name": "Default",
+      "violations": []
+    },
+    "neu-display--variant-matrix": {
+      "title": "Neu/Display",
+      "name": "Variant Matrix",
+      "violations": []
+    },
+    "neu-display--numeric-readout": {
+      "title": "Neu/Display",
+      "name": "Numeric Readout",
+      "violations": []
+    },
+    "neu-display--empty-display": {
+      "title": "Neu/Display",
+      "name": "Empty Display",
+      "violations": []
+    },
+    "neu-fader--vertical": {
+      "title": "Neu/Fader",
+      "name": "Vertical",
+      "violations": []
+    },
+    "neu-fader--orange": {
+      "title": "Neu/Fader",
+      "name": "Orange",
+      "violations": []
+    },
+    "neu-fader--default": {
+      "title": "Neu/Fader",
+      "name": "Default",
+      "violations": []
+    },
+    "neu-fader--variant-matrix": {
+      "title": "Neu/Fader",
+      "name": "Variant Matrix",
+      "violations": []
+    },
+    "neu-input--default": {
+      "title": "Neu/Input",
+      "name": "Default",
+      "violations": []
+    },
+    "neu-input--with-value": {
+      "title": "Neu/Input",
+      "name": "With Value",
+      "violations": []
+    },
+    "neu-input--placeholder": {
+      "title": "Neu/Input",
+      "name": "Placeholder",
+      "violations": []
+    },
+    "neu-fader--interactive": {
+      "title": "Neu/Fader",
+      "name": "Interactive",
+      "violations": []
+    },
+    "neu-knob--default": {
+      "title": "Neu/Knob",
+      "name": "Default",
+      "violations": []
+    },
+    "neu-input--variant-matrix": {
+      "title": "Neu/Input",
+      "name": "Variant Matrix",
+      "violations": [
+        {
+          "id": "label",
+          "impact": "critical",
+          "help": "Form elements must have labels",
+          "nodes": 2
+        }
+      ]
+    },
+    "neu-input--interactive": {
+      "title": "Neu/Input",
+      "name": "Interactive",
+      "violations": []
+    },
+    "neu-knob--teal": {
+      "title": "Neu/Knob",
+      "name": "Teal",
+      "violations": []
+    },
+    "neu-knob--interactive": {
+      "title": "Neu/Knob",
+      "name": "Interactive",
+      "violations": []
+    },
+    "neu-knob--purple": {
+      "title": "Neu/Knob",
+      "name": "Purple",
+      "violations": []
+    },
+    "neu-knob--orange": {
+      "title": "Neu/Knob",
+      "name": "Orange",
+      "violations": []
+    },
+    "neu-knob--size-matrix": {
+      "title": "Neu/Knob",
+      "name": "Size Matrix",
+      "violations": []
+    },
+    "neu-toggle--default": {
+      "title": "Neu/Toggle",
+      "name": "Default",
+      "violations": [
+        {
+          "id": "button-name",
+          "impact": "critical",
+          "help": "Buttons must have discernible text",
+          "nodes": 1
+        }
+      ]
+    },
+    "neu-toggle--active-blue": {
+      "title": "Neu/Toggle",
+      "name": "Active Blue",
+      "violations": [
+        {
+          "id": "button-name",
+          "impact": "critical",
+          "help": "Buttons must have discernible text",
+          "nodes": 1
+        }
+      ]
+    },
+    "neu-toggle--active-teal": {
+      "title": "Neu/Toggle",
+      "name": "Active Teal",
+      "violations": [
+        {
+          "id": "button-name",
+          "impact": "critical",
+          "help": "Buttons must have discernible text",
+          "nodes": 1
+        }
+      ]
+    },
+    "neu-toggle--active-orange": {
+      "title": "Neu/Toggle",
+      "name": "Active Orange",
+      "violations": [
+        {
+          "id": "button-name",
+          "impact": "critical",
+          "help": "Buttons must have discernible text",
+          "nodes": 1
+        }
+      ]
+    },
+    "neu-skeleton--default": {
+      "title": "Neu/Skeleton",
+      "name": "Default",
+      "violations": []
+    },
+    "neu-toggle--variant-matrix": {
+      "title": "Neu/Toggle",
+      "name": "Variant Matrix",
+      "violations": [
+        {
+          "id": "button-name",
+          "impact": "critical",
+          "help": "Buttons must have discernible text",
+          "nodes": 6
+        }
+      ]
+    },
+    "neu-skeleton--text-variant": {
+      "title": "Neu/Skeleton",
+      "name": "Text Variant",
+      "violations": []
+    },
+    "neu-toggle--interactive": {
+      "title": "Neu/Toggle",
+      "name": "Interactive",
+      "violations": [
+        {
+          "id": "button-name",
+          "impact": "critical",
+          "help": "Buttons must have discernible text",
+          "nodes": 3
+        }
+      ]
+    },
+    "neu-skeleton--variant-matrix": {
+      "title": "Neu/Skeleton",
+      "name": "Variant Matrix",
+      "violations": []
+    },
+    "neu-skeleton--circle-variant": {
+      "title": "Neu/Skeleton",
+      "name": "Circle Variant",
+      "violations": []
+    },
+    "neu-skeleton--plugin-list-skeleton": {
+      "title": "Neu/Skeleton",
+      "name": "Plugin List Skeleton",
+      "violations": []
+    },
+    "neu-skeleton--card-skeleton": {
+      "title": "Neu/Skeleton",
+      "name": "Card Skeleton",
+      "violations": []
+    },
+    "layout-aboutmodal--idle": {
+      "title": "Layout/AboutModal",
+      "name": "Idle",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 1
+        }
+      ]
+    },
+    "layout-appshell--edit-mode": {
+      "title": "Layout/AppShell",
+      "name": "Edit Mode",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 3
+        },
+        {
+          "id": "landmark-unique",
+          "impact": "moderate",
+          "help": "Landmarks should have a unique role or role/label/title (i.e. accessible name) combination",
+          "nodes": 1
+        }
+      ]
+    },
+    "layout-aboutmodal--with-backdrop": {
+      "title": "Layout/AboutModal",
+      "name": "With Backdrop",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 1
+        }
+      ]
+    },
+    "layout-appshell--perform-mode": {
+      "title": "Layout/AppShell",
+      "name": "Perform Mode",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 3
+        },
+        {
+          "id": "landmark-unique",
+          "impact": "moderate",
+          "help": "Landmarks should have a unique role or role/label/title (i.e. accessible name) combination",
+          "nodes": 1
+        }
+      ]
+    },
+    "layout-appshell--perform-map-mode": {
+      "title": "Layout/AppShell",
+      "name": "Perform Map Mode",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 3
+        },
+        {
+          "id": "landmark-unique",
+          "impact": "moderate",
+          "help": "Landmarks should have a unique role or role/label/title (i.e. accessible name) combination",
+          "nodes": 1
+        }
+      ]
+    },
+    "layout-blocktabstrip--multiple-tabs": {
+      "title": "Layout/BlockTabStrip",
+      "name": "Multiple Tabs",
+      "violations": []
+    },
+    "layout-blocktabstrip--single-tab": {
+      "title": "Layout/BlockTabStrip",
+      "name": "Single Tab",
+      "violations": []
+    },
+    "layout-blocktabstrip--middle-tab-active": {
+      "title": "Layout/BlockTabStrip",
+      "name": "Middle Tab Active",
+      "violations": []
+    },
+    "layout-bottomstrip--stopped-idle": {
+      "title": "Layout/BottomStrip",
+      "name": "Stopped Idle",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 12
+        }
+      ]
+    },
+    "layout-blocktabstrip--no-tabs": {
+      "title": "Layout/BlockTabStrip",
+      "name": "No Tabs",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 1
+        }
+      ]
+    },
+    "layout-bottomstrip--recording-hot-cpu": {
+      "title": "Layout/BottomStrip",
+      "name": "Recording Hot Cpu",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 12
+        }
+      ]
+    },
+    "layout-bottomstrip--running": {
+      "title": "Layout/BottomStrip",
+      "name": "Running",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 11
+        }
+      ]
+    },
+    "layout-bottomstrip--minimap-toggle": {
+      "title": "Layout/BottomStrip",
+      "name": "Minimap Toggle",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 11
+        }
+      ]
+    },
+    "layout-bottomstrip--transport-interaction": {
+      "title": "Layout/BottomStrip",
+      "name": "Transport Interaction",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 11
+        }
+      ]
+    },
+    "layout-bottomstrip--edit-tempo": {
+      "title": "Layout/BottomStrip",
+      "name": "Edit Tempo",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 11
+        }
+      ]
+    },
+    "layout-bottomstrip--split-lr": {
+      "title": "Layout/BottomStrip",
+      "name": "Split LR",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 11
+        }
+      ]
+    },
+    "layout-breadcrumb--three-levels": {
+      "title": "Layout/Breadcrumb",
+      "name": "Three Levels",
+      "violations": []
+    },
+    "layout-breadcrumb--deep-nesting": {
+      "title": "Layout/Breadcrumb",
+      "name": "Deep Nesting",
+      "violations": []
+    },
+    "layout-breadcrumb--root-only": {
+      "title": "Layout/Breadcrumb",
+      "name": "Root Only",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 1
+        }
+      ]
+    },
+    "layout-breadcrumb--two-levels": {
+      "title": "Layout/Breadcrumb",
+      "name": "Two Levels",
+      "violations": []
+    },
+    "layout-breadcrumb--long-names": {
+      "title": "Layout/Breadcrumb",
+      "name": "Long Names",
+      "violations": []
+    },
+    "layout-businspector--mono-bus": {
+      "title": "Layout/BusInspector",
+      "name": "Mono Bus",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 7
+        }
+      ]
+    },
+    "layout-businspector--empty": {
+      "title": "Layout/BusInspector",
+      "name": "Empty",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 3
+        }
+      ]
+    },
+    "layout-businspector--stereo-bus": {
+      "title": "Layout/BusInspector",
+      "name": "Stereo Bus",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 7
+        }
+      ]
+    },
+    "layout-businspector--midi-bus-idle": {
+      "title": "Layout/BusInspector",
+      "name": "Midi Bus Idle",
+      "violations": [
+        {
+          "id": "aria-prohibited-attr",
+          "impact": "serious",
+          "help": "Elements must only use permitted ARIA attributes",
+          "nodes": 2
+        },
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 7
+        }
+      ]
+    },
+    "layout-businspector--midi-bus": {
+      "title": "Layout/BusInspector",
+      "name": "Midi Bus",
+      "violations": [
+        {
+          "id": "aria-prohibited-attr",
+          "impact": "serious",
+          "help": "Elements must only use permitted ARIA attributes",
+          "nodes": 2
+        },
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 7
+        }
+      ]
+    },
+    "layout-businspector--sidechain-bus": {
+      "title": "Layout/BusInspector",
+      "name": "Sidechain Bus",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 7
+        }
+      ]
+    },
+    "layout-businspector--surround-bus": {
+      "title": "Layout/BusInspector",
+      "name": "Surround Bus",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 7
+        }
+      ]
+    },
+    "layout-connectioneditor--populated": {
+      "title": "Layout/ConnectionEditor",
+      "name": "Populated",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 6
+        }
+      ]
+    },
+    "layout-businspector--with-open-editor": {
+      "title": "Layout/BusInspector",
+      "name": "With Open Editor",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 8
+        }
+      ]
+    },
+    "layout-businspector--orphan-endpoint": {
+      "title": "Layout/BusInspector",
+      "name": "Orphan Endpoint",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 6
+        }
+      ]
+    },
+    "layout-businspector--mixed-topologies": {
+      "title": "Layout/BusInspector",
+      "name": "Mixed Topologies",
+      "violations": [
+        {
+          "id": "aria-prohibited-attr",
+          "impact": "serious",
+          "help": "Elements must only use permitted ARIA attributes",
+          "nodes": 2
+        },
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 20
+        }
+      ]
+    },
+    "layout-connectioneditor--empty": {
+      "title": "Layout/ConnectionEditor",
+      "name": "Empty",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 4
+        }
+      ]
+    },
+    "layout-connectioneditor--audio-only": {
+      "title": "Layout/ConnectionEditor",
+      "name": "Audio Only",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 6
+        }
+      ]
+    },
+    "layout-connectioneditor--midi-only": {
+      "title": "Layout/ConnectionEditor",
+      "name": "Midi Only",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 3
+        }
+      ]
+    },
+    "layout-dashboardbuilder--populated": {
+      "title": "Layout/DashboardBuilder",
+      "name": "Populated",
+      "violations": []
+    },
+    "layout-dashboardbuilder--empty-editing": {
+      "title": "Layout/DashboardBuilder",
+      "name": "Empty Editing",
+      "violations": []
+    },
+    "layout-inspectorhub--nothing-selected": {
+      "title": "Layout/InspectorHub",
+      "name": "Nothing Selected",
+      "violations": []
+    },
+    "layout-dashboardbuilder--empty": {
+      "title": "Layout/DashboardBuilder",
+      "name": "Empty",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 1
+        }
+      ]
+    },
+    "layout-dashboardbuilder--editing-mode": {
+      "title": "Layout/DashboardBuilder",
+      "name": "Editing Mode",
+      "violations": []
+    },
+    "layout-inspectorhub--block-tab-bypassed": {
+      "title": "Layout/InspectorHub",
+      "name": "Block Tab Bypassed",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 4
+        }
+      ]
+    },
+    "layout-inspectorhub--block-tab-audio-fx": {
+      "title": "Layout/InspectorHub",
+      "name": "Block Tab Audio Fx",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 4
+        }
+      ]
+    },
+    "layout-inspectorhub--block-tab-instrument": {
+      "title": "Layout/InspectorHub",
+      "name": "Block Tab Instrument",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 4
+        }
+      ]
+    },
+    "layout-inspectorhub--block-tab-script": {
+      "title": "Layout/InspectorHub",
+      "name": "Block Tab Script",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 5
+        }
+      ]
+    },
+    "layout-inspectorhub--cable-tab-overview": {
+      "title": "Layout/InspectorHub",
+      "name": "Cable Tab Overview",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 2
+        }
+      ]
+    },
+    "layout-inspectorhub--cable-tab": {
+      "title": "Layout/InspectorHub",
+      "name": "Cable Tab",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 13
+        }
+      ]
+    },
+    "layout-inspectorhub--cable-tab-midi": {
+      "title": "Layout/InspectorHub",
+      "name": "Cable Tab Midi",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 8
+        }
+      ]
+    },
+    "layout-inspectorhub--bus-tab": {
+      "title": "Layout/InspectorHub",
+      "name": "Bus Tab",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 14
+        }
+      ]
+    },
+    "layout-inspectorhub--block-tab-internal-no-params": {
+      "title": "Layout/InspectorHub",
+      "name": "Block Tab Internal No Params",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 5
+        }
+      ]
+    },
+    "layout-inspectorhub--health-tab": {
+      "title": "Layout/InspectorHub",
+      "name": "Health Tab",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 1
+        }
+      ]
+    },
+    "layout-inspectorhub--empty-graph": {
+      "title": "Layout/InspectorHub",
+      "name": "Empty Graph",
+      "violations": []
+    },
+    "layout-inspectorhub--cable-tab-value-gate": {
+      "title": "Layout/InspectorHub",
+      "name": "Cable Tab Value Gate",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 7
+        }
+      ]
+    },
+    "layout-livehealth--nominal": {
+      "title": "Layout/LiveHealth",
+      "name": "Nominal",
+      "violations": []
+    },
+    "layout-instanceswitcher--multi-instance": {
+      "title": "Layout/InstanceSwitcher",
+      "name": "Multi Instance",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 3
+        }
+      ]
+    },
+    "layout-instanceswitcher--single-instance": {
+      "title": "Layout/InstanceSwitcher",
+      "name": "Single Instance",
+      "violations": []
+    },
+    "layout-instanceswitcher--mirror-active": {
+      "title": "Layout/InstanceSwitcher",
+      "name": "Mirror Active",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 2
+        }
+      ]
+    },
+    "layout-livehealth--critical": {
+      "title": "Layout/LiveHealth",
+      "name": "Critical",
+      "violations": []
+    },
+    "layout-livehealth--warning": {
+      "title": "Layout/LiveHealth",
+      "name": "Warning",
+      "violations": []
+    },
+    "layout-livehealth--empty": {
+      "title": "Layout/LiveHealth",
+      "name": "Empty",
+      "violations": []
+    },
+    "layout-livehealth--input-active": {
+      "title": "Layout/LiveHealth",
+      "name": "Input Active",
+      "violations": []
+    },
+    "layout-macrodashboard--knobs-only": {
+      "title": "Layout/MacroDashboard",
+      "name": "Knobs Only",
+      "violations": [
+        {
+          "id": "button-name",
+          "impact": "critical",
+          "help": "Buttons must have discernible text",
+          "nodes": 1
+        }
+      ]
+    },
+    "layout-macrodashboard--map-mode-active": {
+      "title": "Layout/MacroDashboard",
+      "name": "Map Mode Active",
+      "violations": [
+        {
+          "id": "button-name",
+          "impact": "critical",
+          "help": "Buttons must have discernible text",
+          "nodes": 1
+        }
+      ]
+    },
+    "layout-macrodashboard--empty": {
+      "title": "Layout/MacroDashboard",
+      "name": "Empty",
+      "violations": [
+        {
+          "id": "button-name",
+          "impact": "critical",
+          "help": "Buttons must have discernible text",
+          "nodes": 1
+        }
+      ]
+    },
+    "layout-macrodashboard--populated": {
+      "title": "Layout/MacroDashboard",
+      "name": "Populated",
+      "violations": [
+        {
+          "id": "button-name",
+          "impact": "critical",
+          "help": "Buttons must have discernible text",
+          "nodes": 1
+        }
+      ]
+    },
+    "layout-neupromptmodal--empty-input": {
+      "title": "Layout/NeuPromptModal",
+      "name": "Empty Input",
+      "violations": []
+    },
+    "layout-neupromptmodal--open": {
+      "title": "Layout/NeuPromptModal",
+      "name": "Open",
+      "violations": []
+    },
+    "layout-mirrorpanel--unavailable": {
+      "title": "Layout/MirrorPanel",
+      "name": "Unavailable",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 1
+        }
+      ]
+    },
+    "layout-mirrorpanel--mirroring": {
+      "title": "Layout/MirrorPanel",
+      "name": "Mirroring",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 4
+        }
+      ]
+    },
+    "layout-neupromptmodal--no-description": {
+      "title": "Layout/NeuPromptModal",
+      "name": "No Description",
+      "violations": []
+    },
+    "layout-neupromptmodal--closed": {
+      "title": "Layout/NeuPromptModal",
+      "name": "Closed",
+      "violations": []
+    },
+    "layout-neupromptmodal--interactive": {
+      "title": "Layout/NeuPromptModal",
+      "name": "Interactive",
+      "violations": []
+    },
+    "layout-preferencesmodal--audio-populated": {
+      "title": "Layout/PreferencesModal",
+      "name": "Audio — Populated",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 6
+        }
+      ]
+    },
+    "layout-preferencesmodal--midi-learning": {
+      "title": "Layout/PreferencesModal",
+      "name": "MIDI — Learning active",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 6
+        }
+      ]
+    },
+    "layout-preferencesmodal--appearance-bezier": {
+      "title": "Layout/PreferencesModal",
+      "name": "Appearance — Bezier routing",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 6
+        }
+      ]
+    },
+    "layout-preferencesmodal--midi-mapped": {
+      "title": "Layout/PreferencesModal",
+      "name": "MIDI — Mapped (learn off)",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 6
+        }
+      ]
+    },
+    "layout-preferencesmodal--audio-empty": {
+      "title": "Layout/PreferencesModal",
+      "name": "Audio — Empty (first run)",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 6
+        }
+      ]
+    },
+    "layout-quickaccess--with-blocks": {
+      "title": "Layout/QuickAccess",
+      "name": "With Blocks",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 1
+        }
+      ]
+    },
+    "layout-preferencesmodal--midi-devices": {
+      "title": "Layout/PreferencesModal",
+      "name": "MIDI — Devices (real list)",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 3
+        }
+      ]
+    },
+    "layout-preferencesmodal--midi-no-devices": {
+      "title": "Layout/PreferencesModal",
+      "name": "MIDI — No devices (honest empty)",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 4
+        }
+      ]
+    },
+    "layout-preferencesmodal--shortcuts-reference": {
+      "title": "Layout/PreferencesModal",
+      "name": "Shortcuts — Reference list",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 6
+        }
+      ]
+    },
+    "layout-quickaccess--empty": {
+      "title": "Layout/QuickAccess",
+      "name": "Empty",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 2
+        }
+      ]
+    },
+    "layout-quickaccess--high-cpu": {
+      "title": "Layout/QuickAccess",
+      "name": "High Cpu",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 1
+        }
+      ]
+    },
+    "layout-scenelauncher--empty": {
+      "title": "Layout/SceneLauncher",
+      "name": "Empty",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 1
+        }
+      ]
+    },
+    "layout-scenelauncher--populated": {
+      "title": "Layout/SceneLauncher",
+      "name": "Populated",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 5
+        },
+        {
+          "id": "nested-interactive",
+          "impact": "serious",
+          "help": "Interactive controls must not be nested",
+          "nodes": 5
+        }
+      ]
+    },
+    "layout-sessiontree--empty": {
+      "title": "Layout/SessionTree",
+      "name": "Empty",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 3
+        }
+      ]
+    },
+    "layout-sessiontree--single-graph": {
+      "title": "Layout/SessionTree",
+      "name": "Single Graph",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 3
+        }
+      ]
+    },
+    "layout-sessiontree--with-graphs": {
+      "title": "Layout/SessionTree",
+      "name": "With Graphs",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 7
+        }
+      ]
+    },
+    "layout-scenelauncher--single-scene": {
+      "title": "Layout/SceneLauncher",
+      "name": "Single Scene",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 1
+        },
+        {
+          "id": "nested-interactive",
+          "impact": "serious",
+          "help": "Interactive controls must not be nested",
+          "nodes": 1
+        }
+      ]
+    },
+    "layout-sessiontree--dirty-file": {
+      "title": "Layout/SessionTree",
+      "name": "Dirty File",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 3
+        }
+      ]
+    },
+    "layout-snippetshelf--with-snippets": {
+      "title": "Layout/SnippetShelf",
+      "name": "With Snippets",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 1
+        }
+      ]
+    },
+    "layout-snippetshelf--single-snippet": {
+      "title": "Layout/SnippetShelf",
+      "name": "Single Snippet",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 2
+        }
+      ]
+    },
+    "layout-snippetshelf--empty": {
+      "title": "Layout/SnippetShelf",
+      "name": "Empty",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 3
+        }
+      ]
+    },
+    "layout-statusbar--stopped": {
+      "title": "Layout/StatusBar",
+      "name": "Stopped",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 4
+        }
+      ]
+    },
+    "layout-snippetshelf--many-snippets": {
+      "title": "Layout/SnippetShelf",
+      "name": "Many Snippets",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 1
+        }
+      ]
+    },
+    "layout-statusbar--running": {
+      "title": "Layout/StatusBar",
+      "name": "Running",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 4
+        }
+      ]
+    },
+    "layout-statusbar--high-cpu": {
+      "title": "Layout/StatusBar",
+      "name": "High Cpu",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 4
+        }
+      ]
+    },
+    "layout-statusbar--is-playing-fallback": {
+      "title": "Layout/StatusBar",
+      "name": "Is Playing Fallback",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 4
+        }
+      ]
+    },
+    "layout-statusbar--medium-cpu": {
+      "title": "Layout/StatusBar",
+      "name": "Medium Cpu",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 4
+        }
+      ]
+    },
+    "layout-statusbar--default-device": {
+      "title": "Layout/StatusBar",
+      "name": "Default Device",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 4
+        }
+      ]
+    },
+    "layout-toolpalette--populated": {
+      "title": "Layout/ToolPalette",
+      "name": "Populated",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 7
+        }
+      ]
+    },
+    "layout-toolpalette--grid-view": {
+      "title": "Layout/ToolPalette",
+      "name": "Grid View",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 5
+        }
+      ]
+    },
+    "layout-toolpalette--empty": {
+      "title": "Layout/ToolPalette",
+      "name": "Empty",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 1
+        }
+      ]
+    },
+    "layout-toolpalette--plugins-no-extras": {
+      "title": "Layout/ToolPalette",
+      "name": "Plugins No Extras",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 5
+        }
+      ]
+    },
+    "layout-toolpalette--high-cpu": {
+      "title": "Layout/ToolPalette",
+      "name": "High Cpu",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 7
+        }
+      ]
+    },
+    "layout-toolpalette--collapsed-rail": {
+      "title": "Layout/ToolPalette",
+      "name": "Collapsed Rail",
+      "violations": []
+    },
+    "layout-toolpalette--search-filtering": {
+      "title": "Layout/ToolPalette",
+      "name": "Search Filtering",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 1
+        }
+      ]
+    },
+    "layout-toolpalette--category-filter": {
+      "title": "Layout/ToolPalette",
+      "name": "Category Filter",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 3
+        }
+      ]
+    },
+    "layout-toolpalette--scan-controls": {
+      "title": "Layout/ToolPalette",
+      "name": "Scan Controls",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 14
+        }
+      ]
+    },
+    "layout-toolbar--edit-mode-multi-board": {
+      "title": "Layout/Toolbar",
+      "name": "Edit Mode Multi Board",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 8
+        }
+      ]
+    },
+    "layout-toolbar--edit-mode-recording": {
+      "title": "Layout/Toolbar",
+      "name": "Edit Mode Recording",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 8
+        }
+      ]
+    },
+    "layout-toolbar--edit-mode": {
+      "title": "Layout/Toolbar",
+      "name": "Edit Mode",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 8
+        }
+      ]
+    },
+    "layout-toolpalette--collapsed": {
+      "title": "Layout/ToolPalette",
+      "name": "Collapsed",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 7
+        }
+      ]
+    },
+    "layout-virtualkeyboard--full-velocity": {
+      "title": "Layout/VirtualKeyboard",
+      "name": "Full Velocity",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 2
+        }
+      ]
+    },
+    "layout-toolbar--edit-mode-untitled": {
+      "title": "Layout/Toolbar",
+      "name": "Edit Mode Untitled",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 8
+        }
+      ]
+    },
+    "layout-virtualkeyboard--default": {
+      "title": "Layout/VirtualKeyboard",
+      "name": "Default",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 2
+        }
+      ]
+    },
+    "layout-toolbar--edit-mode-narrow": {
+      "title": "Layout/Toolbar",
+      "name": "Edit Mode Narrow",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 9
+        }
+      ]
+    },
+    "canvas-block--audio-fx": {
+      "title": "Canvas/Block",
+      "name": "Audio Fx",
+      "violations": []
+    },
+    "layout-virtualkeyboard--soft-velocity": {
+      "title": "Layout/VirtualKeyboard",
+      "name": "Soft Velocity",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 2
+        }
+      ]
+    },
+    "canvas-block--midi-fx": {
+      "title": "Canvas/Block",
+      "name": "Midi Fx",
+      "violations": []
+    },
+    "canvas-block--instrument": {
+      "title": "Canvas/Block",
+      "name": "Instrument",
+      "violations": []
+    },
+    "canvas-block--container": {
+      "title": "Canvas/Block",
+      "name": "Container",
+      "violations": []
+    },
+    "canvas-block--errored": {
+      "title": "Canvas/Block",
+      "name": "Errored",
+      "violations": []
+    },
+    "canvas-block--bypassed": {
+      "title": "Canvas/Block",
+      "name": "Bypassed",
+      "violations": []
+    },
+    "canvas-block--modulator": {
+      "title": "Canvas/Block",
+      "name": "Modulator",
+      "violations": []
+    },
+    "canvas-block--vu-meter-lit": {
+      "title": "Canvas/Block",
+      "name": "Vu Meter Lit",
+      "violations": []
+    },
+    "canvas-block--pilot-knobs": {
+      "title": "Canvas/Block",
+      "name": "Pilot Knobs",
+      "violations": []
+    },
+    "canvas-block--muted": {
+      "title": "Canvas/Block",
+      "name": "Muted",
+      "violations": []
+    },
+    "canvas-block--pilot-knobs-focused": {
+      "title": "Canvas/Block",
+      "name": "Pilot Knobs Focused",
+      "violations": []
+    },
+    "canvas-block--sandbox-load-failed": {
+      "title": "Canvas/Block",
+      "name": "Sandbox Load Failed",
+      "violations": []
+    },
+    "canvas-block--sandbox-crashed": {
+      "title": "Canvas/Block",
+      "name": "Sandbox Crashed",
+      "violations": []
+    },
+    "canvas-block--labeled-ports": {
+      "title": "Canvas/Block",
+      "name": "Labeled Ports",
+      "violations": []
+    },
+    "canvas-block--vu-meter-idle": {
+      "title": "Canvas/Block",
+      "name": "Vu Meter Idle",
+      "violations": []
+    },
+    "canvas-blockembed--audio-fx": {
+      "title": "Canvas/BlockEmbed",
+      "name": "Audio Fx",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 6
+        }
+      ]
+    },
+    "canvas-block--sandbox-in-process-fallback": {
+      "title": "Canvas/Block",
+      "name": "Sandbox In Process Fallback",
+      "violations": []
+    },
+    "canvas-blockembed--instrument": {
+      "title": "Canvas/BlockEmbed",
+      "name": "Instrument",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 4
+        }
+      ]
+    },
+    "canvas-block--category-row": {
+      "title": "Canvas/Block",
+      "name": "Category Row",
+      "violations": []
+    },
+    "canvas-blockembed--meter-silent": {
+      "title": "Canvas/BlockEmbed",
+      "name": "Meter Silent",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 6
+        }
+      ]
+    },
+    "canvas-blockembed--midi-fx": {
+      "title": "Canvas/BlockEmbed",
+      "name": "Midi Fx",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 4
+        }
+      ]
+    },
+    "canvas-blockembed--meter-lit": {
+      "title": "Canvas/BlockEmbed",
+      "name": "Meter Lit",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 6
+        }
+      ]
+    },
+    "canvas-blockembed--modulator": {
+      "title": "Canvas/BlockEmbed",
+      "name": "Modulator",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 4
+        }
+      ]
+    },
+    "canvas-blockembed--spectrum-live": {
+      "title": "Canvas/BlockEmbed",
+      "name": "Spectrum Live",
+      "violations": []
+    },
+    "canvas-blockexpandedheight--expanded-audio-fx": {
+      "title": "Canvas/BlockExpandedHeight",
+      "name": "Expanded Audio Fx",
+      "violations": []
+    },
+    "canvas-blockembed--spectrum-empty": {
+      "title": "Canvas/BlockEmbed",
+      "name": "Spectrum Empty",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 1
+        }
+      ]
+    },
+    "canvas-cable--audio": {
+      "title": "Canvas/Cable",
+      "name": "Audio",
+      "violations": []
+    },
+    "canvas-cable--midi": {
+      "title": "Canvas/Cable",
+      "name": "Midi",
+      "violations": []
+    },
+    "canvas-cable--surround-six-channel": {
+      "title": "Canvas/Cable",
+      "name": "Surround Six Channel",
+      "violations": []
+    },
+    "canvas-cable--sidechain": {
+      "title": "Canvas/Cable",
+      "name": "Sidechain",
+      "violations": []
+    },
+    "canvas-cable--value": {
+      "title": "Canvas/Cable",
+      "name": "Value",
+      "violations": []
+    },
+    "canvas-cable--wireless-bus-badge": {
+      "title": "Canvas/Cable",
+      "name": "Wireless Bus Badge",
+      "violations": []
+    },
+    "canvas-cable--active-with-signal": {
+      "title": "Canvas/Cable",
+      "name": "Active With Signal",
+      "violations": []
+    },
+    "canvas-canvascontextmenu--default": {
+      "title": "Canvas/CanvasContextMenu",
+      "name": "Default",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 12
+        }
+      ]
+    },
+    "canvas-canvascontextmenu--empty-board": {
+      "title": "Canvas/CanvasContextMenu",
+      "name": "Empty Board",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 10
+        }
+      ]
+    },
+    "canvas-canvascontextmenu--toggles-active": {
+      "title": "Canvas/CanvasContextMenu",
+      "name": "Toggles Active",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 12
+        }
+      ]
+    },
+    "canvas-canvascontextmenu--add-block-handoff": {
+      "title": "Canvas/CanvasContextMenu",
+      "name": "Add Block Handoff",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 12
+        }
+      ]
+    },
+    "canvas-commandpalette--open": {
+      "title": "Canvas/CommandPalette",
+      "name": "Open",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 16
+        }
+      ]
+    },
+    "canvas-canvascontextmenu--auto-layout-wired": {
+      "title": "Canvas/CanvasContextMenu",
+      "name": "Auto Layout Wired",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 12
+        }
+      ]
+    },
+    "canvas-commentframe--orange": {
+      "title": "Canvas/CommentFrame",
+      "name": "Orange",
+      "violations": []
+    },
+    "canvas-commentframe--blue": {
+      "title": "Canvas/CommentFrame",
+      "name": "Blue",
+      "violations": []
+    },
+    "canvas-commentframe--teal": {
+      "title": "Canvas/CommentFrame",
+      "name": "Teal",
+      "violations": []
+    },
+    "canvas-commandpalette--empty-results": {
+      "title": "Canvas/CommandPalette",
+      "name": "Empty Results",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 16
+        }
+      ]
+    },
+    "canvas-edgecontextmenu--wired-audio": {
+      "title": "Canvas/EdgeContextMenu",
+      "name": "Wired Audio",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 2
+        }
+      ]
+    },
+    "canvas-edgecontextmenu--wired-midi": {
+      "title": "Canvas/EdgeContextMenu",
+      "name": "Wired Midi",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 1
+        }
+      ]
+    },
+    "canvas-edgecontextmenu--on-bus": {
+      "title": "Canvas/EdgeContextMenu",
+      "name": "On Bus",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 2
+        }
+      ]
+    },
+    "canvas-commentframe--unlabeled": {
+      "title": "Canvas/CommentFrame",
+      "name": "Unlabeled",
+      "violations": []
+    },
+    "canvas-nestedchrome--root-no-chrome": {
+      "title": "Canvas/NestedChrome",
+      "name": "Root No Chrome",
+      "violations": []
+    },
+    "canvas-graphcanvas--empty": {
+      "title": "Canvas/GraphCanvas",
+      "name": "Empty",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 2
+        }
+      ]
+    },
+    "canvas-graphcanvas--default": {
+      "title": "Canvas/GraphCanvas",
+      "name": "Default",
+      "violations": []
+    },
+    "canvas-graphcanvas--nested-depth": {
+      "title": "Canvas/GraphCanvas",
+      "name": "Nested Depth",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 2
+        }
+      ]
+    },
+    "canvas-nestedchrome--level-four-deep": {
+      "title": "Canvas/NestedChrome",
+      "name": "Level Four Deep",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 2
+        }
+      ]
+    },
+    "canvas-nestedchrome--long-names": {
+      "title": "Canvas/NestedChrome",
+      "name": "Long Names",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 2
+        }
+      ]
+    },
+    "canvas-nestedchrome--level-two": {
+      "title": "Canvas/NestedChrome",
+      "name": "Level Two",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 2
+        }
+      ]
+    },
+    "canvas-nestedchrome--level-one": {
+      "title": "Canvas/NestedChrome",
+      "name": "Level One",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 2
+        }
+      ]
+    },
+    "canvas-nodecontextmenu--midi-fx-block": {
+      "title": "Canvas/NodeContextMenu",
+      "name": "Midi Fx Block",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 7
+        }
+      ]
+    },
+    "canvas-nodecontextmenu--default": {
+      "title": "Canvas/NodeContextMenu",
+      "name": "Default",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 8
+        }
+      ]
+    },
+    "canvas-nodecontextmenu--bypassed-and-muted": {
+      "title": "Canvas/NodeContextMenu",
+      "name": "Bypassed And Muted",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 7
+        }
+      ]
+    },
+    "canvas-nodecontextmenu--modulator-block": {
+      "title": "Canvas/NodeContextMenu",
+      "name": "Modulator Block",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 8
+        }
+      ]
+    },
+    "canvas-nodecontextmenu--color-swatch-argb-normalised": {
+      "title": "Canvas/NodeContextMenu",
+      "name": "Color Swatch Argb Normalised",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 8
+        }
+      ]
+    },
+    "canvas-nodecontextmenu--oversample-submenu": {
+      "title": "Canvas/NodeContextMenu",
+      "name": "Oversample Submenu",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 8
+        }
+      ]
+    },
+    "canvas-nodecontextmenu--disconnect-submenu": {
+      "title": "Canvas/NodeContextMenu",
+      "name": "Disconnect Submenu",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 8
+        }
+      ]
+    },
+    "canvas-nodecontextmenu--color-swatch-open": {
+      "title": "Canvas/NodeContextMenu",
+      "name": "Color Swatch Open",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 8
+        }
+      ]
+    },
+    "canvas-quickaddpopup--open": {
+      "title": "Canvas/QuickAddPopup",
+      "name": "Open",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 10
+        }
+      ]
+    },
+    "canvas-nodecontextmenu--replace-picker": {
+      "title": "Canvas/NodeContextMenu",
+      "name": "Replace Picker",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 8
+        }
+      ]
+    },
+    "canvas-nodecontextmenu--replace-picker-empty": {
+      "title": "Canvas/NodeContextMenu",
+      "name": "Replace Picker Empty",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 8
+        }
+      ]
+    },
+    "canvas-nodecontextmenu--oversample-honest-degraded-audio-io": {
+      "title": "Canvas/NodeContextMenu",
+      "name": "Oversample Honest Degraded Audio IO",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 7
+        }
+      ]
+    },
+    "canvas-quickaddpopup--port-type-no-match": {
+      "title": "Canvas/QuickAddPopup",
+      "name": "Port Type No Match",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 2
+        }
+      ]
+    },
+    "canvas-quickaddpopup--port-type-audio-with-fav-recents": {
+      "title": "Canvas/QuickAddPopup",
+      "name": "Port Type Audio With Fav Recents",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 10
+        }
+      ]
+    },
+    "canvas-quickaddpopup--port-type-midi": {
+      "title": "Canvas/QuickAddPopup",
+      "name": "Port Type Midi",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 2
+        }
+      ]
+    },
+    "canvas-quickaddpopup--port-type-audio": {
+      "title": "Canvas/QuickAddPopup",
+      "name": "Port Type Audio",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 7
+        }
+      ]
+    },
+    "canvas-quickaddpopup--fuzzy-search-results": {
+      "title": "Canvas/QuickAddPopup",
+      "name": "Fuzzy Search Results",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 2
+        }
+      ]
+    },
+    "canvas-quickaddpopup--no-favorites": {
+      "title": "Canvas/QuickAddPopup",
+      "name": "No Favorites",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 8
+        }
+      ]
+    },
+    "canvas-quickaddpopup--no-plugins-scanned": {
+      "title": "Canvas/QuickAddPopup",
+      "name": "No Plugins Scanned",
+      "violations": []
+    },
+    "canvas-quickaddpopup--recents-first-on-open": {
+      "title": "Canvas/QuickAddPopup",
+      "name": "Recents First On Open",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 10
+        }
+      ]
+    },
+    "canvas-quickaddpopup--most-used-ordering": {
+      "title": "Canvas/QuickAddPopup",
+      "name": "Most Used Ordering",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 2
+        }
+      ]
+    },
+    "canvas-quickaddpopup--category-label-visible": {
+      "title": "Canvas/QuickAddPopup",
+      "name": "Category Label Visible",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 8
+        }
+      ]
+    },
+    "canvas-quickaddpopup--metadata-search": {
+      "title": "Canvas/QuickAddPopup",
+      "name": "Metadata Search",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 2
+        }
+      ]
+    },
+    "canvas-quickaddpopup--typo-tolerance": {
+      "title": "Canvas/QuickAddPopup",
+      "name": "Typo Tolerance",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 1
+        }
+      ]
+    },
+    "canvas-quickaddpopup--signal-out-overrides-category": {
+      "title": "Canvas/QuickAddPopup",
+      "name": "Signal Out Overrides Category",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 4
+        }
+      ]
+    },
+    "canvas-scripteditor--with-close-button": {
+      "title": "Canvas/ScriptEditor",
+      "name": "With Close Button",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 2
+        }
+      ]
+    },
+    "canvas-scripteditor--default": {
+      "title": "Canvas/ScriptEditor",
+      "name": "Default",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 2
+        }
+      ]
+    },
+    "canvas-quickaddpopup--usage-count-ranking": {
+      "title": "Canvas/QuickAddPopup",
+      "name": "Usage Count Ranking",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 2
+        }
+      ]
+    },
+    "🔍-review-quickadd--start-review": {
+      "title": "🔍 Review/QuickAdd",
+      "name": "▶ Start review",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 11
+        },
+        {
+          "id": "scrollable-region-focusable",
+          "impact": "serious",
+          "help": "Scrollable region must have keyboard access",
+          "nodes": 1
+        },
+        {
+          "id": "select-name",
+          "impact": "critical",
+          "help": "Select element must have an accessible name",
+          "nodes": 1
+        }
+      ]
+    },
+    "🔍-review-bottomstrip--start-review": {
+      "title": "🔍 Review/BottomStrip",
+      "name": "▶ Start review",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 13
+        },
+        {
+          "id": "select-name",
+          "impact": "critical",
+          "help": "Select element must have an accessible name",
+          "nodes": 1
+        }
+      ]
+    },
+    "🔍-review-block--start-review": {
+      "title": "🔍 Review/Block",
+      "name": "▶ Start review",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 3
+        },
+        {
+          "id": "select-name",
+          "impact": "critical",
+          "help": "Select element must have an accessible name",
+          "nodes": 1
+        }
+      ]
+    },
+    "🔍-review-inspector--start-review": {
+      "title": "🔍 Review/Inspector",
+      "name": "▶ Start review",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 6
+        },
+        {
+          "id": "scrollable-region-focusable",
+          "impact": "serious",
+          "help": "Scrollable region must have keyboard access",
+          "nodes": 1
+        },
+        {
+          "id": "select-name",
+          "impact": "critical",
+          "help": "Select element must have an accessible name",
+          "nodes": 1
+        }
+      ]
+    },
+    "reactbits-blurtext--by-letters": {
+      "title": "ReactBits/BlurText",
+      "name": "By Letters",
+      "violations": []
+    },
+    "reactbits-blurtext--default": {
+      "title": "ReactBits/BlurText",
+      "name": "Default",
+      "violations": []
+    },
+    "🔍-review-①-status--dashboard": {
+      "title": "🔍 Review/① Status",
+      "name": "▶ Open dashboard",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 4
+        }
+      ]
+    },
+    "🔍-review-toolbar--start-review": {
+      "title": "🔍 Review/Toolbar",
+      "name": "▶ Start review",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 10
+        },
+        {
+          "id": "select-name",
+          "impact": "critical",
+          "help": "Select element must have an accessible name",
+          "nodes": 1
+        }
+      ]
+    }
+  }
+}

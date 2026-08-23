@@ -1,0 +1,44 @@
+Task #10 B1 SessionTree evidence
+Generated: 2026-05-30
+========================
+
+## TSC check
+EXIT=0 (npx tsc -b — zero errors)
+
+## Vitest storybook tests — ALL 6 PASS (exit code 0)
+✓ SessionTree > With Graphs        147ms
+✓ SessionTree > Empty               19ms
+✓ SessionTree > Single Graph        17ms
+✓ SessionTree > Dirty File          25ms
+✓ SessionTree > With Modules        18ms
+✓ SessionTree > With Breadcrumb     69ms
+
+## rg -i 'graphs' in SessionTree.tsx — NO UI LABELS
+Residual matches (acceptable frozen-store accessors):
+  const boards = useSessionStore((s) => s.graphs);   ← store field (frozen)
+  graphs: tree.map(...)                               ← hydrateFromEngine store call
+  Terminology comment (not rendered)
+
+ZERO rendered 'Graph(s)' UI text.
+
+## Bridge data-path gap (B1 flag)
+The C++ buildGraphOutlineRecursive() emits: id, name, isContainer, children ONLY.
+No 'category' or 'routingCue' fields are emitted at runtime.
+The enriched row display (category dot, type badge, routing cue) is STORY-FIXTURE-ONLY.
+This is tracked as a bridge data-path gap — the UI design is complete and future-proof;
+bridge needs to be updated to emit category per outline node for live display.
+Action required from orchestrator: flag to Glen at Gate B-C.
+
+## Container ≠ Module (spec compliance)
+CLAUDE.md: Module is distinct from Container. Containers are labelled 'Container' (not 'Module').
+Breadcrumb nav is 'Board navigation' for drill-through-containers path.
+
+## Files edited
+webview/src/components/layout/SessionTree.tsx   — full redesign
+webview/src/components/layout/SessionTree.stories.tsx — updated + 2 new stories
+
+## Stories
+With Graphs, Empty, SingleGraph, DirtyFile (updated with play assertions)
+WithModules (new), WithBreadcrumb (new — breadcrumb drill verified)
+All stories: addon-designs parameters.design attached (docs/stitch-reference/DESIGN.md)
+

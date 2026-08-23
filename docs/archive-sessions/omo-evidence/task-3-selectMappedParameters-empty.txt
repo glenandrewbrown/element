@@ -1,0 +1,10 @@
+# Task 3 — selectMappedParameters — EMPTY store story
+story: http://localhost:6006/iframe.html?id=layout-macrodashboard--empty&viewMode=story
+nav: ok
+loop_signature_present: false
+--- console ---
+[console.debug] [vite] connecting...
+[console.debug] [vite] connected.
+[console.info] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[console.warning] [Icon] Unknown lucide icon name "SlidersHorizontal" — rendering <HelpCircle /> fallback. Add it to the allowlist in webview/src/components/neu/Icon.tsx (named import + ICON_MAP entry). If this is an audio-domain glyph (cable / jack / port-* / scene / etc.), track it as a Phase F.0.8 custom-icon gap.
+[console.warning] [Icon] Unknown lucide icon name "Sparkles" — rendering <HelpCircle /> fallback. Add it to the allowlist in webview/src/components/neu/Icon.tsx (named import + ICON_MAP entry). If this is an audio-domain glyph (cable / jack / port-* / scene / etc.), track it as a Phase F.0.8 custom-icon gap.

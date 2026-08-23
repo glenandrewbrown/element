@@ -1,0 +1,195 @@
+############ STALE-PROOF: removed-prop reference searches (non-test source only) ############
+
+===== 1. GraphStore.breadcrumbs (field on GraphStore) =====
+--- definition in useGraphStore.ts ---
+66:  breadcrumbStack: string[];
+97:    breadcrumbs?: string[];
+135:  breadcrumbStack: ["Main Project"],
+147:    set((s) => ({ breadcrumbStack: [...s.breadcrumbStack, boardId] })),
+151:      breadcrumbStack:
+152:        s.breadcrumbStack.length > 1
+153:          ? s.breadcrumbStack.slice(0, -1)
+154:          : s.breadcrumbStack,
+159:      breadcrumbStack: s.breadcrumbStack.slice(0, index + 1),
+286:      breadcrumbStack:
+287:        data.breadcrumbs && data.breadcrumbs.length > 0
+288:          ? data.breadcrumbs
+424:export const selectBreadcrumbs = (s: GraphStore) => s.breadcrumbStack;
+--- all non-test 'breadcrumbs' (exact word) refs in src ---
+src/hooks/useJuceBridge.ts:146:  breadcrumbs?: string[];
+src/hooks/useJuceBridge.ts:278:  const breadcrumbs =
+src/hooks/useJuceBridge.ts:279:    s.breadcrumbs && s.breadcrumbs.length > 0 ? [...s.breadcrumbs] : undefined;
+src/hooks/useJuceBridge.ts:285:    breadcrumbs,
+src/stores/useGraphStore.ts:97:    breadcrumbs?: string[];
+src/stores/useGraphStore.ts:287:        data.breadcrumbs && data.breadcrumbs.length > 0
+src/stores/useGraphStore.ts:288:          ? data.breadcrumbs
+src/components/layout/Toolbar.tsx:145:  const breadcrumbs = useGraphStore(selectBreadcrumbs);
+src/components/layout/Toolbar.tsx:231:                {breadcrumbs.map((crumb, i) => {
+src/components/layout/Toolbar.tsx:232:                  const isLast = i === breadcrumbs.length - 1;
+src/components/layout/Toolbar.stories.tsx:11:// useGraphStore (breadcrumbs), usePerformStore (bpm, scenes, liveHealth),
+src/components/layout/Breadcrumb.tsx:16:  const breadcrumbs = useGraphStore(selectBreadcrumbs);
+src/components/layout/Breadcrumb.tsx:19:  if (breadcrumbs.length <= 1) return null;
+src/components/layout/Breadcrumb.tsx:23:      {breadcrumbs.map((crumb, i) => {
+src/components/layout/Breadcrumb.tsx:24:        const isLast = i === breadcrumbs.length - 1;
+
+===== 2. PluginBrowserState.favorites =====
+--- definition in usePluginBrowserStore.ts ---
+37:  favoriteIdentifiers: Set<string>;
+44:  favoriteIdentifiers: new Set(),
+65:      const favRaw = parsed?.favoriteIdentifiers as unknown[] | undefined;
+99:      set({ plugins, favoriteIdentifiers: fav, recentIdentifiers: recent });
+--- non-test 'favorites' (exact, not favoriteIdentifiers) refs ---
+src/components/canvas/QuickAddPopup.stories.tsx:9:// QuickAddPopup reads the plugin list + favorites from usePluginBrowserStore
+src/components/canvas/QuickAddPopup.stories.tsx:41:function seed(plugins: BrowserPlugin[], favorites: string[] = []) {
+src/components/canvas/QuickAddPopup.stories.tsx:44:    favoriteIdentifiers: new Set(favorites),
+src/components/canvas/QuickAddPopup.tsx:144:  const { favorites, others } = useMemo(() => {
+src/components/canvas/QuickAddPopup.tsx:147:    return { favorites: favs, others: rest };
+src/components/canvas/QuickAddPopup.tsx:152:    () => [...favorites, ...others],
+src/components/canvas/QuickAddPopup.tsx:153:    [favorites, others],
+src/components/canvas/QuickAddPopup.tsx:279:            {favorites.length > 0 && (
+src/components/canvas/QuickAddPopup.tsx:285:                  {favorites.map((plugin, i) => (
+src/components/canvas/QuickAddPopup.tsx:298:            {favorites.length > 0 && others.length > 0 && (
+src/components/canvas/QuickAddPopup.tsx:305:                  const flatIndex = favorites.length + i;
+
+===== 3. ParameterState.params =====
+14:  params: Array<{ i: number; v: number }>;
+39:        if (!d || typeof d.nodeId !== "string" || !Array.isArray(d.params))
+41:        for (const p of d.params) {
+--- non-test ParameterState shape ---
+src/stores/useParameterStore.ts:17:interface ParameterState {
+===== 3b. ParameterState full shape (useParameterStore.ts lines 1-60) =====
+import { create } from "zustand";
+
+/**
+ * Live AudioProcessorParameter values streamed from the C++ host at ~15 Hz.
+ * Keys are `${nodeUuid}:${paramIndex}`. Values are normalised 0–1 (the same
+ * representation `setNodeParameterValue` writes back through the bridge).
+ *
+ * The store updates only changed entries (delta channel) and prunes stale
+ * node entries when `pruneNodes` is called with the current set of node UUIDs.
+ */
+
+export type ParameterDelta = {
+  nodeId: string;
+  params: Array<{ i: number; v: number }>;
+};
+
+interface ParameterState {
+  values: Record<string, number>;
+  applyDeltas: (deltas: ParameterDelta[]) => void;
+  /** Drop entries for any nodeId not in the supplied set — call after graph topology change. */
+  pruneNodes: (liveNodeIds: Iterable<string>) => void;
+  /** Optimistic local update — call before bridge write so UI reflects the change immediately. */
+  setLocal: (nodeId: string, paramIndex: number, value: number) => void;
+  clear: () => void;
+}
+
+export const paramKey = (nodeId: string, paramIndex: number): string =>
+  `${nodeId}:${paramIndex}`;
+
+export const useParameterStore = create<ParameterState>()((set) => ({
+  values: {},
+
+  applyDeltas: (deltas) =>
+    set((st) => {
+      if (!Array.isArray(deltas) || deltas.length === 0) return st;
+      const next = { ...st.values };
+      let changed = false;
+      for (const d of deltas) {
+        if (!d || typeof d.nodeId !== "string" || !Array.isArray(d.params))
+          continue;
+        for (const p of d.params) {
+          if (!p || typeof p.i !== "number" || typeof p.v !== "number")
+            continue;
+          const k = paramKey(d.nodeId, p.i);
+          if (next[k] !== p.v) {
+            next[k] = p.v;
+            changed = true;
+          }
+        }
+      }
+      return changed ? { values: next } : st;
+    }),
+
+  pruneNodes: (liveNodeIds) =>
+    set((st) => {
+      const liveSet = new Set<string>();
+      for (const id of liveNodeIds) liveSet.add(id);
+      const next: Record<string, number> = {};
+      let pruned = false;
+      for (const k of Object.keys(st.values)) {
+
+===== 4. SceneData & MacroControl type defs =====
+14:  /** Host sample rate label, e.g. "48.0 kHz" */
+
+===== 4b. non-test refs to SceneData.color / MacroControl.label usage =====
+--- .color on scene (non-test) ---
+--- macro .label (non-test) ---
+===== SceneData / MacroControl definitions (repo-wide, non-test) =====
+rg: unrecognized file type: tsx
+--- field bodies ---
+SceneData in: src/data/types.ts
+63:export interface SceneData {
+64-  id: string;
+65-  name: string;
+66-  index: number;
+67-  active: boolean;
+68-  /** Host has a stored parameter snapshot for this scene */
+69-  hasCapture?: boolean;
+70-}
+71-
+MacroControl in: src/data/types.ts
+72:export interface MacroControl {
+73-  id: string;
+74-  name: string;
+75-  sourceBlock: string;
+76-  sourceParam: string;
+77-  /** 0–100 */
+78-  value: number;
+79-  type: "knob" | "fader";
+80-  signalType: SignalType;
+
+--- non-test refs to '.color' anywhere + 'name' field on scene/macro ---
+usePerformStore.ts: ZERO 'color'
+14:  /** Host sample rate label, e.g. "48.0 kHz" */
+===== Block: Port type shape (does 'index' exist?) =====
+6:export interface Port {
+7-  id: string;
+8-  type: SignalType;
+9-  direction: "input" | "output";
+10-  label: string;
+11-  connected: boolean;
+12-}
+13-
+14-export interface BlockData {
+15-  [key: string]: unknown; // React Flow compat
+16-  id: string;
+--- non-test refs to Port.index ---
+
+===== ConnectionEditor: node 'type' union — is 'modifier' valid? =====
+2:export type BlockCategory = "generator" | "modifier" | "logic";
+
+===== CommandPalette: how does it get plugins? (store vs prop) =====
+2: * Tests for <CommandPalette /> — Cmd+K modal search for actions, plugins, scenes.
+30:  nativeGraphAddPlugin: vi.fn(async () => undefined),
+83:vi.mock("../../../stores/usePluginBrowserStore", () => ({
+84:  usePluginBrowserStore: vi.fn((selector: (s: unknown) => unknown) =>
+86:      plugins: [
+
+===== useKeyboard: viewport assertion source =====
+      { id: "a", position: { x: 0, y: 0 }, selected: false, type: "block" },
+      { id: "b", position: { x: 100, y: 0 }, selected: false, type: "block" },
+    ];
+    useGraphStore.setState((s) => ({
+      ...s,
+      nodes,
+      edges: [],
+      selectedNodeId: "a",
+    }) as any);
+    mockGetNodes.mockReturnValue(nodes);
+    const spy = vi.spyOn(useGraphStore.getState(), "selectNode");
+    renderHook(() => useKeyboard({ onToggleCommandPalette: vi.fn() }));
+    fire("Tab");
+    expect(spy).toHaveBeenCalledWith("b");
+  });
+

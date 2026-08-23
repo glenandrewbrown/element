@@ -1,0 +1,20 @@
+-- User Home Directory: /Users/glenandrewbrown
+-- ccache not found
+-- Element version: 2.2.0.17 (f85e246c)
+-- Checking for jack audio
+-- Checking for module 'jack'
+--   Package 'jack' not found
+-- Could NOT find sol2 (missing: sol2_DIR)
+-- Could NOT find JUCE (missing: JUCE_DIR)
+-- Configuring juceaide
+-- Building juceaide
+-- Exporting juceaide
+-- Testing juceaide
+-- Finished setting up juceaide
+-- JUCE modules directory: /Volumes/Projects/Development_Projects/Github_Repos/element/build-merged/_deps/juce-src/modules
+-- Building CLAP with CLAP_CXX_STANDARD=20
+-- CLAP version: 1.2.0
+-- Configuring done (12.6s)
+-- Generating done (0.7s)
+-- Build files have been written to: /Volumes/Projects/Development_Projects/Github_Repos/element/build-merged
+CMAKE_EXIT=0

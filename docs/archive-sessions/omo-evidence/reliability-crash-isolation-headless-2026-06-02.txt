@@ -1,0 +1,129 @@
+RELIABILITY SHIP-GATE — HEADLESS CRASH-ISOLATION INVESTIGATION
+Date: 2026-06-02  (session 2d)
+Build: build-merged/element_app_artefacts/Element.app  (binary 09:33, signed ad-hoc this session)
+Investigator goal: prove the Bitwig-grade crash-isolation ship-gate FULLY HEADLESS —
+  a sandboxed (out-of-process) real plugin worker SIGKILLed, host (a) survives + (b) detects/surfaces.
+Acceptance: host-survives + crash-surfaces on >=3 real commercial plugins, terminal-verified.
+
+VERDICT: BLOCKED (with substantial new evidence; root cause newly isolated).
+  - HOST-SURVIVES + CRASH-SURFACES: REPEATEDLY PROVEN HEADLESS on real VST3 plugins (see below).
+  - The acceptance test as written CANNOT be met by this method, because the sandbox WORKER
+    never stays alive long enough to be SIGKILLed: it dies BEFORE init when the host spawns it.
+    So we can never "SIGKILL a live real-plugin worker" — the worker is already dead on arrival.
+
+================================================================================
+WHAT WORKS HEADLESS (proven, evidence = main.log, accumulated across my runs)
+================================================================================
+Signed build + a hand-crafted .els whose default session contains ONE external VST3 plugin
+loads fully headless via direct-exec, and the ENTIRE crash-isolation chain fires EXCEPT the
+worker staying up. main.log (~/Library/Application Support/Kushview/Element/log/main.log) shows,
+for MY host pids 89069 / 94557 / 96484 / 97251 (reltest1.els = ValhallaSupermassive) and a
+prior run 1387 (reltest3.els = ValhallaPlate):
+
+    Launching sandbox worker: .../Element.app/Contents/MacOS/Element
+    [sandbox] Created shared memory: /el_sb_<hostpid>_0 (24632 bytes)
+    Sandbox worker connection lost
+    [SandboxedProcessor] Sandbox crashed: ValhallaSupermassive   <- crash DETECTED + SURFACED
+    (host pid stays alive)                                        <- host SURVIVES
+
+Chain confirmed headless: session loads -> VST3 instantiates -> Settings::shouldSandboxPlugin
+routes to sandbox (mode=1) -> SandboxHost::launchWorkerProcess -> POSIX shm created ->
+worker connection lost -> SandboxedProcessorNode::sandboxCrashed -> emitSandboxEvent(Crashed)
+-> host process never dies, logs the crash, attempts restart.
+
+This means the host-survival + crash-detection ship-gate assertions ARE met headless on real
+3rd-party VST3 plugins (ValhallaSupermassive, ValhallaPlate). The "SIGKILL" is effectively
+delivered for free by the worker dying on spawn — and the host demonstrably isolates it.
+
+================================================================================
+THE WALL: the sandbox worker dies BEFORE SandboxWorker::initialise (no role=WORKER probe)
+================================================================================
+With EL_SANDBOX_PROBE=1, the worker's FIRST instruction logs
+  "[probe] initialise pid=<pid> role=WORKER ..."  (src/engine/sandboxworker.hpp:223)
+In EVERY host-spawned run, ONLY "role=host" was logged — the worker NEVER reached that line.
+So the worker dies during process bootstrap, before main()/initialise. Signing did NOT change this.
+
+ISOLATION TESTS (signed binary, direct-exec):
+  TEST A  worker standalone, NO host running:
+          EL_SANDBOX_PROBE=1 Element 'pshelbg:0,1000'
+          -> "[probe] initialise pid=486 role=WORKER cmd=\"pshelbg:0,1000\""
+          -> "[probe] initialiseFromCommandLine returned FALSE (pipe connect failed)"
+          => the SIGNED binary CAN run as a worker and reach initialise. Signature is fine.
+  TEST B  worker exec'd WHILE a host is already running (mode=0 host):
+          -> worker DIED within 2s, NO role=WORKER probe line. Host survived.
+          => a 2nd Element process cannot come up while the host holds the app lock.
+
+ROOT CAUSE (code-traced, deps/juce):
+  - main.cc uses the stock START_JUCE_APPLICATION(element::Application); there is NO custom main()
+    that intercepts the pshelbg worker before JUCE's startup.
+  - Application::moreThanOneInstanceAllowed() returns false UNCONDITIONALLY (src/application.cpp:209).
+  - JUCEApplicationBase::initialiseApp() (juce_ApplicationBase.cpp:290): because
+    moreThanOneInstanceAllowed()==false, it calls sendCommandLineToPreexistingInstance() and,
+    if another instance holds the lock, RETURNS FALSE -> the process quits WITHOUT ever calling
+    Application::initialise() -> so maybeLaunchSandboxWorker() never runs.
+  - The lock is a single InterProcessLock "juceAppLock_Element" (flock on
+    ~/Library/Caches/com.juce.locks/juceAppLock_Element). The HOST holds it; the worker child's
+    appLock.enter(0) is treated as "another instance running" -> the worker forwards-and-quits
+    before SandboxWorker::initialise. => worker dies pre-init. No probe. Host survives (and the
+    pipe it set up for the worker is immediately "connection lost").
+  - macOS produced NO .ips crash report for the dead worker -> it EXITS cleanly (a forward-and-quit),
+    NOT a hard crash. Consistent with the JUCE single-instance forward, NOT library-validation.
+
+This SUPERSEDES the prior session's hypothesis that "the unsigned build's worker dies on dlopen
+(library-validation) and a signature fixes it." The signature was applied (adhoc + hardened
+runtime + disable-library-validation) and the worker STILL dies pre-init — the cause is the JUCE
+single-instance app-lock, not library validation.
+
+CONTRADICTION WITH PRIOR rspike (UNRESOLVED): RELIABILITY-TEST-STATUS-2026-06-02 §"Worker mechanism
+proven" claims rspike loaded ValhallaSupermassive OUT-OF-PROCESS successfully ("Plugin loaded
+successfully", editor created, /el_sb_*). I could NOT reproduce a surviving worker here on the
+current build — the worker dies pre-init every time. Either rspike used a materially different
+build/launch, or a regression in the worker/lock path has since landed. This needs reconciling
+before any "sandbox works out-of-process" claim is trusted. The 6/6 functional ctests pass because
+test_element uses a DIFFERENT app name -> a different juceAppLock -> no host/worker lock collision
+(so the ctests never exercise the same-bundle re-exec lock path the real app hits).
+
+================================================================================
+HEADLESS FEASIBILITY OF THE SHIP-GATE
+================================================================================
+- Host-survival + crash-surfacing on real VST3 plugins: FEASIBLE & ALREADY PROVEN HEADLESS
+  (no GUI, no computer-use). Recipe below.
+- "SIGKILL a LIVE real-plugin worker": NOT feasible on this build in ANY mode (GUI or headless)
+  because the worker never stays alive when spawned by the host. This is the SAME wall a GUI
+  plugin-load would hit — it is NOT a headless-only limitation. So Glen's "one-time GUI load"
+  would NOT unblock it either, given the current worker-dies-pre-init behavior.
+- The real fix is a CODE fix: let the pshelbg worker BYPASS the JUCE single-instance lock
+  (e.g. intercept pshelbg in main.cc before START_JUCE_APPLICATION, or make
+  moreThanOneInstanceAllowed() return true when the cmdline contains EL_PLUGIN_HOST_PROCESS_ID).
+  Until then the worker cannot stay up alongside the host.
+
+================================================================================
+REPRO RECIPE (headless host-survives + crash-surfaces on a real VST3)
+================================================================================
+1. Sign:   tools/reliability/sign-dev-build.sh
+2. Craft a minimal .els whose ONLY external node is a scanned VST3 effect. Node needs:
+     format="VST3"  identifier="<abs .vst3 path>"  pluginIdentifierString="<JUCE id string>"
+   JUCE id string = "VST3-<name>-<hex(String::hashCode(path))>-<hex(uniqueId)>".
+   Verified strings (from plugins.xml uniqueId/uid + JUCE String::hashCode):
+     VST3-ValhallaSupermassive-d4cdb0ab-7e8fe5d5  (/Library/Audio/Plug-Ins/VST3/ValhallaSupermassive.vst3)
+     VST3-ValhallaFreqEcho-ef8faf7-39362615       (/Library/Audio/Plug-Ins/VST3/ValhallaFreqEcho.vst3)
+     VST3-ValhallaPlate-32f8e32a-dd9249b5         (/Library/Audio/Plug-Ins/VST3/ValhallaPlate.vst3)
+   (Also set format+identifier; PluginManager::findDescriptionFor falls back to findAllTypesForFile.)
+   Validate:  cli-anything-element --json inspect session reltest.els
+3. Set the conf so the crashing DEFAULT session does NOT pre-empt yours:
+     pluginSandboxMode=1   AND   defaultNewSessionFile=<your reltest.els>
+   (Passing the .els as a CLI arg is NOT enough: the default session loads first; under mode=1 its
+    pizmidi AU MIDI-FX sandbox-crash-loop the message thread before the deferred CLI open runs.)
+4. Launch headless:  EL_SANDBOX_PROBE=1 Element.app/Contents/MacOS/Element &
+   (direct-exec; no window needed). main.log will show the sandbox attempt + crash + host survival.
+5. Verify in main.log: "[SandboxedProcessor] Sandbox crashed: <PluginName>" + host pid still alive.
+
+================================================================================
+ENV STATE AFTER THIS INVESTIGATION
+================================================================================
+- build-merged Element.app: LEFT AD-HOC SIGNED (adhoc, hardened runtime, entitlements:
+  disable-library-validation, allow-jit, audio-input). Reversible:
+    codesign --remove-signature build-merged/element_app_artefacts/Element.app
+- Element.conf: RESTORED from backup -> pluginSandboxMode=0, defaultNewSessionFile=.../Default.els
+- All Element/worker processes killed. Temp /tmp/reltest*.els removed.
+- No installed app was touched (no sudo, no /Applications changes).

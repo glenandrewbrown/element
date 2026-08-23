@@ -1,0 +1,4107 @@
+diff --git a/cmake/FindSol2.cmake b/cmake/FindSol2.cmake
+index 39b56a86..2bfc0182 100644
+--- a/cmake/FindSol2.cmake
++++ b/cmake/FindSol2.cmake
+@@ -20,4 +20,8 @@ if(NOT sol2_FOUND)
+         FetchContent_Populate(sol2)
+         add_subdirectory(${sol2_SOURCE_DIR} ${sol2_BINARY_DIR} EXCLUDE_FROM_ALL)
+     endif()
++
++    if(TARGET sol2)
++        target_include_directories(sol2 BEFORE INTERFACE "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/src/lua/src>" "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/src/lua/sol>")
++    endif()
+ endif()
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+index e98cf3b3..c188db43 100644
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -13,12 +13,12 @@ set_target_properties(element PROPERTIES
+ )
+ 
+ target_include_directories(element
+-    PUBLIC
++    BEFORE PUBLIC
++        "${PROJECT_SOURCE_DIR}/src/lua/src"
++        "${PROJECT_SOURCE_DIR}/src/lua/sol"
+         "${GENERATED_INCLUDE_DIR}"
+         "${PROJECT_SOURCE_DIR}/include"
+         "${PROJECT_SOURCE_DIR}/src"
+-        "${PROJECT_SOURCE_DIR}/src/lua/sol"
+-        "${PROJECT_SOURCE_DIR}/src/lua/src"
+         "${PROJECT_SOURCE_DIR}/deps/clap-juce-extensions/clap-libs/clap/include"
+         "${PROJECT_SOURCE_DIR}/deps/clap-juce-extensions/clap-libs/clap-helpers/include"
+         "${Boost_INCLUDE_DIRS}"       
+diff --git a/src/el/MouseEvent.cpp b/src/el/MouseEvent.cpp
+index 6812a8de..39f238c1 100644
+--- a/src/el/MouseEvent.cpp
++++ b/src/el/MouseEvent.cpp
+@@ -31,31 +31,31 @@ int luaopen_el_MouseEvent (lua_State* L)
+ 
+         /// X position.
+         // @tfield int MouseEvent.x
+-        "x", &MouseEvent::x,
++        "x", sol::readonly_property ([] (const MouseEvent& self) { return self.x; }),
+ 
+         /// Y position.
+         // @tfield int MouseEvent.y
+-        "y", &MouseEvent::y,
++        "y", sol::readonly_property ([] (const MouseEvent& self) { return self.y; }),
+ 
+         /// Pressure (0.0-1.0).
+         // @tfield number MouseEvent.pressure
+-        "pressure",  &MouseEvent::pressure,
++        "pressure",  sol::readonly_property ([] (const MouseEvent& self) { return self.pressure; }),
+ 
+         /// Orientation in radians.
+         // @tfield number MouseEvent.orientation
+-        "orientation", &MouseEvent::orientation,
++        "orientation", sol::readonly_property ([] (const MouseEvent& self) { return self.orientation; }),
+ 
+         /// Rotation in radians.
+         // @tfield number MouseEvent.rotation
+-        "rotation", &MouseEvent::rotation,
++        "rotation", sol::readonly_property ([] (const MouseEvent& self) { return self.rotation; }),
+ 
+         /// Tilt X position (-1.0-1.0).
+         // @tfield number MouseEvent.tiltX
+-        "tiltX", &MouseEvent::tiltX,
++        "tiltX", sol::readonly_property ([] (const MouseEvent& self) { return self.tiltX; }),
+ 
+         /// Tilt Y (-1.0-1.0).
+         // @tfield number MouseEvent.tiltY
+-        "tiltY", &MouseEvent::tiltY,
++        "tiltY", sol::readonly_property ([] (const MouseEvent& self) { return self.tiltY; }),
+ 
+         /// Get the mouse down x coord.
+         // @function MouseEvent.mouseDownX
+diff --git a/webview/package-lock.json b/webview/package-lock.json
+index d8c79775..fec9b0b4 100644
+--- a/webview/package-lock.json
++++ b/webview/package-lock.json
+@@ -32,13 +32,13 @@
+       }
+     },
+     "node_modules/@babel/code-frame": {
+-      "version": "7.29.0",
+-      "resolved": "https://registry.npmjs.org/@babel/code-frame/-/code-frame-7.29.0.tgz",
+-      "integrity": "sha512-9NhCeYjq9+3uxgdtp20LSiJXJvN0FeCtNGpJxuMFZ1Kv3cWUNb6DOhJwUvcVCzKGR66cw4njwM6hrJLqgOwbcw==",
++      "version": "7.29.7",
++      "resolved": "https://registry.npmjs.org/@babel/code-frame/-/code-frame-7.29.7.tgz",
++      "integrity": "sha512-Aup7aUOfpbAUg2ROOJN6Iw5f9DMBlzu0mIkm/malLQFN/YQgO48wCj0Kxa3sEHJvPVFg7siR+qRInwXd2qhQKw==",
+       "dev": true,
+       "license": "MIT",
+       "dependencies": {
+-        "@babel/helper-validator-identifier": "^7.28.5",
++        "@babel/helper-validator-identifier": "^7.29.7",
+         "js-tokens": "^4.0.0",
+         "picocolors": "^1.1.1"
+       },
+@@ -47,9 +47,9 @@
+       }
+     },
+     "node_modules/@babel/compat-data": {
+-      "version": "7.29.0",
+-      "resolved": "https://registry.npmjs.org/@babel/compat-data/-/compat-data-7.29.0.tgz",
+-      "integrity": "sha512-T1NCJqT/j9+cn8fvkt7jtwbLBfLC/1y1c7NtCeXFRgzGTsafi68MRv8yzkYSapBnFA6L3U2VSc02ciDzoAJhJg==",
++      "version": "7.29.7",
++      "resolved": "https://registry.npmjs.org/@babel/compat-data/-/compat-data-7.29.7.tgz",
++      "integrity": "sha512-locTkQyKvwIEgBzVrn8693ebc97F2U8ZHjbXwDXJ5Fn2TCpNwTlKcaKLkdHop5c/icOFE7qt7Q9JC5hnKNa6Gg==",
+       "dev": true,
+       "license": "MIT",
+       "engines": {
+@@ -57,21 +57,21 @@
+       }
+     },
+     "node_modules/@babel/core": {
+-      "version": "7.29.0",
+-      "resolved": "https://registry.npmjs.org/@babel/core/-/core-7.29.0.tgz",
+-      "integrity": "sha512-CGOfOJqWjg2qW/Mb6zNsDm+u5vFQ8DxXfbM09z69p5Z6+mE1ikP2jUXw+j42Pf1XTYED2Rni5f95npYeuwMDQA==",
++      "version": "7.29.7",
++      "resolved": "https://registry.npmjs.org/@babel/core/-/core-7.29.7.tgz",
++      "integrity": "sha512-RgHBCvtjbOK2gXSNBNIkNoEc9qoVEtau3hj8gEqKQuL3HZAibKarWFEI3Lfm6EYKkLalOh8eSrj9b+ch9H/VBA==",
+       "dev": true,
+       "license": "MIT",
+       "dependencies": {
+-        "@babel/code-frame": "^7.29.0",
+-        "@babel/generator": "^7.29.0",
+-        "@babel/helper-compilation-targets": "^7.28.6",
+-        "@babel/helper-module-transforms": "^7.28.6",
+-        "@babel/helpers": "^7.28.6",
+-        "@babel/parser": "^7.29.0",
+-        "@babel/template": "^7.28.6",
+-        "@babel/traverse": "^7.29.0",
+-        "@babel/types": "^7.29.0",
++        "@babel/code-frame": "^7.29.7",
++        "@babel/generator": "^7.29.7",
++        "@babel/helper-compilation-targets": "^7.29.7",
++        "@babel/helper-module-transforms": "^7.29.7",
++        "@babel/helpers": "^7.29.7",
++        "@babel/parser": "^7.29.7",
++        "@babel/template": "^7.29.7",
++        "@babel/traverse": "^7.29.7",
++        "@babel/types": "^7.29.7",
+         "@jridgewell/remapping": "^2.3.5",
+         "convert-source-map": "^2.0.0",
+         "debug": "^4.1.0",
+@@ -88,14 +88,14 @@
+       }
+     },
+     "node_modules/@babel/generator": {
+-      "version": "7.29.1",
+-      "resolved": "https://registry.npmjs.org/@babel/generator/-/generator-7.29.1.tgz",
+-      "integrity": "sha512-qsaF+9Qcm2Qv8SRIMMscAvG4O3lJ0F1GuMo5HR/Bp02LopNgnZBC/EkbevHFeGs4ls/oPz9v+Bsmzbkbe+0dUw==",
++      "version": "7.29.8",
++      "resolved": "https://registry.npmjs.org/@babel/generator/-/generator-7.29.8.tgz",
++      "integrity": "sha512-gZbepsdh3WDtgZKWL+vTPh71LSBrm/Y4/QDZBVCcYfmeTEEuoOYwlSy+G1StfJg+/Zy550u/3TATbm7qDbbMtg==",
+       "dev": true,
+       "license": "MIT",
+       "dependencies": {
+-        "@babel/parser": "^7.29.0",
+-        "@babel/types": "^7.29.0",
++        "@babel/parser": "^7.29.8",
++        "@babel/types": "^7.29.8",
+         "@jridgewell/gen-mapping": "^0.3.12",
+         "@jridgewell/trace-mapping": "^0.3.28",
+         "jsesc": "^3.0.2"
+@@ -105,14 +105,14 @@
+       }
+     },
+     "node_modules/@babel/helper-compilation-targets": {
+-      "version": "7.28.6",
+-      "resolved": "https://registry.npmjs.org/@babel/helper-compilation-targets/-/helper-compilation-targets-7.28.6.tgz",
+-      "integrity": "sha512-JYtls3hqi15fcx5GaSNL7SCTJ2MNmjrkHXg4FSpOA/grxK8KwyZ5bubHsCq8FXCkua6xhuaaBit+3b7+VZRfcA==",
++      "version": "7.29.7",
++      "resolved": "https://registry.npmjs.org/@babel/helper-compilation-targets/-/helper-compilation-targets-7.29.7.tgz",
++      "integrity": "sha512-wem6WaBj4NaVYVdNhLPPVacES6ZJ+KBBfSkTMD3YZxbP3rm3Di85tJU5ljaUNhaOynt+Aj0xruhYuzQBt8n71g==",
+       "dev": true,
+       "license": "MIT",
+       "dependencies": {
+-        "@babel/compat-data": "^7.28.6",
+-        "@babel/helper-validator-option": "^7.27.1",
++        "@babel/compat-data": "^7.29.7",
++        "@babel/helper-validator-option": "^7.29.7",
+         "browserslist": "^4.24.0",
+         "lru-cache": "^5.1.1",
+         "semver": "^6.3.1"
+@@ -122,9 +122,9 @@
+       }
+     },
+     "node_modules/@babel/helper-globals": {
+-      "version": "7.28.0",
+-      "resolved": "https://registry.npmjs.org/@babel/helper-globals/-/helper-globals-7.28.0.tgz",
+-      "integrity": "sha512-+W6cISkXFa1jXsDEdYA8HeevQT/FULhxzR99pxphltZcVaugps53THCeiWA8SguxxpSp3gKPiuYfSWopkLQ4hw==",
++      "version": "7.29.7",
++      "resolved": "https://registry.npmjs.org/@babel/helper-globals/-/helper-globals-7.29.7.tgz",
++      "integrity": "sha512-3nQVUAtvkKH9zahfWgw96Jc/uFOmjACE1kQz82E2lqWmHBgjzbNlsC22nuQTfahmWeQtTq5nQ/4Nnd2A1wj4zA==",
+       "dev": true,
+       "license": "MIT",
+       "engines": {
+@@ -132,29 +132,29 @@
+       }
+     },
+     "node_modules/@babel/helper-module-imports": {
+-      "version": "7.28.6",
+-      "resolved": "https://registry.npmjs.org/@babel/helper-module-imports/-/helper-module-imports-7.28.6.tgz",
+-      "integrity": "sha512-l5XkZK7r7wa9LucGw9LwZyyCUscb4x37JWTPz7swwFE/0FMQAGpiWUZn8u9DzkSBWEcK25jmvubfpw2dnAMdbw==",
++      "version": "7.29.7",
++      "resolved": "https://registry.npmjs.org/@babel/helper-module-imports/-/helper-module-imports-7.29.7.tgz",
++      "integrity": "sha512-ejHwrQQYcm9xnTivShn2IDOlIzInN34AXskvq9QicvCtEzq1Vzclu/tKF8Jq1Cg8JG2GL6/EmjgsCT7lXepE3g==",
+       "dev": true,
+       "license": "MIT",
+       "dependencies": {
+-        "@babel/traverse": "^7.28.6",
+-        "@babel/types": "^7.28.6"
++        "@babel/traverse": "^7.29.7",
++        "@babel/types": "^7.29.7"
+       },
+       "engines": {
+         "node": ">=6.9.0"
+       }
+     },
+     "node_modules/@babel/helper-module-transforms": {
+-      "version": "7.28.6",
+-      "resolved": "https://registry.npmjs.org/@babel/helper-module-transforms/-/helper-module-transforms-7.28.6.tgz",
+-      "integrity": "sha512-67oXFAYr2cDLDVGLXTEABjdBJZ6drElUSI7WKp70NrpyISso3plG9SAGEF6y7zbha/wOzUByWWTJvEDVNIUGcA==",
++      "version": "7.29.7",
++      "resolved": "https://registry.npmjs.org/@babel/helper-module-transforms/-/helper-module-transforms-7.29.7.tgz",
++      "integrity": "sha512-UPUVSyXbOh627KiCIGQSgwWzGeBKLkaJ9PJEdrngIwMSzxLR4jS4+f1f1jb7VzBbg8nFLaYotvVPFCTqdrmTAg==",
+       "dev": true,
+       "license": "MIT",
+       "dependencies": {
+-        "@babel/helper-module-imports": "^7.28.6",
+-        "@babel/helper-validator-identifier": "^7.28.5",
+-        "@babel/traverse": "^7.28.6"
++        "@babel/helper-module-imports": "^7.29.7",
++        "@babel/helper-validator-identifier": "^7.29.7",
++        "@babel/traverse": "^7.29.7"
+       },
+       "engines": {
+         "node": ">=6.9.0"
+@@ -164,9 +164,9 @@
+       }
+     },
+     "node_modules/@babel/helper-string-parser": {
+-      "version": "7.27.1",
+-      "resolved": "https://registry.npmjs.org/@babel/helper-string-parser/-/helper-string-parser-7.27.1.tgz",
+-      "integrity": "sha512-qMlSxKbpRlAridDExk92nSobyDdpPijUq2DW6oDnUqd0iOGxmQjyqhMIihI9+zv4LPyZdRje2cavWPbCbWm3eA==",
++      "version": "7.29.7",
++      "resolved": "https://registry.npmjs.org/@babel/helper-string-parser/-/helper-string-parser-7.29.7.tgz",
++      "integrity": "sha512-Pb5ijPrZ89GDH8223L4UP8i6QApWxs04RbPQJTeWDV0/keR2E36MeKnyr6LYmUUvqRRI+Iv87SuF1W6ErINzYw==",
+       "dev": true,
+       "license": "MIT",
+       "engines": {
+@@ -174,9 +174,9 @@
+       }
+     },
+     "node_modules/@babel/helper-validator-identifier": {
+-      "version": "7.28.5",
+-      "resolved": "https://registry.npmjs.org/@babel/helper-validator-identifier/-/helper-validator-identifier-7.28.5.tgz",
+-      "integrity": "sha512-qSs4ifwzKJSV39ucNjsvc6WVHs6b7S03sOh2OcHF9UHfVPqWWALUsNUVzhSBiItjRZoLHx7nIarVjqKVusUZ1Q==",
++      "version": "7.29.7",
++      "resolved": "https://registry.npmjs.org/@babel/helper-validator-identifier/-/helper-validator-identifier-7.29.7.tgz",
++      "integrity": "sha512-qehxGkRj55h/ff8EMaJ+cYhyaKlHIxqYDn682wQD7RNp9UujOQsHog2uS0r2vzr4pW+sXf90NeeayjcNaX3fFg==",
+       "dev": true,
+       "license": "MIT",
+       "engines": {
+@@ -184,9 +184,9 @@
+       }
+     },
+     "node_modules/@babel/helper-validator-option": {
+-      "version": "7.27.1",
+-      "resolved": "https://registry.npmjs.org/@babel/helper-validator-option/-/helper-validator-option-7.27.1.tgz",
+-      "integrity": "sha512-YvjJow9FxbhFFKDSuFnVCe2WxXk1zWc22fFePVNEaWJEu8IrZVlda6N0uHwzZrUM1il7NC9Mlp4MaJYbYd9JSg==",
++      "version": "7.29.7",
++      "resolved": "https://registry.npmjs.org/@babel/helper-validator-option/-/helper-validator-option-7.29.7.tgz",
++      "integrity": "sha512-N9ZErrD+yW5geCDtBqnOoxmR8+tNKiGuxKlDpuJxfsqpa2dFcexaziGAE/qoHLiDDreVNMupxGmSoNlyvsA3gw==",
+       "dev": true,
+       "license": "MIT",
+       "engines": {
+@@ -194,27 +194,27 @@
+       }
+     },
+     "node_modules/@babel/helpers": {
+-      "version": "7.29.2",
+-      "resolved": "https://registry.npmjs.org/@babel/helpers/-/helpers-7.29.2.tgz",
+-      "integrity": "sha512-HoGuUs4sCZNezVEKdVcwqmZN8GoHirLUcLaYVNBK2J0DadGtdcqgr3BCbvH8+XUo4NGjNl3VOtSjEKNzqfFgKw==",
++      "version": "7.29.7",
++      "resolved": "https://registry.npmjs.org/@babel/helpers/-/helpers-7.29.7.tgz",
++      "integrity": "sha512-1k2lAGRMfHTcwuNYcCNUmaUffmQv8KWMfh2iJUUeRlwlwH4FdNG7mfPI10NPfLHJFThE4Tyr4mv7kTNZOiPuBg==",
+       "dev": true,
+       "license": "MIT",
+       "dependencies": {
+-        "@babel/template": "^7.28.6",
+-        "@babel/types": "^7.29.0"
++        "@babel/template": "^7.29.7",
++        "@babel/types": "^7.29.7"
+       },
+       "engines": {
+         "node": ">=6.9.0"
+       }
+     },
+     "node_modules/@babel/parser": {
+-      "version": "7.29.2",
+-      "resolved": "https://registry.npmjs.org/@babel/parser/-/parser-7.29.2.tgz",
+-      "integrity": "sha512-4GgRzy/+fsBa72/RZVJmGKPmZu9Byn8o4MoLpmNe1m8ZfYnz5emHLQz3U4gLud6Zwl0RZIcgiLD7Uq7ySFuDLA==",
++      "version": "7.29.8",
++      "resolved": "https://registry.npmjs.org/@babel/parser/-/parser-7.29.8.tgz",
++      "integrity": "sha512-E8lTAYNB1KW+FH+VGJuZM1ioAx2E6oVlvQFRrf5P8ZZmsiJXYAD9vTFV7yyEURNzgh1dFqMZuO6tUwcARbqFCA==",
+       "dev": true,
+       "license": "MIT",
+       "dependencies": {
+-        "@babel/types": "^7.29.0"
++        "@babel/types": "^7.29.8"
+       },
+       "bin": {
+         "parser": "bin/babel-parser.js"
+@@ -224,33 +224,33 @@
+       }
+     },
+     "node_modules/@babel/template": {
+-      "version": "7.28.6",
+-      "resolved": "https://registry.npmjs.org/@babel/template/-/template-7.28.6.tgz",
+-      "integrity": "sha512-YA6Ma2KsCdGb+WC6UpBVFJGXL58MDA6oyONbjyF/+5sBgxY/dwkhLogbMT2GXXyU84/IhRw/2D1Os1B/giz+BQ==",
++      "version": "7.29.7",
++      "resolved": "https://registry.npmjs.org/@babel/template/-/template-7.29.7.tgz",
++      "integrity": "sha512-puq+Gf35oI24FeN11LkoUQFqv9uwNeWpxXZi/Ji3rRIoKAzKnxRaZ+Gkj0vKS9ZCiTESfng1N9LyOyXvo+m+Gg==",
+       "dev": true,
+       "license": "MIT",
+       "dependencies": {
+-        "@babel/code-frame": "^7.28.6",
+-        "@babel/parser": "^7.28.6",
+-        "@babel/types": "^7.28.6"
++        "@babel/code-frame": "^7.29.7",
++        "@babel/parser": "^7.29.7",
++        "@babel/types": "^7.29.7"
+       },
+       "engines": {
+         "node": ">=6.9.0"
+       }
+     },
+     "node_modules/@babel/traverse": {
+-      "version": "7.29.0",
+-      "resolved": "https://registry.npmjs.org/@babel/traverse/-/traverse-7.29.0.tgz",
+-      "integrity": "sha512-4HPiQr0X7+waHfyXPZpWPfWL/J7dcN1mx9gL6WdQVMbPnF3+ZhSMs8tCxN7oHddJE9fhNE7+lxdnlyemKfJRuA==",
++      "version": "7.29.8",
++      "resolved": "https://registry.npmjs.org/@babel/traverse/-/traverse-7.29.8.tgz",
++      "integrity": "sha512-I5z7H3bf/41ktsNVLtpN0wAa336HkqIHQ5BuPLEhTkt1jVSyZpeNKIzTgEWmlxjdg81R0IgUCcaE+Ok3NvrfZg==",
+       "dev": true,
+       "license": "MIT",
+       "dependencies": {
+-        "@babel/code-frame": "^7.29.0",
+-        "@babel/generator": "^7.29.0",
+-        "@babel/helper-globals": "^7.28.0",
+-        "@babel/parser": "^7.29.0",
+-        "@babel/template": "^7.28.6",
+-        "@babel/types": "^7.29.0",
++        "@babel/code-frame": "^7.29.7",
++        "@babel/generator": "^7.29.8",
++        "@babel/helper-globals": "^7.29.7",
++        "@babel/parser": "^7.29.8",
++        "@babel/template": "^7.29.7",
++        "@babel/types": "^7.29.8",
+         "debug": "^4.3.1"
+       },
+       "engines": {
+@@ -258,57 +258,23 @@
+       }
+     },
+     "node_modules/@babel/types": {
+-      "version": "7.29.0",
+-      "resolved": "https://registry.npmjs.org/@babel/types/-/types-7.29.0.tgz",
+-      "integrity": "sha512-LwdZHpScM4Qz8Xw2iKSzS+cfglZzJGvofQICy7W7v4caru4EaAmyUuO6BGrbyQ2mYV11W0U8j5mBhd14dd3B0A==",
++      "version": "7.29.8",
++      "resolved": "https://registry.npmjs.org/@babel/types/-/types-7.29.8.tgz",
++      "integrity": "sha512-Vj1jF3cPfxg7OAfoI7QnVKLoILlm2JF9pnVHrX8qx7AHMiYWT+NDAA7jChlNgRS4WTLc/fD1lXLmPixluj+3Gg==",
+       "dev": true,
+       "license": "MIT",
+       "dependencies": {
+-        "@babel/helper-string-parser": "^7.27.1",
+-        "@babel/helper-validator-identifier": "^7.28.5"
++        "@babel/helper-string-parser": "^7.29.7",
++        "@babel/helper-validator-identifier": "^7.29.7"
+       },
+       "engines": {
+         "node": ">=6.9.0"
+       }
+     },
+-    "node_modules/@emnapi/core": {
+-      "version": "1.9.1",
+-      "resolved": "https://registry.npmjs.org/@emnapi/core/-/core-1.9.1.tgz",
+-      "integrity": "sha512-mukuNALVsoix/w1BJwFzwXBN/dHeejQtuVzcDsfOEsdpCumXb/E9j8w11h5S54tT1xhifGfbbSm/ICrObRb3KA==",
+-      "dev": true,
+-      "license": "MIT",
+-      "optional": true,
+-      "dependencies": {
+-        "@emnapi/wasi-threads": "1.2.0",
+-        "tslib": "^2.4.0"
+-      }
+-    },
+-    "node_modules/@emnapi/runtime": {
+-      "version": "1.9.1",
+-      "resolved": "https://registry.npmjs.org/@emnapi/runtime/-/runtime-1.9.1.tgz",
+-      "integrity": "sha512-VYi5+ZVLhpgK4hQ0TAjiQiZ6ol0oe4mBx7mVv7IflsiEp0OWoVsp/+f9Vc1hOhE0TtkORVrI1GvzyreqpgWtkA==",
+-      "dev": true,
+-      "license": "MIT",
+-      "optional": true,
+-      "dependencies": {
+-        "tslib": "^2.4.0"
+-      }
+-    },
+-    "node_modules/@emnapi/wasi-threads": {
+-      "version": "1.2.0",
+-      "resolved": "https://registry.npmjs.org/@emnapi/wasi-threads/-/wasi-threads-1.2.0.tgz",
+-      "integrity": "sha512-N10dEJNSsUx41Z6pZsXU8FjPjpBEplgH24sfkmITrBED1/U2Esum9F3lfLrMjKHHjmi557zQn7kR9R+XWXu5Rg==",
+-      "dev": true,
+-      "license": "MIT",
+-      "optional": true,
+-      "dependencies": {
+-        "tslib": "^2.4.0"
+-      }
+-    },
+     "node_modules/@eslint-community/eslint-utils": {
+-      "version": "4.9.1",
+-      "resolved": "https://registry.npmjs.org/@eslint-community/eslint-utils/-/eslint-utils-4.9.1.tgz",
+-      "integrity": "sha512-phrYmNiYppR7znFEdqgfWHXR6NCkZEK7hwWDHZUjit/2/U0r6XvkDl0SYnoM51Hq7FhCGdLDT6zxCCOY1hexsQ==",
++      "version": "4.10.1",
++      "resolved": "https://registry.npmjs.org/@eslint-community/eslint-utils/-/eslint-utils-4.10.1.tgz",
++      "integrity": "sha512-cuadcxVFE8sDK6iWJbs8Sn0av2Nrh2QSGQhVlBW9AaAHqHwjWsZHT8LJ4hFGPh7ASBV2deFdM7H/DPjulmh8rg==",
+       "dev": true,
+       "license": "MIT",
+       "dependencies": {
+@@ -389,9 +355,9 @@
+       }
+     },
+     "node_modules/@eslint/eslintrc": {
+-      "version": "3.3.5",
+-      "resolved": "https://registry.npmjs.org/@eslint/eslintrc/-/eslintrc-3.3.5.tgz",
+-      "integrity": "sha512-4IlJx0X0qftVsN5E+/vGujTRIFtwuLbNsVUe7TO6zYPDR1O6nFwvwhIKEKSrl6dZchmYBITazxKoUYOjdtjlRg==",
++      "version": "3.3.6",
++      "resolved": "https://registry.npmjs.org/@eslint/eslintrc/-/eslintrc-3.3.6.tgz",
++      "integrity": "sha512-l2Ul9PrHsPCKcEY/ac7VgFj9D80C7S68sOKc618SyHDPK36s1XcFebXY0iTzUVn4Yq+YbwvSnDmCz9yxjX+QrA==",
+       "dev": true,
+       "license": "MIT",
+       "dependencies": {
+@@ -401,7 +367,7 @@
+         "globals": "^14.0.0",
+         "ignore": "^5.2.0",
+         "import-fresh": "^3.2.1",
+-        "js-yaml": "^4.1.1",
++        "js-yaml": "^4.3.0",
+         "minimatch": "^3.1.5",
+         "strip-json-comments": "^3.1.1"
+       },
+@@ -426,9 +392,9 @@
+       }
+     },
+     "node_modules/@eslint/js": {
+-      "version": "9.39.4",
+-      "resolved": "https://registry.npmjs.org/@eslint/js/-/js-9.39.4.tgz",
+-      "integrity": "sha512-nE7DEIchvtiFTwBw4Lfbu59PG+kCofhjsKaCWzxTpt4lfRjRMqG6uMBzKXuEcyXhOHoUp9riAm7/aWYGhXZ9cw==",
++      "version": "9.39.5",
++      "resolved": "https://registry.npmjs.org/@eslint/js/-/js-9.39.5.tgz",
++      "integrity": "sha512-QywQuszQh77pIXCsq998c8hbhSTI/azTty1Z6N53dmAudKHhy573j3yvRLsX2BSp8YpLtoCEG8E9DJe+8zUh4A==",
+       "dev": true,
+       "license": "MIT",
+       "engines": {
+@@ -463,29 +429,43 @@
+       }
+     },
+     "node_modules/@humanfs/core": {
+-      "version": "0.19.1",
+-      "resolved": "https://registry.npmjs.org/@humanfs/core/-/core-0.19.1.tgz",
+-      "integrity": "sha512-5DyQ4+1JEUzejeK1JGICcideyfUbGixgS9jNgex5nqkW+cY7WZhxBigmieN5Qnw9ZosSNVC9KQKyb+GUaGyKUA==",
++      "version": "0.19.2",
++      "resolved": "https://registry.npmjs.org/@humanfs/core/-/core-0.19.2.tgz",
++      "integrity": "sha512-UhXNm+CFMWcbChXywFwkmhqjs3PRCmcSa/hfBgLIb7oQ5HNb1wS0icWsGtSAUNgefHeI+eBrA8I1fxmbHsGdvA==",
+       "dev": true,
+       "license": "Apache-2.0",
++      "dependencies": {
++        "@humanfs/types": "^0.15.0"
++      },
+       "engines": {
+         "node": ">=18.18.0"
+       }
+     },
+     "node_modules/@humanfs/node": {
+-      "version": "0.16.7",
+-      "resolved": "https://registry.npmjs.org/@humanfs/node/-/node-0.16.7.tgz",
+-      "integrity": "sha512-/zUx+yOsIrG4Y43Eh2peDeKCxlRt/gET6aHfaKpuq267qXdYDFViVHfMaLyygZOnl0kGWxFIgsBy8QFuTLUXEQ==",
++      "version": "0.16.8",
++      "resolved": "https://registry.npmjs.org/@humanfs/node/-/node-0.16.8.tgz",
++      "integrity": "sha512-gE1eQNZ3R++kTzFUpdGlpmy8kDZD/MLyHqDwqjkVQI0JMdI1D51sy1H958PNXYkM2rAac7e5/CnIKZrHtPh3BQ==",
+       "dev": true,
+       "license": "Apache-2.0",
+       "dependencies": {
+-        "@humanfs/core": "^0.19.1",
++        "@humanfs/core": "^0.19.2",
++        "@humanfs/types": "^0.15.0",
+         "@humanwhocodes/retry": "^0.4.0"
+       },
+       "engines": {
+         "node": ">=18.18.0"
+       }
+     },
++    "node_modules/@humanfs/types": {
++      "version": "0.15.0",
++      "resolved": "https://registry.npmjs.org/@humanfs/types/-/types-0.15.0.tgz",
++      "integrity": "sha512-ZZ1w0aoQkwuUuC7Yf+7sdeaNfqQiiLcSRbfI08oAxqLtpXQr9AIVX7Ay7HLDuiLYAaFPu8oBYNq/QIi9URHJ3Q==",
++      "dev": true,
++      "license": "Apache-2.0",
++      "engines": {
++        "node": ">=18.18.0"
++      }
++    },
+     "node_modules/@humanwhocodes/module-importer": {
+       "version": "1.0.1",
+       "resolved": "https://registry.npmjs.org/@humanwhocodes/module-importer/-/module-importer-1.0.1.tgz",
+@@ -564,29 +544,10 @@
+         "@jridgewell/sourcemap-codec": "^1.4.14"
+       }
+     },
+-    "node_modules/@napi-rs/wasm-runtime": {
+-      "version": "1.1.2",
+-      "resolved": "https://registry.npmjs.org/@napi-rs/wasm-runtime/-/wasm-runtime-1.1.2.tgz",
+-      "integrity": "sha512-sNXv5oLJ7ob93xkZ1XnxisYhGYXfaG9f65/ZgYuAu3qt7b3NadcOEhLvx28hv31PgX8SZJRYrAIPQilQmFpLVw==",
+-      "dev": true,
+-      "license": "MIT",
+-      "optional": true,
+-      "dependencies": {
+-        "@tybys/wasm-util": "^0.10.1"
+-      },
+-      "funding": {
+-        "type": "github",
+-        "url": "https://github.com/sponsors/Brooooooklyn"
+-      },
+-      "peerDependencies": {
+-        "@emnapi/core": "^1.7.1",
+-        "@emnapi/runtime": "^1.7.1"
+-      }
+-    },
+     "node_modules/@oxc-project/types": {
+-      "version": "0.122.0",
+-      "resolved": "https://registry.npmjs.org/@oxc-project/types/-/types-0.122.0.tgz",
+-      "integrity": "sha512-oLAl5kBpV4w69UtFZ9xqcmTi+GENWOcPF7FCrczTiBbmC0ibXxCwyvZGbO39rCVEuLGAZM84DH0pUIyyv/YJzA==",
++      "version": "0.144.0",
++      "resolved": "https://registry.npmjs.org/@oxc-project/types/-/types-0.144.0.tgz",
++      "integrity": "sha512-nuhZIOLuI6TFQ32I/WnUx+SCPY7SdSKwgnFHydAuoS1+Z4BRcaP+RRJmGzl9lw+0OFF7UmaESf7KQRXaNLHypg==",
+       "dev": true,
+       "license": "MIT",
+       "funding": {
+@@ -594,9 +555,9 @@
+       }
+     },
+     "node_modules/@rolldown/binding-android-arm64": {
+-      "version": "1.0.0-rc.12",
+-      "resolved": "https://registry.npmjs.org/@rolldown/binding-android-arm64/-/binding-android-arm64-1.0.0-rc.12.tgz",
+-      "integrity": "sha512-pv1y2Fv0JybcykuiiD3qBOBdz6RteYojRFY1d+b95WVuzx211CRh+ytI/+9iVyWQ6koTh5dawe4S/yRfOFjgaA==",
++      "version": "1.2.4",
++      "resolved": "https://registry.npmjs.org/@rolldown/binding-android-arm64/-/binding-android-arm64-1.2.4.tgz",
++      "integrity": "sha512-jHC2cnyKz5xU2fhECtFl8OZ83cYNt13GZQD+0uMJ/X3o+ijmd56okHhTUwxVSHPx1IRVIJEZ1/1pPzeLCU6XKA==",
+       "cpu": [
+         "arm64"
+       ],
+@@ -611,9 +572,9 @@
+       }
+     },
+     "node_modules/@rolldown/binding-darwin-arm64": {
+-      "version": "1.0.0-rc.12",
+-      "resolved": "https://registry.npmjs.org/@rolldown/binding-darwin-arm64/-/binding-darwin-arm64-1.0.0-rc.12.tgz",
+-      "integrity": "sha512-cFYr6zTG/3PXXF3pUO+umXxt1wkRK/0AYT8lDwuqvRC+LuKYWSAQAQZjCWDQpAH172ZV6ieYrNnFzVVcnSflAg==",
++      "version": "1.2.4",
++      "resolved": "https://registry.npmjs.org/@rolldown/binding-darwin-arm64/-/binding-darwin-arm64-1.2.4.tgz",
++      "integrity": "sha512-Dc5mPD8F5F/FS8i01syd7FTF6yB2fVthH/TRkjwJkzUK6EpoxHtqvZQP5Zwq80/5z19TWYHIg1KOHboCgVx/aQ==",
+       "cpu": [
+         "arm64"
+       ],
+@@ -628,9 +589,9 @@
+       }
+     },
+     "node_modules/@rolldown/binding-darwin-x64": {
+-      "version": "1.0.0-rc.12",
+-      "resolved": "https://registry.npmjs.org/@rolldown/binding-darwin-x64/-/binding-darwin-x64-1.0.0-rc.12.tgz",
+-      "integrity": "sha512-ZCsYknnHzeXYps0lGBz8JrF37GpE9bFVefrlmDrAQhOEi4IOIlcoU1+FwHEtyXGx2VkYAvhu7dyBf75EJQffBw==",
++      "version": "1.2.4",
++      "resolved": "https://registry.npmjs.org/@rolldown/binding-darwin-x64/-/binding-darwin-x64-1.2.4.tgz",
++      "integrity": "sha512-fpDm4oBo6SqLvWUYCmFhdde3U9KH2fRNNMeAnAPAIwxRL345xutL0EtEUcuoxsoazdJGv/MuDBQHlCDrtbvqOg==",
+       "cpu": [
+         "x64"
+       ],
+@@ -645,9 +606,9 @@
+       }
+     },
+     "node_modules/@rolldown/binding-freebsd-x64": {
+-      "version": "1.0.0-rc.12",
+-      "resolved": "https://registry.npmjs.org/@rolldown/binding-freebsd-x64/-/binding-freebsd-x64-1.0.0-rc.12.tgz",
+-      "integrity": "sha512-dMLeprcVsyJsKolRXyoTH3NL6qtsT0Y2xeuEA8WQJquWFXkEC4bcu1rLZZSnZRMtAqwtrF/Ib9Ddtpa/Gkge9Q==",
++      "version": "1.2.4",
++      "resolved": "https://registry.npmjs.org/@rolldown/binding-freebsd-x64/-/binding-freebsd-x64-1.2.4.tgz",
++      "integrity": "sha512-rSJoreDE/HoIzoaib6MTp5jQtCTdMHKIvItAKT/ImS6Y6Ww76oUaeMyp4Vc/fAgd/ehji068IxetHXAnqUwN9A==",
+       "cpu": [
+         "x64"
+       ],
+@@ -662,9 +623,9 @@
+       }
+     },
+     "node_modules/@rolldown/binding-linux-arm-gnueabihf": {
+-      "version": "1.0.0-rc.12",
+-      "resolved": "https://registry.npmjs.org/@rolldown/binding-linux-arm-gnueabihf/-/binding-linux-arm-gnueabihf-1.0.0-rc.12.tgz",
+-      "integrity": "sha512-YqWjAgGC/9M1lz3GR1r1rP79nMgo3mQiiA+Hfo+pvKFK1fAJ1bCi0ZQVh8noOqNacuY1qIcfyVfP6HoyBRZ85Q==",
++      "version": "1.2.4",
++      "resolved": "https://registry.npmjs.org/@rolldown/binding-linux-arm-gnueabihf/-/binding-linux-arm-gnueabihf-1.2.4.tgz",
++      "integrity": "sha512-/jm8OGHgn7oGaJu3i/qZI9spUGcJ+y/lk43ttQ/iO1tOd9NissG6o97bighBCiL+BKRngmcDuR6ikfwYdJmVuQ==",
+       "cpu": [
+         "arm"
+       ],
+@@ -679,13 +640,16 @@
+       }
+     },
+     "node_modules/@rolldown/binding-linux-arm64-gnu": {
+-      "version": "1.0.0-rc.12",
+-      "resolved": "https://registry.npmjs.org/@rolldown/binding-linux-arm64-gnu/-/binding-linux-arm64-gnu-1.0.0-rc.12.tgz",
+-      "integrity": "sha512-/I5AS4cIroLpslsmzXfwbe5OmWvSsrFuEw3mwvbQ1kDxJ822hFHIx+vsN/TAzNVyepI/j/GSzrtCIwQPeKCLIg==",
++      "version": "1.2.4",
++      "resolved": "https://registry.npmjs.org/@rolldown/binding-linux-arm64-gnu/-/binding-linux-arm64-gnu-1.2.4.tgz",
++      "integrity": "sha512-tIP06BeD9EqvECBrPZ+sqdPlYrT+aYaAiu1wYziVx5elRK/ftm33JxVDy2bXGbr6J0CrtirCkR87/X5a2euEng==",
+       "cpu": [
+         "arm64"
+       ],
+       "dev": true,
++      "libc": [
++        "glibc"
++      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -696,13 +660,16 @@
+       }
+     },
+     "node_modules/@rolldown/binding-linux-arm64-musl": {
+-      "version": "1.0.0-rc.12",
+-      "resolved": "https://registry.npmjs.org/@rolldown/binding-linux-arm64-musl/-/binding-linux-arm64-musl-1.0.0-rc.12.tgz",
+-      "integrity": "sha512-V6/wZztnBqlx5hJQqNWwFdxIKN0m38p8Jas+VoSfgH54HSj9tKTt1dZvG6JRHcjh6D7TvrJPWFGaY9UBVOaWPw==",
++      "version": "1.2.4",
++      "resolved": "https://registry.npmjs.org/@rolldown/binding-linux-arm64-musl/-/binding-linux-arm64-musl-1.2.4.tgz",
++      "integrity": "sha512-Ql1Q0EQqVThvn9VAVlwNzsUvbSFtCMGjLpRRi4pk5i7NZZ4n5ISiLMjHYtus4VQ2PvkSw24zyaCVsiS+sXPj1w==",
+       "cpu": [
+         "arm64"
+       ],
+       "dev": true,
++      "libc": [
++        "musl"
++      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -713,13 +680,16 @@
+       }
+     },
+     "node_modules/@rolldown/binding-linux-ppc64-gnu": {
+-      "version": "1.0.0-rc.12",
+-      "resolved": "https://registry.npmjs.org/@rolldown/binding-linux-ppc64-gnu/-/binding-linux-ppc64-gnu-1.0.0-rc.12.tgz",
+-      "integrity": "sha512-AP3E9BpcUYliZCxa3w5Kwj9OtEVDYK6sVoUzy4vTOJsjPOgdaJZKFmN4oOlX0Wp0RPV2ETfmIra9x1xuayFB7g==",
++      "version": "1.2.4",
++      "resolved": "https://registry.npmjs.org/@rolldown/binding-linux-ppc64-gnu/-/binding-linux-ppc64-gnu-1.2.4.tgz",
++      "integrity": "sha512-GjbjXD4XXfN19D0LZNbmiCBUoDiRACsYHr0yaIbbn8aFsXjHZifcYqu/W5Er5X2X990WjHXFrxarn5chzItorQ==",
+       "cpu": [
+         "ppc64"
+       ],
+       "dev": true,
++      "libc": [
++        "glibc"
++      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -730,13 +700,16 @@
+       }
+     },
+     "node_modules/@rolldown/binding-linux-s390x-gnu": {
+-      "version": "1.0.0-rc.12",
+-      "resolved": "https://registry.npmjs.org/@rolldown/binding-linux-s390x-gnu/-/binding-linux-s390x-gnu-1.0.0-rc.12.tgz",
+-      "integrity": "sha512-nWwpvUSPkoFmZo0kQazZYOrT7J5DGOJ/+QHHzjvNlooDZED8oH82Yg67HvehPPLAg5fUff7TfWFHQS8IV1n3og==",
++      "version": "1.2.4",
++      "resolved": "https://registry.npmjs.org/@rolldown/binding-linux-s390x-gnu/-/binding-linux-s390x-gnu-1.2.4.tgz",
++      "integrity": "sha512-p5WR0NOwaRmJ/B1b6IjEFLLivwEsf3PrdBIhRbhTCQisbo2SvHHpG4ELB/+FgQNnB88LTOF86upmJmbvZdQ2lw==",
+       "cpu": [
+         "s390x"
+       ],
+       "dev": true,
++      "libc": [
++        "glibc"
++      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -747,13 +720,16 @@
+       }
+     },
+     "node_modules/@rolldown/binding-linux-x64-gnu": {
+-      "version": "1.0.0-rc.12",
+-      "resolved": "https://registry.npmjs.org/@rolldown/binding-linux-x64-gnu/-/binding-linux-x64-gnu-1.0.0-rc.12.tgz",
+-      "integrity": "sha512-RNrafz5bcwRy+O9e6P8Z/OCAJW/A+qtBczIqVYwTs14pf4iV1/+eKEjdOUta93q2TsT/FI0XYDP3TCky38LMAg==",
++      "version": "1.2.4",
++      "resolved": "https://registry.npmjs.org/@rolldown/binding-linux-x64-gnu/-/binding-linux-x64-gnu-1.2.4.tgz",
++      "integrity": "sha512-4/GyVjmhR+Tc6HLJvwc1sOhPqAZtySiSMesOZyX6JQ5XBxoTDEMKQzvo07NIK6nTon/SivlZqvhzvuVBNQhObQ==",
+       "cpu": [
+         "x64"
+       ],
+       "dev": true,
++      "libc": [
++        "glibc"
++      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -764,13 +740,16 @@
+       }
+     },
+     "node_modules/@rolldown/binding-linux-x64-musl": {
+-      "version": "1.0.0-rc.12",
+-      "resolved": "https://registry.npmjs.org/@rolldown/binding-linux-x64-musl/-/binding-linux-x64-musl-1.0.0-rc.12.tgz",
+-      "integrity": "sha512-Jpw/0iwoKWx3LJ2rc1yjFrj+T7iHZn2JDg1Yny1ma0luviFS4mhAIcd1LFNxK3EYu3DHWCps0ydXQ5i/rrJ2ig==",
++      "version": "1.2.4",
++      "resolved": "https://registry.npmjs.org/@rolldown/binding-linux-x64-musl/-/binding-linux-x64-musl-1.2.4.tgz",
++      "integrity": "sha512-l9eeLsCNvPpmSXUej0etw/J1eqV0Jj1D5G/xG6YTijmE6dkv6E2QezgWbTfQk63v952DPqrjOCoiqxq7Bw0YUQ==",
+       "cpu": [
+         "x64"
+       ],
+       "dev": true,
++      "libc": [
++        "musl"
++      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -781,9 +760,9 @@
+       }
+     },
+     "node_modules/@rolldown/binding-openharmony-arm64": {
+-      "version": "1.0.0-rc.12",
+-      "resolved": "https://registry.npmjs.org/@rolldown/binding-openharmony-arm64/-/binding-openharmony-arm64-1.0.0-rc.12.tgz",
+-      "integrity": "sha512-vRugONE4yMfVn0+7lUKdKvN4D5YusEiPilaoO2sgUWpCvrncvWgPMzK00ZFFJuiPgLwgFNP5eSiUlv2tfc+lpA==",
++      "version": "1.2.4",
++      "resolved": "https://registry.npmjs.org/@rolldown/binding-openharmony-arm64/-/binding-openharmony-arm64-1.2.4.tgz",
++      "integrity": "sha512-e0F355MSTMm3+UOqtV3L24gFUp2N5m1f8L/7d56deik6va+AXdrt9F8LbzGpeWGWRbZEDq4m8NVnJDeBtf9DZg==",
+       "cpu": [
+         "arm64"
+       ],
+@@ -797,27 +776,10 @@
+         "node": "^20.19.0 || >=22.12.0"
+       }
+     },
+-    "node_modules/@rolldown/binding-wasm32-wasi": {
+-      "version": "1.0.0-rc.12",
+-      "resolved": "https://registry.npmjs.org/@rolldown/binding-wasm32-wasi/-/binding-wasm32-wasi-1.0.0-rc.12.tgz",
+-      "integrity": "sha512-ykGiLr/6kkiHc0XnBfmFJuCjr5ZYKKofkx+chJWDjitX+KsJuAmrzWhwyOMSHzPhzOHOy7u9HlFoa5MoAOJ/Zg==",
+-      "cpu": [
+-        "wasm32"
+-      ],
+-      "dev": true,
+-      "license": "MIT",
+-      "optional": true,
+-      "dependencies": {
+-        "@napi-rs/wasm-runtime": "^1.1.1"
+-      },
+-      "engines": {
+-        "node": ">=14.0.0"
+-      }
+-    },
+     "node_modules/@rolldown/binding-win32-arm64-msvc": {
+-      "version": "1.0.0-rc.12",
+-      "resolved": "https://registry.npmjs.org/@rolldown/binding-win32-arm64-msvc/-/binding-win32-arm64-msvc-1.0.0-rc.12.tgz",
+-      "integrity": "sha512-5eOND4duWkwx1AzCxadcOrNeighiLwMInEADT0YM7xeEOOFcovWZCq8dadXgcRHSf3Ulh1kFo/qvzoFiCLOL1Q==",
++      "version": "1.2.4",
++      "resolved": "https://registry.npmjs.org/@rolldown/binding-win32-arm64-msvc/-/binding-win32-arm64-msvc-1.2.4.tgz",
++      "integrity": "sha512-AWLi0uBRYh6QlE7OKhiz+phZC0qwtij2QZmhmOdsLdFn64m7oMpooE9ICE3lhm9xMb4SpDo2WbHcxX1iFLFtqw==",
+       "cpu": [
+         "arm64"
+       ],
+@@ -832,9 +794,9 @@
+       }
+     },
+     "node_modules/@rolldown/binding-win32-x64-msvc": {
+-      "version": "1.0.0-rc.12",
+-      "resolved": "https://registry.npmjs.org/@rolldown/binding-win32-x64-msvc/-/binding-win32-x64-msvc-1.0.0-rc.12.tgz",
+-      "integrity": "sha512-PyqoipaswDLAZtot351MLhrlrh6lcZPo2LSYE+VDxbVk24LVKAGOuE4hb8xZQmrPAuEtTZW8E6D2zc5EUZX4Lw==",
++      "version": "1.2.4",
++      "resolved": "https://registry.npmjs.org/@rolldown/binding-win32-x64-msvc/-/binding-win32-x64-msvc-1.2.4.tgz",
++      "integrity": "sha512-UwSDJOg3dqCAejWdxclJjCsh3Qq4vLYMDxmyHqo1btz3stK2VqgwNd3mm5tuIwzSlGIQ/1H9Hr+Zn09mrezNqQ==",
+       "cpu": [
+         "x64"
+       ],
+@@ -849,56 +811,56 @@
+       }
+     },
+     "node_modules/@rolldown/pluginutils": {
+-      "version": "1.0.0-rc.7",
+-      "resolved": "https://registry.npmjs.org/@rolldown/pluginutils/-/pluginutils-1.0.0-rc.7.tgz",
+-      "integrity": "sha512-qujRfC8sFVInYSPPMLQByRh7zhwkGFS4+tyMQ83srV1qrxL4g8E2tyxVVyxd0+8QeBM1mIk9KbWxkegRr76XzA==",
++      "version": "1.0.1",
++      "resolved": "https://registry.npmjs.org/@rolldown/pluginutils/-/pluginutils-1.0.1.tgz",
++      "integrity": "sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw==",
+       "dev": true,
+       "license": "MIT"
+     },
+     "node_modules/@tailwindcss/node": {
+-      "version": "4.2.2",
+-      "resolved": "https://registry.npmjs.org/@tailwindcss/node/-/node-4.2.2.tgz",
+-      "integrity": "sha512-pXS+wJ2gZpVXqFaUEjojq7jzMpTGf8rU6ipJz5ovJV6PUGmlJ+jvIwGrzdHdQ80Sg+wmQxUFuoW1UAAwHNEdFA==",
++      "version": "4.3.3",
++      "resolved": "https://registry.npmjs.org/@tailwindcss/node/-/node-4.3.3.tgz",
++      "integrity": "sha512-/T8IKEsf9VTU6tLjgC7+sv2mOPtQxzE2jMw7u4Tt40Tx+QSZxpzh95/H6cMKoja9XuW7iMdLJYBB0o9G1CaAgg==",
+       "dev": true,
+       "license": "MIT",
+       "dependencies": {
+         "@jridgewell/remapping": "^2.3.5",
+-        "enhanced-resolve": "^5.19.0",
+-        "jiti": "^2.6.1",
++        "enhanced-resolve": "^5.24.1",
++        "jiti": "^2.7.0",
+         "lightningcss": "1.32.0",
+         "magic-string": "^0.30.21",
+         "source-map-js": "^1.2.1",
+-        "tailwindcss": "4.2.2"
++        "tailwindcss": "4.3.3"
+       }
+     },
+     "node_modules/@tailwindcss/oxide": {
+-      "version": "4.2.2",
+-      "resolved": "https://registry.npmjs.org/@tailwindcss/oxide/-/oxide-4.2.2.tgz",
+-      "integrity": "sha512-qEUA07+E5kehxYp9BVMpq9E8vnJuBHfJEC0vPC5e7iL/hw7HR61aDKoVoKzrG+QKp56vhNZe4qwkRmMC0zDLvg==",
++      "version": "4.3.3",
++      "resolved": "https://registry.npmjs.org/@tailwindcss/oxide/-/oxide-4.3.3.tgz",
++      "integrity": "sha512-krXjAikiaFSPaK/FkAQT5UTx3VormQaiZ5hBFlJZ9UFQGB/rwg1MZIhHAG9smMQRTdyJxP6Qt5MwMtdyU5FWrA==",
+       "dev": true,
+       "license": "MIT",
+       "engines": {
+         "node": ">= 20"
+       },
+       "optionalDependencies": {
+-        "@tailwindcss/oxide-android-arm64": "4.2.2",
+-        "@tailwindcss/oxide-darwin-arm64": "4.2.2",
+-        "@tailwindcss/oxide-darwin-x64": "4.2.2",
+-        "@tailwindcss/oxide-freebsd-x64": "4.2.2",
+-        "@tailwindcss/oxide-linux-arm-gnueabihf": "4.2.2",
+-        "@tailwindcss/oxide-linux-arm64-gnu": "4.2.2",
+-        "@tailwindcss/oxide-linux-arm64-musl": "4.2.2",
+-        "@tailwindcss/oxide-linux-x64-gnu": "4.2.2",
+-        "@tailwindcss/oxide-linux-x64-musl": "4.2.2",
+-        "@tailwindcss/oxide-wasm32-wasi": "4.2.2",
+-        "@tailwindcss/oxide-win32-arm64-msvc": "4.2.2",
+-        "@tailwindcss/oxide-win32-x64-msvc": "4.2.2"
++        "@tailwindcss/oxide-android-arm64": "4.3.3",
++        "@tailwindcss/oxide-darwin-arm64": "4.3.3",
++        "@tailwindcss/oxide-darwin-x64": "4.3.3",
++        "@tailwindcss/oxide-freebsd-x64": "4.3.3",
++        "@tailwindcss/oxide-linux-arm-gnueabihf": "4.3.3",
++        "@tailwindcss/oxide-linux-arm64-gnu": "4.3.3",
++        "@tailwindcss/oxide-linux-arm64-musl": "4.3.3",
++        "@tailwindcss/oxide-linux-x64-gnu": "4.3.3",
++        "@tailwindcss/oxide-linux-x64-musl": "4.3.3",
++        "@tailwindcss/oxide-wasm32-wasi": "4.3.3",
++        "@tailwindcss/oxide-win32-arm64-msvc": "4.3.3",
++        "@tailwindcss/oxide-win32-x64-msvc": "4.3.3"
+       }
+     },
+     "node_modules/@tailwindcss/oxide-android-arm64": {
+-      "version": "4.2.2",
+-      "resolved": "https://registry.npmjs.org/@tailwindcss/oxide-android-arm64/-/oxide-android-arm64-4.2.2.tgz",
+-      "integrity": "sha512-dXGR1n+P3B6748jZO/SvHZq7qBOqqzQ+yFrXpoOWWALWndF9MoSKAT3Q0fYgAzYzGhxNYOoysRvYlpixRBBoDg==",
++      "version": "4.3.3",
++      "resolved": "https://registry.npmjs.org/@tailwindcss/oxide-android-arm64/-/oxide-android-arm64-4.3.3.tgz",
++      "integrity": "sha512-Y85A2gmPSkl5Ve5qR86GL4HT509cFqQh1aes9p3sSkyTPwt0Pppf3GkwGe4JPACcRYjgJIEhQgM6dBClnr0NYw==",
+       "cpu": [
+         "arm64"
+       ],
+@@ -913,9 +875,9 @@
+       }
+     },
+     "node_modules/@tailwindcss/oxide-darwin-arm64": {
+-      "version": "4.2.2",
+-      "resolved": "https://registry.npmjs.org/@tailwindcss/oxide-darwin-arm64/-/oxide-darwin-arm64-4.2.2.tgz",
+-      "integrity": "sha512-iq9Qjr6knfMpZHj55/37ouZeykwbDqF21gPFtfnhCCKGDcPI/21FKC9XdMO/XyBM7qKORx6UIhGgg6jLl7BZlg==",
++      "version": "4.3.3",
++      "resolved": "https://registry.npmjs.org/@tailwindcss/oxide-darwin-arm64/-/oxide-darwin-arm64-4.3.3.tgz",
++      "integrity": "sha512-BiaWatpBcERQFDlOjRDpIVXuFK5PJez5SA4JMg6VYZdBYU+qKfV/vqjcIs+IYmtitf1xYQZTwXvU/8y4lfZUGw==",
+       "cpu": [
+         "arm64"
+       ],
+@@ -930,9 +892,9 @@
+       }
+     },
+     "node_modules/@tailwindcss/oxide-darwin-x64": {
+-      "version": "4.2.2",
+-      "resolved": "https://registry.npmjs.org/@tailwindcss/oxide-darwin-x64/-/oxide-darwin-x64-4.2.2.tgz",
+-      "integrity": "sha512-BlR+2c3nzc8f2G639LpL89YY4bdcIdUmiOOkv2GQv4/4M0vJlpXEa0JXNHhCHU7VWOKWT/CjqHdTP8aUuDJkuw==",
++      "version": "4.3.3",
++      "resolved": "https://registry.npmjs.org/@tailwindcss/oxide-darwin-x64/-/oxide-darwin-x64-4.3.3.tgz",
++      "integrity": "sha512-fAeUqfV5ndhxRwai8cXGzdLvul9utWOmeTkv69unv4ZXixjn61Z+p9lCWdwOwA3TYboG3BwdVuN/RDjhBRl0mw==",
+       "cpu": [
+         "x64"
+       ],
+@@ -947,9 +909,9 @@
+       }
+     },
+     "node_modules/@tailwindcss/oxide-freebsd-x64": {
+-      "version": "4.2.2",
+-      "resolved": "https://registry.npmjs.org/@tailwindcss/oxide-freebsd-x64/-/oxide-freebsd-x64-4.2.2.tgz",
+-      "integrity": "sha512-YUqUgrGMSu2CDO82hzlQ5qSb5xmx3RUrke/QgnoEx7KvmRJHQuZHZmZTLSuuHwFf0DJPybFMXMYf+WJdxHy/nQ==",
++      "version": "4.3.3",
++      "resolved": "https://registry.npmjs.org/@tailwindcss/oxide-freebsd-x64/-/oxide-freebsd-x64-4.3.3.tgz",
++      "integrity": "sha512-iyf5bV6+wnAlflVeEy7R25dupxTNECZN5QMI0qNT6eT+EgaGdZcKhGkr5SdoaWiLJ3spLqIY9VCeSGrwmtg4kw==",
+       "cpu": [
+         "x64"
+       ],
+@@ -964,9 +926,9 @@
+       }
+     },
+     "node_modules/@tailwindcss/oxide-linux-arm-gnueabihf": {
+-      "version": "4.2.2",
+-      "resolved": "https://registry.npmjs.org/@tailwindcss/oxide-linux-arm-gnueabihf/-/oxide-linux-arm-gnueabihf-4.2.2.tgz",
+-      "integrity": "sha512-FPdhvsW6g06T9BWT0qTwiVZYE2WIFo2dY5aCSpjG/S/u1tby+wXoslXS0kl3/KXnULlLr1E3NPRRw0g7t2kgaQ==",
++      "version": "4.3.3",
++      "resolved": "https://registry.npmjs.org/@tailwindcss/oxide-linux-arm-gnueabihf/-/oxide-linux-arm-gnueabihf-4.3.3.tgz",
++      "integrity": "sha512-aAYUprJAJQWWbRrPvtjdroZ56Md+JM8pMiopS6xGEwDfLhqj+2ver2p4nU4Mb3CRqcMmNBjo8KkUgcxhkzVQGQ==",
+       "cpu": [
+         "arm"
+       ],
+@@ -981,13 +943,16 @@
+       }
+     },
+     "node_modules/@tailwindcss/oxide-linux-arm64-gnu": {
+-      "version": "4.2.2",
+-      "resolved": "https://registry.npmjs.org/@tailwindcss/oxide-linux-arm64-gnu/-/oxide-linux-arm64-gnu-4.2.2.tgz",
+-      "integrity": "sha512-4og1V+ftEPXGttOO7eCmW7VICmzzJWgMx+QXAJRAhjrSjumCwWqMfkDrNu1LXEQzNAwz28NCUpucgQPrR4S2yw==",
++      "version": "4.3.3",
++      "resolved": "https://registry.npmjs.org/@tailwindcss/oxide-linux-arm64-gnu/-/oxide-linux-arm64-gnu-4.3.3.tgz",
++      "integrity": "sha512-nDxldcEENOxZRzC2uu9jrutZdAAQtb+8WWDCSnWL1zvBk1+FN+x6MtDViPB5AJMfttVCUhehGWus3XBPgatM/w==",
+       "cpu": [
+         "arm64"
+       ],
+       "dev": true,
++      "libc": [
++        "glibc"
++      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -998,13 +963,16 @@
+       }
+     },
+     "node_modules/@tailwindcss/oxide-linux-arm64-musl": {
+-      "version": "4.2.2",
+-      "resolved": "https://registry.npmjs.org/@tailwindcss/oxide-linux-arm64-musl/-/oxide-linux-arm64-musl-4.2.2.tgz",
+-      "integrity": "sha512-oCfG/mS+/+XRlwNjnsNLVwnMWYH7tn/kYPsNPh+JSOMlnt93mYNCKHYzylRhI51X+TbR+ufNhhKKzm6QkqX8ag==",
++      "version": "4.3.3",
++      "resolved": "https://registry.npmjs.org/@tailwindcss/oxide-linux-arm64-musl/-/oxide-linux-arm64-musl-4.3.3.tgz",
++      "integrity": "sha512-Md44bD6veX/PC5iyF8cDVnw4HBIANZepRZZ7a8DQOvkfo5WUBwcp6iAuCUz23u+4SUkhJlD3eL7hNdW8ezd/kA==",
+       "cpu": [
+         "arm64"
+       ],
+       "dev": true,
++      "libc": [
++        "musl"
++      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -1015,13 +983,16 @@
+       }
+     },
+     "node_modules/@tailwindcss/oxide-linux-x64-gnu": {
+-      "version": "4.2.2",
+-      "resolved": "https://registry.npmjs.org/@tailwindcss/oxide-linux-x64-gnu/-/oxide-linux-x64-gnu-4.2.2.tgz",
+-      "integrity": "sha512-rTAGAkDgqbXHNp/xW0iugLVmX62wOp2PoE39BTCGKjv3Iocf6AFbRP/wZT/kuCxC9QBh9Pu8XPkv/zCZB2mcMg==",
++      "version": "4.3.3",
++      "resolved": "https://registry.npmjs.org/@tailwindcss/oxide-linux-x64-gnu/-/oxide-linux-x64-gnu-4.3.3.tgz",
++      "integrity": "sha512-tx7us1muwOKAKWao2v/GaafFeQboE6aj88vC6ziN2NCGcRm8gWUhwjzg+YdVB1e4boAtdtma4L43onunI6NS4w==",
+       "cpu": [
+         "x64"
+       ],
+       "dev": true,
++      "libc": [
++        "glibc"
++      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -1032,13 +1003,16 @@
+       }
+     },
+     "node_modules/@tailwindcss/oxide-linux-x64-musl": {
+-      "version": "4.2.2",
+-      "resolved": "https://registry.npmjs.org/@tailwindcss/oxide-linux-x64-musl/-/oxide-linux-x64-musl-4.2.2.tgz",
+-      "integrity": "sha512-XW3t3qwbIwiSyRCggeO2zxe3KWaEbM0/kW9e8+0XpBgyKU4ATYzcVSMKteZJ1iukJ3HgHBjbg9P5YPRCVUxlnQ==",
++      "version": "4.3.3",
++      "resolved": "https://registry.npmjs.org/@tailwindcss/oxide-linux-x64-musl/-/oxide-linux-x64-musl-4.3.3.tgz",
++      "integrity": "sha512-SJxX60smvHgasZoBy11dX6YRjXJFovwWBoedhbQPOBzgFWBHGB+TVPWB9BxzR7TTxU8FQZAI2AyiNCMzFm8Img==",
+       "cpu": [
+         "x64"
+       ],
+       "dev": true,
++      "libc": [
++        "musl"
++      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -1049,9 +1023,9 @@
+       }
+     },
+     "node_modules/@tailwindcss/oxide-wasm32-wasi": {
+-      "version": "4.2.2",
+-      "resolved": "https://registry.npmjs.org/@tailwindcss/oxide-wasm32-wasi/-/oxide-wasm32-wasi-4.2.2.tgz",
+-      "integrity": "sha512-eKSztKsmEsn1O5lJ4ZAfyn41NfG7vzCg496YiGtMDV86jz1q/irhms5O0VrY6ZwTUkFy/EKG3RfWgxSI3VbZ8Q==",
++      "version": "4.3.3",
++      "resolved": "https://registry.npmjs.org/@tailwindcss/oxide-wasm32-wasi/-/oxide-wasm32-wasi-4.3.3.tgz",
++      "integrity": "sha512-jx1+rPhY/5Ympkktd656HBWEBLxP7dH06losBLjjf5vgCODXvi9KhtftWcMIwTFIDqBr7cRnQkdLnAG+IOlGvQ==",
+       "bundleDependencies": [
+         "@napi-rs/wasm-runtime",
+         "@emnapi/core",
+@@ -1067,11 +1041,11 @@
+       "license": "MIT",
+       "optional": true,
+       "dependencies": {
+-        "@emnapi/core": "^1.8.1",
+-        "@emnapi/runtime": "^1.8.1",
+-        "@emnapi/wasi-threads": "^1.1.0",
+-        "@napi-rs/wasm-runtime": "^1.1.1",
+-        "@tybys/wasm-util": "^0.10.1",
++        "@emnapi/core": "^1.11.1",
++        "@emnapi/runtime": "^1.11.1",
++        "@emnapi/wasi-threads": "^1.2.2",
++        "@napi-rs/wasm-runtime": "^1.1.4",
++        "@tybys/wasm-util": "^0.10.2",
+         "tslib": "^2.8.1"
+       },
+       "engines": {
+@@ -1079,9 +1053,9 @@
+       }
+     },
+     "node_modules/@tailwindcss/oxide-win32-arm64-msvc": {
+-      "version": "4.2.2",
+-      "resolved": "https://registry.npmjs.org/@tailwindcss/oxide-win32-arm64-msvc/-/oxide-win32-arm64-msvc-4.2.2.tgz",
+-      "integrity": "sha512-qPmaQM4iKu5mxpsrWZMOZRgZv1tOZpUm+zdhhQP0VhJfyGGO3aUKdbh3gDZc/dPLQwW4eSqWGrrcWNBZWUWaXQ==",
++      "version": "4.3.3",
++      "resolved": "https://registry.npmjs.org/@tailwindcss/oxide-win32-arm64-msvc/-/oxide-win32-arm64-msvc-4.3.3.tgz",
++      "integrity": "sha512-3rc292Ca2ceK6Ulcc/bAVnTs/3nDtoPhyEKlgPv+yQJQi/JS/AMJlqzxvlDacL1nekbrcf6bTqp/jV4qgnPxNQ==",
+       "cpu": [
+         "arm64"
+       ],
+@@ -1096,9 +1070,9 @@
+       }
+     },
+     "node_modules/@tailwindcss/oxide-win32-x64-msvc": {
+-      "version": "4.2.2",
+-      "resolved": "https://registry.npmjs.org/@tailwindcss/oxide-win32-x64-msvc/-/oxide-win32-x64-msvc-4.2.2.tgz",
+-      "integrity": "sha512-1T/37VvI7WyH66b+vqHj/cLwnCxt7Qt3WFu5Q8hk65aOvlwAhs7rAp1VkulBJw/N4tMirXjVnylTR72uI0HGcA==",
++      "version": "4.3.3",
++      "resolved": "https://registry.npmjs.org/@tailwindcss/oxide-win32-x64-msvc/-/oxide-win32-x64-msvc-4.3.3.tgz",
++      "integrity": "sha512-yJ0pwIVc/nYeGoV02WtsN8KYyLQv7kyI2wDnkezyJlGGjkd4QLwDGAwl47YpPJeuI0M0ObaXGSPjvWDPeTPggw==",
+       "cpu": [
+         "x64"
+       ],
+@@ -1113,31 +1087,20 @@
+       }
+     },
+     "node_modules/@tailwindcss/vite": {
+-      "version": "4.2.2",
+-      "resolved": "https://registry.npmjs.org/@tailwindcss/vite/-/vite-4.2.2.tgz",
+-      "integrity": "sha512-mEiF5HO1QqCLXoNEfXVA1Tzo+cYsrqV7w9Juj2wdUFyW07JRenqMG225MvPwr3ZD9N1bFQj46X7r33iHxLUW0w==",
++      "version": "4.3.3",
++      "resolved": "https://registry.npmjs.org/@tailwindcss/vite/-/vite-4.3.3.tgz",
++      "integrity": "sha512-yYU8cogLeSh/ms2jh8Fj7jaba/EWa7Ja6GoUqYZaraEuCI5YS6ms6ObZgjjedm+jm6XZjdNRWBpPP6Z86oOxcw==",
+       "dev": true,
+       "license": "MIT",
+       "dependencies": {
+-        "@tailwindcss/node": "4.2.2",
+-        "@tailwindcss/oxide": "4.2.2",
+-        "tailwindcss": "4.2.2"
++        "@tailwindcss/node": "4.3.3",
++        "@tailwindcss/oxide": "4.3.3",
++        "tailwindcss": "4.3.3"
+       },
+       "peerDependencies": {
+         "vite": "^5.2.0 || ^6 || ^7 || ^8"
+       }
+     },
+-    "node_modules/@tybys/wasm-util": {
+-      "version": "0.10.1",
+-      "resolved": "https://registry.npmjs.org/@tybys/wasm-util/-/wasm-util-0.10.1.tgz",
+-      "integrity": "sha512-9tTaPJLSiejZKx+Bmog4uSubteqTvFrVrURwkmHixBo0G4seD0zUxp98E1DzUBJxLQ3NPwXrGKDiVjwx/DpPsg==",
+-      "dev": true,
+-      "license": "MIT",
+-      "optional": true,
+-      "dependencies": {
+-        "tslib": "^2.4.0"
+-      }
+-    },
+     "node_modules/@types/d3-color": {
+       "version": "3.1.3",
+       "resolved": "https://registry.npmjs.org/@types/d3-color/-/d3-color-3.1.3.tgz",
+@@ -1188,9 +1151,9 @@
+       }
+     },
+     "node_modules/@types/estree": {
+-      "version": "1.0.8",
+-      "resolved": "https://registry.npmjs.org/@types/estree/-/estree-1.0.8.tgz",
+-      "integrity": "sha512-dWHzHa2WqEXI/O1E9OjrocMTKJl2mSrEolh1Iomrv6U+JuNwaHXsXx9bLu5gG7BUWFIN0skIQJQ/L1rIex4X6w==",
++      "version": "1.0.9",
++      "resolved": "https://registry.npmjs.org/@types/estree/-/estree-1.0.9.tgz",
++      "integrity": "sha512-GhdPgy1el4/ImP05X05Uw4cw2/M93BCUmnEvWZNStlCzEKME4Fkk+YpoA5OiHNQmoS7Cafb8Xa3Pya8m1Qrzeg==",
+       "dev": true,
+       "license": "MIT"
+     },
+@@ -1202,19 +1165,19 @@
+       "license": "MIT"
+     },
+     "node_modules/@types/node": {
+-      "version": "24.12.0",
+-      "resolved": "https://registry.npmjs.org/@types/node/-/node-24.12.0.tgz",
+-      "integrity": "sha512-GYDxsZi3ChgmckRT9HPU0WEhKLP08ev/Yfcq2AstjrDASOYCSXeyjDsHg4v5t4jOj7cyDX3vmprafKlWIG9MXQ==",
++      "version": "24.13.3",
++      "resolved": "https://registry.npmjs.org/@types/node/-/node-24.13.3.tgz",
++      "integrity": "sha512-Dh8vAsV36ig5wa9OX4pXvMc9D3Veibfw2wix0CUwYODLD8nkj9UsLjASr49nPg+2eKzxhBV+v7L8pXvT4e639Q==",
+       "dev": true,
+       "license": "MIT",
+       "dependencies": {
+-        "undici-types": "~7.16.0"
++        "undici-types": "~7.18.0"
+       }
+     },
+     "node_modules/@types/react": {
+-      "version": "19.2.14",
+-      "resolved": "https://registry.npmjs.org/@types/react/-/react-19.2.14.tgz",
+-      "integrity": "sha512-ilcTH/UniCkMdtexkoCN0bI7pMcJDvmQFPvuPvmEaYA/NSfFTAgdUSLAoVjaRJm7+6PvcM+q1zYOwS4wTYMF9w==",
++      "version": "19.2.18",
++      "resolved": "https://registry.npmjs.org/@types/react/-/react-19.2.18.tgz",
++      "integrity": "sha512-AnzbBERsrLKtk2XSfTbYRLjQPdy116Sty4q+T+Bp3IC4l6jNBvreVPAHmpq9qhXQM7CXZPjLVmGMw9sy+hxQ3w==",
+       "devOptional": true,
+       "license": "MIT",
+       "dependencies": {
+@@ -1222,27 +1185,27 @@
+       }
+     },
+     "node_modules/@types/react-dom": {
+-      "version": "19.2.3",
+-      "resolved": "https://registry.npmjs.org/@types/react-dom/-/react-dom-19.2.3.tgz",
+-      "integrity": "sha512-jp2L/eY6fn+KgVVQAOqYItbF0VY/YApe5Mz2F0aykSO8gx31bYCZyvSeYxCHKvzHG5eZjc+zyaS5BrBWya2+kQ==",
+-      "dev": true,
++      "version": "19.2.4",
++      "resolved": "https://registry.npmjs.org/@types/react-dom/-/react-dom-19.2.4.tgz",
++      "integrity": "sha512-Bsc+QHgp+P/F02XDzNCY9jnZNCUuLki36KT7VKrTXXLdHf+vHMNZnW1rVu5DNW/rCK+fya3DATySbLM4yhtKUw==",
++      "devOptional": true,
+       "license": "MIT",
+       "peerDependencies": {
+         "@types/react": "^19.2.0"
+       }
+     },
+     "node_modules/@typescript-eslint/eslint-plugin": {
+-      "version": "8.58.0",
+-      "resolved": "https://registry.npmjs.org/@typescript-eslint/eslint-plugin/-/eslint-plugin-8.58.0.tgz",
+-      "integrity": "sha512-RLkVSiNuUP1C2ROIWfqX+YcUfLaSnxGE/8M+Y57lopVwg9VTYYfhuz15Yf1IzCKgZj6/rIbYTmJCUSqr76r0Wg==",
++      "version": "8.67.0",
++      "resolved": "https://registry.npmjs.org/@typescript-eslint/eslint-plugin/-/eslint-plugin-8.67.0.tgz",
++      "integrity": "sha512-Un7Heoyj65NREbKAyIrFxeM143NZpExWmy1Nep4DLeQOeLlTeumPjoNKnBrU5D5moWXbPJgRa5Uwcdu0faVNGQ==",
+       "dev": true,
+       "license": "MIT",
+       "dependencies": {
+         "@eslint-community/regexpp": "^4.12.2",
+-        "@typescript-eslint/scope-manager": "8.58.0",
+-        "@typescript-eslint/type-utils": "8.58.0",
+-        "@typescript-eslint/utils": "8.58.0",
+-        "@typescript-eslint/visitor-keys": "8.58.0",
++        "@typescript-eslint/scope-manager": "8.67.0",
++        "@typescript-eslint/type-utils": "8.67.0",
++        "@typescript-eslint/utils": "8.67.0",
++        "@typescript-eslint/visitor-keys": "8.67.0",
+         "ignore": "^7.0.5",
+         "natural-compare": "^1.4.0",
+         "ts-api-utils": "^2.5.0"
+@@ -1255,15 +1218,15 @@
+         "url": "https://opencollective.com/typescript-eslint"
+       },
+       "peerDependencies": {
+-        "@typescript-eslint/parser": "^8.58.0",
++        "@typescript-eslint/parser": "^8.67.0",
+         "eslint": "^8.57.0 || ^9.0.0 || ^10.0.0",
+         "typescript": ">=4.8.4 <6.1.0"
+       }
+     },
+     "node_modules/@typescript-eslint/eslint-plugin/node_modules/ignore": {
+-      "version": "7.0.5",
+-      "resolved": "https://registry.npmjs.org/ignore/-/ignore-7.0.5.tgz",
+-      "integrity": "sha512-Hs59xBNfUIunMFgWAbGX5cq6893IbWg4KnrjbYwX3tx0ztorVgTDA6B2sxf8ejHJ4wz8BqGUMYlnzNBer5NvGg==",
++      "version": "7.0.6",
++      "resolved": "https://registry.npmjs.org/ignore/-/ignore-7.0.6.tgz",
++      "integrity": "sha512-BAg6QkE8W+TuQLrrw0Ugr7HegXduRuuj8/ti2kSOc+jz1dmx8/WNcjr6XGnq5YpDWxFwwaavqD0+jIUOKelTsw==",
+       "dev": true,
+       "license": "MIT",
+       "engines": {
+@@ -1271,16 +1234,16 @@
+       }
+     },
+     "node_modules/@typescript-eslint/parser": {
+-      "version": "8.58.0",
+-      "resolved": "https://registry.npmjs.org/@typescript-eslint/parser/-/parser-8.58.0.tgz",
+-      "integrity": "sha512-rLoGZIf9afaRBYsPUMtvkDWykwXwUPL60HebR4JgTI8mxfFe2cQTu3AGitANp4b9B2QlVru6WzjgB2IzJKiCSA==",
++      "version": "8.67.0",
++      "resolved": "https://registry.npmjs.org/@typescript-eslint/parser/-/parser-8.67.0.tgz",
++      "integrity": "sha512-fUBfTuuEulWqX6V8+O3PtScV01tzYYRUDTAirHFKoRAt7nOzoGiPt0M/bB47wWNy0coOOcgEwAMUtBpykMxl6w==",
+       "dev": true,
+       "license": "MIT",
+       "dependencies": {
+-        "@typescript-eslint/scope-manager": "8.58.0",
+-        "@typescript-eslint/types": "8.58.0",
+-        "@typescript-eslint/typescript-estree": "8.58.0",
+-        "@typescript-eslint/visitor-keys": "8.58.0",
++        "@typescript-eslint/scope-manager": "8.67.0",
++        "@typescript-eslint/types": "8.67.0",
++        "@typescript-eslint/typescript-estree": "8.67.0",
++        "@typescript-eslint/visitor-keys": "8.67.0",
+         "debug": "^4.4.3"
+       },
+       "engines": {
+@@ -1296,14 +1259,14 @@
+       }
+     },
+     "node_modules/@typescript-eslint/project-service": {
+-      "version": "8.58.0",
+-      "resolved": "https://registry.npmjs.org/@typescript-eslint/project-service/-/project-service-8.58.0.tgz",
+-      "integrity": "sha512-8Q/wBPWLQP1j16NxoPNIKpDZFMaxl7yWIoqXWYeWO+Bbd2mjgvoF0dxP2jKZg5+x49rgKdf7Ck473M8PC3V9lg==",
++      "version": "8.67.0",
++      "resolved": "https://registry.npmjs.org/@typescript-eslint/project-service/-/project-service-8.67.0.tgz",
++      "integrity": "sha512-cvE8c7ulYeXN9fYuszhCeCsbzyVEXuhrRCybnBre7TUmqb5nRmBfQAwCj0O3WJFDeyAZt4VYv51vMCC9LHSdYw==",
+       "dev": true,
+       "license": "MIT",
+       "dependencies": {
+-        "@typescript-eslint/tsconfig-utils": "^8.58.0",
+-        "@typescript-eslint/types": "^8.58.0",
++        "@typescript-eslint/tsconfig-utils": "^8.67.0",
++        "@typescript-eslint/types": "^8.67.0",
+         "debug": "^4.4.3"
+       },
+       "engines": {
+@@ -1318,14 +1281,14 @@
+       }
+     },
+     "node_modules/@typescript-eslint/scope-manager": {
+-      "version": "8.58.0",
+-      "resolved": "https://registry.npmjs.org/@typescript-eslint/scope-manager/-/scope-manager-8.58.0.tgz",
+-      "integrity": "sha512-W1Lur1oF50FxSnNdGp3Vs6P+yBRSmZiw4IIjEeYxd8UQJwhUF0gDgDD/W/Tgmh73mxgEU3qX0Bzdl/NGuSPEpQ==",
++      "version": "8.67.0",
++      "resolved": "https://registry.npmjs.org/@typescript-eslint/scope-manager/-/scope-manager-8.67.0.tgz",
++      "integrity": "sha512-EgvsleTwS4E+WzzSvem8fAUubLwatMNF1B5hHSLQxcvs7q2dtRhGyujHwLJSYlG41niJ7GP24Aha2+0mb1b2kg==",
+       "dev": true,
+       "license": "MIT",
+       "dependencies": {
+-        "@typescript-eslint/types": "8.58.0",
+-        "@typescript-eslint/visitor-keys": "8.58.0"
++        "@typescript-eslint/types": "8.67.0",
++        "@typescript-eslint/visitor-keys": "8.67.0"
+       },
+       "engines": {
+         "node": "^18.18.0 || ^20.9.0 || >=21.1.0"
+@@ -1336,9 +1299,9 @@
+       }
+     },
+     "node_modules/@typescript-eslint/tsconfig-utils": {
+-      "version": "8.58.0",
+-      "resolved": "https://registry.npmjs.org/@typescript-eslint/tsconfig-utils/-/tsconfig-utils-8.58.0.tgz",
+-      "integrity": "sha512-doNSZEVJsWEu4htiVC+PR6NpM+pa+a4ClH9INRWOWCUzMst/VA9c4gXq92F8GUD1rwhNvRLkgjfYtFXegXQF7A==",
++      "version": "8.67.0",
++      "resolved": "https://registry.npmjs.org/@typescript-eslint/tsconfig-utils/-/tsconfig-utils-8.67.0.tgz",
++      "integrity": "sha512-vV+LUSv5njUWsknE71fqKTlXUva+R76SaeORd6Zojcunk/6DvKFXONU3BrAs2H49mbygUXt6gbYunzwqNwlhdg==",
+       "dev": true,
+       "license": "MIT",
+       "engines": {
+@@ -1353,15 +1316,15 @@
+       }
+     },
+     "node_modules/@typescript-eslint/type-utils": {
+-      "version": "8.58.0",
+-      "resolved": "https://registry.npmjs.org/@typescript-eslint/type-utils/-/type-utils-8.58.0.tgz",
+-      "integrity": "sha512-aGsCQImkDIqMyx1u4PrVlbi/krmDsQUs4zAcCV6M7yPcPev+RqVlndsJy9kJ8TLihW9TZ0kbDAzctpLn5o+lOg==",
++      "version": "8.67.0",
++      "resolved": "https://registry.npmjs.org/@typescript-eslint/type-utils/-/type-utils-8.67.0.tgz",
++      "integrity": "sha512-aVWDXbRmdXO9siTfX4ditQI1T9+zVcNazT48EJCD0v40/9RIFoUgZ05CmGEq9H2gixRpjUn/iplwvlcvutJW/Q==",
+       "dev": true,
+       "license": "MIT",
+       "dependencies": {
+-        "@typescript-eslint/types": "8.58.0",
+-        "@typescript-eslint/typescript-estree": "8.58.0",
+-        "@typescript-eslint/utils": "8.58.0",
++        "@typescript-eslint/types": "8.67.0",
++        "@typescript-eslint/typescript-estree": "8.67.0",
++        "@typescript-eslint/utils": "8.67.0",
+         "debug": "^4.4.3",
+         "ts-api-utils": "^2.5.0"
+       },
+@@ -1378,9 +1341,9 @@
+       }
+     },
+     "node_modules/@typescript-eslint/types": {
+-      "version": "8.58.0",
+-      "resolved": "https://registry.npmjs.org/@typescript-eslint/types/-/types-8.58.0.tgz",
+-      "integrity": "sha512-O9CjxypDT89fbHxRfETNoAnHj/i6IpRK0CvbVN3qibxlLdo5p5hcLmUuCCrHMpxiWSwKyI8mCP7qRNYuOJ0Uww==",
++      "version": "8.67.0",
++      "resolved": "https://registry.npmjs.org/@typescript-eslint/types/-/types-8.67.0.tgz",
++      "integrity": "sha512-sBtgslww8nsMYUjhdPBiSyUqSzT8uR6g93A2QXnQC8+cGdjz0CyaOdqHDRJb1AtORbZCNUJBBeFA/tNR2uQmww==",
+       "dev": true,
+       "license": "MIT",
+       "engines": {
+@@ -1392,16 +1355,16 @@
+       }
+     },
+     "node_modules/@typescript-eslint/typescript-estree": {
+-      "version": "8.58.0",
+-      "resolved": "https://registry.npmjs.org/@typescript-eslint/typescript-estree/-/typescript-estree-8.58.0.tgz",
+-      "integrity": "sha512-7vv5UWbHqew/dvs+D3e1RvLv1v2eeZ9txRHPnEEBUgSNLx5ghdzjHa0sgLWYVKssH+lYmV0JaWdoubo0ncGYLA==",
++      "version": "8.67.0",
++      "resolved": "https://registry.npmjs.org/@typescript-eslint/typescript-estree/-/typescript-estree-8.67.0.tgz",
++      "integrity": "sha512-EKQBCE9yNlRJYm7jdTW5AhDacDUmSwQb0FAJAmK2EKYrNXIsa2vxcSZx6PvJ/dEdI6lS+Y9W+EXckLj0iPFGcw==",
+       "dev": true,
+       "license": "MIT",
+       "dependencies": {
+-        "@typescript-eslint/project-service": "8.58.0",
+-        "@typescript-eslint/tsconfig-utils": "8.58.0",
+-        "@typescript-eslint/types": "8.58.0",
+-        "@typescript-eslint/visitor-keys": "8.58.0",
++        "@typescript-eslint/project-service": "8.67.0",
++        "@typescript-eslint/tsconfig-utils": "8.67.0",
++        "@typescript-eslint/types": "8.67.0",
++        "@typescript-eslint/visitor-keys": "8.67.0",
+         "debug": "^4.4.3",
+         "minimatch": "^10.2.2",
+         "semver": "^7.7.3",
+@@ -1430,26 +1393,26 @@
+       }
+     },
+     "node_modules/@typescript-eslint/typescript-estree/node_modules/brace-expansion": {
+-      "version": "5.0.5",
+-      "resolved": "https://registry.npmjs.org/brace-expansion/-/brace-expansion-5.0.5.tgz",
+-      "integrity": "sha512-VZznLgtwhn+Mact9tfiwx64fA9erHH/MCXEUfB/0bX/6Fz6ny5EGTXYltMocqg4xFAQZtnO3DHWWXi8RiuN7cQ==",
++      "version": "5.0.9",
++      "resolved": "https://registry.npmjs.org/brace-expansion/-/brace-expansion-5.0.9.tgz",
++      "integrity": "sha512-ScQ4IuvIEF1TMlP7Zt+vjJ//9zlPb2SDcxWxM3bk8s6t6GGdJ7KO1dCcTidOPJKePW30LE/2cT7wCyPho9/Wxg==",
+       "dev": true,
+       "license": "MIT",
+       "dependencies": {
+         "balanced-match": "^4.0.2"
+       },
+       "engines": {
+-        "node": "18 || 20 || >=22"
++        "node": "20 || >=22"
+       }
+     },
+     "node_modules/@typescript-eslint/typescript-estree/node_modules/minimatch": {
+-      "version": "10.2.5",
+-      "resolved": "https://registry.npmjs.org/minimatch/-/minimatch-10.2.5.tgz",
+-      "integrity": "sha512-MULkVLfKGYDFYejP07QOurDLLQpcjk7Fw+7jXS2R2czRQzR56yHRveU5NDJEOviH+hETZKSkIk5c+T23GjFUMg==",
++      "version": "10.2.6",
++      "resolved": "https://registry.npmjs.org/minimatch/-/minimatch-10.2.6.tgz",
++      "integrity": "sha512-vpLQEs+VLCr1nU0BXS07maYoFwlDAH0gngQuuttxIwutDFEMHq2blX+8vpgxDdK3J1PwjCJiep77OitTZ4Ll1A==",
+       "dev": true,
+       "license": "BlueOak-1.0.0",
+       "dependencies": {
+-        "brace-expansion": "^5.0.5"
++        "brace-expansion": "^5.0.8"
+       },
+       "engines": {
+         "node": "18 || 20 || >=22"
+@@ -1459,9 +1422,9 @@
+       }
+     },
+     "node_modules/@typescript-eslint/typescript-estree/node_modules/semver": {
+-      "version": "7.7.4",
+-      "resolved": "https://registry.npmjs.org/semver/-/semver-7.7.4.tgz",
+-      "integrity": "sha512-vFKC2IEtQnVhpT78h1Yp8wzwrf8CM+MzKMHGJZfBtzhZNycRFnXsHk6E5TxIkkMsgNS7mdX3AGB7x2QM2di4lA==",
++      "version": "7.8.5",
++      "resolved": "https://registry.npmjs.org/semver/-/semver-7.8.5.tgz",
++      "integrity": "sha512-Y7/KDsb8LjooZpwaqGyulO6DQlksgCncchHGk+sZIY4SBvUocMBEFH5Ur1fI4dV+Jvl0w6cjvucaIi40puRioA==",
+       "dev": true,
+       "license": "ISC",
+       "bin": {
+@@ -1472,16 +1435,16 @@
+       }
+     },
+     "node_modules/@typescript-eslint/utils": {
+-      "version": "8.58.0",
+-      "resolved": "https://registry.npmjs.org/@typescript-eslint/utils/-/utils-8.58.0.tgz",
+-      "integrity": "sha512-RfeSqcFeHMHlAWzt4TBjWOAtoW9lnsAGiP3GbaX9uVgTYYrMbVnGONEfUCiSss+xMHFl+eHZiipmA8WkQ7FuNA==",
++      "version": "8.67.0",
++      "resolved": "https://registry.npmjs.org/@typescript-eslint/utils/-/utils-8.67.0.tgz",
++      "integrity": "sha512-U9D1FdwEWBwok3hxxSdhclMb0twvt9QnjIQ0VfQ1AiX2epnpSgv2ubVDsayOFyY8K6FX+AQ7E0FKWVG3iKsj1A==",
+       "dev": true,
+       "license": "MIT",
+       "dependencies": {
+         "@eslint-community/eslint-utils": "^4.9.1",
+-        "@typescript-eslint/scope-manager": "8.58.0",
+-        "@typescript-eslint/types": "8.58.0",
+-        "@typescript-eslint/typescript-estree": "8.58.0"
++        "@typescript-eslint/scope-manager": "8.67.0",
++        "@typescript-eslint/types": "8.67.0",
++        "@typescript-eslint/typescript-estree": "8.67.0"
+       },
+       "engines": {
+         "node": "^18.18.0 || ^20.9.0 || >=21.1.0"
+@@ -1496,13 +1459,13 @@
+       }
+     },
+     "node_modules/@typescript-eslint/visitor-keys": {
+-      "version": "8.58.0",
+-      "resolved": "https://registry.npmjs.org/@typescript-eslint/visitor-keys/-/visitor-keys-8.58.0.tgz",
+-      "integrity": "sha512-XJ9UD9+bbDo4a4epraTwG3TsNPeiB9aShrUneAVXy8q4LuwowN+qu89/6ByLMINqvIMeI9H9hOHQtg/ijrYXzQ==",
++      "version": "8.67.0",
++      "resolved": "https://registry.npmjs.org/@typescript-eslint/visitor-keys/-/visitor-keys-8.67.0.tgz",
++      "integrity": "sha512-fkv8dHRDqfGtTHuJeebdrQ7cX6Ad4WAS00rgHh9UGvMycF1mjBfsxry1XsLIFhWZ6Judlh6UdzK+TYlbpCXgnA==",
+       "dev": true,
+       "license": "MIT",
+       "dependencies": {
+-        "@typescript-eslint/types": "8.58.0",
++        "@typescript-eslint/types": "8.67.0",
+         "eslint-visitor-keys": "^5.0.0"
+       },
+       "engines": {
+@@ -1527,13 +1490,13 @@
+       }
+     },
+     "node_modules/@vitejs/plugin-react": {
+-      "version": "6.0.1",
+-      "resolved": "https://registry.npmjs.org/@vitejs/plugin-react/-/plugin-react-6.0.1.tgz",
+-      "integrity": "sha512-l9X/E3cDb+xY3SWzlG1MOGt2usfEHGMNIaegaUGFsLkb3RCn/k8/TOXBcab+OndDI4TBtktT8/9BwwW8Vi9KUQ==",
++      "version": "6.0.5",
++      "resolved": "https://registry.npmjs.org/@vitejs/plugin-react/-/plugin-react-6.0.5.tgz",
++      "integrity": "sha512-BOVzne/NL162sMdResB25mUv+vWMF5NoAjNf09TeGlE7ZpszZWSD3winycicLJw72yeVsoCn/2kOhEuCvEShMA==",
+       "dev": true,
+       "license": "MIT",
+       "dependencies": {
+-        "@rolldown/pluginutils": "1.0.0-rc.7"
++        "@rolldown/pluginutils": "^1.0.1"
+       },
+       "engines": {
+         "node": "^20.19.0 || >=22.12.0"
+@@ -1553,18 +1516,28 @@
+       }
+     },
+     "node_modules/@xyflow/react": {
+-      "version": "12.10.2",
+-      "resolved": "https://registry.npmjs.org/@xyflow/react/-/react-12.10.2.tgz",
+-      "integrity": "sha512-CgIi6HwlcHXwlkTpr0fxLv/0sRVNZ8IdwKLzzeCscaYBwpvfcH1QFOCeaTCuEn1FQEs/B8CjnTSjhs8udgmBgQ==",
++      "version": "12.11.3",
++      "resolved": "https://registry.npmjs.org/@xyflow/react/-/react-12.11.3.tgz",
++      "integrity": "sha512-G3jogHz2GWUtIOkhavUGno2YzY9u6fILIJBttfsBendb0/HWB90JG+sOTAvlIMEwyvq9zgy9V9ZQSwyQjR5QzQ==",
+       "license": "MIT",
+       "dependencies": {
+-        "@xyflow/system": "0.0.76",
++        "@xyflow/system": "0.0.80",
+         "classcat": "^5.0.3",
+         "zustand": "^4.4.0"
+       },
+       "peerDependencies": {
++        "@types/react": ">=17",
++        "@types/react-dom": ">=17",
+         "react": ">=17",
+         "react-dom": ">=17"
++      },
++      "peerDependenciesMeta": {
++        "@types/react": {
++          "optional": true
++        },
++        "@types/react-dom": {
++          "optional": true
++        }
+       }
+     },
+     "node_modules/@xyflow/react/node_modules/zustand": {
+@@ -1596,9 +1569,9 @@
+       }
+     },
+     "node_modules/@xyflow/system": {
+-      "version": "0.0.76",
+-      "resolved": "https://registry.npmjs.org/@xyflow/system/-/system-0.0.76.tgz",
+-      "integrity": "sha512-hvwvnRS1B3REwVDlWexsq7YQaPZeG3/mKo1jv38UmnpWmxihp14bW6VtEOuHEwJX2FvzFw8k77LyKSk/wiZVNA==",
++      "version": "0.0.80",
++      "resolved": "https://registry.npmjs.org/@xyflow/system/-/system-0.0.80.tgz",
++      "integrity": "sha512-ywc3ZqG91brzWrH1WlwMdIX4goOfrpBy6AbLdVSaof/Xx9l138ijIKRExM6EkMro2F+OImGmSiA/WKcXvKVcfA==",
+       "license": "MIT",
+       "dependencies": {
+         "@types/d3-drag": "^3.0.7",
+@@ -1613,9 +1586,9 @@
+       }
+     },
+     "node_modules/acorn": {
+-      "version": "8.16.0",
+-      "resolved": "https://registry.npmjs.org/acorn/-/acorn-8.16.0.tgz",
+-      "integrity": "sha512-UVJyE9MttOsBQIDKw1skb9nAwQuR5wuGD3+82K6JgJlm/Y+KI92oNsMNGZCYdDsVtRHSak0pcV5Dno5+4jh9sw==",
++      "version": "8.18.0",
++      "resolved": "https://registry.npmjs.org/acorn/-/acorn-8.18.0.tgz",
++      "integrity": "sha512-lGq+9yr1/GuAWaVYIHRjvvySG5/4VfKIvC8EWxStPdcDh/Ka7FG3twP6v4d5BkravUilhIAsG4Qj83t02LWUPQ==",
+       "dev": true,
+       "license": "MIT",
+       "bin": {
+@@ -1636,9 +1609,9 @@
+       }
+     },
+     "node_modules/ajv": {
+-      "version": "6.14.0",
+-      "resolved": "https://registry.npmjs.org/ajv/-/ajv-6.14.0.tgz",
+-      "integrity": "sha512-IWrosm/yrn43eiKqkfkHis7QioDleaXQHdDVPKg0FSwwd/DuvyX79TZnFOnYpB7dcsFAMmtFztZuXPDvSePkFw==",
++      "version": "6.15.0",
++      "resolved": "https://registry.npmjs.org/ajv/-/ajv-6.15.0.tgz",
++      "integrity": "sha512-fgFx7Hfoq60ytK2c7DhnF8jIvzYgOMxfugjLOSMHjLIPgenqa7S7oaagATUq99mV6IYvN2tRmC0wnTYX6iPbMw==",
+       "dev": true,
+       "license": "MIT",
+       "dependencies": {
+@@ -1683,9 +1656,9 @@
+       "license": "MIT"
+     },
+     "node_modules/baseline-browser-mapping": {
+-      "version": "2.10.12",
+-      "resolved": "https://registry.npmjs.org/baseline-browser-mapping/-/baseline-browser-mapping-2.10.12.tgz",
+-      "integrity": "sha512-qyq26DxfY4awP2gIRXhhLWfwzwI+N5Nxk6iQi8EFizIaWIjqicQTE4sLnZZVdeKPRcVNoJOkkpfzoIYuvCKaIQ==",
++      "version": "2.11.14",
++      "resolved": "https://registry.npmjs.org/baseline-browser-mapping/-/baseline-browser-mapping-2.11.14.tgz",
++      "integrity": "sha512-JyJ954WzuIR8/FFzX0o5krdSTrBAkcCSRfWSleRsIHSWV+cZe2FI1PKggVkFke1hBldRs+LRxUczzE9iPmgZww==",
+       "dev": true,
+       "license": "Apache-2.0",
+       "bin": {
+@@ -1696,9 +1669,9 @@
+       }
+     },
+     "node_modules/brace-expansion": {
+-      "version": "1.1.13",
+-      "resolved": "https://registry.npmjs.org/brace-expansion/-/brace-expansion-1.1.13.tgz",
+-      "integrity": "sha512-9ZLprWS6EENmhEOpjCYW2c8VkmOvckIJZfkr7rBW6dObmfgJ/L1GpSYW5Hpo9lDz4D1+n0Ckz8rU7FwHDQiG/w==",
++      "version": "1.1.18",
++      "resolved": "https://registry.npmjs.org/brace-expansion/-/brace-expansion-1.1.18.tgz",
++      "integrity": "sha512-Edep/X9fGqVNmzKBVsDYIOtD+z1tuezV70LBjdCst9Tqu76lsnvRiZ6oTic1n+/BIwX6QDGAO94PN4N2SADvtw==",
+       "dev": true,
+       "license": "MIT",
+       "dependencies": {
+@@ -1707,9 +1680,9 @@
+       }
+     },
+     "node_modules/browserslist": {
+-      "version": "4.28.2",
+-      "resolved": "https://registry.npmjs.org/browserslist/-/browserslist-4.28.2.tgz",
+-      "integrity": "sha512-48xSriZYYg+8qXna9kwqjIVzuQxi+KYWp2+5nCYnYKPTr0LvD89Jqk2Or5ogxz0NUMfIjhh2lIUX/LyX9B4oIg==",
++      "version": "4.28.8",
++      "resolved": "https://registry.npmjs.org/browserslist/-/browserslist-4.28.8.tgz",
++      "integrity": "sha512-V2NpofLblG64mfOtSgDhOJESZEGogzDMBv/q+W6oc4LXWP/q75eOXoOaaOu1EOadB9U4Bwx/e0yzbvwKH8zalA==",
+       "dev": true,
+       "funding": [
+         {
+@@ -1727,11 +1700,11 @@
+       ],
+       "license": "MIT",
+       "dependencies": {
+-        "baseline-browser-mapping": "^2.10.12",
+-        "caniuse-lite": "^1.0.30001782",
+-        "electron-to-chromium": "^1.5.328",
+-        "node-releases": "^2.0.36",
+-        "update-browserslist-db": "^1.2.3"
++        "baseline-browser-mapping": "^2.11.12",
++        "caniuse-lite": "^1.0.30001809",
++        "electron-to-chromium": "^1.5.402",
++        "node-releases": "^2.0.53",
++        "update-browserslist-db": "^1.3.0"
+       },
+       "bin": {
+         "browserslist": "cli.js"
+@@ -1751,9 +1724,9 @@
+       }
+     },
+     "node_modules/caniuse-lite": {
+-      "version": "1.0.30001782",
+-      "resolved": "https://registry.npmjs.org/caniuse-lite/-/caniuse-lite-1.0.30001782.tgz",
+-      "integrity": "sha512-dZcaJLJeDMh4rELYFw1tvSn1bhZWYFOt468FcbHHxx/Z/dFidd1I6ciyFdi3iwfQCyOjqo9upF6lGQYtMiJWxw==",
++      "version": "1.0.30001809",
++      "resolved": "https://registry.npmjs.org/caniuse-lite/-/caniuse-lite-1.0.30001809.tgz",
++      "integrity": "sha512-xxWVywk6a6Arlk+hymeycyn/VgqEfLDxupvhH/xiY5SJ/18kmi9o6MiO320DCUzypORHLtvh0I4i04tUhCNHNQ==",
+       "dev": true,
+       "funding": [
+         {
+@@ -1991,21 +1964,21 @@
+       }
+     },
+     "node_modules/electron-to-chromium": {
+-      "version": "1.5.329",
+-      "resolved": "https://registry.npmjs.org/electron-to-chromium/-/electron-to-chromium-1.5.329.tgz",
+-      "integrity": "sha512-/4t+AS1l4S3ZC0Ja7PHFIWeBIxGA3QGqV8/yKsP36v7NcyUCl+bIcmw6s5zVuMIECWwBrAK/6QLzTmbJChBboQ==",
++      "version": "1.5.406",
++      "resolved": "https://registry.npmjs.org/electron-to-chromium/-/electron-to-chromium-1.5.406.tgz",
++      "integrity": "sha512-hWH5ORBi3d0IipnMh7BN5GDTaAmrSSSWmznwt2zltdiRNEWoEQyTwF0FFSBxzHO7hLSRT6loQu3IQGV0wg/Tvg==",
+       "dev": true,
+       "license": "ISC"
+     },
+     "node_modules/enhanced-resolve": {
+-      "version": "5.20.1",
+-      "resolved": "https://registry.npmjs.org/enhanced-resolve/-/enhanced-resolve-5.20.1.tgz",
+-      "integrity": "sha512-Qohcme7V1inbAfvjItgw0EaxVX5q2rdVEZHRBrEQdRZTssLDGsL8Lwrznl8oQ/6kuTJONLaDcGjkNP247XEhcA==",
++      "version": "5.24.5",
++      "resolved": "https://registry.npmjs.org/enhanced-resolve/-/enhanced-resolve-5.24.5.tgz",
++      "integrity": "sha512-L1l8TNvomm6UVW5B253AGxQagSQr+vGwhMlrrfRS2qmhx46AMpMVJKQYLvWYbysTMY8VoicOvzHzoHMbyzB+4A==",
+       "dev": true,
+       "license": "MIT",
+       "dependencies": {
+         "graceful-fs": "^4.2.4",
+-        "tapable": "^2.3.0"
++        "tapable": "^2.3.3"
+       },
+       "engines": {
+         "node": ">=10.13.0"
+@@ -2035,9 +2008,9 @@
+       }
+     },
+     "node_modules/eslint": {
+-      "version": "9.39.4",
+-      "resolved": "https://registry.npmjs.org/eslint/-/eslint-9.39.4.tgz",
+-      "integrity": "sha512-XoMjdBOwe/esVgEvLmNsD3IRHkm7fbKIUGvrleloJXUZgDHig2IPWNniv+GwjyJXzuNqVjlr5+4yVUZjycJwfQ==",
++      "version": "9.39.5",
++      "resolved": "https://registry.npmjs.org/eslint/-/eslint-9.39.5.tgz",
++      "integrity": "sha512-DgZS62aPLXKlnxILS/AYCoRvHaZeXceIzlXPkkGGzJWSow1aEk0lbTlxUSlyjC8jcaKxAdOnTDz+o1JFSBsyjw==",
+       "dev": true,
+       "license": "MIT",
+       "dependencies": {
+@@ -2046,8 +2019,8 @@
+         "@eslint/config-array": "^0.21.2",
+         "@eslint/config-helpers": "^0.4.2",
+         "@eslint/core": "^0.17.0",
+-        "@eslint/eslintrc": "^3.3.5",
+-        "@eslint/js": "9.39.4",
++        "@eslint/eslintrc": "^3.3.6",
++        "@eslint/js": "9.39.5",
+         "@eslint/plugin-kit": "^0.4.1",
+         "@humanfs/node": "^0.16.6",
+         "@humanwhocodes/module-importer": "^1.0.1",
+@@ -2095,9 +2068,9 @@
+       }
+     },
+     "node_modules/eslint-plugin-react-hooks": {
+-      "version": "7.0.1",
+-      "resolved": "https://registry.npmjs.org/eslint-plugin-react-hooks/-/eslint-plugin-react-hooks-7.0.1.tgz",
+-      "integrity": "sha512-O0d0m04evaNzEPoSW+59Mezf8Qt0InfgGIBJnpC0h3NH/WjUAR7BIKUfysC6todmtiZ/A0oUVS8Gce0WhBrHsA==",
++      "version": "7.1.1",
++      "resolved": "https://registry.npmjs.org/eslint-plugin-react-hooks/-/eslint-plugin-react-hooks-7.1.1.tgz",
++      "integrity": "sha512-f2I7Gw6JbvCexzIInuSbZpfdQ44D7iqdWX01FKLvrPgqxoE7oMj8clOfto8U6vYiz4yd5oKu39rRSVOe1zRu0g==",
+       "dev": true,
+       "license": "MIT",
+       "dependencies": {
+@@ -2111,13 +2084,13 @@
+         "node": ">=18"
+       },
+       "peerDependencies": {
+-        "eslint": "^3.0.0 || ^4.0.0 || ^5.0.0 || ^6.0.0 || ^7.0.0 || ^8.0.0-0 || ^9.0.0"
++        "eslint": "^3.0.0 || ^4.0.0 || ^5.0.0 || ^6.0.0 || ^7.0.0 || ^8.0.0-0 || ^9.0.0 || ^10.0.0"
+       }
+     },
+     "node_modules/eslint-plugin-react-refresh": {
+-      "version": "0.5.2",
+-      "resolved": "https://registry.npmjs.org/eslint-plugin-react-refresh/-/eslint-plugin-react-refresh-0.5.2.tgz",
+-      "integrity": "sha512-hmgTH57GfzoTFjVN0yBwTggnsVUF2tcqi7RJZHqi9lIezSs4eFyAMktA68YD4r5kNw1mxyY4dmkyoFDb3FIqrA==",
++      "version": "0.5.4",
++      "resolved": "https://registry.npmjs.org/eslint-plugin-react-refresh/-/eslint-plugin-react-refresh-0.5.4.tgz",
++      "integrity": "sha512-7bqTKz7T0r+HKWFarNXByDE9/5+73wI2ru+M3zuqGbR7s/b/5/pQJXZoufWlrngqGqoZto73ZkGumCdLxk+4rw==",
+       "dev": true,
+       "license": "MIT",
+       "peerDependencies": {
+@@ -2302,20 +2275,20 @@
+       }
+     },
+     "node_modules/flatted": {
+-      "version": "3.4.2",
+-      "resolved": "https://registry.npmjs.org/flatted/-/flatted-3.4.2.tgz",
+-      "integrity": "sha512-PjDse7RzhcPkIJwy5t7KPWQSZ9cAbzQXcafsetQoD7sOJRQlGikNbx7yZp2OotDnJyrDcbyRq3Ttb18iYOqkxA==",
++      "version": "3.4.4",
++      "resolved": "https://registry.npmjs.org/flatted/-/flatted-3.4.4.tgz",
++      "integrity": "sha512-5+ybhBZANEJxaH3X5evAFatUxLfEHSr7n6kYJ+1Qd0mUqr4eu9gIf6GDbWHf8RJijHrjjO8G+la14SlL2SeS1Q==",
+       "dev": true,
+       "license": "ISC"
+     },
+     "node_modules/framer-motion": {
+-      "version": "12.38.0",
+-      "resolved": "https://registry.npmjs.org/framer-motion/-/framer-motion-12.38.0.tgz",
+-      "integrity": "sha512-rFYkY/pigbcswl1XQSb7q424kSTQ8q6eAC+YUsSKooHQYuLdzdHjrt6uxUC+PRAO++q5IS7+TamgIw1AphxR+g==",
++      "version": "12.43.0",
++      "resolved": "https://registry.npmjs.org/framer-motion/-/framer-motion-12.43.0.tgz",
++      "integrity": "sha512-1eaL3RvR/kAlbG7UYcpMptEyzPoENO0c6w7ZnB3/hh2vSAz/6uGAFn6fdoqTBguNstf3MsFhJHsD/0DHiclG+g==",
+       "license": "MIT",
+       "dependencies": {
+-        "motion-dom": "^12.38.0",
+-        "motion-utils": "^12.36.0",
++        "motion-dom": "^12.43.0",
++        "motion-utils": "^12.39.0",
+         "tslib": "^2.4.0"
+       },
+       "peerDependencies": {
+@@ -2374,9 +2347,9 @@
+       }
+     },
+     "node_modules/globals": {
+-      "version": "17.4.0",
+-      "resolved": "https://registry.npmjs.org/globals/-/globals-17.4.0.tgz",
+-      "integrity": "sha512-hjrNztw/VajQwOLsMNT1cbJiH2muO3OROCHnbehc8eY5JyD2gqz4AcMHPqgaOR59DjgUjYAYLeH699g/eWi2jw==",
++      "version": "17.11.0",
++      "resolved": "https://registry.npmjs.org/globals/-/globals-17.11.0.tgz",
++      "integrity": "sha512-Z2I8hM+PbJDXQDq3Icgpzv+mPdwr68iZUU9d5WW4FuXfDUQfkZaZuvjMv42/5crNyw154+9+VWXbYrUgDXbxNw==",
+       "dev": true,
+       "license": "MIT",
+       "engines": {
+@@ -2488,9 +2461,9 @@
+       "license": "ISC"
+     },
+     "node_modules/jiti": {
+-      "version": "2.6.1",
+-      "resolved": "https://registry.npmjs.org/jiti/-/jiti-2.6.1.tgz",
+-      "integrity": "sha512-ekilCSN1jwRvIbgeg/57YFh8qQDNbwDb9xT/qu2DAHbFFZUicIl4ygVaAvzveMhMVr3LnpSKTNnwt8PoOfmKhQ==",
++      "version": "2.7.0",
++      "resolved": "https://registry.npmjs.org/jiti/-/jiti-2.7.0.tgz",
++      "integrity": "sha512-AC/7JofJvZGrrneWNaEnJeOLUx+JlGt7tNa0wZiRPT4MY1wmfKjt2+6O2p2uz2+skll8OZZmJMNqeke7kKbNgQ==",
+       "dev": true,
+       "license": "MIT",
+       "bin": {
+@@ -2505,10 +2478,20 @@
+       "license": "MIT"
+     },
+     "node_modules/js-yaml": {
+-      "version": "4.1.1",
+-      "resolved": "https://registry.npmjs.org/js-yaml/-/js-yaml-4.1.1.tgz",
+-      "integrity": "sha512-qQKT4zQxXl8lLwBtHMWwaTcGfFOZviOJet3Oy/xmGk2gZH677CJM9EvtfdSkgWcATZhj/55JZ0rmy3myCT5lsA==",
++      "version": "4.3.1",
++      "resolved": "https://registry.npmjs.org/js-yaml/-/js-yaml-4.3.1.tgz",
++      "integrity": "sha512-CY6crGq313MX8GkwvB7tzgp99vjQxY1++5y10/BKN/GUfHqWaOGQMNZkBvqSzsZKWk/ijwHlWzzkLulsGHhjWQ==",
+       "dev": true,
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/puzrin"
++        },
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/nodeca"
++        }
++      ],
+       "license": "MIT",
+       "dependencies": {
+         "argparse": "^2.0.1"
+@@ -2731,6 +2714,9 @@
+         "arm64"
+       ],
+       "dev": true,
++      "libc": [
++        "glibc"
++      ],
+       "license": "MPL-2.0",
+       "optional": true,
+       "os": [
+@@ -2752,6 +2738,9 @@
+         "arm64"
+       ],
+       "dev": true,
++      "libc": [
++        "musl"
++      ],
+       "license": "MPL-2.0",
+       "optional": true,
+       "os": [
+@@ -2773,6 +2762,9 @@
+         "x64"
+       ],
+       "dev": true,
++      "libc": [
++        "glibc"
++      ],
+       "license": "MPL-2.0",
+       "optional": true,
+       "os": [
+@@ -2794,6 +2786,9 @@
+         "x64"
+       ],
+       "dev": true,
++      "libc": [
++        "musl"
++      ],
+       "license": "MPL-2.0",
+       "optional": true,
+       "os": [
+@@ -2906,18 +2901,18 @@
+       }
+     },
+     "node_modules/motion-dom": {
+-      "version": "12.38.0",
+-      "resolved": "https://registry.npmjs.org/motion-dom/-/motion-dom-12.38.0.tgz",
+-      "integrity": "sha512-pdkHLD8QYRp8VfiNLb8xIBJis1byQ9gPT3Jnh2jqfFtAsWUA3dEepDlsWe/xMpO8McV+VdpKVcp+E+TGJEtOoA==",
++      "version": "12.43.0",
++      "resolved": "https://registry.npmjs.org/motion-dom/-/motion-dom-12.43.0.tgz",
++      "integrity": "sha512-azKON4d9S65PEoFUiQTMTgPheEmzf2QngdRc50AKfJp9Q9mmcBVw22c8eMq9k8kxOFHdL7+WZY7N/5F/lwiDag==",
+       "license": "MIT",
+       "dependencies": {
+-        "motion-utils": "^12.36.0"
++        "motion-utils": "^12.39.0"
+       }
+     },
+     "node_modules/motion-utils": {
+-      "version": "12.36.0",
+-      "resolved": "https://registry.npmjs.org/motion-utils/-/motion-utils-12.36.0.tgz",
+-      "integrity": "sha512-eHWisygbiwVvf6PZ1vhaHCLamvkSbPIeAYxWUuL3a2PD/TROgE7FvfHWTIH4vMl798QLfMw15nRqIaRDXTlYRg==",
++      "version": "12.39.0",
++      "resolved": "https://registry.npmjs.org/motion-utils/-/motion-utils-12.39.0.tgz",
++      "integrity": "sha512-8nadJAJjTtqRkmRF36FoJTrywK9nnFmnPwnSMyxaOCU7GDjN9RTMJIxx9De8ErM+vpPhMccr/6fo5WciyQLnMQ==",
+       "license": "MIT"
+     },
+     "node_modules/ms": {
+@@ -2928,9 +2923,9 @@
+       "license": "MIT"
+     },
+     "node_modules/nanoid": {
+-      "version": "3.3.11",
+-      "resolved": "https://registry.npmjs.org/nanoid/-/nanoid-3.3.11.tgz",
+-      "integrity": "sha512-N8SpfPUnUp1bK+PMYW8qSWdl9U+wwNWI4QKxOYDy9JAro3WMX7p2OeVRF9v+347pnakNevPmiHhNmZ2HbFA76w==",
++      "version": "3.3.18",
++      "resolved": "https://registry.npmjs.org/nanoid/-/nanoid-3.3.18.tgz",
++      "integrity": "sha512-DTg4MJbGMWkfi6VZFdNt2/caMbQy4Ou+Op/hJQvGEWcnVfoA1QA+xzRKAzw9jD6+GVOOeYr/mIcuDSdug6F6+w==",
+       "dev": true,
+       "funding": [
+         {
+@@ -2954,11 +2949,14 @@
+       "license": "MIT"
+     },
+     "node_modules/node-releases": {
+-      "version": "2.0.36",
+-      "resolved": "https://registry.npmjs.org/node-releases/-/node-releases-2.0.36.tgz",
+-      "integrity": "sha512-TdC8FSgHz8Mwtw9g5L4gR/Sh9XhSP/0DEkQxfEFXOpiul5IiHgHan2VhYYb6agDSfp4KuvltmGApc8HMgUrIkA==",
++      "version": "2.0.53",
++      "resolved": "https://registry.npmjs.org/node-releases/-/node-releases-2.0.53.tgz",
++      "integrity": "sha512-D9UOmYG3UH1V+ENW56t5QXBwJw1YEY18ruVeus89Rw+SyIgjPkCO84bRzO3uNIYosJbNwiabWVn48o3uJLjxFQ==",
+       "dev": true,
+-      "license": "MIT"
++      "license": "MIT",
++      "engines": {
++        "node": ">=18"
++      }
+     },
+     "node_modules/optionator": {
+       "version": "0.9.4",
+@@ -3051,9 +3049,9 @@
+       "license": "ISC"
+     },
+     "node_modules/picomatch": {
+-      "version": "4.0.4",
+-      "resolved": "https://registry.npmjs.org/picomatch/-/picomatch-4.0.4.tgz",
+-      "integrity": "sha512-QP88BAKvMam/3NxH6vj2o21R6MjxZUAd6nlwAS/pnGvN9IVLocLHxGYIzFhg6fUQ+5th6P4dv4eW9jX3DSIj7A==",
++      "version": "4.0.5",
++      "resolved": "https://registry.npmjs.org/picomatch/-/picomatch-4.0.5.tgz",
++      "integrity": "sha512-RvwwcruNjI1ncT5xRakeyS9Lf8lcItv34KD+aif+VH9kduAyfYBipGh12274xtenIPZ119/R9BdTBa8gAwSh0A==",
+       "dev": true,
+       "license": "MIT",
+       "engines": {
+@@ -3064,9 +3062,9 @@
+       }
+     },
+     "node_modules/postcss": {
+-      "version": "8.5.8",
+-      "resolved": "https://registry.npmjs.org/postcss/-/postcss-8.5.8.tgz",
+-      "integrity": "sha512-OW/rX8O/jXnm82Ey1k44pObPtdblfiuWnrd8X7GJ7emImCOstunGbXUpp7HdBrFQX6rJzn3sPT397Wp5aCwCHg==",
++      "version": "8.5.26",
++      "resolved": "https://registry.npmjs.org/postcss/-/postcss-8.5.26.tgz",
++      "integrity": "sha512-u82N74LFzG8ca+dD8puPnplTXoGH4fTPpVGuIbt36G3qvNlkvfD0lEAZSxaly3KX8TS/L1A1gsCEmvKmBcVbkQ==",
+       "dev": true,
+       "funding": [
+         {
+@@ -3084,7 +3082,7 @@
+       ],
+       "license": "MIT",
+       "dependencies": {
+-        "nanoid": "^3.3.11",
++        "nanoid": "^3.3.17",
+         "picocolors": "^1.1.1",
+         "source-map-js": "^1.2.1"
+       },
+@@ -3113,24 +3111,24 @@
+       }
+     },
+     "node_modules/react": {
+-      "version": "19.2.4",
+-      "resolved": "https://registry.npmjs.org/react/-/react-19.2.4.tgz",
+-      "integrity": "sha512-9nfp2hYpCwOjAN+8TZFGhtWEwgvWHXqESH8qT89AT/lWklpLON22Lc8pEtnpsZz7VmawabSU0gCjnj8aC0euHQ==",
++      "version": "19.2.8",
++      "resolved": "https://registry.npmjs.org/react/-/react-19.2.8.tgz",
++      "integrity": "sha512-PWaYA1L/q9u2u7xYQi+Y3L3Yfnie7XyLeaJICV1MGD6LprsBxcAqGjYyr0eY3p+QdsA+x/Irkt4Qif8D63+Sbw==",
+       "license": "MIT",
+       "engines": {
+         "node": ">=0.10.0"
+       }
+     },
+     "node_modules/react-dom": {
+-      "version": "19.2.4",
+-      "resolved": "https://registry.npmjs.org/react-dom/-/react-dom-19.2.4.tgz",
+-      "integrity": "sha512-AXJdLo8kgMbimY95O2aKQqsz2iWi9jMgKJhRBAxECE4IFxfcazB2LmzloIoibJI3C12IlY20+KFaLv+71bUJeQ==",
++      "version": "19.2.8",
++      "resolved": "https://registry.npmjs.org/react-dom/-/react-dom-19.2.8.tgz",
++      "integrity": "sha512-rVprimfGBG3DR+Tq0IQG2DT5PxKth1WIGDmj5yPmlzr4YBe7uyE+Du4oVqTDXZSHGGGXRtTJEGSSePyQCMBglQ==",
+       "license": "MIT",
+       "dependencies": {
+         "scheduler": "^0.27.0"
+       },
+       "peerDependencies": {
+-        "react": "^19.2.4"
++        "react": "^19.2.8"
+       }
+     },
+     "node_modules/resolve-from": {
+@@ -3144,14 +3142,14 @@
+       }
+     },
+     "node_modules/rolldown": {
+-      "version": "1.0.0-rc.12",
+-      "resolved": "https://registry.npmjs.org/rolldown/-/rolldown-1.0.0-rc.12.tgz",
+-      "integrity": "sha512-yP4USLIMYrwpPHEFB5JGH1uxhcslv6/hL0OyvTuY+3qlOSJvZ7ntYnoWpehBxufkgN0cvXxppuTu5hHa/zPh+A==",
++      "version": "1.2.4",
++      "resolved": "https://registry.npmjs.org/rolldown/-/rolldown-1.2.4.tgz",
++      "integrity": "sha512-rSr7irW0K7QRWzjdJXqZowkcRdDtjRduh43rBltnVKd0VFq839l1lJoDvGJb6gl7+4rTTCrPWu+YfujUL8Ug7w==",
+       "dev": true,
+       "license": "MIT",
+       "dependencies": {
+-        "@oxc-project/types": "=0.122.0",
+-        "@rolldown/pluginutils": "1.0.0-rc.12"
++        "@oxc-project/types": "=0.144.0",
++        "@rolldown/pluginutils": "^1.0.0"
+       },
+       "bin": {
+         "rolldown": "bin/cli.mjs"
+@@ -3160,30 +3158,22 @@
+         "node": "^20.19.0 || >=22.12.0"
+       },
+       "optionalDependencies": {
+-        "@rolldown/binding-android-arm64": "1.0.0-rc.12",
+-        "@rolldown/binding-darwin-arm64": "1.0.0-rc.12",
+-        "@rolldown/binding-darwin-x64": "1.0.0-rc.12",
+-        "@rolldown/binding-freebsd-x64": "1.0.0-rc.12",
+-        "@rolldown/binding-linux-arm-gnueabihf": "1.0.0-rc.12",
+-        "@rolldown/binding-linux-arm64-gnu": "1.0.0-rc.12",
+-        "@rolldown/binding-linux-arm64-musl": "1.0.0-rc.12",
+-        "@rolldown/binding-linux-ppc64-gnu": "1.0.0-rc.12",
+-        "@rolldown/binding-linux-s390x-gnu": "1.0.0-rc.12",
+-        "@rolldown/binding-linux-x64-gnu": "1.0.0-rc.12",
+-        "@rolldown/binding-linux-x64-musl": "1.0.0-rc.12",
+-        "@rolldown/binding-openharmony-arm64": "1.0.0-rc.12",
+-        "@rolldown/binding-wasm32-wasi": "1.0.0-rc.12",
+-        "@rolldown/binding-win32-arm64-msvc": "1.0.0-rc.12",
+-        "@rolldown/binding-win32-x64-msvc": "1.0.0-rc.12"
++        "@rolldown/binding-android-arm64": "1.2.4",
++        "@rolldown/binding-darwin-arm64": "1.2.4",
++        "@rolldown/binding-darwin-x64": "1.2.4",
++        "@rolldown/binding-freebsd-x64": "1.2.4",
++        "@rolldown/binding-linux-arm-gnueabihf": "1.2.4",
++        "@rolldown/binding-linux-arm64-gnu": "1.2.4",
++        "@rolldown/binding-linux-arm64-musl": "1.2.4",
++        "@rolldown/binding-linux-ppc64-gnu": "1.2.4",
++        "@rolldown/binding-linux-s390x-gnu": "1.2.4",
++        "@rolldown/binding-linux-x64-gnu": "1.2.4",
++        "@rolldown/binding-linux-x64-musl": "1.2.4",
++        "@rolldown/binding-openharmony-arm64": "1.2.4",
++        "@rolldown/binding-win32-arm64-msvc": "1.2.4",
++        "@rolldown/binding-win32-x64-msvc": "1.2.4"
+       }
+     },
+-    "node_modules/rolldown/node_modules/@rolldown/pluginutils": {
+-      "version": "1.0.0-rc.12",
+-      "resolved": "https://registry.npmjs.org/@rolldown/pluginutils/-/pluginutils-1.0.0-rc.12.tgz",
+-      "integrity": "sha512-HHMwmarRKvoFsJorqYlFeFRzXZqCt2ETQlEDOb9aqssrnVBB1/+xgTGtuTrIk5vzLNX1MjMtTf7W9z3tsSbrxw==",
+-      "dev": true,
+-      "license": "MIT"
+-    },
+     "node_modules/scheduler": {
+       "version": "0.27.0",
+       "resolved": "https://registry.npmjs.org/scheduler/-/scheduler-0.27.0.tgz",
+@@ -3260,16 +3250,16 @@
+       }
+     },
+     "node_modules/tailwindcss": {
+-      "version": "4.2.2",
+-      "resolved": "https://registry.npmjs.org/tailwindcss/-/tailwindcss-4.2.2.tgz",
+-      "integrity": "sha512-KWBIxs1Xb6NoLdMVqhbhgwZf2PGBpPEiwOqgI4pFIYbNTfBXiKYyWoTsXgBQ9WFg/OlhnvHaY+AEpW7wSmFo2Q==",
++      "version": "4.3.3",
++      "resolved": "https://registry.npmjs.org/tailwindcss/-/tailwindcss-4.3.3.tgz",
++      "integrity": "sha512-gOhV3P7ufE62QDGg1zVaTgCR+EtPv92k2nIhVcVKcLmxT1sUBsQGhnZj175j+MqRt4zLF7ic+sCYjfhxMxj7YQ==",
+       "dev": true,
+       "license": "MIT"
+     },
+     "node_modules/tapable": {
+-      "version": "2.3.2",
+-      "resolved": "https://registry.npmjs.org/tapable/-/tapable-2.3.2.tgz",
+-      "integrity": "sha512-1MOpMXuhGzGL5TTCZFItxCc0AARf1EZFQkGqMm7ERKj8+Hgr5oLvJOVFcC+lRmR8hCe2S3jC4T5D7Vg/d7/fhA==",
++      "version": "2.3.3",
++      "resolved": "https://registry.npmjs.org/tapable/-/tapable-2.3.3.tgz",
++      "integrity": "sha512-uxc/zpqFg6x7C8vOE7lh6Lbda8eEL9zmVm/PLeTPBRhh1xCgdWaQ+J1CUieGpIfm2HdtsUpRv+HshiasBMcc6A==",
+       "dev": true,
+       "license": "MIT",
+       "engines": {
+@@ -3281,14 +3271,14 @@
+       }
+     },
+     "node_modules/tinyglobby": {
+-      "version": "0.2.15",
+-      "resolved": "https://registry.npmjs.org/tinyglobby/-/tinyglobby-0.2.15.tgz",
+-      "integrity": "sha512-j2Zq4NyQYG5XMST4cbs02Ak8iJUdxRM0XI5QyxXuZOzKOINmWurp3smXu3y5wDcJrptwpSjgXHzIQxR0omXljQ==",
++      "version": "0.2.17",
++      "resolved": "https://registry.npmjs.org/tinyglobby/-/tinyglobby-0.2.17.tgz",
++      "integrity": "sha512-wXR/dYpcqKmfWpEdZjiKJOwCNFndD0DMnrW/cYjVGttEkBfVgcLFHoNrlj47mjOVic9yyNu65alsgF4NQyTa2g==",
+       "dev": true,
+       "license": "MIT",
+       "dependencies": {
+         "fdir": "^6.5.0",
+-        "picomatch": "^4.0.3"
++        "picomatch": "^4.0.4"
+       },
+       "engines": {
+         "node": ">=12.0.0"
+@@ -3344,16 +3334,16 @@
+       }
+     },
+     "node_modules/typescript-eslint": {
+-      "version": "8.58.0",
+-      "resolved": "https://registry.npmjs.org/typescript-eslint/-/typescript-eslint-8.58.0.tgz",
+-      "integrity": "sha512-e2TQzKfaI85fO+F3QywtX+tCTsu/D3WW5LVU6nz8hTFKFZ8yBJ6mSYRpXqdR3mFjPWmO0eWsTa5f+UpAOe/FMA==",
++      "version": "8.67.0",
++      "resolved": "https://registry.npmjs.org/typescript-eslint/-/typescript-eslint-8.67.0.tgz",
++      "integrity": "sha512-S2udFs8tCKEKffuJ4TB1idGUZiXdCPGi3IPBGWXarbLQ5UPXORV8QEVzJ4gCRduURMb5EkpNCdjbk0eDIuI8Yg==",
+       "dev": true,
+       "license": "MIT",
+       "dependencies": {
+-        "@typescript-eslint/eslint-plugin": "8.58.0",
+-        "@typescript-eslint/parser": "8.58.0",
+-        "@typescript-eslint/typescript-estree": "8.58.0",
+-        "@typescript-eslint/utils": "8.58.0"
++        "@typescript-eslint/eslint-plugin": "8.67.0",
++        "@typescript-eslint/parser": "8.67.0",
++        "@typescript-eslint/typescript-estree": "8.67.0",
++        "@typescript-eslint/utils": "8.67.0"
+       },
+       "engines": {
+         "node": "^18.18.0 || ^20.9.0 || >=21.1.0"
+@@ -3368,16 +3358,16 @@
+       }
+     },
+     "node_modules/undici-types": {
+-      "version": "7.16.0",
+-      "resolved": "https://registry.npmjs.org/undici-types/-/undici-types-7.16.0.tgz",
+-      "integrity": "sha512-Zz+aZWSj8LE6zoxD+xrjh4VfkIG8Ya6LvYkZqtUQGJPZjYl53ypCaUwWqo7eI0x66KBGeRo+mlBEkMSeSZ38Nw==",
++      "version": "7.18.2",
++      "resolved": "https://registry.npmjs.org/undici-types/-/undici-types-7.18.2.tgz",
++      "integrity": "sha512-AsuCzffGHJybSaRrmr5eHr81mwJU3kjw6M+uprWvCXiNeN9SOGwQ3Jn8jb8m3Z6izVgknn1R0FTCEAP2QrLY/w==",
+       "dev": true,
+       "license": "MIT"
+     },
+     "node_modules/update-browserslist-db": {
+-      "version": "1.2.3",
+-      "resolved": "https://registry.npmjs.org/update-browserslist-db/-/update-browserslist-db-1.2.3.tgz",
+-      "integrity": "sha512-Js0m9cx+qOgDxo0eMiFGEueWztz+d4+M3rGlmKPT+T4IS/jP4ylw3Nwpu6cpTTP8R1MAC1kF4VbdLt3ARf209w==",
++      "version": "1.3.1",
++      "resolved": "https://registry.npmjs.org/update-browserslist-db/-/update-browserslist-db-1.3.1.tgz",
++      "integrity": "sha512-ZZ61DsRsOnakl74HAmp3oSN4aXUmEWXf+i/yv0h7tIBfICc3VdrFErQKUUKPgu3AMsTUMbcongALEN4l6GSUrQ==",
+       "dev": true,
+       "funding": [
+         {
+@@ -3425,17 +3415,17 @@
+       }
+     },
+     "node_modules/vite": {
+-      "version": "8.0.3",
+-      "resolved": "https://registry.npmjs.org/vite/-/vite-8.0.3.tgz",
+-      "integrity": "sha512-B9ifbFudT1TFhfltfaIPgjo9Z3mDynBTJSUYxTjOQruf/zHH+ezCQKcoqO+h7a9Pw9Nm/OtlXAiGT1axBgwqrQ==",
++      "version": "8.2.1",
++      "resolved": "https://registry.npmjs.org/vite/-/vite-8.2.1.tgz",
++      "integrity": "sha512-EU/eS7BH3XROHh2YnBefjM6DBKA6ZeMZEYQbj7NLWg5wHYlhB8B/Mayd5XsgWq+NFYccDOTemRpdETWR6Ka/lw==",
+       "dev": true,
+       "license": "MIT",
+       "dependencies": {
+-        "lightningcss": "^1.32.0",
+-        "picomatch": "^4.0.4",
+-        "postcss": "^8.5.8",
+-        "rolldown": "1.0.0-rc.12",
+-        "tinyglobby": "^0.2.15"
++        "lightningcss": "^1.33.0",
++        "picomatch": "^4.0.5",
++        "postcss": "^8.5.25",
++        "rolldown": "~1.2.1",
++        "tinyglobby": "^0.2.17"
+       },
+       "bin": {
+         "vite": "bin/vite.js"
+@@ -3451,8 +3441,8 @@
+       },
+       "peerDependencies": {
+         "@types/node": "^20.19.0 || >=22.12.0",
+-        "@vitejs/devtools": "^0.1.0",
+-        "esbuild": "^0.27.0",
++        "@vitejs/devtools": "^0.4.0",
++        "esbuild": "^0.27.0 || ^0.28.0",
+         "jiti": ">=1.21.0",
+         "less": "^4.0.0",
+         "sass": "^1.70.0",
+@@ -3502,6 +3492,279 @@
+         }
+       }
+     },
++    "node_modules/vite/node_modules/lightningcss": {
++      "version": "1.33.0",
++      "resolved": "https://registry.npmjs.org/lightningcss/-/lightningcss-1.33.0.tgz",
++      "integrity": "sha512-WkUDrojuJs0xkgGf2udWxa3yGBRxPtxUkB79i6aCZLRgc7PM8fZe9TosfPDcvEpQZbuFASnHYmRLBLUbmLOIIA==",
++      "dev": true,
++      "license": "MPL-2.0",
++      "dependencies": {
++        "detect-libc": "^2.0.3"
++      },
++      "engines": {
++        "node": ">= 12.0.0"
++      },
++      "funding": {
++        "type": "opencollective",
++        "url": "https://opencollective.com/parcel"
++      },
++      "optionalDependencies": {
++        "lightningcss-android-arm64": "1.33.0",
++        "lightningcss-darwin-arm64": "1.33.0",
++        "lightningcss-darwin-x64": "1.33.0",
++        "lightningcss-freebsd-x64": "1.33.0",
++        "lightningcss-linux-arm-gnueabihf": "1.33.0",
++        "lightningcss-linux-arm64-gnu": "1.33.0",
++        "lightningcss-linux-arm64-musl": "1.33.0",
++        "lightningcss-linux-x64-gnu": "1.33.0",
++        "lightningcss-linux-x64-musl": "1.33.0",
++        "lightningcss-win32-arm64-msvc": "1.33.0",
++        "lightningcss-win32-x64-msvc": "1.33.0"
++      }
++    },
++    "node_modules/vite/node_modules/lightningcss-android-arm64": {
++      "version": "1.33.0",
++      "resolved": "https://registry.npmjs.org/lightningcss-android-arm64/-/lightningcss-android-arm64-1.33.0.tgz",
++      "integrity": "sha512-gEpRTalKdosp4Bb8qWtc2iOgE5SeIHlpS1up9bFq2wAyYhl1UdTObYiHe98zEM9SQvSoqQZ1IQD0JNpg3Ml5pg==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MPL-2.0",
++      "optional": true,
++      "os": [
++        "android"
++      ],
++      "engines": {
++        "node": ">= 12.0.0"
++      },
++      "funding": {
++        "type": "opencollective",
++        "url": "https://opencollective.com/parcel"
++      }
++    },
++    "node_modules/vite/node_modules/lightningcss-darwin-arm64": {
++      "version": "1.33.0",
++      "resolved": "https://registry.npmjs.org/lightningcss-darwin-arm64/-/lightningcss-darwin-arm64-1.33.0.tgz",
++      "integrity": "sha512-Sciaz8eenNTKn9b3t7+xr0ipTp9YxKQY4npwQ3mrRuL0BAVHBLyZxofhaKBAVtzmtRZ/zTyo0/to4B1uWG/Djg==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MPL-2.0",
++      "optional": true,
++      "os": [
++        "darwin"
++      ],
++      "engines": {
++        "node": ">= 12.0.0"
++      },
++      "funding": {
++        "type": "opencollective",
++        "url": "https://opencollective.com/parcel"
++      }
++    },
++    "node_modules/vite/node_modules/lightningcss-darwin-x64": {
++      "version": "1.33.0",
++      "resolved": "https://registry.npmjs.org/lightningcss-darwin-x64/-/lightningcss-darwin-x64-1.33.0.tgz",
++      "integrity": "sha512-Z5UPAxzrjlWNNyGy6i65cJzzvgJ5D3T6wMvs+gWpY9d7qRhANrxqAp6LhxIgZhWEw18RfJTGcRxjuLIBr+m8XQ==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MPL-2.0",
++      "optional": true,
++      "os": [
++        "darwin"
++      ],
++      "engines": {
++        "node": ">= 12.0.0"
++      },
++      "funding": {
++        "type": "opencollective",
++        "url": "https://opencollective.com/parcel"
++      }
++    },
++    "node_modules/vite/node_modules/lightningcss-freebsd-x64": {
++      "version": "1.33.0",
++      "resolved": "https://registry.npmjs.org/lightningcss-freebsd-x64/-/lightningcss-freebsd-x64-1.33.0.tgz",
++      "integrity": "sha512-QQM/Ti/hQajJwCY+RiWuCZ9sdtI/XQk7nDK5vC8kkdwixezOlDgvDx7+RT+QjK6FcFT4MpsuoBnHIo/O3StRRg==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MPL-2.0",
++      "optional": true,
++      "os": [
++        "freebsd"
++      ],
++      "engines": {
++        "node": ">= 12.0.0"
++      },
++      "funding": {
++        "type": "opencollective",
++        "url": "https://opencollective.com/parcel"
++      }
++    },
++    "node_modules/vite/node_modules/lightningcss-linux-arm-gnueabihf": {
++      "version": "1.33.0",
++      "resolved": "https://registry.npmjs.org/lightningcss-linux-arm-gnueabihf/-/lightningcss-linux-arm-gnueabihf-1.33.0.tgz",
++      "integrity": "sha512-N7FVBe6iS24MlM6R/4RBTxGhQheZGs7tiQ9U32UtF75NzP5Q7xWPRqLBCKxlRQRk3rY1jCIPLzx7WzOhuUIRLQ==",
++      "cpu": [
++        "arm"
++      ],
++      "dev": true,
++      "license": "MPL-2.0",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">= 12.0.0"
++      },
++      "funding": {
++        "type": "opencollective",
++        "url": "https://opencollective.com/parcel"
++      }
++    },
++    "node_modules/vite/node_modules/lightningcss-linux-arm64-gnu": {
++      "version": "1.33.0",
++      "resolved": "https://registry.npmjs.org/lightningcss-linux-arm64-gnu/-/lightningcss-linux-arm64-gnu-1.33.0.tgz",
++      "integrity": "sha512-j2v/itmy4HlNxlc6voKXYgBqNi0Ng2LShg4z7GufpEgs05P+2suBVyi9I6YHq5uoVFx9ETin3eCEhLVyXGQnKg==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "libc": [
++        "glibc"
++      ],
++      "license": "MPL-2.0",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">= 12.0.0"
++      },
++      "funding": {
++        "type": "opencollective",
++        "url": "https://opencollective.com/parcel"
++      }
++    },
++    "node_modules/vite/node_modules/lightningcss-linux-arm64-musl": {
++      "version": "1.33.0",
++      "resolved": "https://registry.npmjs.org/lightningcss-linux-arm64-musl/-/lightningcss-linux-arm64-musl-1.33.0.tgz",
++      "integrity": "sha512-yiO5ROMuYQgXbC60yjZU5CYSFZGKXL0HFATXt9mHJn1+zW55oCtMI9NfcVhYLMFDL7gV7oBPon/EmMMGg2OvtQ==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "libc": [
++        "musl"
++      ],
++      "license": "MPL-2.0",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">= 12.0.0"
++      },
++      "funding": {
++        "type": "opencollective",
++        "url": "https://opencollective.com/parcel"
++      }
++    },
++    "node_modules/vite/node_modules/lightningcss-linux-x64-gnu": {
++      "version": "1.33.0",
++      "resolved": "https://registry.npmjs.org/lightningcss-linux-x64-gnu/-/lightningcss-linux-x64-gnu-1.33.0.tgz",
++      "integrity": "sha512-ar+Ju7LmcN0Jo4FpL4hpFybwNG9/3A/Br5KW2n2jyODg3MEZXaDYADdemoNS+BDNfMgKvylJLj4S5tyRActuAg==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "libc": [
++        "glibc"
++      ],
++      "license": "MPL-2.0",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">= 12.0.0"
++      },
++      "funding": {
++        "type": "opencollective",
++        "url": "https://opencollective.com/parcel"
++      }
++    },
++    "node_modules/vite/node_modules/lightningcss-linux-x64-musl": {
++      "version": "1.33.0",
++      "resolved": "https://registry.npmjs.org/lightningcss-linux-x64-musl/-/lightningcss-linux-x64-musl-1.33.0.tgz",
++      "integrity": "sha512-RYiYbkokw0trfKqqzfF55lginwEPrD3OJDfTuJzFs1MK6iFnDenaz1fqLLtX4ITG3OktJQXOeTaw1awrBAlZPw==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "libc": [
++        "musl"
++      ],
++      "license": "MPL-2.0",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">= 12.0.0"
++      },
++      "funding": {
++        "type": "opencollective",
++        "url": "https://opencollective.com/parcel"
++      }
++    },
++    "node_modules/vite/node_modules/lightningcss-win32-arm64-msvc": {
++      "version": "1.33.0",
++      "resolved": "https://registry.npmjs.org/lightningcss-win32-arm64-msvc/-/lightningcss-win32-arm64-msvc-1.33.0.tgz",
++      "integrity": "sha512-1K+MPfLSFVpphzpdbfkhlWk6wBrTObBzS2T6db10PNOZgR9GoVsAWzwNyuhUYYbTp23j+4RrncfujZ4uAzXvwA==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MPL-2.0",
++      "optional": true,
++      "os": [
++        "win32"
++      ],
++      "engines": {
++        "node": ">= 12.0.0"
++      },
++      "funding": {
++        "type": "opencollective",
++        "url": "https://opencollective.com/parcel"
++      }
++    },
++    "node_modules/vite/node_modules/lightningcss-win32-x64-msvc": {
++      "version": "1.33.0",
++      "resolved": "https://registry.npmjs.org/lightningcss-win32-x64-msvc/-/lightningcss-win32-x64-msvc-1.33.0.tgz",
++      "integrity": "sha512-OlEICDx/Xl0FqSp4bry8zFnCvGpig3Gl4gCquvYwHuqJKEC1+n9NgDniFvqHGmMv1ZkqDJrDqKKSykTDX+ehuA==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MPL-2.0",
++      "optional": true,
++      "os": [
++        "win32"
++      ],
++      "engines": {
++        "node": ">= 12.0.0"
++      },
++      "funding": {
++        "type": "opencollective",
++        "url": "https://opencollective.com/parcel"
++      }
++    },
+     "node_modules/which": {
+       "version": "2.0.2",
+       "resolved": "https://registry.npmjs.org/which/-/which-2.0.2.tgz",
+@@ -3549,9 +3812,9 @@
+       }
+     },
+     "node_modules/zod": {
+-      "version": "4.3.6",
+-      "resolved": "https://registry.npmjs.org/zod/-/zod-4.3.6.tgz",
+-      "integrity": "sha512-rftlrkhHZOcjDwkGlnUtZZkvaPHCsDATp4pGpuOOMDaTdDDXF91wuVDJoWoPsKX/3YPQ5fHuF3STjcYyKr+Qhg==",
++      "version": "4.4.3",
++      "resolved": "https://registry.npmjs.org/zod/-/zod-4.4.3.tgz",
++      "integrity": "sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==",
+       "dev": true,
+       "license": "MIT",
+       "funding": {
+@@ -3572,9 +3835,9 @@
+       }
+     },
+     "node_modules/zustand": {
+-      "version": "5.0.12",
+-      "resolved": "https://registry.npmjs.org/zustand/-/zustand-5.0.12.tgz",
+-      "integrity": "sha512-i77ae3aZq4dhMlRhJVCYgMLKuSiZAaUPAct2AksxQ+gOtimhGMdXljRT21P5BNpeT4kXlLIckvkPM029OljD7g==",
++      "version": "5.0.15",
++      "resolved": "https://registry.npmjs.org/zustand/-/zustand-5.0.15.tgz",
++      "integrity": "sha512-MpSEjRiBkA9crSYeOUH32rJC7SVqAbm0Fqcqge/bUi2PPoLcBWKOsG+C8mevmpr8TwXHBVkChbbJiyvkE+i/3A==",
+       "license": "MIT",
+       "engines": {
+         "node": ">=12.20.0"
+diff --git a/webview/src/components/canvas/Block.tsx b/webview/src/components/canvas/Block.tsx
+index 02a46cc7..6a20cf57 100644
+--- a/webview/src/components/canvas/Block.tsx
++++ b/webview/src/components/canvas/Block.tsx
+@@ -177,11 +177,16 @@ function PortHandle({
+   const translateX =
+     position === Position.Left ? "-50%" : "50%";
+ 
++  const dirLabel = handleType === "source" ? "Output" : "Input";
++  const portTitle = `${portType.toUpperCase()} ${dirLabel} (${portId})${connected ? " · Connected" : " · Open"}${busName ? ` · Bus: ${busName}` : ""}`;
++
+   return (
+     <Handle
+       id={portId}
+       type={handleType}
+       position={position}
++      aria-label={portTitle}
++      title={portTitle}
+       style={{
+         top: `${topPercent}%`,
+         width: 24,
+@@ -505,7 +510,7 @@ function BlockComponent({ data, selected }: NodeProps) {
+         {d.cpuLoad > 0 && (
+           <div className="text-right">
+             <span className="text-[10px] tabular-nums text-text-dim font-medium">
+-              {d.cpuLoad.toFixed(1)}ms
++              {d.cpuLoad.toFixed(1)}%
+             </span>
+           </div>
+         )}
+diff --git a/webview/src/components/canvas/Cable.tsx b/webview/src/components/canvas/Cable.tsx
+index bb60f1d7..3677387a 100644
+--- a/webview/src/components/canvas/Cable.tsx
++++ b/webview/src/components/canvas/Cable.tsx
+@@ -31,15 +31,6 @@ const channelWidth: Record<number, number> = {
+   6: 5,
+ };
+ 
+-// ── Signal pulse animation ──
+-
+-const pulseKeyframes = `
+-@keyframes signalPulse {
+-  0% { stroke-dashoffset: 24; }
+-  100% { stroke-dashoffset: 0; }
+-}
+-`;
+-
+ function CableComponent({
+   id,
+   source,
+@@ -128,8 +119,6 @@ function CableComponent({
+ 
+   return (
+     <>
+-      <style>{pulseKeyframes}</style>
+-
+       {/* Selection glow — Section 5.2 Micro-glow */}
+       {(selected || amp > 0.01) && (
+         <BaseEdge
+diff --git a/webview/src/components/canvas/CommandPalette.tsx b/webview/src/components/canvas/CommandPalette.tsx
+index 112aeba2..561ac361 100644
+--- a/webview/src/components/canvas/CommandPalette.tsx
++++ b/webview/src/components/canvas/CommandPalette.tsx
+@@ -378,6 +378,13 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
+     element?.scrollIntoView({ block: "nearest" });
+   }, [activeIndex]);
+ 
++  useEffect(() => {
++    const list = listRef.current;
++    if (!list) return;
++    const item = list.querySelector('[data-active="true"]') as HTMLElement | null;
++    item?.scrollIntoView({ block: "nearest" });
++  }, [activeIndex]);
++
+   const handleKeyDown = useCallback(
+     (event: KeyboardEvent) => {
+       switch (event.key) {
+@@ -416,9 +423,13 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
+             exit="exit"
+             transition={{ duration: 0.15, ease: EASE }}
+             onClick={onClose}
++            aria-hidden="true"
+           />
+ 
+           <motion.div
++            role="dialog"
++            aria-modal="true"
++            aria-label="Command Palette"
+             className="fixed z-[61] left-1/2 -translate-x-1/2"
+             style={{ top: "40%" }}
+             variants={panelVariants}
+@@ -438,6 +449,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
+               <div className="p-3 border-b border-white/5">
+                 <NeuInput
+                   ref={inputRef}
++                  aria-label="Search commands"
+                   placeholder="Search commands, plugins, blocks, scenes..."
+                   value={search}
+                   onChange={setSearch}
+@@ -445,14 +457,19 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
+                 />
+               </div>
+ 
+-              <div ref={listRef} className="flex-1 overflow-y-auto py-2">
++              <div
++                ref={listRef}
++                role="listbox"
++                aria-label="Commands and actions"
++                className="flex-1 overflow-y-auto py-2"
++              >
+                 {flatList.length === 0 && (
+                   <div className="px-4 py-8 text-[11px] text-text-dim text-center uppercase tracking-widest">
+                     No results
+                   </div>
+                 )}
+                 {grouped.map((group) => (
+-                  <div key={group.category}>
++                  <div key={group.category} role="group" aria-label={categoryLabel[group.category]}>
+                     <div className="px-4 pt-3 pb-1 text-[10px] text-text-dim font-bold uppercase tracking-widest">
+                       {categoryLabel[group.category]}
+                     </div>
+@@ -461,15 +478,18 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
+                       const isActive = idx === activeIndex;
+                       return (
+                         <button
++                          type="button"
++                          role="option"
++                          aria-selected={isActive}
+                           key={result.id}
+                           data-active={isActive}
+                           onClick={result.onSelect}
+                           onMouseEnter={() => setActiveIndex(idx)}
+                           className={[
+-                            "w-full text-left px-4 py-1.5 flex items-center justify-between gap-4 transition-colors",
++                            "w-full text-left px-4 py-1.5 flex items-center justify-between gap-4 transition-colors outline-none cursor-pointer",
+                             isActive
+                               ? "bg-elevated text-text-primary"
+-                              : "text-text-secondary",
++                              : "text-text-secondary hover:text-text-primary",
+                           ].join(" ")}
+                         >
+                           <span className="text-[12px] truncate">{result.label}</span>
+diff --git a/webview/src/components/canvas/GraphCanvas.tsx b/webview/src/components/canvas/GraphCanvas.tsx
+index aef2e982..3a1409af 100644
+--- a/webview/src/components/canvas/GraphCanvas.tsx
++++ b/webview/src/components/canvas/GraphCanvas.tsx
+@@ -17,6 +17,7 @@ import {
+   type NodeTypes,
+   type EdgeTypes,
+   type NodeMouseHandler,
++  type OnNodeDrag,
+   type Connection,
+   type Viewport,
+   BackgroundVariant,
+@@ -275,8 +276,8 @@ export function GraphCanvas() {
+     [isEdit, selectNode],
+   );
+ 
+-  const onNodeDragStop = useCallback(
+-    (_: MouseEvent | globalThis.MouseEvent, node: Node) => {
++  const onNodeDragStop: OnNodeDrag = useCallback(
++    (_, node) => {
+       const p = node.position;
+       if (node.type === "comment") {
+         const c = node.data as unknown as CommentBoxData;
+diff --git a/webview/src/components/canvas/QuickAddPopup.tsx b/webview/src/components/canvas/QuickAddPopup.tsx
+index cdfa75e8..848d025b 100644
+--- a/webview/src/components/canvas/QuickAddPopup.tsx
++++ b/webview/src/components/canvas/QuickAddPopup.tsx
+@@ -97,12 +97,15 @@ function PluginRow({ plugin, isActive, onSelect, onHover }: PluginRowProps) {
+   return (
+     <button
+       type="button"
++      role="option"
++      aria-selected={isActive}
++      data-active={isActive}
+       onClick={() => onSelect(plugin.id)}
+       onMouseEnter={onHover}
+       className={[
+-        "w-full text-left px-2.5 py-1.5 text-[11px] rounded flex items-center gap-2 transition-colors",
++        "w-full text-left px-2.5 py-1.5 text-[11px] rounded flex items-center gap-2 transition-colors outline-none",
+         isActive
+-          ? "bg-elevated text-text-primary"
++          ? "bg-elevated text-text-primary shadow-[inset_1px_1px_3px_rgba(255,255,255,0.05)]"
+           : "text-text-secondary hover:text-text-primary",
+       ].join(" ")}
+     >
+@@ -171,7 +174,7 @@ export function QuickAddPopup({ x, y, onClose }: QuickAddPopupProps) {
+   useEffect(() => {
+     const list = listRef.current;
+     if (!list) return;
+-    const item = list.children[activeIndex] as HTMLElement | undefined;
++    const item = list.querySelector('[data-active="true"]') as HTMLElement | null;
+     item?.scrollIntoView({ block: "nearest" });
+   }, [activeIndex]);
+ 
+@@ -219,6 +222,9 @@ export function QuickAddPopup({ x, y, onClose }: QuickAddPopupProps) {
+       <div className="fixed inset-0 z-40" onClick={onClose} />
+ 
+       <div
++        role="dialog"
++        aria-modal="true"
++        aria-label="Quick Add Block"
+         className="fixed z-50"
+         style={{ left: clampedX, top: clampedY }}
+         onKeyDown={handleKeyDown}
+@@ -234,6 +240,7 @@ export function QuickAddPopup({ x, y, onClose }: QuickAddPopupProps) {
+           <div className="p-2">
+             <NeuInput
+               ref={inputRef}
++              aria-label="Filter blocks"
+               placeholder="Add block..."
+               value={search}
+               onChange={setSearch}
+@@ -242,6 +249,8 @@ export function QuickAddPopup({ x, y, onClose }: QuickAddPopupProps) {
+ 
+           <div
+             ref={listRef}
++            role="listbox"
++            aria-label="Available blocks"
+             className="max-h-52 overflow-y-auto px-1 pb-1.5"
+           >
+             {flatList.length === 0 && (
+diff --git a/webview/src/components/layout/AboutModal.tsx b/webview/src/components/layout/AboutModal.tsx
+index 75d45b9d..71692dc5 100644
+--- a/webview/src/components/layout/AboutModal.tsx
++++ b/webview/src/components/layout/AboutModal.tsx
+@@ -12,14 +12,26 @@ export function AboutModal({ onClose }: { onClose: () => void }) {
+     void nativeAppGetAbout().then(setInfo);
+   }, []);
+ 
++  useEffect(() => {
++    const handleKeyDown = (e: KeyboardEvent) => {
++      if (e.key === "Escape") onClose();
++    };
++    window.addEventListener("keydown", handleKeyDown);
++    return () => window.removeEventListener("keydown", handleKeyDown);
++  }, [onClose]);
++
+   return (
+     <div
+-      className="fixed inset-0 z-[210] flex items-center justify-center bg-black/55"
++      className="fixed inset-0 z-[210] flex items-center justify-center bg-black/60 backdrop-blur-none"
+       role="dialog"
+       aria-modal="true"
+       aria-label="About Element"
++      onClick={onClose}
+     >
+-      <div className="w-[min(420px,92vw)] rounded-lg bg-surface shadow-[8px_8px_24px_rgba(0,0,0,0.5)] border border-white/5 p-6 space-y-4">
++      <div
++        className="w-[min(420px,92vw)] rounded-lg bg-surface shadow-[8px_8px_24px_rgba(0,0,0,0.6)] border border-white/10 p-6 space-y-4"
++        onClick={(e) => e.stopPropagation()}
++      >
+         <div className="text-center space-y-1">
+           <div className="text-lg font-black tracking-tighter text-text-primary">
+             {info?.name ?? "Element"}
+@@ -34,14 +46,14 @@ export function AboutModal({ onClose }: { onClose: () => void }) {
+         <div className="flex flex-col gap-2 pt-2">
+           <button
+             type="button"
+-            className="w-full py-2 rounded bg-elevated shadow-neu-raised text-text-primary text-[11px] font-bold uppercase tracking-wide"
++            className="w-full py-2 rounded bg-elevated shadow-neu-raised text-text-primary text-[11px] font-bold uppercase tracking-wide outline-none focus-visible:ring-1 focus-visible:ring-generator cursor-pointer hover:bg-surface-elevated transition-colors"
+             onClick={() => void nativeAppCheckForUpdates()}
+           >
+             Check for updates
+           </button>
+           <button
+             type="button"
+-            className="w-full py-2 rounded bg-pressed text-text-secondary text-[11px] uppercase"
++            className="w-full py-2 rounded bg-pressed text-text-secondary hover:text-text-primary text-[11px] uppercase outline-none focus-visible:ring-1 focus-visible:ring-generator cursor-pointer transition-colors"
+             onClick={onClose}
+           >
+             Close
+@@ -51,3 +63,4 @@ export function AboutModal({ onClose }: { onClose: () => void }) {
+     </div>
+   );
+ }
++
+diff --git a/webview/src/components/layout/AppShell.tsx b/webview/src/components/layout/AppShell.tsx
+index 313e1ad9..5835c7ea 100644
+--- a/webview/src/components/layout/AppShell.tsx
++++ b/webview/src/components/layout/AppShell.tsx
+@@ -46,6 +46,7 @@ function LeftSlot({ children, panelKey }: PanelSlotProps) {
+   return (
+     <motion.aside
+       key={panelKey}
++      aria-label="Side Navigation & Tools"
+       {...slideLeft}
+       className="fixed left-0 z-40 bg-panel border-r border-white/5 flex flex-col shadow-[4px_0_12px_rgba(0,0,0,0.2)] overflow-hidden"
+       style={{ top: TOOLBAR_H, bottom: 0, width: LEFT_W }}
+@@ -59,6 +60,7 @@ function RightSlot({ children, panelKey }: PanelSlotProps) {
+   return (
+     <motion.aside
+       key={panelKey}
++      aria-label="Inspector & Detail Hub"
+       {...slideRight}
+       className="fixed right-0 z-40 bg-panel border-l border-white/5 flex flex-col shadow-[-4px_0_12px_rgba(0,0,0,0.2)] overflow-hidden"
+       style={{ top: TOOLBAR_H, bottom: 0, width: RIGHT_W }}
+@@ -76,6 +78,7 @@ function BottomSlot({
+   return (
+     <motion.footer
+       key={panelKey}
++      aria-label="Bottom Dock Panel"
+       layout
+       initial={{ y: height, opacity: 0 }}
+       animate={{ y: 0, opacity: 1, height }}
+@@ -104,7 +107,7 @@ function CollapsedRail({
+       type="button"
+       aria-label={`Expand ${side} panel`}
+       className={[
+-        "fixed z-40 bg-panel flex flex-col items-center pt-3 cursor-pointer",
++        "fixed z-40 bg-panel flex flex-col items-center pt-3 cursor-pointer outline-none focus-visible:ring-1 focus-visible:ring-generator",
+         isLeft
+           ? "left-0 border-r border-white/5"
+           : "right-0 border-l border-white/5",
+diff --git a/webview/src/components/layout/BusInspector.tsx b/webview/src/components/layout/BusInspector.tsx
+index 61aa356f..2d03d656 100644
+--- a/webview/src/components/layout/BusInspector.tsx
++++ b/webview/src/components/layout/BusInspector.tsx
+@@ -143,7 +143,8 @@ function BusRow({
+           type="button"
+           onClick={onDissolve}
+           title="Make all wired"
+-          className="text-[10px] text-text-dim hover:text-error transition-colors"
++          aria-label={`Dissolve bus ${bus.name} into wired cables`}
++          className="text-[10px] text-text-dim hover:text-error transition-colors p-0.5 rounded outline-none focus-visible:ring-1 focus-visible:ring-error cursor-pointer"
+         >
+           ✕
+         </button>
+diff --git a/webview/src/components/layout/DashboardBuilder.tsx b/webview/src/components/layout/DashboardBuilder.tsx
+index 5e662630..c8fb303e 100644
+--- a/webview/src/components/layout/DashboardBuilder.tsx
++++ b/webview/src/components/layout/DashboardBuilder.tsx
+@@ -272,14 +272,26 @@ function BindModal({ widgetId, onClose }: BindModalProps) {
+     onClose();
+   }, [widgetId, selectedNodeId, selectedParamIndex, bindWidget, onClose]);
+ 
++  useEffect(() => {
++    const handleKeyDown = (e: KeyboardEvent) => {
++      if (e.key === "Escape") onClose();
++    };
++    window.addEventListener("keydown", handleKeyDown);
++    return () => window.removeEventListener("keydown", handleKeyDown);
++  }, [onClose]);
++
+   return (
+     <div
+-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+-      onPointerDown={(e) => {
+-        if (e.target === e.currentTarget) onClose();
+-      }}
++      role="dialog"
++      aria-modal="true"
++      aria-label="Bind Parameter"
++      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-none"
++      onClick={onClose}
+     >
+-      <div className="bg-panel border border-white/10 rounded-xl shadow-[-4px_-4px_16px_rgba(255,255,255,0.03),4px_4px_16px_rgba(0,0,0,0.5)] w-72 p-4 flex flex-col gap-3">
++      <div
++        className="bg-panel border border-white/10 rounded-xl shadow-[-4px_-4px_16px_rgba(255,255,255,0.03),4px_4px_16px_rgba(0,0,0,0.5)] w-72 p-4 flex flex-col gap-3"
++        onClick={(e) => e.stopPropagation()}
++      >
+         <div className="flex items-center justify-between">
+           <span className="text-[11px] font-black uppercase tracking-widest text-text-primary">
+             Bind Parameter
+@@ -287,7 +299,8 @@ function BindModal({ widgetId, onClose }: BindModalProps) {
+           <button
+             type="button"
+             onClick={onClose}
+-            className="text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
++            aria-label="Close Bind Dialog"
++            className="text-text-secondary hover:text-text-primary transition-colors cursor-pointer outline-none focus-visible:ring-1 focus-visible:ring-generator rounded"
+           >
+             <Icon d={ICON_CLOSE} size={16} />
+           </button>
+diff --git a/webview/src/components/layout/InspectorHub.tsx b/webview/src/components/layout/InspectorHub.tsx
+index d0fc820d..ccb964b1 100644
+--- a/webview/src/components/layout/InspectorHub.tsx
++++ b/webview/src/components/layout/InspectorHub.tsx
+@@ -16,7 +16,7 @@ import {
+   selectLiveHealth,
+   selectSessionName,
+ } from "../../stores/usePerformStore";
+-import { NeuButton, NeuDisplay } from "../neu";
++import { NeuButton, NeuDisplay, NeuInput } from "../neu";
+ import type { BlockData } from "../../data/types";
+ import {
+   nativeGetNodeParameters,
+@@ -51,13 +51,201 @@ function isScriptNode(block: BlockData): boolean {
+   );
+ }
+ 
+-// ── P1-10: Preset Bank A/B Compare ───────────────────────────────────────
++// ── P1-10: Preset Bank A/B Compare & Management ──────────────────────────
+ 
+ type PresetSlot = "A" | "B";
+ 
++interface SavePresetModalProps {
++  nodeId: string;
++  onClose: () => void;
++  onSaved: () => void;
++}
++
++function SavePresetModal({ nodeId, onClose, onSaved }: SavePresetModalProps) {
++  const [presetName, setPresetName] = useState("");
++  const inputRef = useRef<HTMLInputElement>(null);
++
++  useEffect(() => {
++    inputRef.current?.focus();
++  }, []);
++
++  const handleSave = () => {
++    const trimmed = presetName.trim();
++    if (!trimmed) return;
++    void nativePresetSave(nodeId, trimmed).then((r) => {
++      if (r.ok) {
++        onSaved();
++        onClose();
++      }
++    });
++  };
++
++  return (
++    <div
++      role="dialog"
++      aria-modal="true"
++      aria-label="Save Preset"
++      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-none"
++      onClick={onClose}
++      onKeyDown={(e) => {
++        if (e.key === "Escape") onClose();
++        if (e.key === "Enter") handleSave();
++      }}
++    >
++      <div
++        className="w-72 bg-panel rounded-lg p-4 border border-white/10 shadow-[-4px_-4px_12px_rgba(255,255,255,0.03),8px_8px_24px_rgba(0,0,0,0.6)]"
++        onClick={(e) => e.stopPropagation()}
++      >
++        <div className="text-[11px] font-bold uppercase tracking-wider text-text-primary mb-3">
++          Save Preset
++        </div>
++        <NeuInput
++          ref={inputRef}
++          placeholder="Preset name..."
++          value={presetName}
++          onChange={setPresetName}
++          className="mb-4"
++          aria-label="Preset name"
++        />
++        <div className="flex justify-end gap-2">
++          <NeuButton size="sm" onClick={onClose}>
++            Cancel
++          </NeuButton>
++          <NeuButton
++            size="sm"
++            variant="active"
++            disabled={!presetName.trim()}
++            onClick={handleSave}
++          >
++            Save
++          </NeuButton>
++        </div>
++      </div>
++    </div>
++  );
++}
++
++interface LoadPresetModalProps {
++  nodeId: string;
++  presets: string[];
++  onClose: () => void;
++}
++
++function LoadPresetModal({ nodeId, presets, onClose }: LoadPresetModalProps) {
++  const [filter, setFilter] = useState("");
++  const [selectedIndex, setSelectedIndex] = useState(0);
++  const inputRef = useRef<HTMLInputElement>(null);
++
++  useEffect(() => {
++    inputRef.current?.focus();
++  }, []);
++
++  const filtered = presets.filter((p) =>
++    p.toLowerCase().includes(filter.toLowerCase()),
++  );
++
++  const handleLoad = (name: string) => {
++    void nativePresetLoad(nodeId, name);
++    onClose();
++  };
++
++  return (
++    <div
++      role="dialog"
++      aria-modal="true"
++      aria-label="Load Preset"
++      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-none"
++      onClick={onClose}
++      onKeyDown={(e) => {
++        if (e.key === "Escape") onClose();
++        if (e.key === "ArrowDown") {
++          e.preventDefault();
++          setSelectedIndex((i) => Math.min(i + 1, filtered.length - 1));
++        }
++        if (e.key === "ArrowUp") {
++          e.preventDefault();
++          setSelectedIndex((i) => Math.max(i - 1, 0));
++        }
++        if (e.key === "Enter" && filtered[selectedIndex]) {
++          e.preventDefault();
++          handleLoad(filtered[selectedIndex]);
++        }
++      }}
++    >
++      <div
++        className="w-80 bg-panel rounded-lg p-4 border border-white/10 shadow-[-4px_-4px_12px_rgba(255,255,255,0.03),8px_8px_24px_rgba(0,0,0,0.6)] flex flex-col max-h-[360px]"
++        onClick={(e) => e.stopPropagation()}
++      >
++        <div className="text-[11px] font-bold uppercase tracking-wider text-text-primary mb-3">
++          Load Preset
++        </div>
++        <NeuInput
++          ref={inputRef}
++          placeholder="Filter presets..."
++          value={filter}
++          onChange={(v) => {
++            setFilter(v);
++            setSelectedIndex(0);
++          }}
++          className="mb-2"
++          aria-label="Filter presets"
++        />
++        <div
++          role="listbox"
++          aria-label="Presets list"
++          className="flex-1 overflow-y-auto space-y-1 max-h-48 py-1"
++        >
++          {filtered.length === 0 ? (
++            <div className="text-[10px] text-text-dim text-center py-4 uppercase tracking-widest">
++              {presets.length === 0 ? "No presets found" : "No matches"}
++            </div>
++          ) : (
++            filtered.map((preset, i) => {
++              const isSelected = i === selectedIndex;
++              return (
++                <button
++                  type="button"
++                  role="option"
++                  aria-selected={isSelected}
++                  key={preset}
++                  onClick={() => handleLoad(preset)}
++                  onMouseEnter={() => setSelectedIndex(i)}
++                  className={[
++                    "w-full text-left px-2.5 py-1.5 rounded text-[11px] font-medium transition-colors outline-none cursor-pointer truncate",
++                    isSelected
++                      ? "bg-elevated text-text-primary shadow-[inset_1px_1px_3px_rgba(255,255,255,0.05)]"
++                      : "text-text-secondary hover:text-text-primary",
++                  ].join(" ")}
++                >
++                  {preset}
++                </button>
++              );
++            })
++          )}
++        </div>
++        <div className="flex justify-end gap-2 mt-3 pt-2 border-t border-white/5">
++          <NeuButton size="sm" onClick={onClose}>
++            Cancel
++          </NeuButton>
++          <NeuButton
++            size="sm"
++            variant="active"
++            disabled={filtered.length === 0}
++            onClick={() => filtered[selectedIndex] && handleLoad(filtered[selectedIndex])}
++          >
++            Load
++          </NeuButton>
++        </div>
++      </div>
++    </div>
++  );
++}
++
+ function PresetStrip({ nodeId }: { nodeId: string }) {
+   const [activeSlot, setActiveSlot] = useState<PresetSlot>("A");
+   const [presets, setPresets] = useState<string[]>([]);
++  const [showSaveModal, setShowSaveModal] = useState(false);
++  const [showLoadModal, setShowLoadModal] = useState(false);
+ 
+   const refreshPresets = () => {
+     void nativePresetList("").then((r) => {
+@@ -80,69 +268,86 @@ function PresetStrip({ nodeId }: { nodeId: string }) {
+   const swap = async () => {
+     const target: PresetSlot = activeSlot === "A" ? "B" : "A";
+     await nativePresetSwap(nodeId, target);
+-    // Keep the active slot label unchanged — the values just swapped underneath.
+-  };
+-
+-  const openSavePrompt = () => {
+-    // MVP: window.prompt (punted — no modal primitive available yet)
+-    const name = window.prompt("Preset name:");
+-    if (name && name.trim()) {
+-      void nativePresetSave(nodeId, name.trim()).then((r) => {
+-        if (r.ok) refreshPresets();
+-      });
+-    }
+-  };
+-
+-  const openLoadMenu = () => {
+-    if (presets.length === 0) {
+-      void refreshPresets();
+-      return;
+-    }
+-    // MVP: window.prompt with numbered list (punted — no modal primitive)
+-    const list = presets.map((p, i) => `${i + 1}. ${p}`).join("\n");
+-    const input = window.prompt(`Load preset:\n${list}\n\nEnter name:`);
+-    if (input && input.trim()) {
+-      void nativePresetLoad(nodeId, input.trim());
+-    }
+   };
+ 
+   const activeBtn =
+-    "px-2 py-0.5 text-[10px] font-bold rounded border-b-2 border-generator text-generator bg-pressed shadow-[inset_1px_1px_4px_rgba(0,0,0,0.4)]";
++    "px-2 py-0.5 text-[10px] font-bold rounded border-b-2 border-generator text-generator bg-pressed shadow-[inset_1px_1px_4px_rgba(0,0,0,0.4)] outline-none focus-visible:ring-1 focus-visible:ring-generator";
+   const inactiveBtn =
+-    "px-2 py-0.5 text-[10px] font-bold rounded text-text-secondary bg-surface hover:bg-elevated transition-colors shadow-[-1px_-1px_4px_rgba(255,255,255,0.04),1px_1px_4px_rgba(0,0,0,0.3)]";
++    "px-2 py-0.5 text-[10px] font-bold rounded text-text-secondary bg-surface hover:bg-elevated transition-colors shadow-[-1px_-1px_4px_rgba(255,255,255,0.04),1px_1px_4px_rgba(0,0,0,0.3)] outline-none focus-visible:ring-1 focus-visible:ring-generator";
+   const swapBtn =
+-    "px-2 py-0.5 text-[10px] rounded text-text-secondary bg-surface hover:bg-elevated transition-colors shadow-[-1px_-1px_4px_rgba(255,255,255,0.04),1px_1px_4px_rgba(0,0,0,0.3)]";
++    "px-2 py-0.5 text-[10px] rounded text-text-secondary bg-surface hover:bg-elevated transition-colors shadow-[-1px_-1px_4px_rgba(255,255,255,0.04),1px_1px_4px_rgba(0,0,0,0.3)] outline-none focus-visible:ring-1 focus-visible:ring-generator";
+   const textBtn =
+-    "text-[10px] text-text-secondary hover:text-text-primary transition-colors underline underline-offset-2";
++    "text-[10px] text-text-secondary hover:text-text-primary transition-colors underline underline-offset-2 outline-none focus-visible:ring-1 focus-visible:ring-generator rounded px-1";
+ 
+   return (
+-    <div className="flex items-center gap-1 px-2 py-1 border-b border-white/5">
+-      <span className="text-[9px] uppercase tracking-widest text-text-secondary mr-1">
+-        Presets
+-      </span>
+-      <button
+-        className={activeSlot === "A" ? activeBtn : inactiveBtn}
+-        onClick={() => void snapshotAndActivate("A")}
+-      >
+-        A
+-      </button>
+-      <button
+-        className={activeSlot === "B" ? activeBtn : inactiveBtn}
+-        onClick={() => void snapshotAndActivate("B")}
+-      >
+-        B
+-      </button>
+-      <button className={swapBtn} onClick={() => void swap()} title="Swap A↔B">
+-        ⇄
+-      </button>
+-      <span className="flex-1" />
+-      <button className={textBtn} onClick={openSavePrompt}>
+-        Save…
+-      </button>
+-      <button className={textBtn} onClick={openLoadMenu}>
+-        Load…
+-      </button>
+-    </div>
++    <>
++      <div className="flex items-center gap-1 px-2 py-1 border-b border-white/5">
++        <span className="text-[9px] uppercase tracking-widest text-text-secondary mr-1">
++          Presets
++        </span>
++        <button
++          type="button"
++          aria-label="Preset Slot A"
++          aria-pressed={activeSlot === "A"}
++          className={activeSlot === "A" ? activeBtn : inactiveBtn}
++          onClick={() => void snapshotAndActivate("A")}
++        >
++          A
++        </button>
++        <button
++          type="button"
++          aria-label="Preset Slot B"
++          aria-pressed={activeSlot === "B"}
++          className={activeSlot === "B" ? activeBtn : inactiveBtn}
++          onClick={() => void snapshotAndActivate("B")}
++        >
++          B
++        </button>
++        <button
++          type="button"
++          aria-label="Swap Preset Slots"
++          className={swapBtn}
++          onClick={() => void swap()}
++          title="Swap A↔B"
++        >
++          ⇄
++        </button>
++        <span className="flex-1" />
++        <button
++          type="button"
++          className={textBtn}
++          onClick={() => setShowSaveModal(true)}
++        >
++          Save…
++        </button>
++        <button
++          type="button"
++          className={textBtn}
++          onClick={() => {
++            refreshPresets();
++            setShowLoadModal(true);
++          }}
++        >
++          Load…
++        </button>
++      </div>
++
++      {showSaveModal && (
++        <SavePresetModal
++          nodeId={nodeId}
++          onClose={() => setShowSaveModal(false)}
++          onSaved={refreshPresets}
++        />
++      )}
++
++      {showLoadModal && (
++        <LoadPresetModal
++          nodeId={nodeId}
++          presets={presets}
++          onClose={() => setShowLoadModal(false)}
++        />
++      )}
++    </>
+   );
+ }
+ 
+diff --git a/webview/src/components/layout/PreferencesModal.tsx b/webview/src/components/layout/PreferencesModal.tsx
+index dc576be3..b5167224 100644
+--- a/webview/src/components/layout/PreferencesModal.tsx
++++ b/webview/src/components/layout/PreferencesModal.tsx
+@@ -50,24 +50,37 @@ export function PreferencesModal({ onClose }: { onClose: () => void }) {
+     setGridSize(canvas.gridSize);
+   }, [canvas.snapToGrid, canvas.gridSize]);
+ 
++  useEffect(() => {
++    const handleKeyDown = (e: KeyboardEvent) => {
++      if (e.key === "Escape") onClose();
++    };
++    window.addEventListener("keydown", handleKeyDown);
++    return () => window.removeEventListener("keydown", handleKeyDown);
++  }, [onClose]);
++
+   return (
+     <div
+-      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/55"
++      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-none"
+       role="dialog"
+       aria-modal="true"
+       aria-label="Preferences"
++      onClick={onClose}
+     >
+-      <div className="w-[min(520px,92vw)] max-h-[min(640px,85vh)] overflow-hidden flex flex-col rounded-lg bg-surface shadow-[8px_8px_24px_rgba(0,0,0,0.5)] border border-white/5">
++      <div
++        className="w-[min(520px,92vw)] max-h-[min(640px,85vh)] overflow-hidden flex flex-col rounded-lg bg-surface shadow-[8px_8px_24px_rgba(0,0,0,0.6)] border border-white/10"
++        onClick={(e) => e.stopPropagation()}
++      >
+         <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
+           <span className="text-xs font-bold tracking-widest uppercase text-text-primary">
+             Preferences
+           </span>
+           <button
+             type="button"
+-            className="text-text-secondary hover:text-text-primary text-sm px-2"
++            className="text-text-secondary hover:text-text-primary text-sm px-2 rounded outline-none focus-visible:ring-1 focus-visible:ring-generator cursor-pointer"
+             onClick={onClose}
++            aria-label="Close preferences"
+           >
+-            Close
++            ✕
+           </button>
+         </div>
+ 
+diff --git a/webview/src/components/layout/SceneLauncher.tsx b/webview/src/components/layout/SceneLauncher.tsx
+index 4d47649d..7fbe1d00 100644
+--- a/webview/src/components/layout/SceneLauncher.tsx
++++ b/webview/src/components/layout/SceneLauncher.tsx
+@@ -143,12 +143,22 @@ export function SceneLauncher() {
+             const isRenaming = renamingIndex === index;
+ 
+             return (
+-              <button
++              <div
+                 key={scene.id}
+-                type="button"
++                role="group"
++                aria-label={`Scene ${scene.name} (Slot ${index + 1})`}
++                tabIndex={isRenaming ? undefined : 0}
+                 onClick={() => !isRenaming && handleActivate(index)}
++                onKeyDown={(e) => {
++                  if (isRenaming) return;
++                  if (e.key === "Enter" || e.key === " ") {
++                    e.preventDefault();
++                    handleActivate(index);
++                  }
++                }}
+                 className={[
+-                  "relative p-3 rounded-lg text-left transition-all border",
++                  "relative p-3 rounded-lg text-left transition-all border outline-none cursor-pointer select-none",
++                  "focus-visible:ring-2 focus-visible:ring-generator/70 focus-visible:ring-offset-1 focus-visible:ring-offset-canvas",
+                   isActive
+                     ? "bg-modifier/20 border-modifier shadow-[0_0_12px_rgba(232,168,56,0.25)]"
+                     : "bg-surface border-white/5 hover:border-white/10 hover:bg-elevated",
+@@ -160,6 +170,7 @@ export function SceneLauncher() {
+                     <input
+                       autoFocus
+                       type="text"
++                      aria-label="Scene name"
+                       value={renameValue}
+                       onChange={(e) => setRenameValue(e.target.value)}
+                       onBlur={() => commitRename(index)}
+@@ -179,7 +190,8 @@ export function SceneLauncher() {
+                   {scene.hasCapture && !isRenaming ? (
+                     <span
+                       className="w-2 h-2 rounded-full bg-logic shadow-[0_0_6px_rgba(43,196,196,0.5)] shrink-0"
+-                      aria-hidden
++                      title="Parameters captured"
++                      aria-label="Parameters captured"
+                     />
+                   ) : null}
+                 </div>
+@@ -199,12 +211,13 @@ export function SceneLauncher() {
+                     {isActive ? "Active" : "Ready"}
+                   </span>
+ 
+-                  <div className="flex items-center gap-1.5">
++                  <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                     {/* Capture */}
+                     <button
+                       type="button"
+                       title="Capture current parameters into this scene"
+-                      className="inline-flex items-center gap-0.5 text-[10px] text-text-secondary hover:text-text-primary"
++                      aria-label={`Capture scene ${scene.name}`}
++                      className="inline-flex items-center gap-0.5 text-[10px] text-text-secondary hover:text-text-primary p-0.5 rounded outline-none focus-visible:ring-1 focus-visible:ring-generator cursor-pointer"
+                       onClick={(e) => {
+                         e.stopPropagation();
+                         handleCaptureScene(index);
+@@ -218,7 +231,8 @@ export function SceneLauncher() {
+                       <button
+                         type="button"
+                         title="Rename scene"
+-                        className="inline-flex items-center gap-0.5 text-[10px] text-text-secondary hover:text-generator"
++                        aria-label={`Rename scene ${scene.name}`}
++                        className="inline-flex items-center gap-0.5 text-[10px] text-text-secondary hover:text-generator p-0.5 rounded outline-none focus-visible:ring-1 focus-visible:ring-generator cursor-pointer"
+                         onClick={(e) => beginRename(index, scene.name, e)}
+                       >
+                         <Icon d={ICON_EDIT} size={11} />
+@@ -229,14 +243,15 @@ export function SceneLauncher() {
+                     <button
+                       type="button"
+                       title="Delete scene"
+-                      className="inline-flex items-center gap-0.5 text-[10px] text-text-secondary hover:text-error"
++                      aria-label={`Delete scene ${scene.name}`}
++                      className="inline-flex items-center gap-0.5 text-[10px] text-text-secondary hover:text-error p-0.5 rounded outline-none focus-visible:ring-1 focus-visible:ring-error cursor-pointer"
+                       onClick={(e) => handleDelete(index, e)}
+                     >
+                       <Icon d={ICON_DELETE} size={11} />
+                     </button>
+                   </div>
+                 </div>
+-              </button>
++              </div>
+             );
+           })}
+         </div>
+diff --git a/webview/src/components/layout/StatusBar.tsx b/webview/src/components/layout/StatusBar.tsx
+index 504234f6..0229f0e0 100644
+--- a/webview/src/components/layout/StatusBar.tsx
++++ b/webview/src/components/layout/StatusBar.tsx
+@@ -44,7 +44,10 @@ export function StatusBar() {
+       ? `${health.latency.toFixed(1)} ms`
+       : "—";
+   const cpuPercent = health.cpu;
+-  const engineRunning = cpuPercent > 0;
++  const engineRunning =
++    (typeof health.buffer === "number" && health.buffer > 0) ||
++    (Boolean(health.sampleRateLabel) && health.sampleRateLabel !== "—") ||
++    cpuPercent > 0;
+ 
+   return (
+     <div className="h-6 bg-pressed border-t border-white/5 flex items-center justify-between px-4 text-[10px] select-none">
+diff --git a/webview/src/components/layout/ToolPalette.tsx b/webview/src/components/layout/ToolPalette.tsx
+index e505af34..7d61f815 100644
+--- a/webview/src/components/layout/ToolPalette.tsx
++++ b/webview/src/components/layout/ToolPalette.tsx
+@@ -257,11 +257,14 @@ export function ToolPalette() {
+               Projects
+             </button>
+           </div>
+-          <div className="flex gap-1">
++          <div className="flex gap-1" role="group" aria-label="View mode">
+             <button
++              type="button"
++              aria-label="Grid view"
++              aria-pressed={viewMode === "grid"}
+               onClick={() => setViewMode("grid")}
+               className={[
+-                "p-1 rounded",
++                "p-1 rounded outline-none focus-visible:ring-1 focus-visible:ring-generator cursor-pointer",
+                 viewMode === "grid"
+                   ? "shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] text-generator"
+                   : "text-text-secondary hover:bg-white/5",
+@@ -270,9 +273,12 @@ export function ToolPalette() {
+               <Icon d={ICON_GRID} />
+             </button>
+             <button
++              type="button"
++              aria-label="List view"
++              aria-pressed={viewMode === "list"}
+               onClick={() => setViewMode("list")}
+               className={[
+-                "p-1 rounded",
++                "p-1 rounded outline-none focus-visible:ring-1 focus-visible:ring-generator cursor-pointer",
+                 viewMode === "list"
+                   ? "shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] text-generator"
+                   : "text-text-secondary hover:bg-white/5",
+diff --git a/webview/src/components/layout/Toolbar.tsx b/webview/src/components/layout/Toolbar.tsx
+index aefaddb8..6fac1f98 100644
+--- a/webview/src/components/layout/Toolbar.tsx
++++ b/webview/src/components/layout/Toolbar.tsx
+@@ -10,7 +10,11 @@ import {
+ import {
+   nativeTransportPanic,
+   nativeTransportTogglePlay,
++  nativeTransportStop,
++  nativeTransportRewind,
+   nativeTransportSetTempo,
++  nativeUndo,
++  nativeRedo,
+ } from "../../bridge/nativeGraph";
+ import {
+   nativeSessionNew,
+@@ -238,28 +242,53 @@ export function Toolbar() {
+           <div className="flex items-center gap-6">
+             {/* Undo/Redo — Section 7.8 */}
+             <div className="flex items-center gap-1 bg-pressed px-1.5 py-0.5 rounded shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] border border-white/5">
+-              <button className="text-text-secondary hover:text-text-primary p-1 flex items-center gap-1" title="Undo">
++              <button
++                type="button"
++                className="text-text-secondary hover:text-text-primary p-1 flex items-center gap-1 outline-none focus-visible:ring-1 focus-visible:ring-generator rounded cursor-pointer"
++                title="Undo (Cmd+Z)"
++                aria-label="Undo"
++                onClick={() => void nativeUndo()}
++              >
+                 <Icon d={ICON_UNDO} size={14} />
+               </button>
+-              <button className="text-text-secondary hover:text-text-primary p-1" title="Redo">
++              <button
++                type="button"
++                className="text-text-secondary hover:text-text-primary p-1 outline-none focus-visible:ring-1 focus-visible:ring-generator rounded cursor-pointer"
++                title="Redo (Cmd+Shift+Z)"
++                aria-label="Redo"
++                onClick={() => void nativeRedo()}
++              >
+                 <Icon d={ICON_REDO} size={14} />
+               </button>
+             </div>
+ 
+             {/* Transport */}
+             <div className="flex items-center gap-1 bg-pressed px-2 py-0.5 rounded shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] border border-white/5">
+-              <button className="text-text-secondary hover:text-text-primary transition-colors p-0.5" title="Rewind">
++              <button
++                type="button"
++                className="text-text-secondary hover:text-text-primary transition-colors p-0.5 outline-none focus-visible:ring-1 focus-visible:ring-generator rounded cursor-pointer"
++                title="Rewind"
++                aria-label="Rewind"
++                onClick={() => void nativeTransportRewind()}
++              >
+                 <Icon d={ICON_SKIP_PREV} size={16} />
+               </button>
+               <button
+                 type="button"
+-                className="text-logic hover:text-logic/80 transition-colors p-0.5"
++                className="text-logic hover:text-logic/80 transition-colors p-0.5 outline-none focus-visible:ring-1 focus-visible:ring-generator rounded cursor-pointer"
+                 onClick={() => void nativeTransportTogglePlay()}
+                 aria-label="Play or pause"
++                title="Play or pause (Space)"
+               >
+                 <Icon d={ICON_PLAY} size={18} />
+               </button>
+-              <button className="text-text-secondary hover:text-text-primary transition-colors p-0.5" title="Stop">
++              <button
++                type="button"
++                className="text-text-secondary hover:text-text-primary transition-colors p-0.5 outline-none focus-visible:ring-1 focus-visible:ring-generator rounded cursor-pointer"
++                title="Stop"
++                aria-label="Stop"
++                onClick={() => void nativeTransportStop()}
++              >
+                 <Icon d={ICON_STOP} size={16} />
+               </button>
+             </div>
+@@ -483,7 +512,13 @@ export function Toolbar() {
+               >
+                 <Icon d={ICON_SETTINGS} size={18} />
+               </button>
+-              <button className="text-text-secondary hover:text-error transition-colors">
++              <button
++                type="button"
++                className="text-text-secondary hover:text-error transition-colors p-1 outline-none focus-visible:ring-1 focus-visible:ring-error rounded cursor-pointer"
++                title="Panic (Cut all audio and send all-notes-off)"
++                aria-label="Panic"
++                onClick={() => void nativeTransportPanic()}
++              >
+                 <Icon d={ICON_POWER} size={18} />
+               </button>
+             </>
+diff --git a/webview/src/components/layout/VirtualKeyboard.tsx b/webview/src/components/layout/VirtualKeyboard.tsx
+index 8ee59c2d..a8110815 100644
+--- a/webview/src/components/layout/VirtualKeyboard.tsx
++++ b/webview/src/components/layout/VirtualKeyboard.tsx
+@@ -34,6 +34,14 @@ const TOTAL_WHITES = OCTAVE_COUNT * WHITES_PER_OCT;
+ 
+ // ── Sub-components ────────────────────────────────────────────────────────────
+ 
++const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
++
++function midiToName(note: number): string {
++  const name = NOTE_NAMES[note % 12];
++  const oct = Math.floor(note / 12) - 1;
++  return `${name}${oct}`;
++}
++
+ function WhiteKey({
+   note,
+   active,
+@@ -46,20 +54,32 @@ function WhiteKey({
+   onRelease: (n: number) => void;
+ }) {
+   const octaveOffset = note % 12;
+-  const noteName = ["C", , "D", , "E", "F", , "G", , "A", , "B"][octaveOffset] as string;
++  const name = midiToName(note);
+   const isC = octaveOffset === 0;
+ 
+   return (
+     <button
+       type="button"
+-      aria-label={`Note ${note}`}
++      aria-label={`Note ${name} (MIDI ${note})`}
+       onMouseDown={() => onPress(note)}
+       onMouseUp={() => onRelease(note)}
+       onMouseLeave={() => onRelease(note)}
++      onTouchStart={(e) => {
++        e.preventDefault();
++        onPress(note);
++      }}
++      onTouchEnd={(e) => {
++        e.preventDefault();
++        onRelease(note);
++      }}
++      onTouchCancel={(e) => {
++        e.preventDefault();
++        onRelease(note);
++      }}
+       className={[
+-        "relative select-none rounded-b-md border border-white/10 transition-all",
++        "relative select-none rounded-b-md border border-white/10 transition-all outline-none",
+         "flex flex-col items-center justify-end pb-1",
+-        "h-full w-full",
++        "h-full w-full cursor-pointer",
+         active
+           ? // pressed: inset shadow (neumorphic pressed state)
+             "bg-[#c8c8d0] shadow-[inset_2px_2px_6px_rgba(0,0,0,0.35),inset_-1px_-1px_3px_rgba(255,255,255,0.1)]"
+@@ -69,8 +89,7 @@ function WhiteKey({
+     >
+       {isC && (
+         <span className="text-[8px] font-bold text-black/40 uppercase select-none">
+-          {noteName}
+-          {Math.floor(note / 12) - 1}
++          {name}
+         </span>
+       )}
+     </button>
+@@ -88,10 +107,12 @@ function BlackKey({
+   onPress: (n: number) => void;
+   onRelease: (n: number) => void;
+ }) {
++  const name = midiToName(note);
++
+   return (
+     <button
+       type="button"
+-      aria-label={`Note ${note}`}
++      aria-label={`Note ${name} (MIDI ${note})`}
+       onMouseDown={(e) => {
+         e.stopPropagation();
+         onPress(note);
+@@ -101,8 +122,23 @@ function BlackKey({
+         onRelease(note);
+       }}
+       onMouseLeave={() => onRelease(note)}
++      onTouchStart={(e) => {
++        e.stopPropagation();
++        e.preventDefault();
++        onPress(note);
++      }}
++      onTouchEnd={(e) => {
++        e.stopPropagation();
++        e.preventDefault();
++        onRelease(note);
++      }}
++      onTouchCancel={(e) => {
++        e.stopPropagation();
++        e.preventDefault();
++        onRelease(note);
++      }}
+       className={[
+-        "absolute top-0 select-none z-10 rounded-b-sm border border-white/5",
++        "absolute top-0 select-none z-10 rounded-b-sm border border-white/5 outline-none cursor-pointer",
+         "w-[55%] h-[62%]",
+         active
+           ? "bg-[#1a1a1e] shadow-[inset_2px_2px_4px_rgba(0,0,0,0.6)]"
+diff --git a/webview/src/components/neu/NeuButton.tsx b/webview/src/components/neu/NeuButton.tsx
+index c89dbef4..50395a70 100644
+--- a/webview/src/components/neu/NeuButton.tsx
++++ b/webview/src/components/neu/NeuButton.tsx
+@@ -1,4 +1,4 @@
+-import { type ReactNode } from "react";
++import { type ReactNode, type ButtonHTMLAttributes } from "react";
+ 
+ const variantStyles = {
+   default: "bg-surface text-text-primary border-white/5 hover:bg-elevated",
+@@ -11,9 +11,9 @@ const sizeStyles = {
+   md: "py-2 px-3 text-[11px] gap-2",
+ } as const;
+ 
+-interface NeuButtonProps {
++export interface NeuButtonProps
++  extends ButtonHTMLAttributes<HTMLButtonElement> {
+   children: ReactNode;
+-  onClick?: () => void;
+   variant?: "default" | "panic" | "active";
+   size?: "sm" | "md";
+   className?: string;
+@@ -25,18 +25,25 @@ export function NeuButton({
+   variant = "default",
+   size = "md",
+   className = "",
++  type = "button",
++  disabled,
++  ...rest
+ }: NeuButtonProps) {
+   return (
+     <button
++      type={type}
+       onClick={onClick}
++      disabled={disabled}
+       className={[
+         "inline-flex items-center justify-center rounded border font-bold uppercase tracking-wider",
+-        "select-none transition-all duration-100",
++        "select-none transition-all duration-100 outline-none",
++        "focus-visible:ring-2 focus-visible:ring-generator/70 focus-visible:ring-offset-1 focus-visible:ring-offset-canvas",
+         /* raised state */
+         "shadow-[-2px_-2px_8px_rgba(255,255,255,0.04),2px_2px_8px_rgba(0,0,0,0.35)]",
+         /* pressed state */
+         "active:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)]",
+         "active:translate-y-px",
++        disabled ? "opacity-40 cursor-not-allowed pointer-events-none" : "cursor-pointer",
+         variantStyles[variant],
+         sizeStyles[size],
+         variant === "panic" &&
+@@ -47,14 +54,16 @@ export function NeuButton({
+       ]
+         .filter(Boolean)
+         .join(" ")}
++      {...rest}
+     >
+       {variant === "active" && (
+-        <span className="w-1.5 h-1.5 rounded-full bg-logic shadow-[0_0_4px_rgba(43,196,196,0.8)]" />
++        <span className="w-1.5 h-1.5 rounded-full bg-logic shadow-[0_0_4px_rgba(43,196,196,0.8)]" aria-hidden="true" />
+       )}
+       {variant === "panic" && (
+-        <span className="w-1.5 h-1.5 rounded-full bg-error shadow-[0_0_4px_rgba(239,68,68,0.8)]" />
++        <span className="w-1.5 h-1.5 rounded-full bg-error shadow-[0_0_4px_rgba(239,68,68,0.8)]" aria-hidden="true" />
+       )}
+       {children}
+     </button>
+   );
+ }
++
+diff --git a/webview/src/components/neu/NeuFader.tsx b/webview/src/components/neu/NeuFader.tsx
+index c102432c..9ce2a2c7 100644
+--- a/webview/src/components/neu/NeuFader.tsx
++++ b/webview/src/components/neu/NeuFader.tsx
+@@ -70,39 +70,93 @@ export function NeuFader({
+     setDragging(false);
+   }, []);
+ 
++  const onKeyDown = useCallback(
++    (e: React.KeyboardEvent) => {
++      if (!onChange) return;
++      const step = e.shiftKey ? 5 : 1;
++      let newValue = value;
++      switch (e.key) {
++        case "ArrowUp":
++        case "ArrowRight":
++          e.preventDefault();
++          newValue = Math.min(100, value + step);
++          break;
++        case "ArrowDown":
++        case "ArrowLeft":
++          e.preventDefault();
++          newValue = Math.max(0, value - step);
++          break;
++        case "PageUp":
++          e.preventDefault();
++          newValue = Math.min(100, value + 10);
++          break;
++        case "PageDown":
++          e.preventDefault();
++          newValue = Math.max(0, value - 10);
++          break;
++        case "Home":
++          e.preventDefault();
++          newValue = 0;
++          break;
++        case "End":
++          e.preventDefault();
++          newValue = 100;
++          break;
++        default:
++          return;
++      }
++      onChange(Math.round(newValue * 100) / 100);
++    },
++    [onChange, value],
++  );
++
+   if (isVert) {
+     return (
+       <div className={`flex items-center gap-4 ${className}`}>
+         {/* Track */}
+         <div
+           ref={trackRef}
++          role="slider"
++          aria-valuenow={Math.round(value)}
++          aria-valuemin={0}
++          aria-valuemax={100}
++          aria-orientation="vertical"
++          aria-label={label ?? "Vertical Fader"}
++          aria-valuetext={label ? `${label}: ${Math.round(value)}%` : `${Math.round(value)}%`}
++          tabIndex={onChange ? 0 : undefined}
+           className={[
+-            "w-8 h-28 bg-pressed neu-inset rounded-sm relative flex flex-col items-center py-2",
+-            onChange ? "cursor-ns-resize" : "",
++            "w-8 h-28 bg-pressed neu-inset rounded-sm relative flex flex-col items-center py-2 outline-none select-none",
++            onChange
++              ? "cursor-ns-resize focus-visible:ring-2 focus-visible:ring-generator/70 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
++              : "",
+           ].join(" ")}
+           onPointerDown={onPointerDown}
+           onPointerMove={onPointerMove}
+           onPointerUp={onPointerUp}
++          onKeyDown={onKeyDown}
+         >
+           {/* Fill */}
+           <div
+             className="absolute bottom-2 w-1.5 rounded-full"
+             style={{ height: pct, backgroundColor: hex }}
++            aria-hidden="true"
+           />
+           {/* Peak hold */}
+           <div
+             className="absolute w-4 h-px bg-white/40"
+             style={{ bottom: `calc(${pct} + 8px)` }}
++            aria-hidden="true"
+           />
+           {/* Thumb */}
+           <div
+             className="absolute w-6 h-3 bg-[#252529] shadow-[-2px_-2px_8px_rgba(255,255,255,0.04),2px_2px_8px_rgba(0,0,0,0.35)] border-y border-white/5 z-10 rounded-sm"
+             style={{ bottom: pct }}
++            aria-hidden="true"
+           />
+         </div>
+         {/* Label stack */}
+         {label && (
+-          <div className="flex flex-col gap-1">
++          <div className="flex flex-col gap-1 select-none">
+             <span className="text-[10px] font-bold text-text-primary uppercase leading-none">
+               {label}
+             </span>
+@@ -122,39 +176,53 @@ export function NeuFader({
+   return (
+     <div className={`flex items-center gap-3 ${className}`}>
+       {label && (
+-        <span className="text-[10px] text-text-secondary w-8 shrink-0">
++        <span className="text-[10px] text-text-secondary w-8 shrink-0 select-none">
+           {label}
+         </span>
+       )}
+       {/* Track */}
+       <div
+         ref={trackRef}
++        role="slider"
++        aria-valuenow={Math.round(value)}
++        aria-valuemin={0}
++        aria-valuemax={100}
++        aria-orientation="horizontal"
++        aria-label={label ?? "Horizontal Fader"}
++        aria-valuetext={label ? `${label}: ${Math.round(value)}%` : `${Math.round(value)}%`}
++        tabIndex={onChange ? 0 : undefined}
+         className={[
+-          "flex-1 h-1.5 bg-canvas rounded-full relative overflow-visible",
+-          onChange ? "cursor-ew-resize" : "",
++          "flex-1 h-1.5 bg-canvas rounded-full relative overflow-visible outline-none select-none",
++          onChange
++            ? "cursor-ew-resize focus-visible:ring-2 focus-visible:ring-generator/70 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
++            : "",
+         ].join(" ")}
+         onPointerDown={onPointerDown}
+         onPointerMove={onPointerMove}
+         onPointerUp={onPointerUp}
++        onKeyDown={onKeyDown}
+       >
+         {/* Fill */}
+         <div
+           className="absolute left-0 top-0 h-full rounded-full"
+           style={{ width: pct, backgroundColor: hex }}
++          aria-hidden="true"
+         />
+         {/* Peak hold */}
+         <div
+           className="absolute top-0 h-full w-px bg-white/40"
+           style={{ left: `calc(${pct} + 2px)` }}
++          aria-hidden="true"
+         />
+         {/* Thumb */}
+         <div
+           className="absolute -top-[5px] w-2 h-4 bg-[#252529] rounded shadow-[-2px_-2px_8px_rgba(255,255,255,0.04),2px_2px_8px_rgba(0,0,0,0.35)] border border-white/10"
+           style={{ left: pct }}
++          aria-hidden="true"
+         />
+       </div>
+       <span
+-        className="text-[10px] tabular-nums font-bold w-12 text-right shrink-0"
++        className="text-[10px] tabular-nums font-bold w-12 text-right shrink-0 select-none"
+         style={{ color: hex }}
+       >
+         {value}%
+@@ -162,3 +230,4 @@ export function NeuFader({
+     </div>
+   );
+ }
++
+diff --git a/webview/src/components/neu/NeuInput.tsx b/webview/src/components/neu/NeuInput.tsx
+index 94727f6b..212468be 100644
+--- a/webview/src/components/neu/NeuInput.tsx
++++ b/webview/src/components/neu/NeuInput.tsx
+@@ -1,6 +1,7 @@
+-import { forwardRef } from "react";
++import { forwardRef, type InputHTMLAttributes } from "react";
+ 
+-interface NeuInputProps {
++export interface NeuInputProps
++  extends Omit<InputHTMLAttributes<HTMLInputElement>, "onChange"> {
+   placeholder?: string;
+   value?: string;
+   onChange?: (value: string) => void;
+@@ -8,22 +9,24 @@ interface NeuInputProps {
+ }
+ 
+ export const NeuInput = forwardRef<HTMLInputElement, NeuInputProps>(
+-  function NeuInput({ placeholder, value, onChange, className = "" }, ref) {
++  function NeuInput({ placeholder, value, onChange, className = "", type = "text", ...rest }, ref) {
+     return (
+       <input
+         ref={ref}
+-        type="text"
++        type={type}
+         placeholder={placeholder}
+         value={value}
+         onChange={(e) => onChange?.(e.target.value)}
+         className={[
+           "w-full bg-pressed border-none rounded px-3 py-1.5 text-[11px] text-text-primary placeholder-text-dim",
+           "shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),inset_-1px_-1px_4px_rgba(255,255,255,0.05)]",
+-          "outline-none focus:ring-1 focus:ring-generator/30",
+-          "transition-shadow duration-100",
++          "outline-none focus:ring-1 focus:ring-generator/50 focus:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.4),0_0_8px_rgba(74,144,217,0.25)]",
++          "transition-all duration-100",
+           className,
+         ].join(" ")}
++        {...rest}
+       />
+     );
+   },
+ );
++
+diff --git a/webview/src/components/neu/NeuKnob.tsx b/webview/src/components/neu/NeuKnob.tsx
+index a791723d..b65b634c 100644
+--- a/webview/src/components/neu/NeuKnob.tsx
++++ b/webview/src/components/neu/NeuKnob.tsx
+@@ -78,6 +78,46 @@ export function NeuKnob({
+     setDragging(false);
+   }, []);
+ 
++  const onKeyDown = useCallback(
++    (e: React.KeyboardEvent) => {
++      if (!onChange) return;
++      const step = e.shiftKey ? 5 : 1;
++      let newValue = value;
++      switch (e.key) {
++        case "ArrowUp":
++        case "ArrowRight":
++          e.preventDefault();
++          newValue = Math.min(100, value + step);
++          break;
++        case "ArrowDown":
++        case "ArrowLeft":
++          e.preventDefault();
++          newValue = Math.max(0, value - step);
++          break;
++        case "PageUp":
++          e.preventDefault();
++          newValue = Math.min(100, value + 10);
++          break;
++        case "PageDown":
++          e.preventDefault();
++          newValue = Math.max(0, value - 10);
++          break;
++        case "Home":
++          e.preventDefault();
++          newValue = 0;
++          break;
++        case "End":
++          e.preventDefault();
++          newValue = 100;
++          break;
++        default:
++          return;
++      }
++      onChange(Math.round(newValue * 100) / 100);
++    },
++    [onChange, value],
++  );
++
+   // Map 0–100 → -135° to +135° (270° sweep)
+   const angle = (value / 100) * 270 - 135;
+ 
+@@ -90,21 +130,36 @@ export function NeuKnob({
+     <div className={`flex flex-col items-center gap-2 ${className}`}>
+       {/* Knob body */}
+       <div
++        role="slider"
++        aria-valuenow={Math.round(value)}
++        aria-valuemin={0}
++        aria-valuemax={100}
++        aria-label={label}
++        aria-valuetext={
++          sourceLabel
++            ? `${label} (${sourceLabel}): ${Math.round(value)}`
++            : `${label}: ${Math.round(value)}`
++        }
++        tabIndex={onChange ? 0 : undefined}
+         className={[
+-          "relative flex items-center justify-center",
+-          onChange ? "cursor-ns-resize" : "",
++          "relative flex items-center justify-center rounded-full outline-none",
++          onChange
++            ? "cursor-ns-resize focus-visible:ring-2 focus-visible:ring-generator/70 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
++            : "",
+           dragging ? "scale-[1.02]" : "",
+         ].join(" ")}
+         style={{ width: dim.outer, height: dim.outer }}
+         onPointerDown={onPointerDown}
+         onPointerMove={onPointerMove}
+         onPointerUp={onPointerUp}
++        onKeyDown={onKeyDown}
+       >
+         {/* Progress ring (SVG) */}
+         <svg
+           className="absolute inset-0 -rotate-[225deg]"
+           width={dim.outer}
+           height={dim.outer}
++          aria-hidden="true"
+         >
+           {/* Background track */}
+           <circle
+@@ -133,6 +188,7 @@ export function NeuKnob({
+         <div
+           className="rounded-full bg-surface shadow-[-2px_-2px_8px_rgba(255,255,255,0.04),2px_2px_8px_rgba(0,0,0,0.35)] border border-white/5 flex items-center justify-center absolute"
+           style={{ width: dim.inner, height: dim.inner }}
++          aria-hidden="true"
+         >
+           {/* Inset track */}
+           <div
+@@ -159,7 +215,7 @@ export function NeuKnob({
+       </div>
+ 
+       {/* Labels */}
+-      <div className="text-center leading-none">
++      <div className="text-center leading-none select-none">
+         <div className="text-[10px] font-bold text-text-primary uppercase tracking-tight">
+           {label}
+         </div>
+@@ -175,3 +231,4 @@ export function NeuKnob({
+     </div>
+   );
+ }
++
+diff --git a/webview/src/components/neu/NeuToggle.tsx b/webview/src/components/neu/NeuToggle.tsx
+index 38fd34a0..cd63de3a 100644
+--- a/webview/src/components/neu/NeuToggle.tsx
++++ b/webview/src/components/neu/NeuToggle.tsx
+@@ -1,3 +1,5 @@
++import { type ButtonHTMLAttributes } from "react";
++
+ const colorMap = {
+   blue: {
+     track: "bg-generator",
+@@ -13,10 +15,12 @@ const colorMap = {
+   },
+ } as const;
+ 
+-interface NeuToggleProps {
++export interface NeuToggleProps
++  extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "onChange"> {
+   active: boolean;
+   onChange: (active: boolean) => void;
+   color?: "blue" | "orange" | "teal";
++  label?: string;
+   className?: string;
+ }
+ 
+@@ -24,30 +28,41 @@ export function NeuToggle({
+   active,
+   onChange,
+   color = "blue",
++  label,
+   className = "",
++  disabled,
++  ...rest
+ }: NeuToggleProps) {
+   const { track, glow } = colorMap[color];
+ 
+   return (
+     <button
++      type="button"
+       role="switch"
+       aria-checked={active}
++      aria-label={label ?? "Toggle switch"}
++      disabled={disabled}
+       onClick={() => onChange(!active)}
+       className={[
+-        "relative w-6 h-3 rounded-full transition-colors duration-150",
++        "relative w-6 h-3 rounded-full transition-colors duration-150 outline-none select-none cursor-pointer",
++        "focus-visible:ring-2 focus-visible:ring-generator/70 focus-visible:ring-offset-1 focus-visible:ring-offset-canvas",
++        disabled ? "opacity-40 cursor-not-allowed pointer-events-none" : "",
+         active
+           ? `${track} ${glow}`
+           : "bg-pressed neu-inset",
+         "border border-white/5",
+         className,
+       ].join(" ")}
++      {...rest}
+     >
+       <span
+         className={[
+           "absolute top-0.5 w-2 h-2 rounded-full bg-text-primary transition-all duration-150",
+           active ? "right-0.5" : "left-0.5",
+         ].join(" ")}
++        aria-hidden="true"
+       />
+     </button>
+   );
+ }
++
+diff --git a/webview/src/hooks/useKeyboard.ts b/webview/src/hooks/useKeyboard.ts
+index 23d5638d..b71a251b 100644
+--- a/webview/src/hooks/useKeyboard.ts
++++ b/webview/src/hooks/useKeyboard.ts
+@@ -12,6 +12,7 @@ import {
+   nativeGraphRemoveNode,
+   nativeGraphSetCableBus,
+   nativeRedo,
++  nativeTransportTogglePlay,
+   nativeUndo,
+ } from "../bridge/nativeGraph";
+ import {
+@@ -163,6 +164,17 @@ export function useKeyboard({ onToggleCommandPalette }: UseKeyboardOptions) {
+             return;
+           }
+ 
++          case "a":
++          case "A": {
++            e.preventDefault();
++            reactFlow.setNodes((nodes) =>
++              nodes.map((n) => ({ ...n, selected: true })),
++            );
++            return;
++          }
++
++          case "t":
++          case "T":
+           case "r":
+           case "R": {
+             e.preventDefault();
+@@ -257,9 +269,13 @@ export function useKeyboard({ onToggleCommandPalette }: UseKeyboardOptions) {
+         }
+       }
+ 
+-      // ── Plain keys ──
+-
+       switch (key) {
++        case " ": {
++          e.preventDefault();
++          void nativeTransportTogglePlay();
++          return;
++        }
++
+         case "Escape": {
+           const { selectedNodeId, selectedEdgeId, breadcrumbStack } =
+             useGraphStore.getState();
+diff --git a/webview/src/index.css b/webview/src/index.css
+index f36dd40a..2d91d59a 100644
+--- a/webview/src/index.css
++++ b/webview/src/index.css
+@@ -213,24 +213,68 @@ body {
+   pointer-events: none;
+ }
+ 
+-/* ── Reduced Motion ── */
++@keyframes signalPulse {
++  0% { stroke-dashoffset: 24; }
++  100% { stroke-dashoffset: 0; }
++}
++
++/* ── Themed Browser Surfaces ── */
++
++::selection {
++  background: rgba(74, 144, 217, 0.45);
++  color: var(--color-text-primary);
++}
++
++input,
++textarea,
++[contenteditable="true"] {
++  caret-color: var(--color-generator);
++}
++
++/* ── Custom Dark Neumorphic Scrollbars ── */
++
++::-webkit-scrollbar {
++  width: 6px;
++  height: 6px;
++}
++
++::-webkit-scrollbar-track {
++  background: var(--color-pressed);
++}
++
++::-webkit-scrollbar-thumb {
++  background: var(--color-elevated);
++  border-radius: 3px;
++  border: 1px solid rgba(255, 255, 255, 0.05);
++}
++
++::-webkit-scrollbar-thumb:hover {
++  background: var(--color-panel-border);
++}
++
++/* ── Focus Outline Utilities ── */
++
++.neu-focus:focus-visible {
++  outline: none;
++  box-shadow: 0 0 0 2px rgba(74, 144, 217, 0.6), 0 0 8px rgba(74, 144, 217, 0.3);
++}
++
++/* ── Accessible Reduced Motion (preserves state feedback, disables continuous motion) ── */
+ 
+ @media (prefers-reduced-motion: reduce) {
+   *,
+   *::before,
+   *::after {
+-    animation-duration: 0.01ms !important;
+     animation-iteration-count: 1 !important;
+-    transition-duration: 0.01ms !important;
+     scroll-behavior: auto !important;
+   }
+ 
+-  /* Kill Framer Motion spring physics */
+-  [style*="transform"] {
+-    transition: none !important;
+-  }
+-
+   .react-flow__viewport {
+     will-change: auto;
+   }
++
++  .map-mode-active .react-flow__node {
++    animation: none;
++    outline-color: rgba(74, 144, 217, 0.7);
++  }
+ }

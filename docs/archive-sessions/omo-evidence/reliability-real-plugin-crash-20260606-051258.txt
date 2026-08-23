@@ -1,0 +1,14 @@
+=== real-plugin crash-isolation proof ===
+host pid:        49144
+plugin path:     /Library/Audio/Plug-Ins/VST3/ValhallaSupermassive.vst3
+scanned plugin:  ValhallaSupermassive [VST3] uid=2123359701
+[PASS] real plugin LOADED out-of-process (worker createPluginInstance succeeded)
+worker pid (child of host): 49145
+worker has ValhallaSupermassive mappings open (lsof count): 1
+>>> kill -9 worker 49145  (simulating a real plugin hard-crash)
+
+host alive after worker SIGKILL: YES
+sandboxCrashed callback fired:   YES (count=1)
+post-kill host state:            6 (6=Crashed,4=Active,5=Error,2=Ready)
+
+RESULT: PASS - real VST3 hosted out-of-process; worker SIGKILL isolated; crash detected.

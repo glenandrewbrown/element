@@ -1,0 +1,11 @@
+# Task 9 — selector guard CATCH-POWER proof (must FAIL on a bad selector)
+
+Scanned the whole real tree PLUS a temporary throwaway fixture containing
+a deliberately-bad selector `useGraphStore((s) => s.nodes.map((n) => n.id))`
+with NO useShallow.
+
+Files scanned: 142 (real tree 141 + 1 temp fixture)
+Offenders found: 1
+  src/test/__guard_fixture_tmp.tsx:6  useGraphStore(...)  →  s.nodes.map((n) => n.id)
+
+RESULT: PASS — guard FLAGGED the bad selector at src/test/__guard_fixture_tmp.tsx:6 (and ONLY it)

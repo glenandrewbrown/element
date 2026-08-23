@@ -1,0 +1,30 @@
+Sandbox worker connection lost
+[SandboxedProcessor] Sandbox crashed: ValhallaPlate
+[sandbox] Created shared memory: /el_sb_1387_0 (24632 bytes)
+Sandbox worker connection lost
+[SandboxedProcessor] Sandbox crashed: ValhallaPlate
+Launching sandbox worker: /Volumes/Projects/Development_Projects/Github_Repos/element/build-merged/element_app_artefacts/Element.app/Contents/MacOS/Element
+Sandbox worker connection lost
+[SandboxedProcessor] Sandbox crashed: midiForceToRange
+[sandbox] Created shared memory: /el_sb_85096_0 (24632 bytes)
+Launching sandbox worker: /Volumes/Projects/Development_Projects/Github_Repos/element/build-merged/element_app_artefacts/Element.app/Contents/MacOS/Element
+Sandbox worker connection lost
+[SandboxedProcessor] Sandbox crashed: midiDuplicateBlocker
+[sandbox] Created shared memory: /el_sb_85096_1 (24632 bytes)
+Launching sandbox worker: /Volumes/Projects/Development_Projects/Github_Repos/element/build-merged/element_app_artefacts/Element.app/Contents/MacOS/Element
+Sandbox worker connection lost
+[SandboxedProcessor] Sandbox crashed: ValhallaSupermassive
+[sandbox] Created shared memory: /el_sb_89069_0 (24632 bytes)
+Launching sandbox worker: /Volumes/Projects/Development_Projects/Github_Repos/element/build-merged/element_app_artefacts/Element.app/Contents/MacOS/Element
+Sandbox worker connection lost
+[SandboxedProcessor] Sandbox crashed: ValhallaSupermassive
+[sandbox] Created shared memory: /el_sb_94557_0 (24632 bytes)
+Launching sandbox worker: /Volumes/Projects/Development_Projects/Github_Repos/element/build-merged/element_app_artefacts/Element.app/Contents/MacOS/Element
+Launching sandbox worker: /Volumes/Projects/Development_Projects/Github_Repos/element/build-merged/element_app_artefacts/Element.app/Contents/MacOS/Element
+Sandbox worker connection lost
+[SandboxedProcessor] Sandbox crashed: ValhallaSupermassive
+[sandbox] Created shared memory: /el_sb_96484_0 (24632 bytes)
+Launching sandbox worker: /Volumes/Projects/Development_Projects/Github_Repos/element/build-merged/element_app_artefacts/Element.app/Contents/MacOS/Element
+Sandbox worker connection lost
+[SandboxedProcessor] Sandbox crashed: ValhallaSupermassive
+[sandbox] Created shared memory: /el_sb_97251_0 (24632 bytes)

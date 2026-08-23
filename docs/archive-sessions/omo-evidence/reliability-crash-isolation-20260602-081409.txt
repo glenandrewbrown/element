@@ -1,0 +1,2 @@
+run: 20260602-081409
+conf pluginSandboxMode=1

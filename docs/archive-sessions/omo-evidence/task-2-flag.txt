@@ -1,0 +1,4 @@
+   * Mount sites gate on `hiddenPanels.has(id)`; imports are never deleted.
+  hiddenPanels: Set<string>;
+  hiddenPanels: new Set<string>(["dashboard", "macros", "scenes"]),
+  s.hiddenPanels.has(id);
